@@ -12,6 +12,7 @@ publish = false
 
 [workspace.dependencies]
 regex = "1.13"
+reflink-copy = "0.1"
 model = { path = "crates/model" }
 rigspec = { path = "crates/rigspec" }
 drivers = { path = "crates/drivers" }

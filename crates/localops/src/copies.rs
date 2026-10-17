@@ -128,6 +128,25 @@ fn unavailable(m: impl Into<String>) -> LocalError {
 /// launch, reused after), at the same place inside it. Refused, in plain words, when there is no
 /// repository to copy: the launch is refused rather than run in the shared folder.
 pub fn prepare(copies_root: &Path, team: &str, seat: &str, parent: Option<&str>, cwd: &Path) -> Result<PathBuf, LocalError> {
+    prepare_with(copies_root, team, seat, parent, cwd, crate::clone::reflink)
+}
+
+/// The copy made from a clone of the project (sharing its disk), then brought to exactly its branch:
+/// git rewrites only the files that differ, and the project's own uncommitted work is removed, while
+/// ignored build output (`node_modules`, `target`) stays, already built and costing nothing.
+fn from_clone(root: &Path, dir: &Path, copies_root: &Path, clone: crate::clone::Cloner) -> Result<(), String> {
+    if dir == root || !dir.starts_with(copies_root) {
+        return Err("the copy is not in the copies folder".into());
+    }
+    crate::clone::clone_tree(root, dir, copies_root, clone).map_err(|e| e.to_string())?;
+    git(dir, &["read-tree", "HEAD"])?;
+    let _ = git(dir, &["update-index", "-q", "--refresh"]);
+    git(dir, &["reset", "-q", "--hard"])?;
+    git(dir, &["clean", "-fdq"])?;
+    Ok(())
+}
+
+pub(crate) fn prepare_with(copies_root: &Path, team: &str, seat: &str, parent: Option<&str>, cwd: &Path, clone: crate::clone::Cloner) -> Result<PathBuf, LocalError> {
     if !valid_name(team, seat) {
         return Err(unavailable(format!("{team} / {seat} has no letters or digits to name a copy with.")));
     }
@@ -149,8 +168,10 @@ pub fn prepare(copies_root: &Path, team: &str, seat: &str, parent: Option<&str>,
         let d = dir.display().to_string();
         // Without file modes or symlinks (exFAT), check out only after the copy is told to ignore them.
         let plain = !keeps_modes(dir.parent().unwrap());
+        // On a filesystem that clones files, the copy shares the project's disk instead of a checkout.
+        let cow = !plain && crate::clone::can_clone(&root, dir.parent().unwrap(), clone);
         let mut add = vec!["worktree", "add"];
-        if plain {
+        if plain || cow {
             add.push("--no-checkout");
         }
         let made = if git(&root, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok() {
@@ -167,6 +188,9 @@ pub fn prepare(copies_root: &Path, team: &str, seat: &str, parent: Option<&str>,
                 .and_then(|_| git(&dir, &["config", "--worktree", "core.symlinks", "false"]))
                 .and_then(|_| git(&dir, &["reset", "-q", "--hard", "HEAD"]));
             ready.map_err(|e| unavailable(format!("Couldn't set up this agent's copy for its drive: {e}")))?;
+        } else if cow && from_clone(&root, &dir, copies_root, clone).is_err() {
+            // A clone that went wrong is finished as an ordinary checkout.
+            git(&dir, &["reset", "-q", "--hard", "HEAD"]).map_err(|e| unavailable(format!("Couldn't check out this agent's copy: {e}")))?;
         }
     }
     // The copy itself when `cwd` is the repository root (no trailing "/").
@@ -339,6 +363,36 @@ mod tests {
         let out = std::process::Command::new("git").current_dir(dir).args(["-c", "user.name=T", "-c", "user.email=t@t"]).args(args).output().unwrap();
         assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
         String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// Stands in for a filesystem that clones (this one may not): a plain copy shows what lands where.
+    fn copy_file(from: &Path, to: &Path) -> std::io::Result<()> {
+        std::fs::copy(from, to).map(|_| ())
+    }
+
+    #[test]
+    fn a_cloned_copy_is_exactly_its_branch_plus_the_projects_build_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (proj, root) = (tmp.path().join("proj"), tmp.path().join("copies"));
+        std::fs::create_dir_all(proj.join("src")).unwrap();
+        std::fs::create_dir_all(&root).unwrap();
+        sh(&proj, &["init", "-q", "-b", "main"]);
+        std::fs::write(proj.join(".gitignore"), "target/\n").unwrap();
+        std::fs::write(proj.join("src/a.txt"), "committed").unwrap();
+        sh(&proj, &["add", "-A"]);
+        sh(&proj, &["commit", "-qm", "first"]);
+        // The project's own state: a built output, an uncommitted edit and an untracked draft.
+        std::fs::create_dir_all(proj.join("target/debug")).unwrap();
+        std::fs::write(proj.join("target/debug/app"), "built").unwrap();
+        std::fs::write(proj.join("src/a.txt"), "edited, not committed").unwrap();
+        std::fs::write(proj.join("draft.md"), "the person's draft").unwrap();
+        let at = prepare_with(&root, "t", "team.a@t", None, &proj, copy_file).unwrap();
+        assert_eq!(std::fs::read_to_string(at.join("src/a.txt")).unwrap(), "committed", "tracked files are the branch's");
+        assert!(!at.join("draft.md").exists(), "the project's untracked work stays out");
+        assert_eq!(std::fs::read_to_string(at.join("target/debug/app")).unwrap(), "built", "ignored build output comes along");
+        assert_eq!(sh(&at, &["status", "--porcelain"]), "", "the copy starts clean");
+        assert_eq!(sh(&at, &["branch", "--show-current"]), branch_of("t", "team.a@t"));
+        assert_eq!(std::fs::read_to_string(proj.join("src/a.txt")).unwrap(), "edited, not committed", "the project is untouched");
     }
 
     #[test]

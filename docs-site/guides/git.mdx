@@ -45,6 +45,8 @@ When agents run at the same time in one folder, they can overwrite each other's 
 
 Each Claude Code or Codex agent then works in its own copy, a git worktree, on its own branch, `sculptured/<team>/…`. Copies live in `~/.sculptured/copies` on the computer unless you chose another copies folder. Agents see each other's work only after you merge it.
 
+**Copies that take no extra space.** When the copies folder is on the same drive as the project and that drive can clone files (APFS on a Mac, btrfs or XFS on Linux, a Dev Drive on Windows), a new copy shares the project's disk: only the files an agent changes take space, and build output such as `node_modules` or `target` comes along already built. On other drives (ext4, NTFS, exFAT) each copy is an ordinary checkout, as before. Either way a copy starts exactly at its branch, without your uncommitted changes.
+
 ```mermaid
 flowchart LR
   P["Project folder, your branch"] -- "copy from the last commit" --> A["Builder's copy, own branch"]

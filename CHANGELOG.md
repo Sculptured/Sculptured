@@ -5,6 +5,7 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Added
+- Copy-on-write copies: on a filesystem that clones files (APFS, btrfs, XFS, ReFS), an agent's or item's own copy is cloned from the project (`localops::clone`, `reflink-copy`) and brought to its branch by git, so it shares the project's disk and keeps its ignored build output; elsewhere it is an ordinary worktree checkout as before.
 - Safety rules (`TeamDraft.safety`, `model::SafetyRule`, Signet-Eval's rule format): checked first by `sculptured guard` for every Claude agent with protections on, with presets (`web/src/structure/safety-presets.json`, shared with the Rust side) and `safety-rule-invalid` draft checks; a rule that cannot be read never matches. Integration `signet`: the runner finds `signet-eval`, writes the team's rules as its `--rules-path`, and adds it as a second PreToolUse hook (`LaunchSpec.tool_hooks`); it brings `kindex`, whose engagement its locked rules require.
 - Review panels: `WorkflowStage.personas` gives each reviewer an angle (`ReviewPersona`), told in its assignment; a split vote starts the panel's result with who voted what (`engine::split_note`). Ideas from Advocate.
 - Shared values in contracts (`DataAccess.shared`, `name = value @ file`): checked in their files by the project-map op at every start (`ProjectMap.shared`, found with line / missing / no-file), told to agents, shown in Knowledge. An idea from Constrain's boundary register.

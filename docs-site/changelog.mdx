@@ -7,6 +7,10 @@ Changes you can see or use, by date. The open-source core's full history is on [
 
 ## 17 October 2026
 
+### Copies that take no extra space
+
+- On a drive that clones files (APFS on Macs, btrfs or XFS on Linux, a Dev Drive on Windows), agents' own copies share the project's disk: only what an agent changes takes space, and build output comes along already built. See [Agents' own copies](/guides/git#agents-own-copies).
+
 ### Safety rules, review angles, claim checks
 
 - **Safety rules** under the team's Protections refuse tool calls you name, in Signet-Eval's rule format, with ready-made ones for recursive deletes, secret files, force-push, piped downloads and disk formatting. **Signet-Eval** itself can run for any Claude agent too. See [Safety rules](/guides/budgets#safety-rules).
