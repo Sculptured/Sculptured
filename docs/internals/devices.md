@@ -25,7 +25,7 @@ flowchart TB
   R --> H["hostd/<br/>journal · lock · seat-tools socket"]
 ```
 
-- **`device.json`** holds this computer's identity for one account: its id and its key. The key is shown to the computer once and stored on the server only as a hash. In this milestone it is kept in this file; the OS keychain arrives with the desktop app (milestone 5).
+- **`device.json`** holds this computer's identity for one account: its id and its key. The key is shown to the computer once and stored on the server only as a hash. It is kept in this file, readable only by the user; keeping it in the OS keychain is not built yet.
 - **`runner.json`** is the owner's own rules: which folders agents may start in, how much they may do (`access`: `full`, the default, or `sandboxed`), and which local operations the server may ask for (`capabilities`: git, copies, checks, CLI sign-in, plan usage). Only the owner changes it (`--allow`, `sculptured allow`, `--sandboxed` / `--full-access`, `--enable` / `--disable <capability>`).
 - **`hostd/`** is the ordinary runner state, the same as a local `serve`'s.
 

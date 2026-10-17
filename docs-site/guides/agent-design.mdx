@@ -80,6 +80,14 @@ Sculptured's own tools, including questions, reports and workflow calls, do not 
 
 **Check** is a command Sculptured runs in the agent's folder after each turn the agent finishes, for example `npm test`. Exit code 0 shows "check passed"; anything else shows "check failed", with its output. A check result is verified by Sculptured; the agent's own "done" is only agent-reported. The command runs as you, with your permissions.
 
+### Skills
+
+Instructions the agent loads only when it needs them, such as your house style or how to run a release. Until then only their names and descriptions are in its context. See [Skills and tools](/guides/skills).
+
+### Contract and tools on its computer
+
+Under **Advanced**, an agent's **Contract** says what it reads, writes and decides, and the values it shares with others; see [Contracts](/guides/budgets#contracts-what-each-agent-reads-writes-and-decides). **Kindex memory** and **Signet-Eval policy checks** give it tools installed on its computer; see [Skills and tools](/guides/skills#tools-on-the-agents-computer-kindex).
+
 ### When it restarts
 
 Under **Advanced**, **When it restarts** sets what happens when the agent's session has to start again: **resume if possible**, **start fresh**, or **wait for me to choose**.

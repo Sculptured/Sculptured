@@ -112,6 +112,9 @@ The Computers page shows each computer's folders, access and capabilities as the
 - The runner's own secret is removed from every agent's environment.
 - An invalid tool call is recorded as evidence and answered with an error. It never interrupts the agent.
 - A restricted agent is never launched unrestricted. If a runner cannot honour restricted, the launch is refused.
+- [Safety rules](/guides/budgets#safety-rules) refuse the tool calls you name, for Claude agents, with no model call. They are a speed bump, not a sandbox: an agent can still reach the same result another way, so they add to the computer's own limits rather than replace them.
+- The integrations an agent is given (Kindex, Signet-Eval) are programs the runner finds on its own computer; the server never sends a program to run.
+- Sculptured's own files in a project folder are under `.sculptured/`: the project map, agents' notes, and lessons you confirmed. When agents work in their own copies, Git also records those copies in the project's `.git` folder. Skills and Signet-Eval rules are written in the runner's own data folder, never in the project.
 
 ## Accounts and sessions
 

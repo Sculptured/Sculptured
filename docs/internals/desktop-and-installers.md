@@ -17,8 +17,8 @@ sequenceDiagram
 ```
 
 - **A partial download runs nothing:** the script's body is one `main` function called on its last line.
-- **Targets:** Linux x86_64 and arm64 (built on Ubuntu 22.04, glibc 2.35 or newer), and Apple silicon Macs, including a Rosetta shell (`sysctl.proc_translated`). Intel Macs stop with "not supported yet" until that build is turned on. Anything else stops with "unsupported".
-- **Releases:** built by the manual-only workflow (`docs/RELEASING.md`). `GATEWAY_RELEASES_URL` can point elsewhere.
+- **Targets:** Linux x86_64 and arm64, Apple silicon Macs (a Rosetta shell, `sysctl.proc_translated`, gets the native build) and Intel Macs. Anything else stops with "unsupported". Windows uses `install.ps1`. No arm64 Linux build is made yet, so the gateway answers that there is none.
+- **Builds:** Linux x86_64 and Windows come from the gateway image at each deploy, macOS from `mac.yml` on each push to `main` ([Releasing](../RELEASING.md)). `GATEWAY_RELEASES_URL` can point elsewhere.
 
 ## Desktop modes
 
@@ -40,11 +40,11 @@ flowchart TD
 ## Deferred
 
 These are listed in `docs/RELEASING.md` and the backlog:
-- Windows (the runner, its login task, its installers, `install.ps1`);
+- Linux arm64 and Windows on Arm builds;
+- the desktop installers for Linux and Windows in CI;
 - the OS keychain for the device key;
-- a universal dmg;
 - code signing;
-- CI on push;
+- tests on every push;
 - sync between local and account;
 - full desktop testing.
 

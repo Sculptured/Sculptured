@@ -84,7 +84,7 @@ Sculptured logs to the terminal. Set `RUST_LOG=debug` for more detail. See the [
 | --- | --- |
 | `controld.sqlite` (with `-wal` and `-shm`) | Your teams, runs, messages, questions, transcripts and the event history. |
 | `host-token` | The secret the local runner uses to connect to the app. Private to your user. |
-| `host-local/` | The local runner's own state: its journal, its lock and the address of the running app. |
+| `host-local/` | The local runner's own state: its journal, its lock, the address of the running app, and each agent's skills (`skills/`) and Signet-Eval rules (`signet/`). |
 | `copies/` | Agents' own copies of your repositories, when a team uses them. They can hold work not yet merged. |
 | `runner/` | Only on a computer connected to a Sculptured account: its identity and the folders it allows. |
 

@@ -1,6 +1,6 @@
 # Enforced budgets, agent skills and `sculptured run`
 
-Status: draft for review, 15 October 2026.
+Status (17 October 2026): **A built** and deployed. **B partly built**: skills on each agent (editor, native loading for Claude Code, `read_skill` for Codex, embedded in MADL as MEP 0004); role, expected output, reasoning effort and allowed/banned tools are not built. **C not built.** Approved 15 October 2026.
 
 Three changes, built in this order, each pushed and deployed when its tests pass:
 
