@@ -26,49 +26,80 @@ An agent on a computer whose runner predates skills runs without them, and its p
 
 ## Components: tools on the agent's computer
 
-A **component** is a program on the agent's computer that the agent can also use: an MCP server whose tools sit next to Sculptured's, or a check run on every tool call. Components are described by a small manifest, not built into Sculptured, so anyone can write one and share it.
+A **component** is something an agent is given besides Sculptured's own tools. Each is described by a small manifest rather than built into Sculptured, so anyone can write one and share it. There are five kinds:
+
+| Kind | What the agent gets | Where it comes from |
+| --- | --- | --- |
+| MCP server on the computer (`mcp`) | Its tools, next to Sculptured's | A program on the agent's computer, such as Kindex's `kin-mcp` |
+| Remote MCP server (`mcp-remote`) | Its tools, next to Sculptured's | A web address, such as a hosted OpenFOAM server, with its secrets kept on the agent's computer |
+| Skill pack (`skills`) | More skills, added to the agent's own | The manifest itself; nothing runs |
+| Claude plugin (`claude-plugin`) | The plugin's skills, hooks and servers, for that agent only | A plugin installed on the agent's computer with `claude plugin install` |
+| Tool hook (`tool-hook`) | A check on every tool call, such as Signet-Eval | A program on the agent's computer |
+
+Claude plugins and tool hooks work for Claude Code agents only; the others work for Codex agents too.
 
 - **Built in, as examples:** Kindex memory (a knowledge graph that outlasts the team) and Signet-Eval policy checks. They need no approval.
-- **The team's own:** in the team's **Settings**, under **More settings**, **Components** lists them with the exact command each runs. **Add a component** takes a manifest, pasted or loaded from a file; **Share to Community** publishes one.
-- **From Community:** a shared component shows what it runs and how to install it. **Add to a team** puts it in that team's Components.
-- **Give it to an agent:** tick it in the agent's **Advanced** settings. Its card then shows a chip for it. A component that needs another one (Signet needs Kindex) brings it along.
+- **The team's own:** in the team's **Settings**, under **More settings**, **Components** lists them with exactly what each runs or connects to. **New component** makes one from a short form: a remote MCP server, one on the computer, an installed Claude plugin, or a skill pack from an agent's skills. **Add a component** takes a manifest, pasted or loaded from a file, and **Share to Community** publishes one.
+- **From Community:** a shared component shows what it runs and how to set it up. **Add to a team** puts it in that team's Components.
+- **Give it to an agent:** tick it in the agent's **Advanced** settings, where they are grouped as MCP servers, skill packs, and plugins and hooks. The agent's card then shows a chip for it. A component that needs another one (Signet needs Kindex) brings it along.
 
-The program must be installed on the agent's computer. If it is missing, the agent starts anyway and its page says how to install it.
+Whatever a component needs must be on the agent's computer: the program, the plugin, or the secret. If something is missing, the agent starts anyway and its page says what to install or set.
 
-### A component is a program on your computer
+### Secrets stay on the agent's computer
 
-On a computer connected to your account, a component that is not built in runs only after that computer's owner approves it there. The agent's page shows the command it would run and the line to approve it:
+A remote server usually needs a key. The manifest names it as `${NAME}`, and never holds the value:
+
+```json
+"headers": { "Authorization": "Bearer ${OPENFOAM_TOKEN}" }
+```
+
+The computer's owner sets the value once, on that computer:
+
+```bash
+sculptured set-secret OPENFOAM_TOKEN
+```
+
+The runner fills it in when it starts the agent, so the team, the server and Community never see it. On your own local Sculptured, an environment variable of the same name works too.
+
+### A component is something your computer runs
+
+On a computer connected to your account, a component that is not built in runs only after that computer's owner approves it there. The agent's page shows what it would run or connect to, and the line to approve it:
 
 ```bash
 sculptured approve-component <digest>
 ```
 
-The digest is a fingerprint of that exact manifest: if anything in it changes, it needs approving again. Running agents are not restarted. On your own local Sculptured, the teams are yours, so nothing extra is asked.
+The digest is a fingerprint of that exact manifest: if anything in it changes, it needs approving again. Secrets are not part of it, so changing a key needs no new approval. Running agents are not restarted. On your own local Sculptured, the teams are yours, so nothing extra is asked.
 
 ### Writing a manifest
 
 ```json
 {
-  "id": "notes",
-  "name": "Notes server",
-  "description": "Team notes the agents read and write.",
-  "kind": "mcp",
-  "program": "notes-mcp",
-  "args": ["--stdio"],
-  "briefing": "You also have the notes tools: write decisions there.",
-  "install": "pip install notes-mcp"
+  "id": "openfoam",
+  "name": "OpenFOAM",
+  "description": "Set up and run CFD cases on the HPC cluster.",
+  "kind": "mcp-remote",
+  "url": "https://foam.example.com/mcp",
+  "headers": { "Authorization": "Bearer ${OPENFOAM_TOKEN}" },
+  "briefing": "You also have the OpenFOAM tools: check the mesh before a run.",
+  "install": "Ask the HPC team for a token, then: sculptured set-secret OPENFOAM_TOKEN"
 }
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `id` | Lowercase letters, digits and hyphens; not a built-in one's id. |
-| `kind` | `mcp` (an MCP server over stdio) or `tool-hook` (a Claude Code check on every tool call; set `claude_only`). |
-| `program`, `args` | A plain program name the runner finds on its computer (no folder), and its arguments. In a tool hook, `{safety_rules}` becomes the path of the team's safety rules. |
+| `kind` | `mcp`, `mcp-remote`, `skills`, `claude-plugin` or `tool-hook` (see the table above). |
+| `program`, `args` | `mcp` and `tool-hook`: a plain program name the runner finds on its computer (no folder), and its arguments. In a tool hook, `{safety_rules}` becomes the path of the team's safety rules. |
+| `url`, `headers` | `mcp-remote`: the server's address (`https://`, or `http://` for a server on the agent's own computer) and request headers. Each header names its secret as `${NAME}`. |
+| `skills` | `skills`: the skills it adds, each with a `name`, `description` and `body`, as in [a skill](#give-an-agent-a-skill). The agent's own skill of the same name wins. |
+| `plugin` | `claude-plugin`: the plugin as `name@marketplace`, as `claude plugin install` takes it. Set `claude_only`. |
 | `briefing` | What agents given it are told. |
-| `install` | How to install the program, shown when it is missing. |
+| `install` | How to set it up on a computer, shown when something is missing. Not needed for skills. |
 | `requires` | Other components it needs, by id. |
 | `homepage`, `claude_only`, `description`, `name` | As named. |
+
+A runner from before remote servers and plugins starts the agent without them, and its page says to update the runner.
 
 ## Kindex
 

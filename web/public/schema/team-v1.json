@@ -226,6 +226,13 @@
           "description": "What it gives an agent, in a sentence or two.",
           "type": "string"
         },
+        "headers": {
+          "description": "`mcp-remote`: request headers; each value names its secret as `${NAME}`.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "homepage": {
           "type": [
             "string",
@@ -237,7 +244,7 @@
           "type": "string"
         },
         "install": {
-          "description": "How to install the program on a computer, shown when it is missing.",
+          "description": "How to set it up on a computer (install the program or plugin, get the secret), shown when it\nis missing. Not needed for skills.",
           "type": "string"
         },
         "kind": {
@@ -246,8 +253,15 @@
         "name": {
           "type": "string"
         },
+        "plugin": {
+          "description": "`claude-plugin`: the installed plugin, as `name@marketplace`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "program": {
-          "description": "A program name (no path) the runner looks for on the agent's computer.",
+          "description": "`mcp` and `tool-hook`: a program name (no path) the runner looks for on the agent's computer.",
           "type": "string"
         },
         "requires": {
@@ -256,15 +270,27 @@
           "items": {
             "type": "string"
           }
+        },
+        "skills": {
+          "description": "`skills`: the skills it adds.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Skill"
+          }
+        },
+        "url": {
+          "description": "`mcp-remote`: the server's address, `https://` (or `http://` on this computer).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
         "id",
         "name",
         "description",
-        "kind",
-        "program",
-        "install"
+        "kind"
       ]
     },
     "ComponentKind": {
@@ -278,6 +304,21 @@
           "description": "A Claude Code PreToolUse hook run on every tool call, after Sculptured's own guard.",
           "type": "string",
           "const": "tool-hook"
+        },
+        {
+          "description": "An MCP server at a web address (`url`); `${NAME}` in it and its headers is a secret the runner\nfills in on the agent's computer.",
+          "type": "string",
+          "const": "mcp-remote"
+        },
+        {
+          "description": "Skills (`skills`), added to the agent's own; nothing runs.",
+          "type": "string",
+          "const": "skills"
+        },
+        {
+          "description": "A Claude Code plugin installed on the agent's computer (`plugin`, `name@marketplace`), loaded\nfor that agent only.",
+          "type": "string",
+          "const": "claude-plugin"
         }
       ]
     },

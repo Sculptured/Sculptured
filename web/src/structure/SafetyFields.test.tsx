@@ -9,7 +9,8 @@ import { ContractFields, parseShared } from './ContractFields';
 import { IntegrationFields } from './SkillFields';
 
 function Harness() {
-  const [d, setD] = useState<TeamDraft>(teamDraft({ id: 't', name: 'T' }));
+  // Signet is a Claude Code tool hook, offered to Claude agents only.
+  const [d, setD] = useState<TeamDraft>(() => { const t = teamDraft({ id: 't', name: 'T' }); return { ...t, agents: t.agents.map((a, i) => (i === 0 ? { ...a, kind: 'claude' as const } : a)) }; });
   const edit = (f: (d: TeamDraft) => EditResult) => { const r = f(d); setD('draft' in r ? r.draft : r); return null; };
   const a = d.agents[0];
   return <>
@@ -39,7 +40,7 @@ describe('Safety and Signet', () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('checkbox', { name: /Signet-Eval/ }));
     expect(saved().integrations).toEqual(['kindex', 'signet']);
-    fireEvent.click(screen.getByRole('checkbox', { name: /Kindex memory/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Kindex memory/ }));
     expect(saved().integrations).toEqual([]);
   });
 

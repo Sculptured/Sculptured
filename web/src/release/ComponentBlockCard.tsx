@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import type { Component } from '../generated/Component';
 import type { TeamSummary } from '../generated/TeamSummary';
-import { commandLine } from '../structure/components';
+import { KIND_LABEL, whereItRuns } from '../structure/components';
 
 export type ComponentBlock = { id: string; kind: 'component'; title: string; description: string; author: string; version: number; license: string; tags: string[]; content: { kind: 'component'; component: Component } };
 
@@ -22,10 +22,10 @@ export function ComponentBlockCard({ block }: { block: ComponentBlock }) {
   const pick = async () => { try { setTeams(await api.listTeams()); } catch { setNote('Open Sculptured to add it to a team.'); } };
   return (
     <article className="release-card block-publication" aria-label={`Component ${block.title}`}>
-      <div className="release-tags"><span>component</span>{block.tags.filter((t) => t !== 'component').map((t) => <span key={t}>{t}</span>)}</div>
+      <div className="release-tags"><span>{KIND_LABEL[c.kind]?.toLowerCase() ?? 'component'}</span>{block.tags.filter((t) => t !== 'component').map((t) => <span key={t}>{t}</span>)}</div>
       <h2>{block.title}</h2>
       <p>{c.description}</p>
-      <p className="muted">Runs <code>{commandLine(c)}</code> on the agent's computer · install: {c.install}{c.homepage && <> · <a href={c.homepage} target="_blank" rel="noreferrer">homepage</a></>}</p>
+      <p className="muted">{KIND_LABEL[c.kind]} · <code>{whereItRuns(c)}</code>{c.install && <> · set up: {c.install}</>}{c.homepage && <> · <a href={c.homepage} target="_blank" rel="noreferrer">homepage</a></>}</p>
       <small>By {block.author} · v{block.version} · {block.license}</small>
       <div className="release-actions">
         {teams ? (

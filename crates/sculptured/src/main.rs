@@ -110,6 +110,16 @@ enum Cmd {
         #[arg(long)]
         data_dir: Option<PathBuf>,
     },
+    /// Keep a secret a component names (such as ${OPENFOAM_TOKEN}) on this computer, for its agents.
+    /// The value is typed or piped in, never given on the command line.
+    SetSecret {
+        name: String,
+        /// Forget it instead.
+        #[arg(long)]
+        remove: bool,
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+    },
     /// Stop every agent this computer's runner started, now, without the server (like Ctrl+C).
     Stop {
         #[arg(long)]
@@ -167,6 +177,7 @@ async fn run(cli: Cli) -> ExitCode {
         }
         Cmd::Allow { folder, data_dir } => connect::run_allow(&folder, data_dir),
         Cmd::ApproveComponent { digest, data_dir } => connect::run_approve_component(&digest, data_dir),
+        Cmd::SetSecret { name, remove, data_dir } => connect::run_set_secret(&name, remove, data_dir),
         Cmd::Stop { data_dir } => connect::run_stop(data_dir),
     };
     match result {

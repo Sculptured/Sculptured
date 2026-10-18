@@ -145,7 +145,15 @@ sculptured allow ~/code/new-project
 sculptured approve-component <digest> [--data-dir <DIR>]
 ```
 
-Lets agents on this computer use a component that is not built in. The digest is in the note on the agent that went without it, next to the command the component runs. Approve only what you would run yourself. Agents given the component start it at their next launch; nothing is restarted. A changed manifest has a new digest and needs approving again.
+Lets agents on this computer use a component that is not built in. The digest is in the note on the agent that went without it, next to what the component runs or connects to. Approve only what you would run yourself. Agents given the component start it at their next launch; nothing is restarted. A changed manifest has a new digest and needs approving again.
+
+## `sculptured set-secret`
+
+```bash
+sculptured set-secret <NAME> [--remove] [--data-dir <DIR>]
+```
+
+Keeps a secret that a component names as `${NAME}` (such as a remote MCP server's key) on this computer, for every runner here, or only the one in `--data-dir`. You type the value; it is not shown. You can also pipe it in. The value is never given on the command line, and never leaves this computer: the runner fills it in when it starts an agent. Agents pick it up at their next start. `--remove` forgets it.
 
 ## `sculptured serve`
 

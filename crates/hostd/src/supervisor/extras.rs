@@ -1,8 +1,9 @@
 //! What an agent is given beyond its CLI and Sculptured's tools: its skills, as a plugin folder
-//! Claude Code loads for that session only, and components (programs on this computer, such as
-//! Kindex), found here by name; the server never names a path.
+//! Claude Code loads for that session only, and components (programs and Claude plugins on this
+//! computer, such as Kindex, found here by name; MCP servers at a web address, whose secrets are
+//! filled in here). The server never names a path or holds a secret.
 use super::Supervisor;
-use drivers::McpServer;
+use drivers::{McpServer, RemoteMcp};
 use model::{Component, ComponentKind, EventBody, SafetyRule, Skill};
 use std::path::{Path, PathBuf};
 
@@ -20,24 +21,27 @@ impl Supervisor {
         Ok(Some(dir))
     }
 
-    /// The agent's components found on this computer, as MCP servers and tool hooks. Each one that
-    /// cannot run here (not approved on a connected computer, its program missing) is told on the
-    /// agent, and the agent starts without it. `names`: built-in components named by an older server.
-    /// `safety`: the team's rules, for a tool hook's `{safety_rules}`.
-    pub(super) fn components(&self, seat: &str, manifests: &[Component], names: &[String], safety: &[SafetyRule]) -> (Vec<McpServer>, Vec<String>) {
+    /// The agent's components found on this computer, as MCP servers, tool hooks and plugin folders.
+    /// Each one that cannot run here (not approved on a connected computer, its program, plugin or a
+    /// secret missing) is told on the agent, and the agent starts without it. `names`: built-in
+    /// components named by an older server. `safety`: the team's rules, for a tool hook's `{safety_rules}`.
+    pub(super) fn components(&self, seat: &str, manifests: &[Component], names: &[String], safety: &[SafetyRule]) -> Given {
         let builtins = model::component::builtins();
         let mut all: Vec<Component> = manifests.to_vec();
         let named: Vec<Component> = names.iter().filter(|n| !manifests.iter().any(|c| &c.id == *n)).filter_map(|n| builtins.iter().find(|b| &b.id == n).cloned()).collect();
         all.extend(named);
-        let (mut servers, mut hooks) = (Vec::new(), Vec::new());
+        let mut given = Given::default();
         for c in &all {
             match self.resolve(seat, c, safety) {
-                Ok(Resolved::Server(s)) => servers.push(s),
-                Ok(Resolved::Hook(h)) => hooks.push(h),
+                Ok(Resolved::Server(s)) => given.servers.push(s),
+                Ok(Resolved::Remote(r)) => given.remote.push(r),
+                Ok(Resolved::Hook(h)) => given.hooks.push(h),
+                Ok(Resolved::Plugin(p)) => given.plugins.push(p),
+                Ok(Resolved::Nothing) => {}
                 Err(note) => self.emit_system(seat, EventBody::FeaturesDropped { features: vec![c.id.clone()], note }),
             }
         }
-        (servers, hooks)
+        given
     }
 
     fn resolve(&self, seat: &str, c: &Component, safety: &[SafetyRule]) -> Result<Resolved, String> {
@@ -52,6 +56,24 @@ impl Supervisor {
                 c.name, c.command_line(), c.digest()
             ));
         }
+        match c.kind {
+            ComponentKind::Skills => return Ok(Resolved::Nothing), // the server adds them to the agent's skills
+            ComponentKind::McpRemote => {
+                let secrets = self.secrets();
+                let lookup = |n: &str| std::env::var(n).ok().filter(|v| !v.is_empty()).or_else(|| secrets.get(n).cloned());
+                let missing = |n: String| format!("This agent runs without {}: the secret {n} is not set on its computer. Set it there with: sculptured set-secret {n} (then restart the agent). {}", c.name, c.install);
+                let url = model::component::fill(c.url.as_deref().unwrap_or_default(), &lookup).map_err(missing)?;
+                let headers = c.headers.iter().map(|(k, v)| model::component::fill(v, &lookup).map(|v| (k.clone(), v))).collect::<Result<Vec<_>, _>>().map_err(missing)?;
+                return Ok(Resolved::Remote(RemoteMcp { name: c.id.clone(), url, headers }));
+            }
+            ComponentKind::ClaudePlugin => {
+                let plugin = c.plugin.as_deref().unwrap_or_default();
+                return installed_plugin(&claude_plugins_root(), plugin).map(Resolved::Plugin).ok_or_else(|| {
+                    format!("This agent runs without {}: the Claude plugin {plugin} is not installed on its computer. Install it there with {}, then restart the agent.", c.name, c.install)
+                });
+            }
+            ComponentKind::Mcp | ComponentKind::ToolHook => {}
+        }
         let program = find_program(&c.program).ok_or_else(|| format!("This agent runs without {}: `{}` is not installed on its computer. Install it there with {}, then restart the agent.", c.name, c.program, c.install))?;
         let mut args = c.args.clone();
         if args.iter().any(|a| a.contains(model::component::SAFETY_RULES)) {
@@ -63,6 +85,7 @@ impl Supervisor {
         Ok(match c.kind {
             ComponentKind::Mcp => Resolved::Server(McpServer { name: c.id.clone(), program, args }),
             ComponentKind::ToolHook => Resolved::Hook(std::iter::once(&program.display().to_string()).chain(args.iter()).map(|a| format!("\"{}\"", a.replace('"', "\\\""))).collect::<Vec<_>>().join(" ")),
+            ComponentKind::McpRemote | ComponentKind::Skills | ComponentKind::ClaudePlugin => unreachable!("handled above"),
         })
     }
 
@@ -72,6 +95,21 @@ impl Supervisor {
         let Some(host) = &self.inner.seat_tools else { return false };
         let file = host.socket.parent().unwrap_or_else(|| Path::new(".")).join(APPROVED_FILE);
         std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok()).is_some_and(|l| l.iter().any(|d| d == digest))
+    }
+
+    /// Secrets this computer's owner set for components (`sculptured set-secret`), read at each launch.
+    fn secrets(&self) -> std::collections::BTreeMap<String, String> {
+        let Some(host) = &self.inner.seat_tools else { return Default::default() };
+        let file = host.socket.parent().unwrap_or_else(|| Path::new(".")).join(SECRETS_FILE);
+        std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    /// Where a Claude agent reads its remote servers (with their secrets), readable by this user only.
+    pub(super) fn remote_mcp_file(&self, seat: &str) -> Option<PathBuf> {
+        let host = self.inner.seat_tools.as_ref()?;
+        let dir = host.socket.parent().unwrap_or_else(|| Path::new(".")).join("components").join("remote");
+        std::fs::create_dir_all(&dir).ok()?;
+        Some(dir.join(format!("{}.json", seat.replace(|c: char| !(c.is_ascii_alphanumeric() || "@.-_".contains(c)), "_"))))
     }
 
     /// The team's safety rules in Signet-Eval's format (YAML reads JSON), for a tool hook.
@@ -96,10 +134,39 @@ fn may_run(connected: bool, c: &Component, approved: &dyn Fn(&str) -> bool) -> b
 
 /// The owner's approved component digests, in the runner's data folder.
 pub const APPROVED_FILE: &str = "approved-components.json";
+/// The owner's component secrets by name, in the runner's data folder (this user only).
+pub const SECRETS_FILE: &str = "component-secrets.json";
+
+/// What an agent's components give it on this computer.
+#[derive(Default)]
+pub(super) struct Given {
+    pub servers: Vec<McpServer>,
+    pub remote: Vec<RemoteMcp>,
+    pub hooks: Vec<String>,
+    pub plugins: Vec<PathBuf>,
+}
 
 enum Resolved {
     Server(McpServer),
+    Remote(RemoteMcp),
     Hook(String),
+    Plugin(PathBuf),
+    Nothing,
+}
+
+/// Claude Code's plugins folder for this user.
+fn claude_plugins_root() -> PathBuf {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from).unwrap_or_default();
+    std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).unwrap_or_else(|| home.join(".claude")).join("plugins")
+}
+
+/// The folder of plugin `name@marketplace`, as `claude plugin install` recorded it in
+/// `installed_plugins.json` (its latest install), when that folder exists.
+fn installed_plugin(root: &Path, plugin: &str) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(root.join("installed_plugins.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let installs = v.get("plugins")?.get(plugin)?.as_array()?;
+    installs.iter().rev().filter_map(|i| i.get("installPath")?.as_str()).map(PathBuf::from).find(|p| p.is_dir())
 }
 
 pub(crate) fn write_plugin(dir: &Path, skills: &[Skill]) -> std::io::Result<()> {
@@ -149,6 +216,21 @@ mod tests {
         other.args.push("--changed".into());
         assert!(!may_run(true, &other, &|d: &str| d == digest), "a changed manifest needs approving again");
         assert!(may_run(false, &other, &none), "on its own local server the person's own team decides");
+    }
+
+    #[test]
+    fn an_installed_plugin_is_found_by_name_and_a_missing_one_is_not() {
+        let root = tempfile::tempdir().unwrap();
+        let folder = root.path().join("cache/hpc/openfoam/1.2.0");
+        std::fs::create_dir_all(&folder).unwrap();
+        let list = serde_json::json!({ "version": 2, "plugins": {
+            "openfoam@hpc": [{ "scope": "user", "installPath": folder }],
+            "gone@hpc": [{ "scope": "user", "installPath": root.path().join("cache/hpc/gone/1.0.0") }],
+        } });
+        std::fs::write(root.path().join("installed_plugins.json"), list.to_string()).unwrap();
+        assert_eq!(installed_plugin(root.path(), "openfoam@hpc"), Some(folder));
+        assert_eq!(installed_plugin(root.path(), "gone@hpc"), None, "its folder was removed");
+        assert_eq!(installed_plugin(root.path(), "other@hpc"), None);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 mod lifecycle;
 mod tools;
 mod extras;
-pub use extras::APPROVED_FILE as APPROVED_COMPONENTS_FILE;
+pub use extras::{APPROVED_FILE as APPROVED_COMPONENTS_FILE, SECRETS_FILE as COMPONENT_SECRETS_FILE};
 
 use crate::journal::Journal;
 use crate::mapping::Mapped;
@@ -222,6 +222,7 @@ impl Supervisor {
         }
         f.push(host_proto::features::INTEGRATIONS);
         f.push(host_proto::features::COMPONENTS);
+        f.push(host_proto::features::COMPONENT_KINDS);
         if self.inner.ops.is_some() {
             f.push(host_proto::features::LOCAL_OPS);
             f.push(host_proto::features::USAGE_REPORTS);

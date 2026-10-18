@@ -67,6 +67,11 @@ pub struct LaunchSpec {
     pub plugin_dirs: Vec<PathBuf>,
     /// More MCP servers on this computer the agent is given (integrations such as Kindex).
     pub mcp_servers: Vec<McpServer>,
+    /// MCP servers at a web address, their secrets filled in. Codex reads each header from its own
+    /// environment variable; Claude reads them from `remote_mcp_file`, never from its command line.
+    pub remote_mcp: Vec<RemoteMcp>,
+    /// Claude: where the remote servers' `--mcp-config` is written, readable by this user only.
+    pub remote_mcp_file: Option<PathBuf>,
     /// Claude: more PreToolUse hook commands on every tool call (Signet-Eval), after Sculptured's guard.
     pub tool_hooks: Vec<String>,
 }
@@ -77,6 +82,21 @@ pub struct McpServer {
     pub name: String,
     pub program: PathBuf,
     pub args: Vec<String>,
+}
+
+/// An MCP server at a web address (streamable HTTP), with its headers' values filled in.
+#[derive(Clone, PartialEq)]
+pub struct RemoteMcp {
+    pub name: String,
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+}
+
+impl std::fmt::Debug for RemoteMcp {
+    /// Header values are secrets: left out of logs.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteMcp").field("name", &self.name).field("url", &self.url).field("headers", &self.headers.iter().map(|(k, _)| k).collect::<Vec<_>>()).finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -105,6 +125,8 @@ impl LaunchSpec {
             protection: None,
             plugin_dirs: vec![],
             mcp_servers: vec![],
+            remote_mcp: vec![],
+            remote_mcp_file: None,
             tool_hooks: vec![],
         }
     }

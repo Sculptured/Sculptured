@@ -480,12 +480,76 @@ pub fn run_approve_component(digest: &str, data_dir: Option<PathBuf>) -> Result<
     Ok(())
 }
 
+/// `sculptured set-secret NAME`: keeps a component's secret for every runner on this computer (or the
+/// one in `--data-dir`), read at each launch. The value comes from the terminal unechoed, or from stdin.
+pub fn run_set_secret(name: &str, remove: bool, data_dir: Option<PathBuf>) -> Result<(), String> {
+    let name = name.trim().trim_start_matches("${").trim_end_matches('}');
+    if model::component::placeholders(&format!("${{{name}}}")).map_or(true, |n| n.len() != 1) {
+        return Err(format!("{name:?} is not a secret's name: use the capitals the component shows, such as OPENFOAM_TOKEN."));
+    }
+    let value = if remove {
+        None
+    } else {
+        use std::io::IsTerminal;
+        let text = if std::io::stdin().is_terminal() {
+            rpassword::prompt_password(format!("Value for {name} (not shown): ")).map_err(|e| format!("cannot read the value: {e}"))?
+        } else {
+            let mut t = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut t).map_err(|e| format!("cannot read the value: {e}"))?;
+            t
+        };
+        let text = text.trim_end_matches(['\r', '\n']).to_string();
+        if text.is_empty() || text.contains(['\r', '\n']) {
+            return Err("The value must be one non-empty line.".into());
+        }
+        Some(text)
+    };
+    let dirs = match data_dir {
+        Some(d) => vec![runner_dir(Some(d))?],
+        None => { let base = runner_dir(None)?; std::iter::once(base.clone()).chain(crate::runners::other_dirs(&base)).collect() }
+    };
+    for d in &dirs {
+        set_secret_in(&d.join("hostd"), name, value.as_deref())?;
+    }
+    match value {
+        Some(_) => println!("Saved {name} on this computer. Agents given a component that names it pick it up at their next start."),
+        None => println!("Removed {name} from this computer."),
+    }
+    Ok(())
+}
+
+fn set_secret_in(dir: &Path, name: &str, value: Option<&str>) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("cannot make {}: {e}", dir.display()))?;
+    let file = dir.join(hostd::supervisor::COMPONENT_SECRETS_FILE);
+    let mut all: std::collections::BTreeMap<String, String> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    match value {
+        Some(v) => all.insert(name.to_string(), v.to_string()),
+        None => all.remove(name),
+    };
+    hostd::private::write_file(&file, serde_json::to_string_pretty(&all).expect("serializes").as_bytes()).map_err(|e| format!("cannot write {}: {e}", file.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::{routing::post, Json, Router};
     use serde_json::{json, Value};
     use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
+
+    #[test]
+    fn a_secret_is_kept_privately_and_can_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        set_secret_in(dir.path(), "OPENFOAM_TOKEN", Some("s3cret")).unwrap();
+        set_secret_in(dir.path(), "OTHER", Some("x")).unwrap();
+        let file = dir.path().join(hostd::supervisor::COMPONENT_SECRETS_FILE);
+        let read = || serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(read()["OPENFOAM_TOKEN"], "s3cret");
+        #[cfg(unix)]
+        assert_eq!(std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&file).unwrap().permissions()) & 0o777, 0o600);
+        set_secret_in(dir.path(), "OPENFOAM_TOKEN", None).unwrap();
+        assert_eq!(read(), serde_json::json!({ "OTHER": "x" }));
+        assert!(run_set_secret("lower", true, Some(dir.path().into())).is_err(), "a name must be in capitals");
+    }
 
     #[test]
     fn host_urls_use_wss_except_on_this_machine() {

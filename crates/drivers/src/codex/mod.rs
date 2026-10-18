@@ -107,7 +107,23 @@ impl CodexAppServerDriver {
             p["config"][format!("mcp_servers.{}.command", s.name)] = json!(s.program.display().to_string());
             p["config"][format!("mcp_servers.{}.args", s.name)] = json!(s.args);
         }
+        for (i, s) in spec.remote_mcp.iter().enumerate() {
+            if !p["config"].is_object() {
+                p["config"] = json!({});
+            }
+            p["config"][format!("mcp_servers.{}.url", s.name)] = json!(s.url);
+            if !s.headers.is_empty() {
+                let from_env: Map<String, Value> = s.headers.iter().enumerate().map(|(j, (k, _))| (k.clone(), json!(remote_header_env(i, j)))).collect();
+                p["config"][format!("mcp_servers.{}.env_http_headers", s.name)] = Value::Object(from_env);
+            }
+        }
         p
+    }
+
+    /// The header values of the remote servers, as the environment variables `env_http_headers` names,
+    /// so they are in neither the command line nor the thread's config.
+    pub fn remote_env(spec: &LaunchSpec) -> Vec<(String, String)> {
+        spec.remote_mcp.iter().enumerate().flat_map(|(i, s)| s.headers.iter().enumerate().map(move |(j, (_, v))| (remote_header_env(i, j), v.clone()))).collect()
     }
 
     /// Config overrides that start the `rig` MCP server (`sculptured seat-tools`) for this thread,
@@ -159,6 +175,11 @@ impl Driver for CodexAppServerDriver {
 }
 
 
+/// The environment variable holding header `j` of remote server `i`.
+fn remote_header_env(i: usize, j: usize) -> String {
+    format!("SCULPTURED_MCP_HEADER_{i}_{j}")
+}
+
 #[cfg(test)]
 mod sandbox_tests {
     use super::*;
@@ -174,7 +195,12 @@ mod sandbox_tests {
     fn an_integration_is_started_as_a_codex_mcp_server() {
         let mut spec = LaunchSpec::new("dev.a@r".parse().unwrap(), "/w".into());
         spec.mcp_servers = vec![crate::McpServer { name: "kindex".into(), program: "/usr/bin/kin-mcp".into(), args: vec![] }];
+        spec.remote_mcp = vec![crate::RemoteMcp { name: "openfoam".into(), url: "https://mcp.example.com/mcp".into(), headers: vec![("Authorization".into(), "Bearer s3cret".into())] }];
         let p = CodexAppServerDriver::thread_params(&spec);
         assert_eq!(p["config"]["mcp_servers.kindex.command"], "/usr/bin/kin-mcp");
+        assert_eq!(p["config"]["mcp_servers.openfoam.url"], "https://mcp.example.com/mcp");
+        let var = p["config"]["mcp_servers.openfoam.env_http_headers"]["Authorization"].as_str().unwrap().to_string();
+        assert!(!p.to_string().contains("s3cret"), "the secret is not in the thread's config");
+        assert_eq!(CodexAppServerDriver::remote_env(&spec), [(var, "Bearer s3cret".to_string())], "it is in the environment the header names");
     }
 }

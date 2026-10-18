@@ -5,3 +5,9 @@
 .components-list .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .components-list code { overflow-wrap: anywhere; }
 .component-add { display: grid; gap: 6px; }
+.component-new { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line, #d0d5dd); border-radius: 8px; }
+.component-headers { display: grid; gap: 6px; border: 0; padding: 0; margin: 0; }
+.component-headers .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.component-headers .row .fld-input { flex: 1 1 140px; min-width: 0; }
+.picker-group { display: grid; gap: 4px; border: 0; padding: 0; margin: 0 0 8px; }
+.picker-search { max-width: 320px; }

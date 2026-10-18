@@ -135,7 +135,12 @@ impl Supervisor {
             }
         }
         let safety = p.protection.as_ref().map(|r| r.safety.as_slice()).unwrap_or_default();
-        (spec.mcp_servers, spec.tool_hooks) = self.components(&req.seat, &p.components, &p.integrations, safety);
+        let given = self.components(&req.seat, &p.components, &p.integrations, safety);
+        (spec.mcp_servers, spec.remote_mcp, spec.tool_hooks) = (given.servers, given.remote, given.hooks);
+        spec.plugin_dirs.extend(given.plugins);
+        if !spec.remote_mcp.is_empty() && req.drv.name() == "claude-stream" {
+            spec.remote_mcp_file = Some(self.remote_mcp_file(&req.seat).ok_or("cannot prepare the agent's remote MCP servers")?);
+        }
         Ok(spec)
     }
 

@@ -77,6 +77,10 @@ impl ClaudeStreamDriver {
                 .collect();
             a.extend(["--mcp-config".to_string(), json!({ "mcpServers": servers }).to_string()]);
         }
+        if !spec.remote_mcp.is_empty() {
+            let config = spec.remote_mcp_file.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| Self::remote_mcp_config(&spec.remote_mcp));
+            a.extend(["--mcp-config".to_string(), config]);
+        }
         a.extend(spec.claude_setup.iter().flat_map(model::ClaudeSetup::claude_args).chain(Self::protection_args(spec.protection.as_ref(), &spec.tool_hooks)));
         a.extend(spec.extra_args.iter().cloned());
         a
@@ -105,6 +109,14 @@ impl ClaudeStreamDriver {
     pub fn protection_env(spec: &LaunchSpec) -> Option<(&'static str, String)> {
         let p = spec.protection.as_ref()?;
         Some(("SCULPTURED_PROTECTION", serde_json::to_string(&p.rules).expect("rules serialize")))
+    }
+
+    /// `--mcp-config` JSON for servers at a web address, headers included.
+    pub fn remote_mcp_config(servers: &[crate::RemoteMcp]) -> String {
+        let servers: serde_json::Map<String, Value> = servers.iter()
+            .map(|s| (s.name.clone(), json!({ "type": "http", "url": s.url, "headers": s.headers.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect::<serde_json::Map<_, _>>() })))
+            .collect();
+        json!({ "mcpServers": servers }).to_string()
     }
 
     /// `--mcp-config` JSON naming one stdio server, `rig`.
@@ -148,6 +160,9 @@ impl ClaudeStreamDriver {
             && let Some(path) = &t.config_file
         {
             write_private(path, &Self::mcp_config(t))?;
+        }
+        if let Some(path) = spec.remote_mcp_file.as_ref().filter(|_| !spec.remote_mcp.is_empty()) {
+            write_private(path, &Self::remote_mcp_config(&spec.remote_mcp))?;
         }
         let program = spec.program.clone().unwrap_or_else(|| self.program.clone());
         let mut cmd = process::command(&program, spec, Self::args(spec, resume, session_id));

@@ -50,9 +50,9 @@ describe('An agent’s skills', () => {
 
   it('Kindex is turned on and off per agent', () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole('checkbox', { name: /Kindex memory/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Kindex memory/ }));
     expect(saved().integrations).toEqual(['kindex']);
-    fireEvent.click(screen.getByRole('checkbox', { name: /Kindex memory/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^Kindex memory/ }));
     expect(saved().integrations).toEqual([]);
   });
 });

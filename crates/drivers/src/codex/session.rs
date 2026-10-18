@@ -109,7 +109,9 @@ impl CodexAppServerDriver {
         check_cwd(&spec)?;
         let program = spec.program.clone().unwrap_or_else(|| self.program.clone());
         let args = self.args().into_iter().chain(spec.extra_args.iter().cloned());
-        let mut child = process::spawn(&mut process::command(&program, &spec, args), &program)?;
+        let mut cmd = process::command(&program, &spec, args);
+        cmd.envs(Self::remote_env(&spec));
+        let mut child = process::spawn(&mut cmd, &program)?;
         let mut stdin = child.stdin.take().expect("piped stdin");
         let mut lines = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
         let stderr = StderrTail::start(child.stderr.take().expect("piped stderr"));

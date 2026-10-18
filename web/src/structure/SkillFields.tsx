@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DraftAgent } from '../generated/DraftAgent';
 import type { Component } from '../generated/Component';
-import { availableComponents, componentById } from './components';
+import { KIND_GROUPS, availableComponents, componentById, secretsOf } from './components';
 import type { Skill } from '../generated/Skill';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { setAdvanced } from '../draft/edits';
@@ -98,10 +98,43 @@ export function SkillFields({ agent, edit, locked }: { agent: DraftAgent; edit: 
   );
 }
 
-/** The components an agent is given (Advanced): every built-in one and the team's own, with how to
- * install each. Without one installed on its computer, the agent starts anyway and its page says so. */
+/** One component's line in the picker: what it gives, what it brings, and how to set it up. */
+function hint(c: Component, d: TeamDraft | null | undefined): string {
+  const brings = (c.requires ?? []).map((r) => componentById(d, r)?.name ?? r);
+  const secrets = secretsOf(c);
+  return [
+    c.description,
+    brings.length ? `Brings ${brings.join(', ')}.` : '',
+    c.kind === 'skills' ? `Skills: ${(c.skills ?? []).map((s) => s.name).join(', ')}.` : '',
+    secrets.length ? `Needs ${secrets.join(', ')} set on its computer.` : '',
+    c.install ? `Set up on its computer: ${c.install}.` : '',
+  ].filter(Boolean).join(' ');
+}
+
+/** One section of the picker, such as MCP servers. */
+function PickerGroup({ title, items, agent, have, locked, draft, onToggle }: { title: string; items: Component[]; agent: DraftAgent; have: string[]; locked: boolean; draft?: TeamDraft | null; onToggle: (c: Component, on: boolean) => void }) {
+  return (
+    <fieldset className="picker-group" aria-label={title}>
+      <legend className="fld-label">{title}</legend>
+      {items.map((c) => {
+        const claudeOnly = Boolean(c.claude_only) && agent.kind !== 'claude';
+        return (
+          <label key={c.id} className="fld fld-check">
+            <span><input type="checkbox" checked={have.includes(c.id) && !claudeOnly} disabled={locked || claudeOnly} onChange={(e) => onToggle(c, e.target.checked)} /> {c.name}{claudeOnly && <span className="muted"> · Claude Code agents only</span>}</span>
+            <span className="fld-hint muted">{hint(c, draft)}</span>
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+/** The components an agent is given (Advanced), in sections: MCP servers, skill packs, and plugins and
+ * hooks, with a search once there are many. Claude-only ones are offered to Claude agents only. Without
+ * one set up on its computer, the agent starts anyway and its page says what to install. */
 export function IntegrationFields({ agent, edit, locked, draft }: { agent: DraftAgent; edit: Edit; locked: boolean; draft?: TeamDraft | null }) {
   const have = agent.advanced.integrations ?? [];
+  const [query, setQuery] = useState('');
   const all = availableComponents(draft);
   const toggle = (c: Component, checked: boolean) => edit((d: TeamDraft) => {
     let next = have.filter((i) => i !== c.id);
@@ -110,10 +143,16 @@ export function IntegrationFields({ agent, edit, locked, draft }: { agent: Draft
     if (!checked) next = next.filter((i) => !(componentById(d, i)?.requires ?? []).includes(c.id));
     return setAdvanced(d, agent.id, { integrations: next.length ? next : undefined });
   }, `integrations:${agent.id}`);
-  return <>{all.map((c) => (
-    <label key={c.id} className="fld fld-check">
-      <span><input type="checkbox" checked={have.includes(c.id)} disabled={locked} onChange={(e) => toggle(c, e.target.checked)} /> {c.name}</span>
-      <span className="fld-hint muted">{c.description}{c.requires?.length ? ` Brings ${c.requires.join(', ')}.` : ''} Install on its computer: {c.install}.</span>
-    </label>
-  ))}</>;
+  const q = query.trim().toLowerCase();
+  const shown = all.filter((c) => !q || `${c.name} ${c.description} ${c.id}`.toLowerCase().includes(q));
+  return (
+    <div className="component-picker">
+      {all.length > 6 && <input type="search" className="fld-input picker-search" aria-label="Find a component" placeholder="Find…" value={query} onChange={(e) => setQuery(e.target.value)} />}
+      {KIND_GROUPS.map((g) => ({ g, items: shown.filter((c) => g.kinds.includes(c.kind)) })).filter(({ items }) => items.length).map(({ g, items }) => (
+        <PickerGroup key={g.title} title={g.title} items={items} agent={agent} have={have} locked={locked} draft={draft} onToggle={toggle} />
+      ))}
+      {q && !shown.length && <p className="muted">Nothing here matches "{query}".</p>}
+      <p className="fld-hint muted">Add MCP servers, plugins and skill packs to the team in Team settings → Advanced, or find them in <a href="/community">Community</a>.</p>
+    </div>
+  );
 }

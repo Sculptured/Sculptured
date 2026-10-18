@@ -122,6 +122,10 @@ fn drop_features(params: &mut LaunchParams, missing: &[&str]) -> Vec<&'static st
                     lost.push("its components that are not built in");
                 }
             }
+            features::COMPONENT_KINDS => {
+                params.components.retain(|c| !c.kind.is_newer());
+                lost.push("its remote MCP servers and Claude plugins");
+            }
             _ => {}
         }
     }

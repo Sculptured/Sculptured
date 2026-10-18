@@ -175,12 +175,14 @@ fn agent_extras(st: &AppState, rig: &str, seat: &CompiledSeat) -> (Vec<model::Sk
     }
     let draft = st.store.lock().unwrap().draft(rig).ok().flatten();
     let Some((d, a)) = draft.as_ref().and_then(|d| d.agent_for_seat(&seat.id).map(|a| (d, a))) else { return (vec![], vec![], vec![]) };
-    // With what each needs (Signet brings Kindex); tool hooks only for Claude Code, since Codex runs
-    // hooks only after the person trusts them.
-    let components: Vec<model::Component> = d.agent_components(a).into_iter().filter(|c| !c.claude_only || seat.runtime == Runtime::ClaudeCode).collect();
+    // With what each needs (Signet brings Kindex); tool hooks and plugins only for Claude Code, since
+    // Codex runs hooks only after the person trusts them. Skills components join the agent's skills here.
+    let components: Vec<model::Component> = d.agent_components(a).into_iter()
+        .filter(|c| (!c.claude_only || seat.runtime == Runtime::ClaudeCode) && c.kind != model::ComponentKind::Skills)
+        .collect();
     // The built-in ones by name too, for runners from before components.
     let names = components.iter().filter(|c| c.is_builtin()).map(|c| c.id.clone()).collect();
-    (a.advanced.skills.clone(), names, components)
+    (d.agent_skills(a), names, components)
 }
 
 /// Claude agents only: the part of the person's own Claude Code setup the team allows (None when all of

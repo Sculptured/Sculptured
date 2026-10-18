@@ -210,6 +210,9 @@ pub mod features {
     pub const INTEGRATIONS: &str = "integrations";
     /// Honours `LaunchParams.components`.
     pub const COMPONENTS: &str = "components";
+    /// Starts remote MCP servers and Claude plugins among `LaunchParams.components`; an older runner
+    /// cannot read them at all.
+    pub const COMPONENT_KINDS: &str = "component-kinds";
 }
 
 /// Run the agent in its own git copy (worktree) of the folder, made on the computer that runs it.
@@ -247,6 +250,9 @@ impl LaunchParams {
         }
         if !self.components.is_empty() {
             f.push(features::COMPONENTS);
+        }
+        if self.components.iter().any(|c| c.kind.is_newer()) {
+            f.push(features::COMPONENT_KINDS);
         }
         if self.own_copy.is_some() {
             f.push(features::LOCAL_OPS);

@@ -339,6 +339,18 @@ impl TeamDraft {
         out
     }
 
+    /// The agent's own skills, then those its skills components add; a name it already has is kept
+    /// as its own.
+    pub fn agent_skills(&self, a: &DraftAgent) -> Vec<crate::Skill> {
+        let mut out = a.advanced.skills.clone();
+        for s in self.agent_components(a).into_iter().filter(|c| c.kind == crate::ComponentKind::Skills).flat_map(|c| c.skills) {
+            if !out.iter().any(|o| o.name == s.name) {
+                out.push(s);
+            }
+        }
+        out
+    }
+
     pub fn effective_folder<'a>(&'a self, a: &'a DraftAgent) -> Option<&'a str> {
         a.folder.as_deref().map(str::trim).filter(|s| !s.is_empty())
             .or_else(|| self.folder.as_deref().map(str::trim).filter(|s| !s.is_empty()))

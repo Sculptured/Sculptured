@@ -127,6 +127,19 @@ fn skills_load_as_a_plugin_folder_and_integrations_as_an_mcp_server() {
 }
 
 #[test]
+fn a_remote_servers_secret_is_passed_in_a_file_not_on_the_command_line() {
+    let mut s = spec();
+    s.remote_mcp = vec![drivers::RemoteMcp { name: "openfoam".into(), url: "https://mcp.example.com/mcp".into(), headers: vec![("Authorization".into(), "Bearer s3cret".into())] }];
+    s.remote_mcp_file = Some("/data/mcp/dev.a@r.json".into());
+    let a = ClaudeStreamDriver::args(&s, None, "s1");
+    assert_eq!(after(&a, "--mcp-config"), Some("/data/mcp/dev.a@r.json"));
+    assert!(!a.iter().any(|x| x.contains("s3cret")), "{a:?}");
+    let file: Value = serde_json::from_str(&ClaudeStreamDriver::remote_mcp_config(&s.remote_mcp)).unwrap();
+    assert_eq!(file["mcpServers"]["openfoam"], serde_json::json!({ "type": "http", "url": "https://mcp.example.com/mcp", "headers": { "Authorization": "Bearer s3cret" } }));
+    assert!(!format!("{:?}", s.remote_mcp).contains("s3cret"), "nor in a log line");
+}
+
+#[test]
 fn safety_rules_widen_the_hook_to_every_tool_and_signet_runs_after_the_guard() {
     let mut s = spec();
     let mut rules = model::GuardRules { max_read_bytes: 102_400, shell_output_chars: 8000, ..Default::default() };
