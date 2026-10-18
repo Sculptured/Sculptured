@@ -1,19 +1,18 @@
 //! An agent's skills and integrations in its conversation. Claude Code loads skills natively (the
 //! runner passes them as a plugin), so only other agents are told theirs and read one with `read_skill`.
 use crate::state::AppState;
-use model::{AgentKind, DraftAgent, Integration};
+use model::{AgentKind, DraftAgent, TeamDraft};
 use serde_json::{json, Value};
 
 /// Lines for the agent's briefing: its skills when its CLI cannot load them, and its integrations.
-pub(crate) fn briefing_lines(me: &DraftAgent) -> Vec<String> {
+pub(crate) fn briefing_lines(d: &TeamDraft, me: &DraftAgent) -> Vec<String> {
     let mut out = Vec::new();
     if me.kind == AgentKind::Codex && !me.advanced.skills.is_empty() {
         let list: Vec<String> = me.advanced.skills.iter().map(|s| format!("- {}: {}", s.name, s.description.trim())).collect();
         out.push(format!("Your skills (load one with read_skill when its description applies, then follow it):\n{}", list.join("\n")));
     }
-    if me.advanced.integrations.contains(&Integration::Kindex) {
-        out.push("You also have Kindex (the kindex tools): a knowledge graph on this computer that outlasts this team. Search it before starting something it may cover, and add durable decisions and discoveries to it. Sculptured's record_lesson tells this team; Kindex keeps knowledge for later work in this project.".into());
-    }
+    // What each of its components says about itself (a missing program is told separately, on launch).
+    out.extend(d.agent_components(me).into_iter().filter(|c| !c.claude_only || me.kind == AgentKind::Claude).filter_map(|c| c.briefing));
     out
 }
 

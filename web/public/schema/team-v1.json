@@ -64,10 +64,10 @@
           ]
         },
         "integrations": {
-          "description": "Tools installed on the agent's computer that it is also given.",
+          "description": "The components it is given, by id: built in (`kindex`, `signet`) or one of the team's.",
           "type": "array",
           "items": {
-            "$ref": "#/$defs/Integration"
+            "type": "string"
           }
         },
         "minute_limit": {
@@ -201,6 +201,85 @@
           "default": true
         }
       }
+    },
+    "Component": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "briefing": {
+          "description": "What agents given it are told about it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "claude_only": {
+          "description": "Claude Code agents only (every tool hook is).",
+          "type": "boolean"
+        },
+        "description": {
+          "description": "What it gives an agent, in a sentence or two.",
+          "type": "string"
+        },
+        "homepage": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Lowercase letters, digits and hyphens.",
+          "type": "string"
+        },
+        "install": {
+          "description": "How to install the program on a computer, shown when it is missing.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ComponentKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "program": {
+          "description": "A program name (no path) the runner looks for on the agent's computer.",
+          "type": "string"
+        },
+        "requires": {
+          "description": "Other components it needs, by id; they come with it.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "kind",
+        "program",
+        "install"
+      ]
+    },
+    "ComponentKind": {
+      "oneOf": [
+        {
+          "description": "An MCP server over stdio: its tools sit next to Sculptured's.",
+          "type": "string",
+          "const": "mcp"
+        },
+        {
+          "description": "A Claude Code PreToolUse hook run on every tool call, after Sculptured's own guard.",
+          "type": "string",
+          "const": "tool-hook"
+        }
+      ]
     },
     "ConnectionKind": {
       "oneOf": [
@@ -444,21 +523,6 @@
       "required": [
         "command",
         "every_minutes"
-      ]
-    },
-    "Integration": {
-      "description": "A tool on the agent's computer that Sculptured can give an agent. The runner finds it there.",
-      "oneOf": [
-        {
-          "description": "Kindex (github.com/wandercom/kindex): a knowledge graph that persists across sessions and teams.",
-          "type": "string",
-          "const": "kindex"
-        },
-        {
-          "description": "Signet-Eval (github.com/wandercom/signet-eval): deterministic policy checks on every tool call,\nrun as a second hook with the team's safety rules. Claude agents only. Its own locked rules\nexpect Kindex, so it comes with Kindex.",
-          "type": "string",
-          "const": "signet"
-        }
       ]
     },
     "Join": {
@@ -851,6 +915,13 @@
         "claude_setup": {
           "description": "Which of the person's own Claude Code setup Claude agents load (Advanced).",
           "$ref": "#/$defs/ClaudeSetup"
+        },
+        "components": {
+          "description": "Components this team adds to Sculptured's built-in ones (from Community, or written by hand).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Component"
+          }
         },
         "connections": {
           "type": "array",

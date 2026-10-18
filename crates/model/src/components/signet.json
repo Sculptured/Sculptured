@@ -1,0 +1,12 @@
+{
+  "id": "signet",
+  "name": "Signet-Eval policy checks",
+  "description": "Checks every tool call against a policy with no model call: the team's safety rules plus Signet-Eval's own built-in rules, which expect Kindex.",
+  "kind": "tool-hook",
+  "program": "signet-eval",
+  "args": ["--rules-path", "{safety_rules}"],
+  "claude_only": true,
+  "requires": ["kindex"],
+  "install": "cargo install signet-eval",
+  "homepage": "https://github.com/wandercom/signet-eval"
+}

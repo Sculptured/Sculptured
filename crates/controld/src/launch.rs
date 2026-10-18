@@ -56,10 +56,11 @@ fn fitted_params(
         }
     };
     let (claude_setup, protection) = claude_settings(st, rig, seat);
-    let (skills, integrations) = agent_extras(st, rig, seat);
+    let (skills, integrations, components) = agent_extras(st, rig, seat);
     let mut params = LaunchParams {
         skills,
         integrations,
+        components,
         protection,
         claude_setup,
         cwd,
@@ -168,21 +169,18 @@ fn with_contract(mut rules: model::GuardRules, agent: Option<&model::DraftAgent>
 }
 
 /// The agent's skills and integrations, for agents of a real CLI.
-fn agent_extras(st: &AppState, rig: &str, seat: &CompiledSeat) -> (Vec<model::Skill>, Vec<String>) {
+fn agent_extras(st: &AppState, rig: &str, seat: &CompiledSeat) -> (Vec<model::Skill>, Vec<String>, Vec<model::Component>) {
     if !matches!(seat.runtime, Runtime::ClaudeCode | Runtime::Codex) {
-        return (vec![], vec![]);
+        return (vec![], vec![], vec![]);
     }
     let draft = st.store.lock().unwrap().draft(rig).ok().flatten();
-    let Some(a) = draft.as_ref().and_then(|d| d.agent_for_seat(&seat.id)) else { return (vec![], vec![]) };
-    let mut names: Vec<String> = a.advanced.integrations.iter()
-        // Signet runs as a Claude Code hook; Codex runs hooks only after the person trusts them.
-        .filter(|i| **i != model::Integration::Signet || seat.runtime == Runtime::ClaudeCode)
-        .map(|i| i.name().to_string()).collect();
-    // Signet's own locked rules refuse edits until the agent has used Kindex.
-    if names.iter().any(|n| n == "signet") && !names.iter().any(|n| n == "kindex") {
-        names.insert(0, "kindex".into());
-    }
-    (a.advanced.skills.clone(), names)
+    let Some((d, a)) = draft.as_ref().and_then(|d| d.agent_for_seat(&seat.id).map(|a| (d, a))) else { return (vec![], vec![], vec![]) };
+    // With what each needs (Signet brings Kindex); tool hooks only for Claude Code, since Codex runs
+    // hooks only after the person trusts them.
+    let components: Vec<model::Component> = d.agent_components(a).into_iter().filter(|c| !c.claude_only || seat.runtime == Runtime::ClaudeCode).collect();
+    // The built-in ones by name too, for runners from before components.
+    let names = components.iter().filter(|c| c.is_builtin()).map(|c| c.id.clone()).collect();
+    (a.advanced.skills.clone(), names, components)
 }
 
 /// Claude agents only: the part of the person's own Claude Code setup the team allows (None when all of

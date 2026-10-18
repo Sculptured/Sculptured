@@ -192,7 +192,7 @@ pub fn to_team_file(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted
     }
     lay_out(&mut agents, &connections);
     let groups = group_boxes(&s.groups, &group_ids, &agents);
-    let team = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(),
+    let team = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(),
         workflow: None,
         folder: folder.map(str::to_string),
         id: Some(rigspec::draft::slug(&s.name)).filter(|x| !x.is_empty()).unwrap_or_else(|| "generated-team".into()),

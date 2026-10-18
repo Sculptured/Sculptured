@@ -7,6 +7,8 @@ mod budget;
 pub mod protection;
 pub mod contract;
 pub mod skill;
+pub mod component;
+pub use component::{Component, ComponentKind};
 pub mod safety;
 pub use safety::SafetyRule;
 pub use skill::Skill;
@@ -32,7 +34,7 @@ pub use question::{
 };
 pub use report::{cap_findings, Finding, ReportVerdict, MAX_FINDING, MAX_FINDINGS};
 pub use caps::Caps;
-pub use draft::{Integration, Schedule, TeamLimits, TokenCount, TokenLimit, 
+pub use draft::{Schedule, TeamLimits, TokenCount, TokenLimit, 
     AgentAdvanced, AgentKind, ConnectionKind, DraftAgent, DraftConnection, DraftGroup, DraftIssue, ElementKind,
     ElementRef, IssueSeverity, ModelDefaults, PermissionPosture, ResumeBehaviour, TeamDraft, TeamInput, DEFAULT_GROUP_ID,
 };

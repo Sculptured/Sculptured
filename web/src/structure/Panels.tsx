@@ -296,7 +296,7 @@ export function AgentPanel({ draft, agentId, issues, edit, locked, onSelect, nam
           </select>
         </Field>
         <ContractFields draft={draft} agent={a} edit={edit} locked={locked} />
-        <IntegrationFields agent={a} edit={edit} locked={locked} />
+        <IntegrationFields agent={a} edit={edit} locked={locked} draft={draft} />
         <p className="fld-meta">
           {WORDS.internalId}: <code>{a.id}</code> · address <code>{seatIdFor(draft, a.id)}</code>
         </p>

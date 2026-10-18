@@ -298,7 +298,7 @@ impl Importer<'_> {
         let agents = std::mem::take(&mut self.agents);
         let folder = self.meta.as_ref().and_then(|m| m.folder.clone());
         let workflow = self.meta.as_ref().and_then(|m| m.workflow.clone());
-        let mut draft = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(), workflow, folder, id, name, groups, agents, connections, models: ModelDefaults::default(), revision: 0 };
+        let mut draft = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(), workflow, folder, id, name, groups, agents, connections, models: ModelDefaults::default(), revision: 0 };
         if !positioned {
             let seat_ids: HashMap<String, String> = self.agent_of.iter().map(|(seat, agent)| (agent.clone(), seat.clone())).collect();
             auto_layout(&mut draft, self.rig, &seat_ids);

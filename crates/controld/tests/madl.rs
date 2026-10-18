@@ -148,7 +148,10 @@ fn skills_travel_embedded_and_integrations_round_trip_through_madl() {
     file.team.revision = 0;
     let a = &mut file.team.agents[0].advanced;
     a.skills = vec![model::Skill { name: "money-rules".into(), description: "Use when handling amounts of money.".into(), body: "Decimal only.\n".into() }];
-    a.integrations = vec![model::Integration::Kindex];
+    a.integrations = vec!["kindex".into(), "notes".into()];
+    let mut notes = model::component::builtins()[0].clone();
+    (notes.id, notes.name, notes.program) = ("notes".into(), "Notes server".into(), "notes-mcp".into());
+    file.team.components = vec![notes];
     round_trip(&file);
     let yaml = serde_yaml_ng::to_string(&to_madl(&file)).unwrap();
     assert!(yaml.contains("name: money-rules") && yaml.contains("body:"), "the skill is embedded in standard MADL: {yaml}");

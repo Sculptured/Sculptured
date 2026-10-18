@@ -114,6 +114,14 @@ fn drop_features(params: &mut LaunchParams, missing: &[&str]) -> Vec<&'static st
                 params.integrations.clear();
                 lost.push("the tools on its computer it was given, such as Kindex");
             }
+            features::COMPONENTS => {
+                // An older runner still starts the built-in ones by name, when it can.
+                let custom = params.components.iter().any(|c| !c.is_builtin());
+                params.components.clear();
+                if custom {
+                    lost.push("its components that are not built in");
+                }
+            }
             _ => {}
         }
     }

@@ -461,6 +461,25 @@ pub fn run_allow(folder: &Path, data_dir: Option<PathBuf>) -> Result<(), String>
     Ok(())
 }
 
+/// Adds a component manifest's digest to the ones this computer's owner approved. The runner reads the
+/// list at every launch, so running agents are not restarted.
+pub fn run_approve_component(digest: &str, data_dir: Option<PathBuf>) -> Result<(), String> {
+    let digest = digest.trim().to_ascii_lowercase();
+    if digest.len() != 64 || !digest.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("That is not a component digest: copy the 64-character code from the agent's note.".into());
+    }
+    let dir = runner_dir(data_dir)?.join("hostd");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot make {}: {e}", dir.display()))?;
+    let file = dir.join(hostd::supervisor::APPROVED_COMPONENTS_FILE);
+    let mut list: Vec<String> = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    if !list.contains(&digest) {
+        list.push(digest);
+    }
+    hostd::private::write_file(&file, serde_json::to_string_pretty(&list).expect("serializes").as_bytes()).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
+    println!("Approved. Agents given this component start it at their next launch; nothing is restarted.");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,6 +1,7 @@
 mod lifecycle;
 mod tools;
 mod extras;
+pub use extras::APPROVED_FILE as APPROVED_COMPONENTS_FILE;
 
 use crate::journal::Journal;
 use crate::mapping::Mapped;
@@ -220,6 +221,7 @@ impl Supervisor {
             f.push(host_proto::features::SKILLS);
         }
         f.push(host_proto::features::INTEGRATIONS);
+        f.push(host_proto::features::COMPONENTS);
         if self.inner.ops.is_some() {
             f.push(host_proto::features::LOCAL_OPS);
             f.push(host_proto::features::USAGE_REPORTS);

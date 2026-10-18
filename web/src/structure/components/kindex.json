@@ -1,0 +1,10 @@
+{
+  "id": "kindex",
+  "name": "Kindex memory",
+  "description": "A knowledge graph on the agent's computer that outlasts the team: decisions, constraints and discoveries agents search and add to across sessions.",
+  "kind": "mcp",
+  "program": "kin-mcp",
+  "briefing": "You also have Kindex (the kindex tools): a knowledge graph on this computer that outlasts this team. Search it before starting something it may cover, and add durable decisions and discoveries to it. Sculptured's record_lesson tells this team; Kindex keeps knowledge for later work in this project.",
+  "install": "pip install 'kindex[mcp]' (or uv tool install 'kindex[mcp]')",
+  "homepage": "https://github.com/wandercom/kindex"
+}

@@ -198,6 +198,9 @@ fn team_extension(file: &TeamFile) -> m::Extensions {
     if !team.safety.is_empty() {
         ext.insert("safety".into(), json!(team.safety));
     }
+    if !team.components.is_empty() {
+        ext.insert("components".into(), json!(team.components));
+    }
     if !team.claude_setup.is_default() {
         ext.insert("claude_setup".into(), json!(team.claude_setup));
     }

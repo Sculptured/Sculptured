@@ -70,8 +70,12 @@ pub struct LaunchParams {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skills: Vec<model::Skill>,
     /// Tools on the agent's computer it is given (by name, such as `kindex`); the runner finds them.
+    /// Sent for runners from before `components`; built-in ones only.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub integrations: Vec<String>,
+    /// The components it is given, as manifests (feature `components`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<model::Component>,
 }
 
 /// How a new tenure gets its native session.
@@ -204,6 +208,8 @@ pub mod features {
     pub const SKILLS: &str = "skills";
     /// Honours `LaunchParams.integrations`.
     pub const INTEGRATIONS: &str = "integrations";
+    /// Honours `LaunchParams.components`.
+    pub const COMPONENTS: &str = "components";
 }
 
 /// Run the agent in its own git copy (worktree) of the folder, made on the computer that runs it.
@@ -238,6 +244,9 @@ impl LaunchParams {
         }
         if !self.integrations.is_empty() {
             f.push(features::INTEGRATIONS);
+        }
+        if !self.components.is_empty() {
+            f.push(features::COMPONENTS);
         }
         if self.own_copy.is_some() {
             f.push(features::LOCAL_OPS);

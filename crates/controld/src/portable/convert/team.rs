@@ -25,7 +25,7 @@ pub(super) fn rebuild(threads: &[Thread], source: Source) -> TeamFile {
     let connections = pairs.enumerate().map(|(n, (from, to))| DraftConnection { id: format!("c-{}", n + 1), from, to, kind: ConnectionKind::HandsWorkTo }).collect();
     let fallback = if source == Source::Codex { "Imported Codex session" } else { "Imported Claude Code session" };
     let name = threads.iter().find(|t| t.parent.is_none()).and_then(|t| t.name.clone()).unwrap_or_else(|| fallback.into());
-    let team = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], budget: Default::default(), input: None, id: "imported-session".into(), name, revision: 0, folder: None, models: Default::default(), workflow: None, schedules: vec![], decision_log: false, limits: Default::default(), groups: vec![], agents, connections };
+    let team = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, id: "imported-session".into(), name, revision: 0, folder: None, models: Default::default(), workflow: None, schedules: vec![], decision_log: false, limits: Default::default(), groups: vec![], agents, connections };
     TeamFile { schema: None, format: TEAM_FORMAT.into(), team, settings: Default::default() }
 }
 

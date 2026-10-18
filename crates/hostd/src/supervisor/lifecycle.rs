@@ -135,7 +135,7 @@ impl Supervisor {
             }
         }
         let safety = p.protection.as_ref().map(|r| r.safety.as_slice()).unwrap_or_default();
-        (spec.mcp_servers, spec.tool_hooks) = self.integrations(&req.seat, &p.integrations, safety);
+        (spec.mcp_servers, spec.tool_hooks) = self.components(&req.seat, &p.components, &p.integrations, safety);
         Ok(spec)
     }
 

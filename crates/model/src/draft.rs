@@ -73,32 +73,10 @@ pub struct AgentAdvanced {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<crate::Skill>>", optional)]
     pub skills: Vec<crate::Skill>,
-    /// Tools installed on the agent's computer that it is also given.
+    /// The components it is given, by id: built in (`kindex`, `signet`) or one of the team's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[ts(as = "Option<Vec<Integration>>", optional)]
-    pub integrations: Vec<Integration>,
-}
-
-/// A tool on the agent's computer that Sculptured can give an agent. The runner finds it there.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema, TS)]
-#[serde(rename_all = "kebab-case")]
-#[ts(export)]
-pub enum Integration {
-    /// Kindex (github.com/wandercom/kindex): a knowledge graph that persists across sessions and teams.
-    Kindex,
-    /// Signet-Eval (github.com/wandercom/signet-eval): deterministic policy checks on every tool call,
-    /// run as a second hook with the team's safety rules. Claude agents only. Its own locked rules
-    /// expect Kindex, so it comes with Kindex.
-    Signet,
-}
-
-impl Integration {
-    pub fn name(self) -> &'static str {
-        match self {
-            Integration::Kindex => "kindex",
-            Integration::Signet => "signet",
-        }
-    }
+    #[ts(as = "Option<Vec<String>>", optional)]
+    pub integrations: Vec<String>,
 }
 
 /// Limits a person set on a team's spawned agents. None = no limit; Sculptured sets none of its own.
@@ -317,6 +295,10 @@ pub struct TeamDraft {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<crate::SafetyRule>>", optional)]
     pub safety: Vec<crate::SafetyRule>,
+    /// Components this team adds to Sculptured's built-in ones (from Community, or written by hand).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<crate::Component>>", optional)]
+    pub components: Vec<crate::Component>,
     /// What one run may use (Advanced). Absent = no budget.
     #[serde(default, skip_serializing_if = "crate::RunBudget::is_empty")]
     #[ts(as = "Option<crate::RunBudget>", optional)]
@@ -331,6 +313,32 @@ pub struct TeamDraft {
 }
 
 impl TeamDraft {
+    /// A component by id: one of the team's, or a built-in one.
+    pub fn component(&self, id: &str) -> Option<crate::Component> {
+        self.components.iter().find(|c| c.id == id).cloned().or_else(|| crate::component::builtins().into_iter().find(|c| c.id == id))
+    }
+
+    /// The components an agent is given, with those they require first, each once.
+    pub fn agent_components(&self, a: &DraftAgent) -> Vec<crate::Component> {
+        let mut out: Vec<crate::Component> = Vec::new();
+        fn add(d: &TeamDraft, id: &str, out: &mut Vec<crate::Component>, depth: u8) {
+            if depth > 4 || out.iter().any(|c| c.id == id) {
+                return;
+            }
+            let Some(c) = d.component(id) else { return };
+            for r in &c.requires {
+                add(d, r, out, depth + 1);
+            }
+            if !out.iter().any(|o| o.id == c.id) {
+                out.push(c);
+            }
+        }
+        for id in &a.advanced.integrations {
+            add(self, id, &mut out, 0);
+        }
+        out
+    }
+
     pub fn effective_folder<'a>(&'a self, a: &'a DraftAgent) -> Option<&'a str> {
         a.folder.as_deref().map(str::trim).filter(|s| !s.is_empty())
             .or_else(|| self.folder.as_deref().map(str::trim).filter(|s| !s.is_empty()))

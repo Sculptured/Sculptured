@@ -67,7 +67,7 @@ pub fn template(id: &str, team_id: &str, name: &str, practice: bool) -> Option<T
         "blank" => (vec![], vec![]),
         _ => return None,
     };
-    Some(TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(), workflow: None, folder: None, id: team_id.into(), name: name.into(), groups: vec![], agents, connections, models: ModelDefaults::default(), revision: 0 })
+    Some(TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(), workflow: None, folder: None, id: team_id.into(), name: name.into(), groups: vec![], agents, connections, models: ModelDefaults::default(), revision: 0 })
 }
 
 pub fn templates() -> Vec<TemplateInfo> {

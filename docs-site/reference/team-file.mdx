@@ -80,6 +80,7 @@ erDiagram
 | `protection` | [Protection](#protection) | no | on, with the defaults below | Rules that keep each agent's context small. |
 | `claude_setup` | [ClaudeSetup](#claudesetup) | no | `{ "global": false, "project": true }` | Which of your own Claude Code setup Claude agents load. |
 | `safety` | list of `{ name, tool_pattern, conditions, reason }` | no | | [Safety rules](/guides/budgets#safety-rules), in Signet-Eval's format. |
+| `components` | list of component manifests | no | | The team's own [components](/guides/skills#writing-a-manifest), beside the built-in ones. |
 
 ## DraftAgent
 
@@ -108,7 +109,7 @@ erDiagram
 | `data_access` | [DataAccess](#dataaccess) | | What it reads, writes and changes beyond its files. |
 | `authority` | [Authority](#authority) | | The decisions it owns. |
 | `skills` | list of `{ name, description, body }` | | Its [skills](/guides/skills). `name`: lowercase letters, digits and hyphens, at most 64; `description`: when to use it, at most 1,024 characters. |
-| `integrations` | list of `kindex`, `signet` | | Tools on its computer it is also given. `signet` brings `kindex`. |
+| `integrations` | list of component ids | | The [components](/guides/skills#components-tools-on-the-agents-computer) it is given: built in (`kindex`, `signet`) or the team's own. |
 
 ### TokenLimit
 

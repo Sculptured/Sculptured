@@ -12,6 +12,7 @@ import type { CommunitySession } from "../generated/CommunitySession";
 import { hosted } from "./Nav";
 import { AgentDesignGuide } from "./AgentDesignGuide";
 import { TemplatePreview } from "../structure/TemplateGallery";
+import { ComponentBlockCard, type ComponentBlock } from "./ComponentBlockCard";
 import { sanitizeExport, downloadBlock } from "./sharing";
 export async function communityRequest<T>(
   path: string,
@@ -183,7 +184,7 @@ export function Community() {
             </div>
           )}
           <div className="release-grid">
-            {visibleBlocks.map((b) => (
+            {visibleBlocks.map((b) => (b as { kind?: string }).kind === "component" ? <ComponentBlockCard key={b.id} block={b as unknown as ComponentBlock} /> : (
               <article className="release-card block-publication" key={b.id}>
                 <button
                   className="publication-preview"

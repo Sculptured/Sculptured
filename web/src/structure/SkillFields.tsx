@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DraftAgent } from '../generated/DraftAgent';
-import type { Integration } from '../generated/Integration';
+import type { Component } from '../generated/Component';
+import { availableComponents, componentById } from './components';
 import type { Skill } from '../generated/Skill';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { setAdvanced } from '../draft/edits';
@@ -97,26 +98,22 @@ export function SkillFields({ agent, edit, locked }: { agent: DraftAgent; edit: 
   );
 }
 
-const TOOLS: { id: Integration; label: string; hint: string }[] = [
-  { id: 'kindex', label: 'Kindex memory', hint: "A knowledge graph on its computer that outlasts this team. Install it there first: pip install 'kindex[mcp]'." },
-  { id: 'signet', label: 'Signet-Eval policy checks', hint: "Claude agents: Signet-Eval checks every tool call with the team's safety rules and its own built-in ones, which expect Kindex, so Kindex comes too. Install it there first: cargo install signet-eval." },
-];
-
-/** Tools on the agent's computer it is also given (Advanced). Without one installed there, the agent starts anyway and its page says so. */
-export function IntegrationFields({ agent, edit, locked }: { agent: DraftAgent; edit: Edit; locked: boolean }) {
+/** The components an agent is given (Advanced): every built-in one and the team's own, with how to
+ * install each. Without one installed on its computer, the agent starts anyway and its page says so. */
+export function IntegrationFields({ agent, edit, locked, draft }: { agent: DraftAgent; edit: Edit; locked: boolean; draft?: TeamDraft | null }) {
   const have = agent.advanced.integrations ?? [];
-  const toggle = (id: Integration, checked: boolean) => edit((d: TeamDraft) => {
-    let next = have.filter((i) => i !== id);
-    if (checked) next = [...next, id];
-    // Signet's own locked rules refuse edits until the agent has used Kindex.
-    if (checked && id === 'signet' && !next.includes('kindex')) next = ['kindex', ...next];
-    if (!checked && id === 'kindex') next = next.filter((i) => i !== 'signet');
+  const all = availableComponents(draft);
+  const toggle = (c: Component, checked: boolean) => edit((d: TeamDraft) => {
+    let next = have.filter((i) => i !== c.id);
+    if (checked) next = [...next, ...(c.requires ?? []).filter((r) => !next.includes(r)), c.id];
+    // Turning off something another one requires turns that one off too.
+    if (!checked) next = next.filter((i) => !(componentById(d, i)?.requires ?? []).includes(c.id));
     return setAdvanced(d, agent.id, { integrations: next.length ? next : undefined });
   }, `integrations:${agent.id}`);
-  return <>{TOOLS.map((t) => (
-    <label key={t.id} className="fld fld-check">
-      <span><input type="checkbox" checked={have.includes(t.id)} disabled={locked} onChange={(e) => toggle(t.id, e.target.checked)} /> {t.label}</span>
-      <span className="fld-hint muted">{t.hint}</span>
+  return <>{all.map((c) => (
+    <label key={c.id} className="fld fld-check">
+      <span><input type="checkbox" checked={have.includes(c.id)} disabled={locked} onChange={(e) => toggle(c, e.target.checked)} /> {c.name}</span>
+      <span className="fld-hint muted">{c.description}{c.requires?.length ? ` Brings ${c.requires.join(', ')}.` : ''} Install on its computer: {c.install}.</span>
     </label>
   ))}</>;
 }

@@ -139,6 +139,14 @@ It prints the full list of allowed folders. Restart `sculptured connect`, or its
 sculptured allow ~/code/new-project
 ```
 
+## `sculptured approve-component`
+
+```bash
+sculptured approve-component <digest> [--data-dir <DIR>]
+```
+
+Lets agents on this computer use a component that is not built in. The digest is in the note on the agent that went without it, next to the command the component runs. Approve only what you would run yourself. Agents given the component start it at their next launch; nothing is restarted. A changed manifest has a new digest and needs approving again.
+
 ## `sculptured serve`
 
 Runs a complete Sculptured on your own computer: the web app, its database and a local runner that starts your agents. See [Run it yourself](/operations).

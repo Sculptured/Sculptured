@@ -39,6 +39,7 @@ import { QUIET_AFTER, useArrowFocus } from './arrowFocus';
 import { handoffWords } from '../shell/model';
 import { plural } from '../format';
 import { workflowBounds, inputBox, stageBoxes, workflowLinks, WorkflowGraph, WorkflowAgentActions, type WorkflowTarget } from '../workflow/WorkflowGraph';
+import { ComponentChips } from './ComponentChips';
 
 export type CanvasHandle = {
   fit: () => void;
@@ -793,6 +794,7 @@ export function StructureCanvas(p: Props) {
                       {folderIssue && a.folder && <span className="folder-why">{FOLDER_ISSUE_WORDS[folderIssue.code] ?? 'folder problem'} ·</span>}
                       <span className={a.folder ? 'mono' : undefined}>{(a.folder || draft.folder) ? shortPath((a.folder || draft.folder)!, home) : a.kind === 'practice' ? '~ (home folder)' : 'needs a folder'}</span>
                     </span>
+                    <ComponentChips agent={a} draft={draft} />
                   </button>
                   <div className="box-foot" onFocus={draft.workflow ? () => reveal(agentBox(a)) : undefined}>
                     {draft.workflow && p.onWorkflow ? <WorkflowAgentActions draft={draft} agent={a.id} onOpen={p.onWorkflow} /> : <span className="box-foot-text">

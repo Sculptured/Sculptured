@@ -24,13 +24,60 @@ Skills belong to the agent: copying the agent copies its skills, and a team file
 
 An agent on a computer whose runner predates skills runs without them, and its page says so: reinstall the runner from **Computers**.
 
-## Tools on the agent's computer: Kindex
+## Components: tools on the agent's computer
+
+A **component** is a program on the agent's computer that the agent can also use: an MCP server whose tools sit next to Sculptured's, or a check run on every tool call. Components are described by a small manifest, not built into Sculptured, so anyone can write one and share it.
+
+- **Built in, as examples:** Kindex memory (a knowledge graph that outlasts the team) and Signet-Eval policy checks. They need no approval.
+- **The team's own:** in the team's **Advanced** settings, **Components** lists them with the exact command each runs. **Add a component** takes a manifest, pasted or loaded from a file; **Share to Community** publishes one.
+- **From Community:** a shared component shows what it runs and how to install it. **Add to a team** puts it in that team's Components.
+- **Give it to an agent:** tick it in the agent's **Advanced** settings. Its card then shows a chip for it. A component that needs another one (Signet needs Kindex) brings it along.
+
+The program must be installed on the agent's computer. If it is missing, the agent starts anyway and its page says how to install it.
+
+### A component is a program on your computer
+
+On a computer connected to your account, a component that is not built in runs only after that computer's owner approves it there. The agent's page shows the command it would run and the line to approve it:
+
+```bash
+sculptured approve-component <digest>
+```
+
+The digest is a fingerprint of that exact manifest: if anything in it changes, it needs approving again. Running agents are not restarted. On your own local Sculptured, the teams are yours, so nothing extra is asked.
+
+### Writing a manifest
+
+```json
+{
+  "id": "notes",
+  "name": "Notes server",
+  "description": "Team notes the agents read and write.",
+  "kind": "mcp",
+  "program": "notes-mcp",
+  "args": ["--stdio"],
+  "briefing": "You also have the notes tools: write decisions there.",
+  "install": "pip install notes-mcp"
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Lowercase letters, digits and hyphens; not a built-in one's id. |
+| `kind` | `mcp` (an MCP server over stdio) or `tool-hook` (a Claude Code check on every tool call; set `claude_only`). |
+| `program`, `args` | A plain program name the runner finds on its computer (no folder), and its arguments. In a tool hook, `{safety_rules}` becomes the path of the team's safety rules. |
+| `briefing` | What agents given it are told. |
+| `install` | How to install the program, shown when it is missing. |
+| `requires` | Other components it needs, by id. |
+| `homepage`, `claude_only`, `description`, `name` | As named. |
+
+## Kindex
+
 
 [Kindex](https://github.com/wandercom/kindex) is a knowledge graph that lives on the agent's computer and outlasts any one team: decisions, constraints and discoveries that agents search and add to across sessions. Sculptured's own [Knowledge](/guides/knowledge) covers one team's work; Kindex keeps knowledge for later work in the project.
 
 <Steps>
   <Step title="Install it on the agent's computer">Run `pip install 'kindex[mcp]'` (or `uv tool install 'kindex[mcp]'`) on the computer that runs the agent.</Step>
-  <Step title="Turn it on for the agent">In the agent's **Advanced** settings, tick **Kindex memory**.</Step>
+  <Step title="Turn it on for the agent">In the agent's **Advanced** settings, tick **Kindex memory**. It is one of the built-in [components](#components-tools-on-the-agents-computer).</Step>
 </Steps>
 
 At its next start the agent gets Kindex's tools next to Sculptured's, and its briefing says what Kindex is for. The runner finds `kin-mcp` on that computer itself; Sculptured never sends it a command to run. If Kindex is not installed there, the agent starts anyway and its page says how to install it. Kindex's own question and learning features call a model and cost usage; its search and storage do not.

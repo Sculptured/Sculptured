@@ -55,6 +55,15 @@ fn check_team(d: &TeamDraft, out: &mut Vec<DraftIssue>) {
     for problem in d.safety.iter().flat_map(model::SafetyRule::problems) {
         out.push(issue(Team, &d.id, Error, "safety-rule-invalid", problem));
     }
+    let builtin: Vec<String> = model::component::builtins().into_iter().map(|c| c.id).collect();
+    for c in &d.components {
+        for problem in c.problems() {
+            out.push(issue(Team, &d.id, Error, "component-invalid", problem));
+        }
+        if builtin.contains(&c.id) {
+            out.push(issue(Team, &d.id, Error, "component-invalid", format!("{:?} is a built-in component's id; give yours another one.", c.id)));
+        }
+    }
 }
 
 fn check_groups(d: &TeamDraft, out: &mut Vec<DraftIssue>) {
@@ -80,6 +89,9 @@ fn check_agents(d: &TeamDraft, out: &mut Vec<DraftIssue>) {
         }
         check_agent_name(a, &mut names, out);
         check_agent_place(d, a, out);
+        for id in a.advanced.integrations.iter().filter(|id| d.component(id).is_none()) {
+            out.push(issue(Agent, &a.id, Error, "component-unknown", format!("{} uses the component {id:?}, which this team does not have: add it under Advanced → Components, or remove it from the agent.", display_name(a))));
+        }
         for problem in model::skill::skills_problems(&a.advanced.skills) {
             out.push(issue(Agent, &a.id, Error, "skill-invalid", format!("{}: {problem}", display_name(a))));
         }

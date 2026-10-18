@@ -66,7 +66,7 @@ pub(crate) fn briefing(d: &TeamDraft, seat: &str) -> Option<String> {
     }
     lines.push("Work only on your assigned job. A leader plans and coordinates the configured team; it does not replace the other agents or implement their jobs unless explicitly assigned. Sculptured automatically delivers completed replies along 'hands work to' connections. Use spawn_agent to create helpers; all child agents must be managed through this tool so their lifecycle and communication appear on the board. Do not create untracked agents through native CLI delegation, shell processes or external tools. Do not replace configured teammates. Use team_status and send_agent_message to ask teammates for help, request features, report results and coordinate shared interfaces. Include exact artifact revisions and task context. 'Reports to' and 'watches' are descriptive only, not automatic routing. Report missing instructions or blocked dependencies rather than guessing. A reported result is not independently verified.".into());
     lines.push(EFFICIENCY.into());
-    lines.extend(crate::skills::briefing_lines(me));
+    lines.extend(crate::skills::briefing_lines(d, me));
     lines.push("Use downstream jobs to decide your handoff: when another agent owns implementation, provide its plan and inputs instead of doing that agent's work. Respect project-wide constraints stated in the jobs (such as output folders or no publishing) throughout the team. Ask the operator about conflicting instructions.".into());
     lines.extend(team_lines(d, me));
     lines.extend(contract_lines(d, me));

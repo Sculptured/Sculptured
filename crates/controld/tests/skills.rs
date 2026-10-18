@@ -25,10 +25,11 @@ async fn skills_and_kindex_reach_each_agent_the_way_its_cli_can_use_them() {
     let mut draft = rec["draft"].clone();
     draft["agents"] = json!([
         { "id": "a", "group_id": null, "name": "Writer", "kind": "claude", "job": "write", "folder": folder, "x": 40, "y": 40,
-          "advanced": { "permission": "unrestricted", "resume": "resume-if-possible", "skills": [skill], "integrations": ["kindex"] } },
+          "advanced": { "permission": "unrestricted", "resume": "resume-if-possible", "skills": [skill], "integrations": ["kindex", "notes"] } },
         { "id": "b", "group_id": null, "name": "Checker", "kind": "codex", "job": "check", "folder": folder, "x": 300, "y": 40,
           "advanced": { "permission": "unrestricted", "resume": "resume-if-possible", "skills": [skill] } },
     ]);
+    draft["components"] = json!([{ "id": "notes", "name": "Notes server", "description": "Team notes.", "kind": "mcp", "program": "notes-mcp-not-installed", "install": "pip install notes-mcp", "briefing": "You also have the notes tools." }]);
     let id = draft["id"].as_str().unwrap().to_string();
     let (status, body) = call(&s.router, "PUT", &format!("/api/teams/{id}"), json!({ "request_id": rid(), "revision": draft["revision"], "draft": draft })).await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -39,11 +40,16 @@ async fn skills_and_kindex_reach_each_agent_the_way_its_cli_can_use_them() {
     let (to_a, to_b) = (first(&a).unwrap(), first(&b).unwrap());
     assert!(to_b.contains("Your skills (load one with read_skill") && to_b.contains("- money-rules: Use when handling amounts of money."), "{to_b}");
     assert!(!to_a.contains("Your skills"), "Claude loads its skills natively: {to_a}");
-    assert!(to_a.contains("You also have Kindex") && !to_b.contains("Kindex"), "only the agent given Kindex is told: {to_a}");
+    assert!(to_a.contains("You also have Kindex") && to_a.contains("You also have the notes tools.") && !to_b.contains("Kindex"), "each agent is told about its own components: {to_a}");
 
     let (rig, spec) = controld::launch::compiled_seat(&s.st, &a).unwrap();
     let params = controld::launch::launch_params(&s.st, "local", &rig.name, &spec, s.home.path()).unwrap();
-    assert_eq!((params.skills.len(), params.integrations.clone()), (1, vec!["kindex".to_string()]));
+    assert_eq!((params.skills.len(), params.integrations.clone()), (1, vec!["kindex".to_string()]), "built-in ones by name too, for older runners");
+    assert_eq!(params.components.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["kindex", "notes"]);
+    let dropped = |who: &str| events(&s.st, who).into_iter().filter_map(|e| match e.body { model::EventBody::FeaturesDropped { features, note } => Some((features, note)), _ => None }).collect::<Vec<_>>();
+    wait_for("the missing program is told on the agent", || dropped(&a).iter().any(|(f, _)| f == &["notes".to_string()])).await;
+    let (_, note) = dropped(&a).into_iter().find(|(f, _)| f == &["notes".to_string()]).unwrap();
+    assert!(note.contains("notes-mcp-not-installed") && note.contains("pip install notes-mcp"), "{note}");
     let plugin = data.path().join("skills").join(&a).join("skills/money-rules/SKILL.md");
     assert!(std::fs::read_to_string(&plugin).is_ok_and(|md| md.contains("Amounts are Decimal")), "the runner wrote Claude's plugin: {}", plugin.display());
 
