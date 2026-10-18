@@ -191,6 +191,7 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS run_reports (rig TEXT NOT NULL, start_seq INTEGER NOT NULL, json TEXT NOT NULL, at_ms INTEGER NOT NULL, PRIMARY KEY(rig, start_seq));",
     "CREATE TABLE IF NOT EXISTS project_maps (team TEXT NOT NULL, folder TEXT NOT NULL, json TEXT NOT NULL, at_ms INTEGER NOT NULL, PRIMARY KEY(team, folder));
      ALTER TABLE team_decisions ADD COLUMN confirmed_ms INTEGER;",
+    "CREATE TABLE IF NOT EXISTS host_limits (host TEXT PRIMARY KEY, max_working INTEGER NOT NULL);",
 ];
 
 /// The schema version this build writes.

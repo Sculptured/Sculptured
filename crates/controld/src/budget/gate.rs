@@ -1,7 +1,8 @@
 //! The budget gate: every command that starts work (Launch, Restart, Send) passes it on its way to
 //! a runner, whatever sent it (Start, a spawn, a copy, a dispatch, a handoff, a person's message).
-//! Past the soft value nothing new starts; with "most agents working at once", a message to an idle
-//! agent waits for a free slot. Interrupts, stops and answers are never held.
+//! Past the soft value nothing new starts; with "most agents working at once" (the team's, or the
+//! computer's across all its teams), a message to an idle agent waits for a free slot. Interrupts,
+//! stops and answers are never held.
 use super::record::BudgetState;
 use crate::store::Store;
 use host_proto::HostCommand;
@@ -35,6 +36,31 @@ pub fn busy(store: &Store, rig: &str, except: &str) -> rusqlite::Result<u32> {
     )
 }
 
+/// Agents busy now on computer `host`, across every team.
+pub fn busy_on_host(store: &Store, host: &str, except: &str) -> rusqlite::Result<u32> {
+    store.connection().query_row(
+        "SELECT COUNT(*) FROM seats s WHERE s.host = ?1 AND s.id <> ?2 AND (s.activity = 'working' OR s.lifecycle = 'launching'
+           OR EXISTS (SELECT 1 FROM messages m WHERE m.seat = s.id AND m.state = 'delivered'))",
+        params![host, except],
+        |r| r.get::<_, i64>(0).map(|n| n.max(0) as u32),
+    )
+}
+
+/// The cap of the computer `seat` runs on, when it has one: (host, cap).
+fn host_cap(store: &Store, view: &crate::views::SeatView) -> rusqlite::Result<Option<(String, u32)>> {
+    let Some(host) = view.host.clone() else { return Ok(None) };
+    Ok(store.host_limit(&host)?.map(|n| (host, n)))
+}
+
+/// True when the computer `seat` runs on has a free slot (or no cap).
+fn host_free(store: &Store, seat: &str) -> rusqlite::Result<bool> {
+    let Some(view) = store.seat(seat)? else { return Ok(true) };
+    Ok(match host_cap(store, &view)? {
+        Some((host, max)) => busy_on_host(store, &host, seat)? < max,
+        None => true,
+    })
+}
+
 fn queue(store: &Store, seat: &str, cmd: &HostCommand) -> rusqlite::Result<()> {
     let HostCommand::Send { message_id, .. } = cmd else { return Ok(()) };
     store.connection().execute(
@@ -56,18 +82,25 @@ pub fn refusal(store: &Store, rig: &str) -> rusqlite::Result<Option<String>> {
 pub fn decide(store: &Store, cmd: &HostCommand) -> rusqlite::Result<Gate> {
     let Some(seat) = seat_of(cmd) else { return Ok(Gate::Pass) };
     let Some(view) = store.seat(seat)? else { return Ok(Gate::Pass) };
-    let Some(r) = store.run_budget(&view.rig)? else { return Ok(Gate::Pass) };
     let sending = matches!(cmd, HostCommand::Send { .. });
-    match &r.state {
-        BudgetState::Stopped { reason, .. } | BudgetState::Paused { reason, .. } => return Ok(Gate::Refuse(format!("Run budget: {reason}"))),
-        // The wrap-up instruction itself goes to agents that are wrapping up; nothing else does.
-        BudgetState::WrapUp { .. } if sending && store.control(seat)?.is_some() => return Ok(Gate::Pass),
-        BudgetState::WrapUp { reason, .. } => return Ok(Gate::Refuse(format!("Run budget: {reason}"))),
-        BudgetState::Normal => {}
+    let budget = store.run_budget(&view.rig)?;
+    if let Some(r) = &budget {
+        match &r.state {
+            BudgetState::Stopped { reason, .. } | BudgetState::Paused { reason, .. } => return Ok(Gate::Refuse(format!("Run budget: {reason}"))),
+            // The wrap-up instruction itself goes to agents that are wrapping up; nothing else does.
+            BudgetState::WrapUp { .. } if sending && store.control(seat)?.is_some() => return Ok(Gate::Pass),
+            BudgetState::WrapUp { reason, .. } => return Ok(Gate::Refuse(format!("Run budget: {reason}"))),
+            BudgetState::Normal => {}
+        }
     }
-    let Some(max) = r.budget.max_working.filter(|_| sending) else { return Ok(Gate::Pass) };
-    let this_busy = view.activity == model::SeatActivity::Working;
-    if !this_busy && busy(store, &view.rig, seat)? >= max {
+    if !sending || view.activity == model::SeatActivity::Working {
+        return Ok(Gate::Pass);
+    }
+    let team_full = match budget.and_then(|r| r.budget.max_working) {
+        Some(max) => busy(store, &view.rig, seat)? >= max,
+        None => false,
+    };
+    if team_full || !host_free(store, seat)? {
         queue(store, seat, cmd)?;
         return Ok(Gate::Queued);
     }
@@ -97,10 +130,15 @@ type Hub = tokio::sync::broadcast::Sender<crate::views::StreamItem>;
 
 fn held(store: &mut Store, hub: &Hub, cmd: &HostCommand) {
     let HostCommand::Send { seat, message_id, .. } = cmd else { return };
-    let max = store.seat(seat).ok().flatten().and_then(|v| store.run_budget(&v.rig).ok().flatten()).and_then(|r| r.budget.max_working);
-    let reason = match max {
-        Some(n) => format!("waiting for a slot: at most {n} agents of this run work at once"),
-        None => "waiting for a slot".to_string(),
+    let view = store.seat(seat).ok().flatten();
+    let team = view.as_ref().and_then(|v| store.run_budget(&v.rig).ok().flatten()).and_then(|r| r.budget.max_working);
+    let team_full = team.zip(view.as_ref()).is_some_and(|(max, v)| busy(store, &v.rig, seat).is_ok_and(|n| n >= max));
+    let host = view.as_ref().and_then(|v| host_cap(store, v).ok().flatten());
+    let reason = match (team, host) {
+        (Some(n), _) if team_full => format!("waiting for a slot: at most {n} agents of this run work at once"),
+        (_, Some((_, n))) => format!("waiting for a slot: at most {n} agents work at once on this computer"),
+        (Some(n), None) => format!("waiting for a slot: at most {n} agents of this run work at once"),
+        (None, None) => "waiting for a slot".to_string(),
     };
     let body = model::EventBody::MessageHeld { message_id: message_id.clone(), reason };
     match store.append_local(crate::hosts::controld(), model::Subject::Seat(seat.clone()), model::Provenance::Operator, body) {
@@ -144,17 +182,17 @@ pub async fn deliver(st: &crate::state::AppState, rig: &str) -> rusqlite::Result
         let store = st.store.lock().unwrap();
         (waiting(&store, rig)?, store.run_budget(rig)?)
     };
-    let Some(r) = record else { return Ok(()) };
     for (seat, message_id, cmd) in list {
         let queued = still_queued(&st.store.lock().unwrap(), &message_id)?;
-        if !queued || !matches!(r.state, BudgetState::Normal) {
+        if !queued || record.as_ref().is_some_and(|r| !matches!(r.state, BudgetState::Normal)) {
             unqueue(&st.store.lock().unwrap(), &message_id)?;
             if queued {
                 not_sent(st, seat, message_id, "Not sent: the run's budget stopped new work".into())?;
             }
             continue;
         }
-        let free = r.budget.max_working.is_none_or(|max| busy(&st.store.lock().unwrap(), rig, &seat).is_ok_and(|n| n < max));
+        let team_free = record.as_ref().and_then(|r| r.budget.max_working).is_none_or(|max| busy(&st.store.lock().unwrap(), rig, &seat).is_ok_and(|n| n < max));
+        let free = team_free && host_free(&st.store.lock().unwrap(), &seat)?;
         if !free {
             return Ok(());
         }

@@ -77,6 +77,7 @@ fn routes() -> Router<AppState> {
         .route("/api/{*rest}", any(api_not_found))
         .route("/host", get(hosts::host_ws))
         .route("/api/hosts", get(list_hosts))
+        .route("/api/hosts/{id}/limit", axum::routing::put(set_host_limit))
         .method_not_allowed_fallback(crate::extract::method_not_allowed)
 }
 
@@ -242,5 +243,21 @@ async fn stop_seat(State(st): State<AppState>, Path(id): Path<String>, Json(req)
 
 /// Connected computers (agent runners) and what each can run.
 async fn list_hosts(State(st): State<AppState>) -> axum::Json<serde_json::Value> {
-    axum::Json(serde_json::Value::Array(st.hosts.connected().into_iter().map(|id| serde_json::json!({"drivers": st.hosts.drivers(&id), "policy": st.hosts.policy(&id), "id": id})).collect()))
+    let limit = |id: &str| st.store.lock().unwrap().host_limit(id).ok().flatten();
+    axum::Json(serde_json::Value::Array(st.hosts.connected().into_iter().map(|id| serde_json::json!({"drivers": st.hosts.drivers(&id), "policy": st.hosts.policy(&id), "max_working": limit(&id), "id": id})).collect()))
+}
+
+#[derive(serde::Deserialize)]
+struct HostLimit {
+    max_working: Option<u32>,
+}
+
+/// `PUT /api/hosts/{id}/limit`: most agents working at once on that computer, across its teams (none
+/// = no cap). Held work waits for a slot, as with a team's own cap.
+async fn set_host_limit(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<HostLimit>) -> Result<axum::Json<serde_json::Value>, ApiError> {
+    if req.max_working == Some(0) || req.max_working.is_some_and(|n| n > 100) {
+        return Err(ApiError::bad_request("bad_limit", "The cap is 1 to 100 agents, or none."));
+    }
+    st.store.lock().unwrap().set_host_limit(&id, req.max_working)?;
+    Ok(axum::Json(serde_json::json!({ "id": id, "max_working": req.max_working })))
 }

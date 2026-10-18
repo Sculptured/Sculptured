@@ -81,6 +81,20 @@ impl Store {
     }
 
     /// The latest run's budget record of `rig`, if that run had a budget.
+    /// The cap a computer's owner set: most agents working at once on it, across its teams.
+    pub fn host_limit(&self, host: &str) -> rusqlite::Result<Option<u32>> {
+        self.connection().query_row("SELECT max_working FROM host_limits WHERE host = ?1", [host], |r| r.get::<_, i64>(0)).optional().map(|n| n.map(|n| n.max(1) as u32))
+    }
+
+    /// Sets or clears (`None`) a computer's cap.
+    pub fn set_host_limit(&self, host: &str, max_working: Option<u32>) -> rusqlite::Result<()> {
+        match max_working {
+            Some(n) => self.connection().execute("INSERT INTO host_limits (host, max_working) VALUES (?1, ?2) ON CONFLICT(host) DO UPDATE SET max_working = excluded.max_working", rusqlite::params![host, n as i64])?,
+            None => self.connection().execute("DELETE FROM host_limits WHERE host = ?1", [host])?,
+        };
+        Ok(())
+    }
+
     pub fn run_budget(&self, rig: &str) -> rusqlite::Result<Option<Record>> {
         let json: Option<String> = self
             .connection()

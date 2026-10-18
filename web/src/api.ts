@@ -129,7 +129,9 @@ export const api = {
   /** Hosted: `host` picks the computer (else the only connected one). */
   clis: (host?: string) => get<import('./generated/CliStatus').CliStatus[]>(host ? `/api/clis?host=${encodeURIComponent(host)}` : '/api/clis'),
   /** Connected computers (agent runners) with their drivers and, for connected computers, what they allow. */
-  hosts: () => get<{ id: string; drivers: string[]; policy: import('./generated/HostPolicyInfo').HostPolicyInfo | null }[]>('/api/hosts'),
+  hosts: () => get<{ id: string; drivers: string[]; policy: import('./generated/HostPolicyInfo').HostPolicyInfo | null; max_working?: number | null }[]>('/api/hosts'),
+  /** Most agents working at once on a computer, across its teams (null = no cap). */
+  setHostLimit: (id: string, max_working: number | null) => request<{ id: string; max_working: number | null }>('PUT', `/api/hosts/${encodeURIComponent(id)}/limit`, { max_working }),
   planUsage: () => get<import('./generated/PlanUsageView').PlanUsageView[]>('/api/plan-usage'),
   teamUsage: (id: string) => get<import('./generated/TeamUsage').TeamUsage>(`${teamUrl(id)}/usage`),
   /** Where a run's tokens went (its latest run, or the one starting at `start`). */

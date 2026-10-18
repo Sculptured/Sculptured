@@ -13,10 +13,11 @@ export type Computer = { id: string; name: string; platform: string; created_at:
 export function ComputersPage() {
   const [list, setList] = useState<Computer[] | null>(null);
   const [policies, setPolicies] = useState<Record<string, HostPolicyInfo | null>>({});
+  const [caps, setCaps] = useState<Record<string, number | null>>({});
   const [error, setError] = useState('');
   const load = useCallback(() => {
     gw<Computer[]>('GET', '/devices').then(setList, (e) => setError(e.message));
-    api.hosts().then((hs) => setPolicies(Object.fromEntries(hs.map((h) => [h.id, h.policy]))), () => {});
+    api.hosts().then((hs) => { setPolicies(Object.fromEntries(hs.map((h) => [h.id, h.policy]))); setCaps(Object.fromEntries(hs.map((h) => [h.id, h.max_working ?? null]))); }, () => {});
   }, []);
   usePolling(load, 10000);
   return (
@@ -26,14 +27,7 @@ export function ComputersPage() {
       <p className="muted">Your agents run on your own computers, with your own Claude Code and Codex sign-ins. Each computer decides which folders agents may use.</p>
       {error && <p className="tone-red" role="alert">{error}</p>}
       <ul className="computer-list">
-        {(list ?? []).map((c) => (
-          <li key={c.id}>
-            <strong>{c.name}</strong> <span className="muted">{c.platform}</span>{' '}
-            <span className={c.connected ? 'tone-green' : 'muted'}>{c.connected ? 'Connected' : c.last_seen ? `Last seen ${new Date(c.last_seen).toLocaleString()}` : 'Never connected'}</span>
-            <button className="btn" aria-label={`Disconnect ${c.name}`} onClick={() => void gw('POST', `/devices/${c.id}/revoke`).then(load, (e) => setError(e.message))}>Disconnect</button>
-            {c.connected && policies[c.id] && <ComputerDetails id={c.id} name={c.name} policy={policies[c.id]!} />}
-          </li>
-        ))}
+        {(list ?? []).map((c) => <ComputerRow key={c.id} c={c} policy={policies[c.id] ?? null} cap={caps[c.id] ?? null} onChange={load} onError={setError} />)}
       </ul>
       {list && list.length === 0 && <p>No computers yet.</p>}
       <section aria-label="Connect a computer">
@@ -46,6 +40,41 @@ export function ComputersPage() {
 }
 
 const CAPS: Record<string, string> = { git: 'Git', copies: "Agents' own copies", checks: 'Checks', cli_sign_in: 'Sign-in from the browser', plan_usage: 'Plan usage', generate: 'Generating teams with AI', usage_reports: 'Where tokens went' };
+
+/** One computer: its state, Disconnect, and when connected what it allows and its cap. */
+function ComputerRow({ c, policy, cap, onChange, onError }: { c: Computer; policy: HostPolicyInfo | null; cap: number | null; onChange: () => void; onError: (m: string) => void }) {
+  return (
+    <li>
+      <strong>{c.name}</strong> <span className="muted">{c.platform}</span>{' '}
+      <span className={c.connected ? 'tone-green' : 'muted'}>{c.connected ? 'Connected' : c.last_seen ? `Last seen ${new Date(c.last_seen).toLocaleString()}` : 'Never connected'}</span>
+      <button className="btn" aria-label={`Disconnect ${c.name}`} onClick={() => void gw('POST', `/devices/${c.id}/revoke`).then(onChange, (e) => onError(e.message))}>Disconnect</button>
+      {c.connected && policy && <ComputerDetails id={c.id} name={c.name} policy={policy} />}
+      {c.connected && policy && <WorkingCap id={c.id} name={c.name} cap={cap} />}
+    </li>
+  );
+}
+
+/** Most agents working at once on this computer, across all its teams: more work waits for a slot, so
+ * several teams together stay within one plan. Empty = no cap. */
+function WorkingCap({ id, name, cap }: { id: string; name: string; cap: number | null }) {
+  const [value, setValue] = useState(cap === null ? '' : String(cap));
+  const [note, setNote] = useState('');
+  useEffect(() => { setValue(cap === null ? '' : String(cap)); }, [cap]);
+  const save = async () => {
+    const n = value.trim() === '' ? null : Number(value);
+    if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 100)) { setNote('Use a whole number from 1 to 100, or leave it empty for no cap.'); return; }
+    try { await api.setHostLimit(id, n); setNote(n === null ? 'Saved: no cap.' : `Saved: at most ${n} at once.`); } catch (e) { setNote((e as Error).message); }
+  };
+  return (
+    <div className="computer-cap">
+      <label className="fld"><span>Most agents working at once</span>
+        <input type="number" min={1} max={100} className="fld-input" aria-label={`Most agents working at once on ${name}`} value={value} placeholder="No cap" onChange={(e) => setValue(e.target.value)} /></label>
+      <button className="btn" aria-label={`Save the cap for ${name}`} onClick={() => void save()}>Save</button>
+      <p className="muted">Across all your teams on this computer. More work waits for a free slot, so several teams together stay within your plan.</p>
+      {note && <p role="status">{note}</p>}
+    </div>
+  );
+}
 
 /** What a connected computer allows, and its Claude Code / Codex sign-in, signed in from here. */
 function ComputerDetails({ id, name, policy }: { id: string; name: string; policy: HostPolicyInfo }) {

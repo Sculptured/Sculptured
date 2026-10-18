@@ -363,3 +363,33 @@ async fn a_conversation_that_starts_above_the_ceiling_but_does_not_grow_is_left_
     tokio::time::sleep(Duration::from_secs(2)).await;
     assert!(!events(&s.st, &a).iter().any(|e| matches!(e.body, model::EventBody::ContextCeilingReached { .. })), "no ceiling for a conversation that did not grow");
 }
+
+/// A computer's own cap (an idea from Gas Town's scheduler): at most N agents work at once on it, across
+/// every team, so several teams together stay within one plan.
+#[tokio::test]
+async fn a_computers_cap_holds_work_across_teams_until_a_slot_frees() {
+    let s = serve().await;
+    let _runner = claude_runner(&s).await;
+    let (status, body) = call(&s.router, "PUT", "/api/hosts/local/limit", json!({ "max_working": 1 })).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, hosts) = call(&s.router, "GET", "/api/hosts", json!(null)).await;
+    assert_eq!(hosts[0]["max_working"], 1, "{hosts}");
+    let dir = tempfile::tempdir_in(s.home.path()).unwrap();
+    let job = || "spend:10:100:30".to_string();
+    let one = team(&s, dir.path(), &[("a", job())], json!({})).await;
+    let two = team(&s, dir.path(), &[("b", job())], json!({})).await;
+    start_team(&s, &one).await;
+    start_team(&s, &two).await;
+    let seats = [seat(&one, "a"), seat(&two, "b")];
+    wait_long("both teams' agents ran", || seats.iter().all(|x| !turns(&s, x).is_empty())).await;
+    let mut all: Vec<(i64, i64)> = seats.iter().flat_map(|x| turns(&s, x)).collect();
+    all.sort();
+    assert!(all.windows(2).all(|w| w[0].1 < w[1].0), "one agent of the two teams worked at a time: {all:?}");
+    let held: Vec<String> = seats.iter().flat_map(|x| events(&s.st, x)).filter_map(|e| match e.body { model::EventBody::MessageHeld { reason, .. } => Some(reason), _ => None }).collect();
+    assert!(held.iter().any(|r| r.contains("on this computer")), "{held:?}");
+
+    let (status, _) = call(&s.router, "PUT", "/api/hosts/local/limit", json!({ "max_working": 0 })).await;
+    assert!(status.is_client_error(), "a cap of 0 would hold everything");
+    let (status, _) = call(&s.router, "PUT", "/api/hosts/local/limit", json!({ "max_working": null })).await;
+    assert_eq!(status, StatusCode::OK, "no cap");
+}

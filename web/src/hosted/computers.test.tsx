@@ -64,3 +64,21 @@ it('shows what each connected computer allows and its CLIs, with sign-in on that
   expect(await screen.findByRole('link', { name: /open the sign-in page/ })).toHaveAttribute('href', 'https://auth.example/x');
   expect(calls.some((c) => c.startsWith('POST') && c.includes('/api/clis/codex/login?host=d1'))).toBe(true);
 });
+
+it('sets how many agents work at once on a computer, across its teams', async () => {
+  const puts: unknown[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+    const u = String(url);
+    if (u.endsWith('/gw/api/devices')) return reply(200, [{ id: 'd1', name: 'Laptop', platform: 'linux', created_at: '2026-10-11T00:00:00Z', last_seen: null, connected: true }]);
+    if (u.endsWith('/api/hosts')) return reply(200, [{ id: 'd1', drivers: ['stub'], max_working: null, policy: { allowed_folders: ['/w'], access: 'full', capabilities: [], platform: 'linux' } }]);
+    if (u.endsWith('/api/hosts/d1/limit') && init?.method === 'PUT') { puts.push(JSON.parse(String(init.body))); return reply(200, { id: 'd1', max_working: 3 }); }
+    if (u.includes('/api/clis?host=d1')) return reply(200, []);
+    return reply(404, {});
+  });
+  render(<MemoryRouter><ComputersPage /></MemoryRouter>);
+  const box = await screen.findByRole('spinbutton', { name: 'Most agents working at once on Laptop' });
+  await userEvent.type(box, '3');
+  await userEvent.click(screen.getByRole('button', { name: 'Save the cap for Laptop' }));
+  await waitFor(() => expect(puts).toEqual([{ max_working: 3 }]));
+  expect(await screen.findByText(/Saved/)).toBeInTheDocument();
+});
