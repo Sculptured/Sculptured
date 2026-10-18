@@ -63,9 +63,9 @@ describe('vocabulary', () => {
     act(() =>
       FakeEventSource.instances[0].emit('snapshot', snapshot({ rig, seats: [seatView('a', { lifecycle: 'stopped' }), seatView('b')] })),
     );
-    await screen.findByText('hello');
-    await userEvent.click(screen.getByRole('button', { name: 'Details & controls' }));
-    expect(screen.getByRole('button', { name: 'Hard stop…' })).toHaveAccessibleDescription('Status: stopped; there is no process to stop.');
+    // Controls live on the agent's Activity tab.
+    await userEvent.click(await screen.findByRole('link', { name: 'Activity' }));
+    expect(await screen.findByRole('button', { name: 'Hard stop…' })).toHaveAccessibleDescription('Status: stopped; there is no process to stop.');
     expect(openRigWords(document.body)).toEqual([]);
   });
 
@@ -91,11 +91,9 @@ describe('vocabulary', () => {
   });
 
   it('the open stop-agent confirm uses no OpenRig words', async () => {
-    renderAt('/rig/r/agent/dev.a%40r');
+    renderAt('/p/r/agents/dev.a/activity');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
-    await screen.findByText('hello');
-    await userEvent.click(screen.getByRole('button', { name: 'Details & controls' }));
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Hard stop…' }));
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Hard stop…' }));
     expect(screen.getByRole('group', { name: 'Confirm stop agent' })).toBeInTheDocument();
     expect(openRigWords(document.body)).toEqual([]);
   });
@@ -126,10 +124,11 @@ describe('vocabulary', () => {
     expect(openRigWords(document.body)).toEqual([]);
   });
 
-  it('the list view with nothing selected adds no OpenRig words', async () => {
+  it('the Agents list with nothing selected adds no OpenRig words', async () => {
     renderAt('/rig/r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot({ seats: [seatView('a')] })));
-    await userEvent.setup().click(screen.getByRole('button', { name: 'List' }));
+    await userEvent.setup().click(screen.getByRole('link', { name: 'Agents' }));
+    expect(await screen.findByRole('table')).toBeInTheDocument();
     expect(screen.queryByTestId('graph-world')).toBeNull();
     expect(openRigWords(document.body)).toEqual([]);
   });

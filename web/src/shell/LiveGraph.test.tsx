@@ -3,7 +3,6 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LiveGraph, chipRow, edgeGeometry, forgetViewports, routeEdges, type GraphHandle } from './LiveGraph';
-import { AgentList } from './AgentList';
 import { teamAgents, type AgentRow } from './model';
 import { compiledRig, seatView, teamDraft, draftAgent } from '../test-fixtures';
 import type { Layout } from '../layout';
@@ -240,25 +239,6 @@ describe('graph stability', () => {
   });
 });
 
-describe('list fallback', () => {
-  it('shows the same agents and states, and connections as sentences', () => {
-    render(<AgentList compiled={compiledRig()} agents={rows(seats)} onOpen={() => {}} now={0} />);
-    const group = screen.getByRole('region', { name: 'group Dev' });
-    expect(within(group).getByRole('button', { name: 'a — idle' })).toHaveTextContent('○idle');
-    expect(within(group).getByRole('button', { name: 'b — stopped' })).toHaveTextContent('■stopped');
-    const edges = screen.getByRole('region', { name: 'Connections' });
-    expect(edges).toHaveTextContent('a hands work to b');
-    expect(edges).toHaveTextContent('b watches a (not enforced)');
-  });
-
-  it('shows the full reason, not clamped', () => {
-    const s = { 'dev.a@r': seatView('a', { lifecycle: 'failed', lifecycle_reason: 'boom' }), 'dev.b@r': seatView('b') };
-    render(<AgentList compiled={compiledRig()} agents={rows(s)} onOpen={() => {}} now={0} />);
-    expect(screen.getByText('boom')).not.toHaveClass('clamp');
-    expect(screen.getByText('boom')).toHaveAttribute('data-raw-evidence');
-  });
-});
-
 describe('graph with a persisted layout', () => {
   const box = (x: number, y: number) => ({ x, y, w: 200, h: 200 });
 
@@ -339,5 +319,18 @@ describe('many spawned agents', () => {
     const limit = 'Team limit you set: 20 agents, children included';
     render(graph({ agents: rows(seats, { 'dev.a@r': { chips: [], lastText: null, lastTurnEndSeq: null, limitNote: limit } }) }));
     expect(screen.getByText(limit)).toBeVisible();
+  });
+});
+
+describe('Run card: says only what there is', () => {
+  it('prints no tool line when the turn used no tool, and the chips when it did', async () => {
+    const { AgentBox } = await import('./LiveGraph');
+    const a = teamAgents('r', compiledRig(), { 'dev.a@r': seatView('a') })[0];
+    const { container, rerender } = render(<AgentBox a={a} selected={false} onOpen={() => {}} onAnswer={() => {}} now={0} />);
+    expect(container).not.toHaveTextContent('no tools this turn');
+    expect(container.querySelector('.box-chips')).toBeNull();
+    const busy = { ...a, seat: { ...a.seat!, lifecycle: 'running' as const }, activity: { chips: [{ name: 'Bash', status: 'ok' as const, count: 1, ms: 10, startedAt: 0 }], toolCount: 1, lastText: null, lastTurnEndSeq: null } } as unknown as AgentRow;
+    rerender(<AgentBox a={busy} selected={false} onOpen={() => {}} onAnswer={() => {}} now={0} />);
+    expect(container.querySelector('.box-chips')).not.toBeNull();
   });
 });

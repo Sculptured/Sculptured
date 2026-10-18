@@ -93,4 +93,29 @@ describe('connection labels sit beside their curve, never on it', () => {
     expect(narrow.w).toBeLessThanOrEqual(60);
     expect(narrow.h).toBeGreaterThan(22);
   });
+
+  it('a label whose words cannot fit a narrow gap stays on one line', () => {
+    const s = labelSize('1 message observed', 60);
+    expect(s.wrap).toBe(false);
+    expect(s.h).toBe(22);
+  });
+
+  it('"1 message observed" between two cards 60px apart sits clear of both cards and every line', () => {
+    const boxes = [card(40, 40), card(300, 40)];
+    const items = [{ key: 'e0', geom: edgeGeometry(boxes[0], boxes[1]), text: '1 message observed' }];
+    const s = placeLabels(items, boxes).get('e0')!;
+    for (const b of boxes) expect(overlapsBox(s, b)).toBe(false);
+    for (const p of bezierPoints(items[0].geom.pts, 96)) expect(inside(p, s, 2)).toBe(false);
+    // Above or below the pair, centred on the gap, not off in a corner.
+    expect(rect(s).y1 <= 40 || rect(s).y0 >= 240).toBe(true);
+    expect(s.x).toBeGreaterThan(240);
+    expect(s.x).toBeLessThan(300);
+  });
+
+  it('observed-message labels in a fan-out with narrow gaps never sit on a card', () => {
+    const boxes = [card(0, 150), card(260, 0), card(260, 300)];
+    const items = [[0, 1], [0, 2]].map(([a, b], i) => ({ key: `e${i}`, geom: edgeGeometry(boxes[a], boxes[b]), text: `${i + 2} messages observed` }));
+    const spots = placeLabels(items, boxes);
+    for (const it of items) for (const b of boxes) expect(overlapsBox(spots.get(it.key)!, b), it.key).toBe(false);
+  });
 });

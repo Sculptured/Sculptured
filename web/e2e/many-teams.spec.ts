@@ -30,14 +30,15 @@ test('seven started teams share one live connection, and an agent still opens', 
   const agent = page.getByRole('button', { name: /^Claude — / });
   await expect(agent).toBeVisible();
   await agent.click();
-  await expect(page).toHaveURL(new RegExp(`/rig/${last}/agent/`));
+  await expect(page).toHaveURL(new RegExp(`/p/${last}/agents/`));
   await page.getByRole('textbox', { name: 'Message' }).fill('still answering');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByRole('list', { name: 'Conversation' }).getByText('stub received: still answering')).toBeVisible();
 
   // Every team's agents are listed, live, over the one connection.
   await page.goto('/');
-  for (const id of ids) await expect(page.locator(`a[href="/rig/${id}"]`).first()).toBeAttached();
+  // The Projects home lists every team as a row that opens its board.
+  for (const id of ids) await expect(page.locator(`a[href="/p/${id}/board"]`).first()).toBeAttached();
   expect(streams.length).toBeGreaterThan(0);
   expect(streams.every((u) => u.endsWith('/api/stream?all=true')), streams.join('\n')).toBe(true);
 

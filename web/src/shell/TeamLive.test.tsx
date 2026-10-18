@@ -36,16 +36,26 @@ describe('RigView', () => {
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
     screen.getByRole('button', { name: 'a — idle' }).focus();
     await userEvent.setup().keyboard('{Enter}');
-    expect(screen.getByTestId('where')).toHaveTextContent('/rig/r/agent/dev.a@r');
+    expect(screen.getByTestId('where')).toHaveTextContent('/p/r/agents/dev.a');
     expect(screen.getByRole('region', { name: 'Agent a' })).toBeInTheDocument();
   });
 
-  it('List toggle shows the list view', async () => {
+  it('the Agents tab is the list fallback: every agent as a table row, and its arrows as sentences', async () => {
     renderAt('/rig/r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
-    await userEvent.setup().click(screen.getByRole('button', { name: 'List' }));
+    await userEvent.setup().click(screen.getByRole('link', { name: 'Agents' }));
     expect(screen.queryByTestId('graph-world')).toBeNull();
-    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+    const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1);
+    expect(rows.map((r) => r.querySelector('a')?.textContent)).toEqual(['a', 'b']);
+    const links = screen.getByRole('region', { name: 'Connections' });
+    expect(links).toHaveTextContent('a hands work to b');
+    expect(links).toHaveTextContent('b watches a (not enforced)');
+  });
+
+  it("shows an agent's full reason in the Agents list, as raw evidence", async () => {
+    renderAt('/p/r/agents');
+    act(() => FakeEventSource.instances[0].emit('snapshot', snapshot({ seats: [seatView('a', { lifecycle: 'failed', lifecycle_reason: 'boom' }), seatView('b')] })));
+    expect(await screen.findByText('boom')).toHaveAttribute('data-raw-evidence');
   });
 
   it('shows a pluralised gap line as a status', () => {
@@ -90,8 +100,9 @@ describe('RigView spec notes', () => {
   const notEnforced = { path: 'culture_file', severity: 'not-enforced' as const, message: 'declared · not enforced in this version' };
   const error = { path: 'x', severity: 'error' as const, message: 'never shown here' };
 
+  /** Spec notes are part of Results, under Advanced. */
   function openWith(diagnostics: (typeof warning | typeof notEnforced | typeof error)[]) {
-    renderAt('/rig/r');
+    renderAt('/p/r/results');
     const rig = { ...snapshot().rig, diagnostics };
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot({ rig })));
   }
@@ -247,29 +258,29 @@ describe('RigView stop rig', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('opens agents under /agent/ and redirects old seat links', async () => {
+  it('redirects old agent links to the agent page', async () => {
     renderAt('/rig/r/seat/dev.a%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
-    expect(screen.getByTestId('where')).toHaveTextContent('/rig/r/agent/dev.a@r');
+    expect(screen.getByTestId('where')).toHaveTextContent('/p/r/agents/dev.a');
     expect(screen.getByRole('region', { name: 'Agent a' })).toBeInTheDocument();
   });
 
   it('keeps the tab when redirecting an old seat link', async () => {
     renderAt('/rig/r/seat/dev.a%40r/events');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
-    expect(screen.getByTestId('where')).toHaveTextContent('/rig/r/agent/dev.a@r/events');
-    expect(screen.getByRole('link', { name: 'Events' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('where')).toHaveTextContent('/p/r/agents/dev.a/activity');
+    expect(screen.getByRole('button', { name: 'Raw events' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('sends a bare old seat link to the team instead of looping', async () => {
     renderAt('/rig/r/seat');
-    expect(screen.getByTestId('where').textContent).toBe('/rig/r');
+    expect(screen.getByTestId('where').textContent).toBe('/p/r/board');
     expect(screen.getByRole('status')).toHaveTextContent('Connecting to r');
   });
 
-  it('opens a team\'s Live board from /team/:id/live', () => {
+  it('opens a team\'s board from /team/:id/live', () => {
     renderAt('/team/r/live');
-    expect(screen.getByTestId('where').textContent).toBe('/rig/r');
+    expect(screen.getByTestId('where').textContent).toBe('/p/r/board');
     expect(screen.getByRole('status')).toHaveTextContent('Connecting to r');
   });
 

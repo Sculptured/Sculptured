@@ -5,7 +5,9 @@ import type { Box } from '../layout';
  * a card, on a port or on another label: it sits beside its curve, as close to the middle as
  * it can. In a gap too narrow for the label to sit beside the curve, it sits above or below
  * the part of the curve that crosses the gap. If cards are dropped so close that no spot is clear,
- * it takes the least crowded one (a card counts worst). Pure geometry, tested without a browser.
+ * it takes the least crowded one (a card counts worst). A label whose words cannot fit the gap
+ * stays on one line and sits just above or below the cards it would otherwise cover. Pure
+ * geometry, tested without a browser.
  */
 
 export type Point = { x: number; y: number };
@@ -50,6 +52,10 @@ export function labelSize(text: string, room: number): { w: number; h: number; w
   const one = Math.ceil(text.length * CHAR_W + 20);
   if (room >= LABEL_ONE_LINE) return { w: one, h: LINE_H, wrap: false };
   const maxWidth = Math.max(60, room - 2);
+  // A word wider than the gap would spill onto the cards: keep the label on one line and let
+  // placeLabels set it above or below the cards instead of squeezing it between them.
+  const longest = Math.max(...text.split(/\s+/).map((w) => w.length));
+  if (longest * CHAR_W + 14 > maxWidth) return { w: one, h: LINE_H, wrap: false };
   // Wrapped labels have 6px side padding and a 1px border.
   const lines = Math.max(2, Math.ceil((text.length * CHAR_W) / (maxWidth - 14)));
   return { w: maxWidth, h: lines * WRAP_LINE_H + 6, wrap: true, maxWidth };
@@ -107,6 +113,21 @@ export function placeLabels(items: LabelItem[], boxes: Box[]): Map<string, Label
       const d = (Math.abs(n.x) * w + Math.abs(n.y) * h) / 2 + CLEAR + 2;
       for (const extra of [16, 36, 64]) {
         candidates.push({ x: p.x + n.x * (d + extra), y: p.y + n.y * (d + extra) }, { x: p.x - n.x * (d + extra), y: p.y - n.y * (d + extra) });
+      }
+    }
+    // Clear of the cards: just above the highest, or just below the lowest, card under the label.
+    {
+      const span = (y: number): R => rectOf({ x: cx, y }, w, h);
+      const under = cards.filter((c) => c.x0 < cx + w / 2 && cx - w / 2 < c.x1);
+      if (under.length > 0) {
+        const top = Math.min(...under.map((c) => c.y0));
+        const bottom = Math.max(...under.map((c) => c.y1));
+        for (const extra of [0, 12]) {
+          const above = top - h / 2 - CLEAR - extra;
+          const below = bottom + h / 2 + CLEAR + extra;
+          if (cards.every((c) => !hits(span(above), c))) candidates.push({ x: cx, y: above });
+          if (cards.every((c) => !hits(span(below), c))) candidates.push({ x: cx, y: below });
+        }
       }
     }
     // Last resort (cards dropped against each other): a ring of spots around the middle.

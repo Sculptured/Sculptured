@@ -54,14 +54,29 @@ describe('Agent controls', () => {
 
   it('only allows the interrupt checkbox for instruct with a turn in progress', async () => {
     render(<SeatControls name="a" seat={seatView('a', { current_turn: 't1' })} />);
-    const box = screen.getByRole('checkbox', { name: 'Interrupt current turn' });
-    expect(box).toBeDisabled();
-    // Intent sits behind the ⋯ menu and defaults to inform.
+    // No sentence row under the box: how it is delivered sits behind ⋯ and defaults to inform.
+    expect(screen.queryByText('delivered when its turn ends')).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Interrupt current turn' })).toBeNull();
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Message options (intent: inform)' }));
+    const box = screen.getByRole('checkbox', { name: 'Interrupt current turn' });
+    expect(box).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /inform\s*— delivered when its turn ends/ })).toBeChecked();
     await user.click(screen.getByRole('radio', { name: /instruct/ }));
     expect(box).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Message options (intent: instruct)' })).toBeInTheDocument();
+    // A choice that is not the default is named beside Send.
+    expect(screen.getByText('instruct', { selector: '.intent-chip' })).toBeInTheDocument();
+    await user.click(box);
+    expect(screen.getByText('interrupts now', { selector: '.intent-chip' })).toBeInTheDocument();
+  });
+
+  it('has no "You ›" prefix and no hint line; an empty box only tells screen readers why Send is off', () => {
+    render(<SeatControls name="a" seat={seatView('a')} />);
+    const form = screen.getByRole('form', { name: 'Send a message' });
+    expect(form).not.toHaveTextContent('You ›');
+    expect(screen.getByRole('button', { name: 'Send' })).toHaveAccessibleDescription('Type a message to send.');
+    expect(screen.getByText('Type a message to send.')).toHaveClass('sr-only');
   });
 
   it('requires an inline confirm with the consequence before stopping', async () => {
@@ -148,6 +163,7 @@ describe('Agent controls', () => {
 
   it('explains why the interrupt checkbox is disabled', async () => {
     const { rerender } = render(<SeatControls name="a" seat={seatView('a', { current_turn: 't1' })} />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Message options (intent: inform)' }));
     const box = screen.getByRole('checkbox', { name: 'Interrupt current turn' });
     expect(box).toHaveAccessibleDescription('Choose instruct to interrupt');
     expect(screen.getByText('Choose instruct to interrupt')).toBeInTheDocument();

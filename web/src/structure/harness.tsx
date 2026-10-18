@@ -8,6 +8,7 @@ import type { TeamDraft } from '../generated/TeamDraft';
 import type { TeamRecord } from '../generated/TeamRecord';
 import { teamRecord, templateInfos } from '../test-fixtures';
 import { openFake } from '../test-fixtures';
+import { forgetBoardSelections } from './StructureBoard';
 
 /** The api functions the Structure tests replace. Use with vi.mock('../api', mockApi). */
 export const mockApi = async (orig: () => Promise<unknown>) => {
@@ -66,6 +67,7 @@ export function fakeTeam(rec: TeamRecord = teamRecord()) {
 }
 
 export function resetApi() {
+  forgetBoardSelections();
   for (const f of Object.values(api)) if (vi.isMockFunction(f)) f.mockReset();
   vi.mocked(api.listRigs).mockResolvedValue([]);
   vi.mocked(api.listTeams).mockResolvedValue([]);

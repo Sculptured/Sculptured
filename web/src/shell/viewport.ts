@@ -11,15 +11,35 @@ const viewports = new Map<string, Viewport>();
 /** Teams whose viewport the user panned or zoomed: auto-fit leaves those alone. */
 const touched = new Set<string>();
 
+/** Boards asked to keep their view through the next resize (a panel docking beside them), and when. */
+const held = new Map<string, number>();
+const HOLD_MS = 1000;
+
 export function forgetViewports() {
   viewports.clear();
   touched.clear();
+  held.clear();
+}
+
+/**
+ * The board's area is about to change size because of a panel beside it (Run finished docking or
+ * folding), not because the window did: keep the view as it is, so no card moves. If the drawing
+ * would no longer fit and the user has not panned or zoomed, it fits again as usual.
+ */
+export function holdViewport(key: string) {
+  held.set(key, Date.now());
+}
+
+/** Every part of the drawing is inside a `w` × `h` area at this view. */
+function shows(v: Viewport, b: Bounds, w: number, h: number): boolean {
+  return b.x0 * v.k + v.x >= 0 && b.y0 * v.k + v.y >= 0 && b.x1 * v.k + v.x <= w && b.y1 * v.k + v.y <= h;
 }
 
 export const MIN_K = 0.02;
 export const MAX_K = 2;
-/** Auto-fit scales up to fill the area, but not past this. */
-export const MAX_FIT_K = 1.6;
+/** Auto-fit scales up to fill the area, but not past this: card text stays near the UI's own
+ * reading size (about 15px at the default 13px) instead of ballooning on a large screen. */
+export const MAX_FIT_K = 1.15;
 const MARGIN = 48;
 /** Breathing room around a fitted drawing. */
 const FIT_MARGIN = 28;
@@ -94,7 +114,12 @@ export function usePanZoom(key: string, bounds: Bounds | null, preserveOnGrowth 
     const node = el.current;
     if (!node || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => {
-      if (!touched.has(key)) fitNow();
+      if (touched.has(key)) return;
+      const since = held.get(key);
+      held.delete(key);
+      const b = boundsRef.current;
+      if (since !== undefined && Date.now() - since < HOLD_MS && b && shows(vpRef.current, b, node.clientWidth, node.clientHeight)) return;
+      fitNow();
     });
     ro.observe(node);
     return () => ro.disconnect();

@@ -24,12 +24,13 @@ export type StateKey =
   | 'failed'
   | 'planned';
 
-export type Tone = 'red' | 'vendor' | 'green' | 'plain' | 'violet' | 'muted';
+/** `reported`: the agent says it finished (grey). Green is reserved for a check that passed (verified), never a state. */
+export type Tone = 'red' | 'vendor' | 'reported' | 'plain' | 'violet' | 'muted';
 /** `tip`: what the state means, for tooltips, where the short word could mislead. */
 export type AgentState = { key: StateKey; glyph: string; word: string; tone: Tone; tip?: string };
 
-/** "done" only says a turn ended since you last looked, never that the work is right. */
-export const DONE_TIP = 'turn finished';
+/** "done (reported)" only says a turn ended since you last looked, never that the work is right. */
+export const DONE_TIP = 'turn finished; not verified';
 
 /** "stuck" says the agent's handoffs cannot go on by themselves; the reason says why. */
 export const STUCK_TIP = 'its handoffs cannot go on by themselves';
@@ -45,7 +46,7 @@ const S: Record<StateKey, AgentState> = {
   stuck: { key: 'stuck', glyph: '▲', word: 'stuck', tone: 'red', tip: STUCK_TIP },
   slot: { key: 'slot', glyph: '⧗', word: 'waiting for a slot', tone: 'muted', tip: SLOT_TIP },
   working: { key: 'working', glyph: WORKING_GLYPH, word: 'working', tone: 'vendor' },
-  done: { key: 'done', glyph: '✓', word: 'done', tone: 'green', tip: DONE_TIP },
+  done: { key: 'done', glyph: '✓', word: 'done (reported)', tone: 'reported', tip: DONE_TIP },
   idle: { key: 'idle', glyph: '○', word: 'idle', tone: 'plain' },
   unknown: { key: 'unknown', glyph: '∅', word: 'unknown', tone: 'violet' },
   launching: { key: 'launching', glyph: LIFECYCLE.launching.glyph, word: LIFECYCLE.launching.label, tone: 'muted' },

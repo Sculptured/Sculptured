@@ -12,7 +12,7 @@ vi.mock('../api', async (orig) => {
   return { ...m, api: { ...m.api, ...Object.fromEntries(names.map((n) => [n, vi.fn()])) } };
 });
 
-beforeEach(() => { resetApi(); forgetViewports(); localStorage.clear(); saveTiming.delayMs = 5; });
+beforeEach(() => { resetApi(); forgetViewports(); localStorage.clear(); localStorage.setItem('sculptured.design.more-tools.v1', 'true'); saveTiming.delayMs = 5; });
 afterEach(() => { saveTiming.delayMs = 500; });
 
 /** 16 agents; agent 0 reports to the next 14, so the board has 14 arrows (more than QUIET_AFTER). */

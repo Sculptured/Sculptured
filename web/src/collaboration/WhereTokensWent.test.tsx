@@ -36,7 +36,7 @@ it('links each agent to its page, and a subagent to its parent', async () => {
   show(7);
   const table = await screen.findByRole('table', { name: /Every agent/ });
   const links = within(table).getAllByRole('link', { name: 'Developer 8' });
-  expect(links[0]).toHaveAttribute('href', '/rig/c172/agent/fuel.dev8%40c172');
+  expect(links[0]).toHaveAttribute('href', '/p/c172/agents/fuel.dev8');
   expect(within(table).getByText('List files')).toBeInTheDocument();
   expect(within(table).getByText(/started by/)).toBeInTheDocument();
   expect(api.teamReport).toHaveBeenCalledWith('c172', 7);

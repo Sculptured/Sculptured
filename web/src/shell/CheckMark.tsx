@@ -7,7 +7,7 @@ import { Btn } from './ui';
 /** One word for the latest check, from the command's own exit status (Sculptured ran it). */
 export function checkWords(c: SeatCheck): { word: string; tone: string; glyph: string } {
   if (c.passed === null) return { word: 'checking', tone: 'tone-amber', glyph: '◌' };
-  if (c.passed) return { word: 'check passed', tone: 'tone-green', glyph: '✓' };
+  if (c.passed) return { word: 'check passed', tone: 'tone-verified', glyph: '✓' };
   return { word: c.timed_out ? 'check timed out' : 'check failed', tone: 'tone-red', glyph: '✗' };
 }
 

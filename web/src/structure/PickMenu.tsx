@@ -27,9 +27,18 @@ export function PickMenu({
     const away = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
+    // Esc closes the menu wherever focus is (an empty menu leaves it on its button), before anything else hears it.
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
     window.addEventListener('pointerdown', away);
+    window.addEventListener('keydown', esc, true);
     return () => {
       window.removeEventListener('pointerdown', away);
+      window.removeEventListener('keydown', esc, true);
       if (opener.current instanceof HTMLElement && document.contains(opener.current) && !ref.current?.contains(document.activeElement))
         opener.current.focus();
     };

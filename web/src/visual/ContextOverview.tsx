@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { EventRecord } from '../generated/EventRecord';
 import { contextEvents, contextReports, deriveContext, CONTEXT_LABEL, type ContextKind } from './context';
 import './context.css';
+import { plural } from '../format';
 
 type View = { category: ContextKind | null; snapshot: string };
 const views = new Map<string, View>();
@@ -33,14 +34,14 @@ export function ContextOverview({ seatId, events, partial, loading, onJump }: { 
         {latestReportIsOld && view.snapshot==='latest' && <span>More content was captured after this usage report.</span>}
       </div>
       <p className="ctx-caveat">{partial || !scope.boundaryKnown || data.gap ? 'Partial history. ' : ''}Captured text is not an exact map of the current model context. Compacted, inherited, hidden instructions and omitted tool content are unknown.</p>
-      <div className="ctx-total"><strong>{number(data.chars)} captured characters</strong><span>{data.entries.length} records · {data.paths.length} structured file paths · {data.urls.length} URL references</span></div>
+      <div className="ctx-total"><strong>{number(data.chars)} captured characters</strong><span>{plural(data.entries.length, 'record')} · {plural(data.paths.length, 'structured file path')} · {plural(data.urls.length, 'URL reference')}</span></div>
       {data.chars > 0 && <div className="ctx-bar" aria-hidden="true">{data.categories.filter(c=>c.chars>0).map(c=><span key={c.kind} className={`ctx-${c.kind}`} style={{flexGrow:c.chars}} />)}</div>}
       <div className="ctx-categories" role="group" aria-label="Captured content categories">{data.categories.map(c=><button key={c.kind} className={`ctx-category ctx-${c.kind}`} aria-pressed={view.category===c.kind} onClick={()=>update({category:view.category===c.kind?null:c.kind})}>
-        <strong>{CONTEXT_LABEL[c.kind]}</strong><span>{c.count} records · {number(c.chars)} chars</span><small>≈ {number(c.estimatedTokens)} tokens</small>
+        <strong>{CONTEXT_LABEL[c.kind]}</strong><span>{plural(c.count, 'record')} · {number(c.chars)} chars</span><small>≈ {number(c.estimatedTokens)} tokens</small>
       </button>)}</div>
       <p className="ctx-caveat">Category tokens are a rough character ÷ 4 estimate, not tokenizer counts or shares of the reported context window. Repeated content is counted each time captured.</p>
       {data.pending>0 && <p>{data.pending} messages without captured consumption are excluded.</p>}
-      {data.hiddenThinking>0 && <p>{data.hiddenThinking} reasoning records excluded; their retained size is unknown.</p>}
+      {data.hiddenThinking>0 && <p>{plural(data.hiddenThinking, 'reasoning record')} excluded; their retained size is unknown.</p>}
       <details className="ctx-sources"><summary>Inspect referenced paths and URLs</summary><p>URLs come from captured text; file paths come from explicit fields in tool inputs. Paths embedded in shell commands or prose are not counted. References do not prove files or pages were read.</p><ul>{data.paths.map(p=><li key={`p:${p}`}><code>{p}</code></li>)}{data.urls.map(u=><li key={`u:${u}`}><a href={u} target="_blank" rel="noopener noreferrer">{u}</a></li>)}</ul>{!data.paths.length&&!data.urls.length&&<p>No references captured.</p>}</details>
       <details className="ctx-records" open={view.category ? true : undefined}><summary>Inspect captured content</summary><h4>{view.category?CONTEXT_LABEL[view.category]:'All captured content'}</h4>{view.category&&<button className="link-btn" onClick={()=>update({category:null})}>Show all categories</button>}
         {!rows.length&&<p>No captured content in this selection.</p>}

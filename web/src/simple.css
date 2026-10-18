@@ -1,38 +1,32 @@
 /* Simplified layout (2026-10-11): fewer controls, nothing floating over content. */
 /* Design board: the Add toolbar takes its own row above the board instead of covering it. */
 .sb-tools-disclosure { position:static; margin:6px 8px 0; max-width:none; }
-.sb-tools-disclosure > .sb-toolbar { max-width:none; box-shadow:none; }
-.sb-legend { position:absolute; left:12px; bottom:10px; z-index:9; margin:0; display:flex; gap:14px; padding:4px 10px; font-size:.75rem; border-radius:6px; background:rgba(17,22,28,.85); pointer-events:none; }
+.sb-tools-disclosure > .sb-toolbar { max-width:none; box-shadow:none; border:0; background:transparent; padding:2px 0; }
+/* Bottom right: "Things to fix" owns the bottom left. */
+.sb-legend { position:absolute; right:12px; bottom:10px; z-index:9; margin:0; display:flex; gap:14px; padding:4px 10px; font-size:var(--text-xs); border-radius:var(--radius-sm); background:color-mix(in srgb, var(--panel) 85%, transparent); pointer-events:none; }
 .sb-legend span { display:inline-flex; align-items:center; gap:6px; }
 @media (max-width:640px) { .sb-legend { flex-direction:column; gap:2px; } }
 /* A label on every arrow is noise: show it on hover, keyboard focus or when the arrow is selected. */
 .sb-edge-label:not(.selected):not(:hover):not(:focus-visible) { opacity:0; }
 /* Run: one "More" menu for the less-used views. */
 .more-menu { position:relative; }
-.more-menu > summary { list-style:none; cursor:pointer; padding:4px 10px; border:1px solid var(--line); border-radius:6px; }
-.more-menu > summary::-webkit-details-marker { display:none; }
-.more-menu > summary::after { content:' ⌄'; }
-.more-menu > .more-items { position:absolute; right:0; top:calc(100% + 4px); z-index:20; display:flex; flex-direction:column; gap:4px; padding:6px; min-width:170px; background:var(--panel); border:1px solid var(--line-2); border-radius:8px; box-shadow:var(--shadow-pop); }
+/* Items read left-aligned, like the board's context menu. */
 /* Sign-in and plan usage at the bottom of the team list. */
-.side-accounts { padding:8px 10px; border-top:1px solid var(--line); font-size:.85rem; }
-.side-accounts .cli-accounts > summary { cursor:pointer; list-style:none; }
-.side-accounts .cli-accounts ul { padding-left:16px; margin:6px 0 0; }
-.side-accounts .plan-windows { padding-left:12px; }
 /* The team instructions sent with a message are evidence, not a heading. */
-details.msg-card-result > summary { font-weight:400; font-size:.8rem; color:var(--muted); cursor:pointer; }
+details.msg-card-result > summary { font-weight:var(--weight-regular); font-size:var(--text-xs); color:var(--muted); cursor:pointer; }
 
 /* Own git copies: the project-folder toggle and the Git page list. */
 .own-copies { margin-top: 12px; }
 .own-copies label { display: flex; gap: 8px; align-items: center; }
 .agent-copies { margin-top: 28px; }
 .agent-copies ul { list-style: none; padding: 0; display: grid; gap: 8px; }
-.agent-copies li { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
-.agent-copies code { font-size: 12px; overflow-wrap: anywhere; }
+.agent-copies li { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.agent-copies code { font-size: var(--text-sm); overflow-wrap: anywhere; }
 .agent-copy-actions { margin-left: auto; display: flex; gap: 6px; }
 
 /* Checks: the command's own exit status, run by Sculptured. */
-.check-mark { font-size: 11px; white-space: nowrap; border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; line-height: 16px; }
-.check-details { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.check-mark { font-size: var(--text-xs); white-space: nowrap; border: 1px solid currentColor; border-radius: var(--radius-pill); padding: 0 6px; line-height: 16px; }
+.check-details { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-md); }
 .check-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.check-line code { font-size: 12px; overflow-wrap: anywhere; }
-.check-details pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font-size: 12px; }
+.check-line code { font-size: var(--text-sm); overflow-wrap: anywhere; }
+.check-details pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font-size: var(--text-sm); }

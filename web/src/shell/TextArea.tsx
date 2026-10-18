@@ -23,9 +23,9 @@ export function TextArea(props: ComponentProps<'textarea'>) {
   const close = () => { dialog.current?.close(); setOpened(false); trigger.current?.focus(); };
   return <div className="text-field">
     <textarea {...props} />
-    <button ref={trigger} type="button" className="text-mode-trigger" hidden={chat?.active} onClick={chat?.open ?? open} disabled={props.disabled}>Text Mode</button>
-    {opened && <dialog ref={dialog} className="text-mode" role="dialog" aria-label="Text Mode" onKeyDown={e => e.stopPropagation()} onCancel={e => { e.preventDefault(); close(); }}>
-      <header><div><h2>{title}</h2><small>Text Mode · edits stay in your original field</small></div><button type="button" className="btn" onClick={close}>Done</button></header>
+    <button ref={trigger} type="button" className="text-mode-trigger" hidden={chat?.active} onClick={chat?.open ?? open} disabled={props.disabled}>Expand editor</button>
+    {opened && <dialog ref={dialog} className="text-mode" role="dialog" aria-label="Expanded editor" onKeyDown={e => e.stopPropagation()} onCancel={e => { e.preventDefault(); close(); }}>
+      <header><div><h2>{title}</h2><small>Expanded editor · edits stay in your original field</small></div><button type="button" className="btn" onClick={close}>Done</button></header>
       <textarea {...props} ref={expanded} id={undefined} aria-label={title} aria-describedby={undefined} onKeyDown={undefined} className="text-mode-editor" />
     </dialog>}
   </div>;

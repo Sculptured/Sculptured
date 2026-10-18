@@ -1,0 +1,106 @@
+/*
+ * Logos board style (shell/LogoNode.tsx). Each agent is its provider's mark on a quiet disc, in
+ * its unchanged 200 × 200 slot: the same place, button, selection and keyboard path as its card.
+ * The slot's card chrome goes; the disc carries hover, selection and focus instead.
+ * Working logos move only with .logo-animated (motion allowed, tab visible); reduced motion
+ * keeps a still working ring.
+ */
+.agent-box.is-logo,
+.sb-card.is-logo {
+  overflow: visible; background: transparent; border-color: transparent; box-shadow: none; animation: none;
+}
+.agent-box.is-logo:is(:hover, .selected, .picked, .st-needs-you, .st-failed, .st-stopped, .st-planned),
+.sb-card.is-logo:is(:hover, .selected, .multi-selected, .has-error, .wire-target) {
+  background: transparent; border-color: transparent; box-shadow: none;
+}
+.agent-box.is-logo::before { display: none; }
+.agent-box.is-logo:has(.box-main:focus-visible),
+.sb-card.is-logo:has(.sb-main:focus-visible) { outline: none; }
+
+/* The face: disc, name, status, centred in the slot. The arrows meet it at LOGO_ROUTE_W (96px). */
+.is-logo > .logo-main {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding: 28px 8px 0; text-align: center; overflow: visible; background: transparent; border-radius: var(--radius-lg);
+}
+.is-logo > .logo-main:hover { background: transparent; }
+.logo-disc {
+  position: relative; display: grid; place-items: center; flex: none; width: 88px; height: 88px; border-radius: 50%;
+  color: var(--vc, var(--other)); background: var(--card-bg); border: 1px solid var(--line);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.is-logo:hover .logo-disc { border-color: var(--line-3); }
+.is-logo.selected .logo-disc { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.is-logo:is(.multi-selected, .picked) .logo-disc { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-line); }
+.is-logo.wire-target .logo-disc { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-line); }
+.is-logo.has-error .logo-disc { border-color: var(--red-line); }
+.is-logo:has(.logo-main:focus-visible) .logo-disc { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
+.is-logo.st-needs-you .logo-disc { background: var(--card-bg-needs-you); border-color: var(--red-line); }
+.is-logo:is(.st-stopped, .st-planned) .logo-disc { background: var(--card-bg-idle); }
+.is-logo:is(.st-stopped, .st-planned, .st-failed, .st-unknown) .logo-mark { opacity: 0.6; }
+.logo-mark, .logo-turn { display: grid; place-items: center; }
+.logo-svg { display: block; }
+
+.logo-name {
+  max-width: 184px; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--text-md); font-weight: var(--weight-semibold); line-height: 18px; color: var(--text);
+}
+.is-logo.st-stopped .logo-name { color: var(--muted); }
+.logo-status { max-width: 184px; margin-top: 6px; overflow: hidden; }
+.logo-status .word { overflow: hidden; text-overflow: ellipsis; }
+.logo-kind {
+  max-width: 184px; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--text-xs); line-height: 20px; color: var(--muted);
+}
+
+/* Needs you: a round "!" on the disc, beside the words in the status. */
+.logo-badge {
+  position: absolute; top: -2px; right: -2px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: var(--radius-pill);
+  font-size: var(--text-sm); font-weight: var(--weight-bold); line-height: 1; color: var(--bg); background: var(--red); border: 2px solid var(--bg);
+}
+.logo-disc .change-badge { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+
+/* Several selected: the ✓ badge sits on the disc, not the slot's corner. */
+.sb-card.is-logo.multi-selected::after,
+.agent-box.is-logo.picked::after { top: 24px; right: calc(50% - 50px); }
+
+/* Connection dots sit where the arrows end. */
+.sb-card.is-logo .port.out { right: calc(50% - 54px); }
+.sb-card.is-logo .port.in { left: calc(50% - 53px); }
+
+/* Working: a ring round the disc (still), and, when motion is allowed, a slow orbit and the mark's own loop. */
+.logo-orbit { position: absolute; inset: -7px; border-radius: 50%; border: 2px solid transparent; pointer-events: none; }
+.is-logo.logo-working .logo-orbit { border-color: color-mix(in srgb, var(--vc, var(--accent)) 38%, transparent); }
+.logo-bubbles { position: absolute; left: 50%; top: 30px; width: 0; height: 0; pointer-events: none; }
+.logo-bubbles i { position: absolute; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0; }
+.logo-bubbles i:nth-child(2) { left: -6px; width: 4px; height: 4px; }
+.logo-bubbles i:nth-child(3) { left: 5px; width: 5px; height: 5px; }
+
+@keyframes logo-spin { to { transform: rotate(360deg); } }
+@keyframes logo-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes logo-turn { 0% { transform: rotate(0deg); } 35%, 50% { transform: rotate(90deg); } 85%, 100% { transform: rotate(180deg); } }
+@keyframes logo-sway { 0%, 100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
+@keyframes logo-bubble { 0% { transform: translateY(0) scale(0.5); opacity: 0; } 25% { opacity: 0.9; } 100% { transform: translateY(-22px) scale(1); opacity: 0; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .is-logo.logo-animated .logo-orbit {
+    border-color: color-mix(in srgb, var(--vc, var(--accent)) 12%, transparent);
+    border-top-color: color-mix(in srgb, var(--vc, var(--accent)) 85%, transparent);
+    border-right-color: color-mix(in srgb, var(--vc, var(--accent)) 40%, transparent);
+    animation: logo-spin var(--logo-orbit) linear infinite;
+  }
+  .is-logo.logo-animated :is(.logo-orbit, .logo-mark, .logo-turn) { will-change: transform; }
+  .is-logo.logo-animated.v-claude .logo-mark { animation: logo-breathe var(--logo-breathe) var(--ease-in-out) infinite; }
+  .is-logo.logo-animated.v-claude .logo-turn { animation: logo-spin var(--logo-spin) linear infinite; }
+  .is-logo.logo-animated.v-codex .logo-turn { animation: logo-turn var(--logo-turn) var(--ease-in-out) infinite; }
+  .is-logo.logo-animated.v-practice .logo-turn { transform-origin: 50% 80%; animation: logo-sway var(--logo-sway) var(--ease-in-out) infinite; }
+  .is-logo.logo-animated.v-practice .logo-bubbles i { animation: logo-bubble var(--logo-sway) ease-out infinite; }
+  .is-logo.logo-animated.v-practice .logo-bubbles i:nth-child(2) { animation-delay: calc(var(--logo-sway) / -3); }
+  .is-logo.logo-animated.v-practice .logo-bubbles i:nth-child(3) { animation-delay: calc(var(--logo-sway) / -1.5); }
+  .is-logo.logo-animated.v-other .logo-mark { animation: logo-breathe var(--logo-breathe) var(--ease-in-out) infinite; }
+}
+
+/* Board style switch: the words go on a phone; the icons stay. */
+.style-switch { flex: none; margin-right: var(--space-2); }
+@media (max-width: 720px) {
+  .style-switch .btn { font-size: 0; gap: 0; width: 30px; padding: 0; }
+}

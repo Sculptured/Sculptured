@@ -13,5 +13,5 @@ it('says it is connecting at first, then plainly that live updates are not arriv
   expect(screen.queryByText(/Connecting to shop/)).toBeNull();
   expect(screen.getByRole('alert')).toHaveTextContent("Live updates for shop aren't arriving");
   expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Open the Design board' })).toHaveAttribute('href', '/team/shop/structure');
+  expect(screen.getByRole('link', { name: 'Open the Design board' })).toHaveAttribute('href', '/p/shop/board?mode=design');
 });

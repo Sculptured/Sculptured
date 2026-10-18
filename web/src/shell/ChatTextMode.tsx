@@ -23,7 +23,7 @@ export function ChatTextMode({ children, className, name, onOpen }: { children: 
   };
   return <ChatModeContext value={{ active, open, close }}>
     <section ref={pane} className={`${className}${active ? ' chat-text-mode' : ''}`} role={active ? 'dialog' : undefined}
-      aria-modal={active || undefined} aria-label={active ? `Text Mode · ${name}` : `Agent ${name}`} onKeyDown={onKeyDown}>
+      aria-modal={active || undefined} aria-label={active ? `Full screen · ${name}` : `Agent ${name}`} onKeyDown={onKeyDown}>
       {children}
     </section>
   </ChatModeContext>;
@@ -56,7 +56,7 @@ function trapFocus(e: KeyboardEvent<HTMLElement>, pane: HTMLElement) {
 export function ChatTextModeButton() {
   const mode = useChatTextMode();
   if (!mode) return null;
-  return <button type="button" className="btn chat-mode-toggle" aria-label={mode.active ? 'Exit Text Mode' : 'Text Mode'} aria-pressed={mode.active} onClick={mode.active ? mode.close : mode.open}>
-    <Icon name="fit" size={15} className="chat-mode-icon" /><span className="chat-mode-label">{mode.active ? 'Exit Text Mode' : 'Text Mode'}</span>
+  return <button type="button" className="btn chat-mode-toggle" aria-label={mode.active ? 'Exit full screen' : 'Full screen'} aria-pressed={mode.active} onClick={mode.active ? mode.close : mode.open}>
+    <Icon name="fit" size={15} className="chat-mode-icon" /><span className="chat-mode-label">{mode.active ? 'Exit full screen' : 'Full screen'}</span>
   </button>;
 }

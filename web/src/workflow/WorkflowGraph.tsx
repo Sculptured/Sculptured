@@ -9,6 +9,7 @@ import { drawnGroups } from '../draft/geometry';
 import { placeLabels } from '../shell/labels';
 import type { WorkflowStage } from '../generated/WorkflowStage';
 import { stageOrder } from './itemBoardModel';
+import { InputCardFace } from '../structure/InputMaterial';
 import './workflow.css';
 
 export type WorkflowTarget = 'input' | 'settings' | 'run' | { stage: string };
@@ -63,9 +64,10 @@ function StageBox({ draft, stage, box, onOpen, onReveal, controls }: { draft: Te
   </button>;
 }
 
-function geometry(draft: TeamDraft, collapsed: ReadonlySet<string> = new Set(), cardHeight: (id: string) => number = () => CARD_H) {
+/** `agentBox`: where an agent's arrows end inside its card's slot (Logos style), else the slot itself. */
+function geometry(draft: TeamDraft, collapsed: ReadonlySet<string> = new Set(), cardHeight: (id: string) => number = () => CARD_H, agentBox: (b: Box) => Box = (b) => b) {
   const input = inputBox(draft), links = workflowLinks(draft);
-  const boxes = Object.fromEntries([...draft.agents.map(a => [a.id, { x: a.x, y: a.y, w: CARD_W, h: cardHeight(a.id) }] as const), ['$workflow-input', input], ...Object.entries(stageBoxes(draft))]);
+  const boxes = Object.fromEntries([...draft.agents.map(a => [a.id, agentBox({ x: a.x, y: a.y, w: CARD_W, h: cardHeight(a.id) })] as const), ['$workflow-input', input], ...Object.entries(stageBoxes(draft))]);
   const edges: CompiledEdge[] = links.map(l => ({ from: l.from, to: l.to, kind: 'delegates_to', enforced: !l.pool }));
   const projection = projectGroups(boxes, Object.fromEntries(draft.agents.map(a => [a.id, groupOf(a)])), Object.fromEntries(drawnGroups(draft).map(g => [g.id, g])), collapsed);
   const routes = routeGroupEdges(edges, projection);
@@ -80,8 +82,8 @@ export function workflowBounds(draft: TeamDraft): Box[] {
     ...[...g.labels.values()].map(p => ({ x:p.x-p.w/2, y:p.y-p.h/2, w:p.w, h:p.h }))];
 }
 
-export function WorkflowGraph({ draft, onOpen, onReveal, onReconnect, inputControls, stageControls, readOnly = false, collapsed, cardHeight }: { cardHeight?: (id: string) => number; inputControls?: ButtonHTMLAttributes<HTMLButtonElement>; stageControls?: (stage: string) => ButtonHTMLAttributes<HTMLButtonElement>; onReconnect?: (id: string, event: PointerEvent<HTMLButtonElement>) => void; collapsed?: ReadonlySet<string>; draft: TeamDraft; onOpen: (target: WorkflowTarget) => void; onReveal: (b: Box) => void; readOnly?: boolean }) {
-  const id = useId(), { input, links, edges, routes, labels } = geometry(draft, collapsed, cardHeight);
+export function WorkflowGraph({ draft, onOpen, onReveal, onReconnect, inputControls, stageControls, readOnly = false, collapsed, cardHeight, agentBox }: { cardHeight?: (id: string) => number; agentBox?: (b: Box) => Box; inputControls?: ButtonHTMLAttributes<HTMLButtonElement>; stageControls?: (stage: string) => ButtonHTMLAttributes<HTMLButtonElement>; onReconnect?: (id: string, event: PointerEvent<HTMLButtonElement>) => void; collapsed?: ReadonlySet<string>; draft: TeamDraft; onOpen: (target: WorkflowTarget) => void; onReveal: (b: Box) => void; readOnly?: boolean }) {
+  const id = useId(), { input, links, edges, routes, labels } = geometry(draft, collapsed, cardHeight, agentBox);
   const [selected, select] = useState<string | null>(null);
   const selectedIndex = links.findIndex(l => l.id === selected), selectedLink = links[selectedIndex];
   const selectedGeometry = routes.get(edges[selectedIndex]);
@@ -96,8 +98,8 @@ export function WorkflowGraph({ draft, onOpen, onReveal, onReconnect, inputContr
     {onReconnect && selectedLink && selectedGeometry && !selectedLink.pool && selectedLink.id !== 'input' && <ArrowHandles geometry={selectedGeometry} label={selectedLink.label} ends={['to']} onDrag={(_end, event) => onReconnect(selectedLink.id, event)} onEdit={() => onOpen(selectedLink.target)} />}
     {links.map(l => { const p = labels.get(l.id); return p && <button key={l.id} className={`edge-label sb-edge-label ${l.pool ? 'intent' : 'enforced'}${p.wrap ? ' wrap' : ''}`} style={{ left: p.x, top: p.y, maxWidth: p.maxWidth }} aria-label={`${l.pool ? 'Worker capacity' : 'Workflow route'}: ${l.label}`} onFocus={() => onReveal({ x:p.x-80,y:p.y-20,w:160,h:40 })} onClick={() => { select(l.id); onOpen(l.target); }}>{l.label}</button>; })}
     {Object.entries(stageBoxes(draft)).map(([node, box]) => { const s = draft.workflow!.stages.find(x => stageNode(x) === node)!; return <StageBox key={node} draft={draft} stage={s} box={box} onOpen={onOpen} onReveal={onReveal} controls={stageControls?.(s.id)} />; })}
-    {draft.workflow!.dispatcher && <button {...inputControls} className={`workflow-input-node${inputControls ? ' movable' : ''}`} style={{ left: input.x, top: input.y, width: input.w, height: input.h }} onFocus={inputControls?.onFocus ?? (() => onReveal(input))} onClick={inputControls?.onClick ?? (() => onOpen('input'))} aria-label="Input: links, notes and ideas">
-      <strong>Input</strong><span>Links · notes · ideas</span><p>{draft.workflow!.input || 'Drop course links, thoughts and teaching goals here.'}</p><small>{readOnly ? 'Read Input · Text Mode' : 'Open to edit · Text Mode'}</small>
+    {draft.workflow!.dispatcher && <button {...inputControls} className={`workflow-input-node input-card${draft.workflow!.input.trim() ? '' : ' is-empty'}${inputControls ? ' movable' : ''}`} style={{ left: input.x, top: input.y, width: input.w, height: input.h }} onFocus={inputControls?.onFocus ?? (() => onReveal(input))} onClick={inputControls?.onClick ?? (() => onOpen('input'))} aria-label="Input: links, notes and ideas">
+      <InputCardFace text={draft.workflow!.input} room={2} action={readOnly ? 'Open to read' : draft.workflow!.input.trim() ? 'Open to edit' : 'Open to add'} />
     </button>}
   </>;
 }

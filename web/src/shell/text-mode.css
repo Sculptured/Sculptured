@@ -1,12 +1,12 @@
 .text-field { display:flex; flex-direction:column; min-width:0; flex:1; gap:5px; }
 .text-field > textarea { width:100%; }
-.text-mode-trigger { align-self:flex-end; border:0; background:transparent; color:var(--accent); cursor:pointer; padding:4px 7px; border-radius:6px; font-size:.88rem; }
+.text-mode-trigger { align-self:flex-end; border:0; background:transparent; color:var(--accent); cursor:pointer; padding:4px 7px; border-radius:var(--radius-sm); font-size:var(--text-xs); }
 .text-mode-trigger:hover { background:var(--hover); }
 .text-mode-trigger:focus-visible { outline:2px solid var(--accent); }
 .text-mode { position:fixed; inset:0; width:100vw; height:100dvh; max-width:none; max-height:none; margin:0; border:0; padding:clamp(16px,3vw,40px); background:var(--bg); color:var(--text); }
 .text-mode[open] { display:flex; flex-direction:column; gap:20px; }
 .text-mode::backdrop { background:var(--bg); }
 .text-mode header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.text-mode h2 { font-size:1.2rem; margin:0 0 5px; }
+.text-mode h2 { font-size:var(--text-lg); margin:0 0 5px; }
 .text-mode small { color:var(--muted); }
-.text-mode textarea.text-mode-editor { flex:1; min-height:0; max-height:none; width:100%; resize:none; padding:clamp(16px,3vw,32px); border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--text); font:400 1.1rem/1.7 var(--font-ui); }
+.text-mode textarea.text-mode-editor { flex:1; min-height:0; max-height:none; width:100%; resize:none; padding:clamp(16px,3vw,32px); border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--panel); color:var(--text); font:400 var(--text-lg)/1.7 var(--font-ui); }

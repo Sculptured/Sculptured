@@ -8,6 +8,7 @@ import { diagnosticsOf, errorText } from '../errors';
 import { ApiError } from '../api';
 import type { DraftIssue } from '../generated/DraftIssue';
 import { useEffect, useId, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { ImportRun } from './ImportRun';
 import { api } from '../api';
 import { useRequestOnce } from '../useRequestOnce';
@@ -33,6 +34,31 @@ export function previewCaption(d: TeamDraft, practice: boolean): string {
   if (practice) return plural(n, 'Practice agent');
   const kinds = [...new Set(d.agents.map((a) => KIND_WORD[a.kind]))];
   return `${plural(n, 'agent')} · ${kinds.join(', ')}`;
+}
+
+/** A card name on one line, or on two smaller lines when it is long; never cut mid-word unless one word is too long. */
+export function previewNameLines(name: string): { lines: string[]; small: boolean } {
+  const n = name.trim();
+  if (n.length <= 9) return { lines: [n], small: false };
+  const MAX = 12;
+  const cut = (w: string) => (w.length > MAX ? `${w.slice(0, MAX - 1)}…` : w);
+  const words = n.split(/\s+/);
+  if (words.length === 1) return { lines: [cut(n)], small: true };
+  let first = words[0];
+  let i = 1;
+  while (i < words.length && `${first} ${words[i]}`.length <= MAX) first = `${first} ${words[i++]}`;
+  const rest = words.slice(i).join(' ');
+  return { lines: rest ? [cut(first), cut(rest)] : [cut(first)], small: true };
+}
+
+function PreviewName({ x, y, name }: { x: number; y: number; name: string }) {
+  const { lines, small } = previewNameLines(name);
+  if (!small) return <text x={x} y={y} className="tpl-name">{lines[0]}</text>;
+  return (
+    <text x={x} y={lines.length > 1 ? y - 12 : y} className="tpl-name ux-tpl-name-small">
+      {lines.map((l, i) => <tspan key={i} x={x} dy={i === 0 ? 0 : 22}>{l}</tspan>)}
+    </text>
+  );
 }
 
 /** A small drawing of a template's agents and who hands work to whom. */
@@ -82,9 +108,7 @@ export function TemplatePreview({ draft, practice }: { draft: TeamDraft; practic
             <svg x={a.x + 22} y={a.y + 20} width={24} height={24} className="tpl-mark">
               <Icon name={kindIcon(practice ? 'practice' : a.kind)} size={24} strokeWidth={2.4} />
             </svg>
-            <text x={a.x + 64} y={a.y + 42} className="tpl-name">
-              {a.name.length>13?`${a.name.slice(0,12)}…`:a.name}
-            </text>
+            <PreviewName x={a.x + 64} y={a.y + 42} name={a.name} />
             <line x1={a.x + 16} x2={a.x + CARD_W - 40} y1={a.y + 80} y2={a.y + 80} className="tpl-line" />
             <line x1={a.x + 16} x2={a.x + CARD_W - 70} y1={a.y + 108} y2={a.y + 108} className="tpl-line" />
             <line x1={a.x + 16} x2={a.x + CARD_W - 100} y1={a.y + 136} y2={a.y + 136} className="tpl-line" />
@@ -191,11 +215,35 @@ function ImportFromFile({ onCreated }: { onCreated: (id: string) => void }) {
   );
 }
 
+/** The starting teams a newcomer sees first; every other template sits under More templates. */
+export const FEATURED_TEMPLATES = ['solo', 'builder-reviewer', 'planner-builders', 'blank'];
+const MORE_KEY = 'sculptured.gallery.more.v1';
+
 /**
- * "Start from…": the template gallery. Practice agents are on by default (free, no model
- * calls). Choosing a template creates the team and opens its Structure board.
+ * A template's blurb as the gallery shows it. The gallery runs every agent on the kind chosen
+ * above it, so a blurb naming a kind ("Codex reviews") would be wrong; course references are
+ * dropped. Unknown templates keep the server's words.
  */
-export function TemplateGallery({ onCreated, onClose, inline }: { onCreated: (id: string, open?: { history?: boolean }) => void; onClose?: () => void; inline?: boolean }) {
+export function plainSummary(t: Pick<TemplateInfo, 'id' | 'summary'>): string {
+  const own: Record<string, string> = {
+    solo: 'One agent with one job. The simplest way to start.',
+    'builder-reviewer': 'One agent builds, then hands the work to a second agent to review.',
+    'planner-builders': 'One planner splits the work and hands it to two builders.',
+  };
+  return own[t.id] ?? t.summary.replace(/\s*CS2680[^.]*\.?/g, '').trim();
+}
+
+function readMore(): boolean {
+  try { return globalThis.localStorage?.getItem(MORE_KEY) === 'true'; } catch { return false; }
+}
+
+/**
+ * New project: the template gallery. A few starting teams come first, the rest sit under More
+ * templates, Describe it is the second way in, and file import stays under Advanced. Every agent
+ * runs on the kind chosen above the cards (Claude by default); Practice agents are not offered
+ * here. Choosing a template creates the team and opens its Design board.
+ */
+export function TemplateGallery({ onCreated, onClose, inline, flow = inline, advanced }: { onCreated: (id: string, open?: { history?: boolean }) => void; onClose?: () => void; inline?: boolean; /** The three steps of a run, for a first visit. */ flow?: boolean; /** More expert ways in, under Advanced. */ advanced?: ReactNode }) {
   const [describing, setDescribing] = useState(false);
   const ids = useId();
   const [templates, setTemplates] = useState<TemplateInfo[] | null>(null);
@@ -205,6 +253,7 @@ export function TemplateGallery({ onCreated, onClose, inline }: { onCreated: (id
   const [name, setName] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(readMore);
   const createOnce = useRequestOnce();
   /** The template as it will be created: every agent on the chosen kind. */
   const as = (d: TeamDraft) => (practice ? d : setKindAll(d, kind));
@@ -243,10 +292,28 @@ export function TemplateGallery({ onCreated, onClose, inline }: { onCreated: (id
     }
   };
 
+  const featured = templates?.filter((t) => FEATURED_TEMPLATES.includes(t.id)) ?? [];
+  const more = templates?.filter((t) => !FEATURED_TEMPLATES.includes(t.id)) ?? [];
+  const card = (t: TemplateInfo) => (
+    <li key={t.id}>
+      <button type="button" className="tpl-card" onClick={() => create(t)} disabled={!!busy} aria-labelledby={`${ids}-${t.id}-t`} aria-describedby={`${ids}-${t.id}`}>
+        <TemplatePreview draft={as(t.preview)} practice={practice} />
+        <span className="tpl-title" id={`${ids}-${t.id}-t`}>
+          {t.title}
+        </span>
+        <span id={`${ids}-${t.id}`} className="tpl-summary">
+          {plainSummary(t)} <span className="tpl-caption">{previewCaption(as(t.preview), practice)}</span>
+        </span>
+        {busy === t.id && <span className="tpl-busy">creating…</span>}
+      </button>
+    </li>
+  );
+  const kindWord = kind === 'codex' ? 'Codex' : 'Claude';
+
   const body = (
     <div
       ref={box}
-      className={`panel gallery${inline ? ' inline' : ''}`}
+      className={`panel gallery ux-gallery${inline ? ' inline' : ''}`}
       role={inline ? 'region' : 'dialog'}
       aria-modal={inline ? undefined : true}
       aria-labelledby={`${ids}-title`}
@@ -259,37 +326,28 @@ export function TemplateGallery({ onCreated, onClose, inline }: { onCreated: (id
     >
       <div className="panel-bar">
         <span className="panel-title" id={`${ids}-title`}>
-          New project · Start from…
+          New project
         </span>
         <span className="panel-rule" aria-hidden="true" />
         {onClose && (
           <Btn onClick={onClose} variant="ghost" icon="x" iconOnly aria-label="Close" kbd="esc" />
         )}
       </div>
-      <div className="gallery-opts">
+      <h2 className="ux-gallery-lead">Pick a team to start from</h2>
+      <p className="gallery-intro muted">You can change every agent, job, folder and connection on the Design board. Nothing runs until you press Start team.</p>
+      <div className="gallery-opts ux-gallery-opts">
         <span className="gallery-kind">
-          <span className="prompt">agents run on</span>
+          <span className="prompt">Agents run on</span>
           <KindSwitch label="Agents run on" value={kind} onChange={setKind} />
         </span>
         <span className="gallery-name">
           <label htmlFor={`${ids}-name`} className="prompt">
-            name
+            Name
           </label>
-          <input id={`${ids}-name`} className="field" value={name} spellCheck={false} placeholder="from the template" onChange={(e) => setName(e.target.value)} />
+          <input id={`${ids}-name`} className="field" value={name} spellCheck={false} placeholder="optional · rename any time" onChange={(e) => setName(e.target.value)} />
         </span>
+        {!practice && <p className="gallery-warn tone-amber">{kindWord} agents use your own CLI logins and may cost money once started. You can switch any agent later.</p>}
       </div>
-      {describing ? (
-        <GenerateTeam onCreated={(id) => onCreated(id)} onCancel={() => setDescribing(false)} />
-      ) : (
-        <p className="gallery-describe">
-          <Btn icon="bot" onClick={() => { track('describe-it'); setDescribing(true); }}>
-            Describe it
-          </Btn>{' '}
-          <span className="muted">Tell your own Claude Code or Codex what you need, and it drafts the team.</span>
-        </p>
-      )}
-      <p className="gallery-intro muted">Pick a starting point. You can change every agent, job, folder and connection on the Design board before you start it.</p>
-      {!practice && <p className="gallery-warn tone-amber">{kind === 'codex' ? 'Codex' : 'Claude'} agents use your own CLI logins and may cost money once started.</p>}
       {loadError && (
         <DismissibleError className="tone-red pad">
           Could not load templates: {loadError}
@@ -300,33 +358,45 @@ export function TemplateGallery({ onCreated, onClose, inline }: { onCreated: (id
           Loading templates…
         </p>
       )}
-      <ul className="tpl-grid" aria-label="Templates">
-        {templates?.map((t) => (
-          <li key={t.id}>
-            <button type="button" className="tpl-card" onClick={() => create(t)} disabled={!!busy} aria-labelledby={`${ids}-${t.id}-t`} aria-describedby={`${ids}-${t.id}`}>
-              <TemplatePreview draft={as(t.preview)} practice={practice} />
-              <span className="tpl-title" id={`${ids}-${t.id}-t`}>
-                {t.title}
-              </span>
-              <span id={`${ids}-${t.id}`} className="tpl-summary">
-                {t.summary} <span className="tpl-caption">{previewCaption(as(t.preview), practice)}</span>
-              </span>
-              {busy === t.id && <span className="tpl-busy">creating…</span>}
-            </button>
-          </li>
-        ))}
+      <ul className="tpl-grid ux-featured" aria-label="Templates">
+        {featured.map(card)}
       </ul>
+      {more.length > 0 && (
+        <details className="ux-more-templates" open={moreOpen} onToggle={(e) => {
+          const open = e.currentTarget.open;
+          setMoreOpen(open);
+          try { localStorage.setItem(MORE_KEY, String(open)); } catch { /* Per-browser convenience only. */ }
+        }}>
+          <summary>More templates ({more.length})</summary>
+          <ul className="tpl-grid" aria-label="More templates">
+            {more.map(card)}
+          </ul>
+        </details>
+      )}
       {error && (
         <DismissibleError className="tone-red pad">
           Could not create the team: {error}
         </DismissibleError>
       )}
-      {inline && (
+      <div className="ux-gallery-secondary">
+        {describing ? (
+          <GenerateTeam onCreated={(id) => onCreated(id)} onCancel={() => setDescribing(false)} />
+        ) : (
+          <p className="gallery-describe">
+            <span>Rather describe what you need?</span>{' '}
+            <Btn icon="bot" onClick={() => { track('describe-it'); setDescribing(true); }}>
+              Describe it
+            </Btn>{' '}
+            <span className="muted">Your own Claude Code or Codex drafts the team for you to review.</span>
+          </p>
+        )}
+      </div>
+      {flow && (
         <ol className="flow" aria-label="How a team runs">
           <li>
             <span className="flow-n">1</span>
             <span className="flow-t">Design</span>
-            <span className="flow-d">Drag agents in, give each a job and a folder, and connect who hands work to whom.</span>
+            <span className="flow-d">Give each agent a job and a folder, and connect who hands work to whom.</span>
           </li>
           <li>
             <span className="flow-n">2</span>
@@ -341,9 +411,10 @@ export function TemplateGallery({ onCreated, onClose, inline }: { onCreated: (id
         </ol>
       )}
       <details className="gallery-advanced" data-advanced>
-        <summary>Advanced</summary>
+        <summary>Advanced: import a team file or a past run</summary>
         <ImportFromFile onCreated={onCreated} />
         <ImportRun onCreated={onCreated} />
+        {advanced}
       </details>
     </div>
   );

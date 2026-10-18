@@ -1,0 +1,110 @@
+/*
+ * Distill: less on screen, nothing removed. Secondary things sit one step back (hover, focus, a menu,
+ * Ctrl K or a disclosure). Loaded after the other passes and before the Standard look, so both looks
+ * share it and Standard can still retune tokens.
+ */
+
+/* Sidebar ---------------------------------------------------------------- */
+
+/* A project's ⋯ menu shows on the row you point at or focus, and while it is open. Touch screens
+   have no hover, so it stays visible there. The column keeps its width, so titles never reflow. */
+.sidebar .project-menu > summary { border-color: transparent; background: transparent; opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.sidebar .project-menu[open] > summary { opacity: 1; }
+.sidebar .project-menu > summary:hover, .sidebar .project-menu[open] > summary { background: var(--hover); }
+.sidebar .project-menu > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+@media (hover: none) { .sidebar .project-menu > summary { opacity: 1; } }
+
+/* The footer is one quiet row: plan usage (opens Account and usage) and All projects. */
+/* A narrow sidebar (Standard's 220px) keeps All projects as its icon; its words stay its name. */
+
+/* Design board ------------------------------------------------------------ */
+
+/* Agent card: name, one small muted kind line, the job (up to five lines), the folder. No "JOB"
+   label and no footer: the arrows already say who it hands work to. Cards stay 200 × 200. */
+.sb-card .sb-kind { padding: 0 12px; margin-top: -2px; font-size: var(--text-xs); color: var(--muted); }
+.sb-card .sb-job { padding-top: 8px; -webkit-line-clamp: 5; max-height: calc(17px * 5 + 8px); }
+/* A workflow card keeps its footer of stage actions, so its job gets four lines. */
+.sb-card:has(> .box-foot) .sb-job { -webkit-line-clamp: 4; max-height: calc(17px * 4 + 8px); }
+.sb-card .sb-folder { padding: 0 12px 10px; font-size: var(--text-xs); gap: 5px; }
+.sb-slot.full-text .sb-job { max-height: none; }
+
+/* The zoom control: three ghost buttons, no frame. */
+.zoom-float { display: inline-flex; gap: 2px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.zoom-float .btn { color: var(--muted); }
+.zoom-float .btn:hover { color: var(--text); background: var(--hover); }
+
+/* The line legend inside `?`. */
+.help-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 6px 0; font-size: var(--text-sm); }
+.help-legend span { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Design's More menu (teams with a workflow) sits with the other header tools. */
+
+/* A phone's Design board: two rows of chrome above the board. Row 1 is the header (Design|Run,
+   status, Start; the ⋯ app menu floats at its right end). Row 2 is the toolbar, which also holds
+   the Board|Form choice and the assistant as icons. */
+@media (max-width: 720px) {
+  .ux-wide-word { display: none; }
+  /* Standard puts Ctrl K in this header: on a phone it is its icon. */
+  .structure .mode-tabs { flex-wrap: nowrap; }
+  .structure .mode-tabs .mode-nav { flex-wrap: nowrap; }
+  /* The tab you are not on keeps only its icon; its word stays its name. */
+  .structure .mode-tabs .mode-tab:not(.on) { font-size: 0; gap: 0; padding-inline: 8px; }
+  .structure .sb-toolbar { flex-wrap: nowrap; gap: 4px; }
+  .structure .sb-toolbar .tb-sep { display: none; }
+}
+
+/* Run ------------------------------------------------------------------------ */
+
+/* Run finished: per agent, the name (it opens the agent), the state, and the reply with a small
+   quote mark for "agent-reported" (its words say so on hover and to screen readers). */
+.ux-rf-agents > li { gap: 2px; }
+.ux-rf-name { padding: 0; border: 0; background: none; font: inherit; font-weight: var(--weight-semibold); color: var(--text); cursor: pointer; text-align: left; text-decoration: none; }
+.ux-rf-name:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-3); }
+.ux-rf-name:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+.ux-rf-said { display: flex; gap: 6px; align-items: baseline; }
+.ux-rf-said q { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; }
+.ux-prov-mark { flex: none; color: var(--muted); display: inline-flex; transform: translateY(2px); cursor: help; }
+.ux-rf-check { font-size: var(--text-xs); }
+
+/* Run card: with no empty tool line, the last reply gets a third line. */
+.agent-box .box-last { -webkit-line-clamp: 3; }
+
+/* Agent pane ----------------------------------------------------------------- */
+
+/* Transcript meta: turn ends and session events are small muted lines with no rules. A run of
+   session events is one summary line ("Restarted · new conversation") that opens to the chain. */
+.transcript .divider { justify-content: center; gap: 0; font-size: var(--text-xs); color: var(--muted); }
+.transcript .divider::before, .transcript .divider::after { content: none; }
+.transcript .divider.alarm { font-size: var(--text-sm); color: var(--red); }
+.transcript .cv-turn-end, .transcript .cv-divider { margin-block: -10px; }
+.divider-text { display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 8px; font-variant-numeric: tabular-nums; }
+.divider-chain[hidden] { display: none; }
+.divider-toggle { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.divider-toggle:hover { color: var(--text); background: var(--hover); }
+.divider-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.divider.chain .divider-chain { flex-basis: 100%; text-align: center; }
+
+/* The transcript's search lives in the pane header: an icon that opens the field. */
+.pane-search { display: inline-flex; align-items: center; min-width: 0; }
+.pane-search:empty { display: none; }
+.pane-search-tools { display: inline-flex; align-items: center; gap: 6px; }
+.pane-search-tools .cv-search { width: clamp(160px, 22vw, 260px); flex: none; min-height: 28px; height: 28px; }
+.cv-search-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.cv-search-btn:hover { color: var(--text); }
+
+/* Composer: the box and Send. Delivery sits behind ⋯; a chip by Send names a non-default choice. */
+.intent-chip { flex: none; align-self: center; font-size: var(--text-xs); color: var(--accent); border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: var(--radius-pill); padding: 1px 8px; white-space: nowrap; }
+.intent-menu > .menu { min-width: 300px; }
+.intent-menu > .menu > [role='radiogroup'] { display: grid; }
+.intent-menu .menu-item.check { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px; border-radius: 0; }
+.intent-menu .menu-reason { display: block; padding: 0 10px 6px 34px; font-size: var(--text-xs); white-space: normal; }
+.composer-reason { display: block; padding: 6px 2px 0; font-size: var(--text-sm); }
+/* Expand editor shows on the message box you point at or type in (always on touch screens). */
+.composer .text-mode-trigger { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.composer-line:hover .text-mode-trigger, .composer-line:focus-within .text-mode-trigger { opacity: 1; }
+@media (hover: none) { .composer .text-mode-trigger { opacity: 1; } }
+@media (max-width: 720px) {
+  /* The search icon joins the pane's first row: one more auto column (back, name, state, search, Details). */
+  /* Open, the field takes a row of its own under the tabs. */
+  .pane-search-tools, .pane-search-tools .cv-search { flex: 1; width: auto; }
+}

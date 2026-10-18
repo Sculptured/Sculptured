@@ -1,0 +1,58 @@
+/*
+ * Standard look: the first viewport's layout, on top of the shared
+ * component CSS. Everything here is scoped to :root[data-look='standard'] or to elements only the
+ * Standard look renders (the header status pill, the footer usage strip), so Coastal is unchanged.
+ * Reads tokens only (tokens.css).
+ */
+
+/* ── Header: 56px. Design|Run and the team, the status pill, then the views, Ctrl K box and Stop ── */
+/* Room for the app menu (⋯) only; more when the "need attention" note shows beside it. */
+/* One row, in the canon's order: the team and its tabs, the status pill; then, right-aligned, the
+   views, More, the Ctrl K box and Stop. The tools join the header's own row to be ordered. */
+@media (min-width: 721px) {
+  :root[data-look='standard'] .team-live > .panel-bar .team-status { order: 1; min-width: 0; }
+  :root[data-look='standard'] .team-live > .panel-bar > .panel-rule { order: 2; }
+  :root[data-look='standard'] .team-live > .panel-bar .panel-tools > .seg { order: 3; }
+  :root[data-look='standard'] .team-live > .panel-bar .panel-tools > .more-menu { order: 4; }
+  :root[data-look='standard'] .team-live > .panel-bar .panel-tools > .cmd-trigger { order: 5; }
+  :root[data-look='standard'] .team-live > .panel-bar .panel-tools > .btn { order: 6; }
+  :root[data-look='standard'] .team-live > .panel-bar .panel-tools > .reason { order: 7; }
+}
+:root[data-look='standard'] .structure > .panel-bar > .panel-title { flex: 0 1 auto; min-width: 0; }
+
+/* Sidebar head: the mark, Projects and its count; New project full width below, as in the canon. */
+:root[data-look='standard'] .sidebar > .panel-bar { flex-wrap: wrap; row-gap: var(--space-2); padding: var(--space-3) var(--space-3) var(--space-2); border-bottom: 0; }
+:root[data-look='standard'] .sidebar > .panel-bar > .panel-tools { display: contents; }
+:root[data-look='standard'] .sidebar > .panel-bar .new-project { flex: 1 1 100%; margin-left: 0; min-height: var(--control-h); }
+:root[data-look='standard'] .mode-tabs .team-title { font-size: var(--text-lg); }
+
+/* The Ctrl K box sits in the header instead of under Projects. */
+.panel-tools > .cmd-trigger { margin: 0; width: clamp(200px, 18vw, 280px); height: var(--control-h); min-height: var(--control-h); background: var(--panel); border-color: var(--line-2); }
+
+@media (max-width: 1279px) and (min-width: 721px) {
+  /* A narrower window keeps the header on one row: the box shrinks to its icon and shortcut. */
+  .panel-tools > .cmd-trigger { width: auto; }
+  .panel-tools > .cmd-trigger .cmd-trigger-text { display: none; }
+}
+
+/* The status pill: an icon and words; the colour comes from the status tokens. It opens the Status menu. */
+
+/* ── Footer: this run's usage in tabular numbers ── */
+.usage-strip {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3);
+  min-height: 36px; padding: 6px var(--space-4); border-top: 1px solid var(--line); background: var(--panel);
+  font-size: var(--text-sm); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.usage-strip strong { color: var(--text); font-weight: var(--weight-semibold); }
+.us-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.us-sep { color: var(--line-3); }
+.us-meter { width: 64px; height: 6px; margin-left: var(--space-1); }
+.us-meter::-webkit-meter-bar { height: 6px; background: var(--line); border: 0; border-radius: var(--radius-pill); }
+.us-meter::-webkit-meter-optimum-value, .us-meter::-webkit-meter-suboptimum-value, .us-meter::-webkit-meter-even-less-good-value { background: var(--accent); border-radius: var(--radius-pill); }
+.us-meter::-moz-meter-bar { background: var(--accent); border-radius: var(--radius-pill); }
+
+@media (max-width: 720px) {
+  :root[data-look='standard'] .mode-tabs .team-title { font-size: var(--text-md); }
+  .usage-strip { padding: 6px var(--space-3); font-size: var(--text-xs); gap: 2px var(--space-2); }
+  .us-item { white-space: normal; }
+}

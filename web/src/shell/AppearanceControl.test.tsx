@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AppearanceControl } from './AppearanceControl';
-import { APPEARANCE_KEY, DEFAULT_APPEARANCE, FONTS, readAppearance } from '../appearance';
+import { act } from 'react';
+import { APPEARANCE_KEY, DEFAULT_APPEARANCE, FONTS, readAppearance, resolvedScheme, updateAppearance } from '../appearance';
 
 beforeEach(() => localStorage.clear());
-afterEach(() => { vi.restoreAllMocks(); document.documentElement.removeAttribute('style'); delete document.documentElement.dataset.surface; });
+afterEach(() => { vi.restoreAllMocks(); document.documentElement.removeAttribute('style'); delete document.documentElement.dataset.surface; delete document.documentElement.dataset.look; delete document.documentElement.dataset.mode; });
 
 describe('Appearance', () => {
   it('persists font, text size and surface changes across remounts', async () => {
@@ -25,6 +26,39 @@ describe('Appearance', () => {
     expect(screen.getByRole('slider', { name: /Text size/ })).toHaveValue('14');
     await user.click(screen.getByRole('button', { name: 'Reset defaults' }));
     expect(readAppearance()).toEqual(DEFAULT_APPEARANCE);
+  });
+
+  it('switches the look and, for Standard, the colour mode, and keeps both across remounts', async () => {
+    const user = userEvent.setup();
+    const first = render(<AppearanceControl />);
+    await user.click(screen.getByRole('button', { name: 'Appearance' }));
+    expect(screen.getByRole('button', { name: 'Coastal' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('group', { name: 'Mode' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Standard' }));
+    expect(document.documentElement.dataset.look).toBe('standard');
+    expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+    // Coastal's translucency switch means nothing in the flat Standard look.
+    expect(screen.queryByRole('checkbox', { name: /Translucent surfaces/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Dark' }));
+    expect(document.documentElement.dataset.mode).toBe('dark');
+    expect(readAppearance()).toMatchObject({ look: 'standard', mode: 'dark' });
+    first.unmount();
+    render(<AppearanceControl />);
+    await user.click(screen.getByRole('button', { name: 'Appearance' }));
+    expect(screen.getByRole('button', { name: 'Standard' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true');
+    // A change from the command palette shows in the open dialog.
+    act(() => updateAppearance({ mode: 'light' }));
+    expect(screen.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true');
+    expect(document.documentElement.dataset.mode).toBe('light');
+    await user.click(screen.getByRole('button', { name: 'Reset defaults' }));
+    expect(document.documentElement.dataset.look).toBe('coastal');
+  });
+
+  it('resolves the colour scheme: Coastal is dark, Standard follows its mode', () => {
+    expect(resolvedScheme({ look: 'coastal', mode: 'light' })).toBe('dark');
+    expect(resolvedScheme({ look: 'standard', mode: 'light' })).toBe('light');
+    expect(resolvedScheme({ look: 'standard', mode: 'dark' })).toBe('dark');
   });
 
   it('contains keyboard focus, suppresses app shortcuts, and returns focus on Escape', async () => {
@@ -47,7 +81,7 @@ describe('Appearance', () => {
   });
 
   it('rejects malformed or out-of-range saved preferences', () => {
-    for (const raw of ['{', 'null', '42', '{"font":"__proto__","size":99,"glass":"true"}']) {
+    for (const raw of ['{', 'null', '42', '{"font":"__proto__","size":99,"glass":"true"}', '{"look":"neon","mode":"dusk"}']) {
       localStorage.setItem(APPEARANCE_KEY, raw);
       expect(readAppearance()).toEqual(DEFAULT_APPEARANCE);
     }

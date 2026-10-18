@@ -54,7 +54,6 @@ function Flow({ boxes, loop }: { boxes: string[]; loop?: boolean }) {
 export function AgentDesignGuide() {
   return (
     <article className="release-page agent-design-guide">
-      <p className="eyebrow">Learn</p>
       <h1>Designing teams of agents</h1>
       <p>
         Start with <strong>one agent</strong>. A team costs more: multi-agent systems used about 15× the tokens of a chat in

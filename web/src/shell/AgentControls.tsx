@@ -91,7 +91,8 @@ export function useAgentControls(seat: SeatView, fallbackFocus?: RefObject<HTMLE
   return { wrap, controlMode, ids, seat, canInterrupt, inTurn, interruptReason, interrupt, stopReason, stop, stopping, stopBtn, fallbackFocus, error, setError };
 }
 
-export type AgentControls = ReturnType<typeof useAgentControls>;
+/** The agent pane adds Hand over again for Ctrl K: why it cannot run now (null = it can), and asking for it. */
+export type AgentControls = ReturnType<typeof useAgentControls> & { handOver?: { reason: string | null; ask: () => void } | null };
 
 /** `[ Interrupt ] i` and `[ Stop agent… ]` with its inline confirm. Disabled controls say why. */
 export function AgentActions({ c, name }: { c: AgentControls; name: string }) {
@@ -175,9 +176,12 @@ export function AgentActions({ c, name }: { c: AgentControls; name: string }) {
 
 const MAX_ROWS = 8;
 const CHOOSE_INSTRUCT = 'Choose instruct to interrupt';
+const TYPE_FIRST = 'Type a message to send.';
 
 /**
- * One line that grows. Enter sends, Shift+Enter adds a line. Standard clipboard shortcuts stay native. Intent sits behind `⋯` and defaults to inform.
+ * One line that grows. Enter sends, Shift+Enter adds a line. Standard clipboard shortcuts stay native.
+ * How it is delivered (inform waits for the turn to end, instruct may interrupt it) sits behind `⋯`
+ * with "Interrupt current turn"; a small chip by Send says so whenever the choice is not the default.
  */
 export function Composer({ c, inputRef }: { c: AgentControls; inputRef?: RefObject<HTMLTextAreaElement | null> }) {
   const ids = useId();
@@ -198,7 +202,7 @@ export function Composer({ c, inputRef }: { c: AgentControls; inputRef?: RefObje
     : sending
       ? 'Sending…'
       : !text.trim()
-        ? 'Type a message to send.'
+        ? TYPE_FIRST
         : null;
   const boxReason = !c.canInterrupt
     ? interruptBlocked(c.seat)
@@ -208,6 +212,7 @@ export function Composer({ c, inputRef }: { c: AgentControls; inputRef?: RefObje
         ? CHOOSE_INSTRUCT
         : null;
   const interruptBoxEnabled = intent === 'instruct' && c.canInterrupt && c.inTurn;
+  const interrupting = interruptBoxEnabled && interrupt;
 
   // Grow with the text, up to MAX_ROWS lines.
   useLayoutEffect(() => {
@@ -234,7 +239,7 @@ export function Composer({ c, inputRef }: { c: AgentControls; inputRef?: RefObje
     c.setError(null);
     const sent = text;
     try {
-      await sendOnce((id) => api.send(seat.id, { text: sent, intent, interrupt: interruptBoxEnabled && interrupt }, id));
+      await sendOnce((id) => api.send(seat.id, { text: sent, intent, interrupt: interrupting }, id));
       // Keep anything typed while the request was in flight.
       setText((cur) => (cur === sent ? '' : cur));
       setInterrupt(false);
@@ -261,9 +266,6 @@ export function Composer({ c, inputRef }: { c: AgentControls; inputRef?: RefObje
   return (
     <form className="composer" onSubmit={submit} aria-label="Send a message">
       <div className="composer-line">
-        <span className="prompt" aria-hidden="true">
-          You ›
-        </span>
         <label htmlFor={`${ids}-msg`} className="sr-only">
           Message
         </label>
@@ -273,10 +275,16 @@ export function Composer({ c, inputRef }: { c: AgentControls; inputRef?: RefObje
           rows={1}
           value={text}
           spellCheck={false}
-          placeholder={running ? 'message this agent' : ''}
+          placeholder={running ? 'Message this agent' : ''}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
         />
+        {/* Not the default: say so beside Send, in a word. */}
+        {intent === 'instruct' && (
+          <span className="intent-chip" data-tip={interrupting ? 'Interrupts the current turn' : 'May interrupt its turn'}>
+            {interrupting ? 'interrupts now' : 'instruct'}
+          </span>
+        )}
         <div className="intent-menu" ref={menuRef}>
           <Btn
             variant="ghost"
@@ -285,68 +293,56 @@ export function Composer({ c, inputRef }: { c: AgentControls; inputRef?: RefObje
             aria-haspopup="true"
             aria-expanded={menu}
             aria-label={`Message options (intent: ${intent})`}
-            tip="Message options"
+            tip="How it is delivered"
             onClick={() => setMenu((m) => !m)}
           />
           {menu && (
-            <div className="menu" role="radiogroup" aria-label="Intent" onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), setMenu(false))}>
-              {(['inform', 'instruct'] as const).map((v) => (
-                <label key={v} className={`menu-item${intent === v ? ' on' : ''}`}>
-                  <input
-                    type="radio"
-                    name={`${ids}-intent`}
-                    value={v}
-                    checked={intent === v}
-                    onChange={() => {
-                      setIntent(v);
-                      setMenu(false);
-                      box.current?.focus();
-                    }}
-                  />
-                  <span className="radio-mark" aria-hidden="true" />
-                  {v}
-                  <span className="muted">{v === 'inform' ? ' — waits for the current turn' : ' — may interrupt'}</span>
-                </label>
-              ))}
+            <div className="menu" onKeyDown={(e) => e.key === 'Escape' && (e.stopPropagation(), setMenu(false), box.current?.focus())}>
+              <div role="radiogroup" aria-label="Intent">
+                {(['inform', 'instruct'] as const).map((v) => (
+                  <label key={v} className={`menu-item${intent === v ? ' on' : ''}`}>
+                    <input
+                      type="radio"
+                      name={`${ids}-intent`}
+                      value={v}
+                      checked={intent === v}
+                      onChange={() => setIntent(v)}
+                    />
+                    <span className="radio-mark" aria-hidden="true" />
+                    {v}
+                    <span className="muted">{v === 'inform' ? ' — delivered when its turn ends' : ' — may interrupt its turn'}</span>
+                  </label>
+                ))}
+              </div>
+              <label className={`menu-item check${interruptBoxEnabled ? '' : ' disabled'}`}>
+                <input
+                  type="checkbox"
+                  checked={interrupting}
+                  disabled={!interruptBoxEnabled}
+                  aria-describedby={boxReason ? `${ids}-box` : undefined}
+                  onChange={(e) => setInterrupt(e.target.checked)}
+                />
+                <span className="check-mark" aria-hidden="true" />
+                Interrupt current turn
+              </label>
+              {boxReason && (
+                <span id={`${ids}-box`} className="reason menu-reason">
+                  {boxReason}
+                </span>
+              )}
             </div>
           )}
         </div>
-        <Btn type="submit" variant="primary" icon="send" className="send" kbd="⏎" tip="Send" disabled={!!sendReason} aria-describedby={sendReason ? `${ids}-send` : undefined}>
+        <Btn type="submit" variant="primary" icon="send" className="send" kbd="⏎" tip="Send · Shift+Enter for a new line" disabled={!!sendReason} aria-describedby={sendReason ? `${ids}-send` : undefined}>
           Send
         </Btn>
       </div>
-      <div className="composer-meta">
-        <label className={`check${interruptBoxEnabled ? '' : ' disabled'}`}>
-          <input
-            type="checkbox"
-            checked={interruptBoxEnabled && interrupt}
-            disabled={!interruptBoxEnabled}
-            aria-describedby={boxReason ? (boxReason === CHOOSE_INSTRUCT ? `${ids}-box` : `${c.ids}-int`) : undefined}
-            onChange={(e) => setInterrupt(e.target.checked)}
-          />
-          <span className="check-mark" aria-hidden="true" />
-          Interrupt current turn
-        </label>
-        {boxReason === CHOOSE_INSTRUCT && (
-          <span id={`${ids}-box`} className="reason">
-            {boxReason}
-          </span>
-        )}
-        <span className="meta-sep" aria-hidden="true">
-          ·
+      {/* Why Send is off: in words when it matters (not running, sending); an empty box only tells screen readers. */}
+      {sendReason && (
+        <span id={`${ids}-send`} className={sendReason === TYPE_FIRST ? 'sr-only' : 'reason composer-reason'}>
+          {sendReason}
         </span>
-        <span className="muted">intent {intent}</span>
-        <span className="composer-spacer" />
-        {sendReason ? (
-          <span id={`${ids}-send`} className="reason">
-            {sendReason}
-          </span>
-        ) : (
-          <span className="muted keys-hint" aria-hidden="true">
-            <kbd>⏎</kbd> send · <kbd>⇧⏎</kbd> newline · <kbd>Ctrl+C</kbd> copy · <kbd>Ctrl+V</kbd> paste
-          </span>
-        )}
-      </div>
+      )}
       {c.error && (
         <DismissibleError className="tone-red composer-error">
           {c.error}

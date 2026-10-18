@@ -2,6 +2,7 @@ import {DismissibleError} from './DismissibleError';
 import { splitTeamMessage } from '../teamMessage';
 import { TextArea } from './TextArea';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { EventRecord } from '../generated/EventRecord';
 import { tokenSum, tokensLabel } from '../format';
 import { conversationItems, openTurn, type AgentItem, type Item, type NoticeItem, type OperatorItem, type ToolItem, type TurnEndItem } from '../conversation';
@@ -12,6 +13,7 @@ import { Highlight, Hl, matches, scrollWithin, useQuery } from './highlight';
 import { CopyButton, Markdown } from './Markdown';
 import { toolSearchText, ToolCard, ToolGroup, toolStatus } from './ToolCard';
 import { Icon, VendorMark } from './ui';
+import { WORDS } from '../vocab';
 import './chat.css';
 
 /** Within this many px of the end counts as "at the bottom". */
@@ -254,20 +256,52 @@ function NoticeText({ n }: { n: NoticeItem }) {
   );
 }
 
-function Divider({ items }: { items: NoticeItem[] }) {
+/** One line for a run of session events: "Restarted · new conversation". */
+export function chainSummary(items: NoticeItem[]): string {
+  const started = items.find((n) => n.session?.phase === 'started');
+  const ended = items.some((n) => n.session?.phase === 'ended');
+  const last = items[items.length - 1].text;
+  return WORDS.sessionChain(!!started, ended, started?.session?.cause, last.charAt(0).toUpperCase() + last.slice(1));
+}
+
+/**
+ * Session events between turns. One quiet event is one short line. A run of them ("Stopping ›
+ * Session #1 ended · exit 0 › … › Running") folds to one summary line that opens, on click, to
+ * the verbatim chain (evidence). A search hit inside opens it; an alarm always shows in full.
+ */
+function Chain({ items, shown }: { items: NoticeItem[]; shown: boolean }) {
   return (
-    <div className={`divider${items.some((n) => n.alarm) ? ' alarm' : ''}`}>
+    <span className="divider-chain" data-raw-evidence hidden={!shown}>
+      {items.map((n, i) => (
+        <span key={n.key} data-item-key={i > 0 ? n.key : undefined}>
+          {i > 0 && (
+            <span className="divider-sep" aria-hidden="true">
+              {' › '}
+            </span>
+          )}
+          <NoticeText n={n} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function Divider({ items }: { items: NoticeItem[] }) {
+  const q = useQuery();
+  const [open, setOpen] = useState(false);
+  const alarm = items.some((n) => n.alarm);
+  const foldable = items.length > 1 && !alarm;
+  const shown = !foldable || open || items.some((n) => matches(q, n.text));
+  return (
+    <div className={`divider${alarm ? ' alarm' : ''}${foldable ? ' chain' : ''}`}>
       <span className="divider-text">
-        {items.map((n, i) => (
-          <span key={n.key} data-item-key={i > 0 ? n.key : undefined}>
-            {i > 0 && (
-              <span className="divider-sep" aria-hidden="true">
-                {' › '}
-              </span>
-            )}
-            <NoticeText n={n} />
-          </span>
-        ))}
+        {foldable && (
+          <button type="button" className="divider-toggle" aria-expanded={shown} onClick={() => setOpen(!open)} data-tip={shown ? undefined : WORDS.showSessionEvents}>
+            {chainSummary(items)}
+            <Icon name={shown ? 'chevron-down' : 'chevron-right'} size={12} />
+          </button>
+        )}
+        <Chain items={items} shown={shown} />
       </span>
     </div>
   );
@@ -389,6 +423,11 @@ type Props = {
   /** Set when you came here from another view: Esc and the button go back. */
   onReturn?: () => void;
   returnLabel?: string;
+  /**
+   * Where the search lives: a slot in the agent pane's header. There it is a search icon that opens
+   * the field (also with `/`) and folds back when left empty. Without a slot it is a row of its own.
+   */
+  toolsSlot?: HTMLElement | null;
 };
 
 /**
@@ -396,7 +435,7 @@ type Props = {
  * with its tool calls folded in, and quiet dividers for sessions and turns. It follows new
  * output only while you are at the bottom; otherwise a "▼ N new" chip counts what arrived.
  */
-export function Transcript({ seatId, feed, epoch, vendor, name, focusKey = null, onReturn, returnLabel }: Props) {
+export function Transcript({ seatId, feed, epoch, vendor, name, focusKey = null, onReturn, returnLabel, toolsSlot }: Props) {
   const { events, loading, error, truncated, gap } = useSeatEvents(seatId, feed, epoch);
   const items = useMemo(() => conversationItems(events), [events]);
   const blocks = useMemo(() => buildBlocks(items), [items]);
@@ -410,6 +449,21 @@ export function Transcript({ seatId, feed, epoch, vendor, name, focusKey = null,
   const [hit, setHit] = useState(0);
   const [hits, setHits] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  // In the header the field folds to an icon until it is used; `focusSearch` focuses it once drawn.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const focusSearch = useRef(false);
+  const fieldShown = !toolsSlot || searchOpen || query !== '';
+  useEffect(() => {
+    if (focusSearch.current && fieldShown) {
+      focusSearch.current = false;
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    }
+  });
+  const openSearch = () => {
+    focusSearch.current = true;
+    setSearchOpen(true);
+  };
   const [toggled, setToggled] = useState<Map<string, boolean>>(new Map());
   const [flashKey, setFlashKey] = useState<string | null>(null);
   const jumped = useRef<string | null>(null);
@@ -495,8 +549,10 @@ export function Transcript({ seatId, feed, epoch, vendor, name, focusKey = null,
       if (document.querySelector('[role="dialog"]')) return;
       if (e.key === '/') {
         e.preventDefault();
-        searchRef.current?.focus();
-        searchRef.current?.select();
+        if (searchRef.current) {
+          searchRef.current.focus();
+          searchRef.current.select();
+        } else openSearch();
       } else if (e.key === 'Escape' && onReturn) {
         e.preventDefault();
         onReturn();
@@ -550,16 +606,20 @@ export function Transcript({ seatId, feed, epoch, vendor, name, focusKey = null,
   for (let i = items.length - 1; i >= 0 && !lastTool; i--) if (items[i].kind === 'tool') lastTool = items[i] as ToolItem;
   const working = !!live && !!lastTool && lastTool.turnId === live && toolStatus(lastTool) === 'running';
 
-  return (
-    <div className="transcript">
-      <div className="cv-tools">
+  const tools = (
+    <>
         {onReturn && (
           <button type="button" className="return-btn" onClick={onReturn} aria-keyshortcuts="Escape" data-tip="Go back" data-kbd="esc">
             <Icon name="arrow-left" size={13} />
             {returnLabel ?? 'Back'}
           </button>
         )}
-        <label className="cv-search">
+        {!fieldShown && (
+          <button type="button" className="icon-btn cv-search-btn" onClick={openSearch} aria-label="Search transcript" aria-keyshortcuts="/" data-tip="Search transcript" data-kbd="/">
+            <Icon name="search" size={15} />
+          </button>
+        )}
+        {fieldShown && <label className="cv-search">
           <Icon name="search" size={13} className="muted" />
           <input
             ref={searchRef}
@@ -570,6 +630,7 @@ export function Transcript({ seatId, feed, epoch, vendor, name, focusKey = null,
               setHit(0);
             }}
             onKeyDown={onSearchKey}
+            onBlur={() => { if (!query) setSearchOpen(false); }}
             placeholder="Search transcript"
             aria-label="Search transcript"
             aria-keyshortcuts="/"
@@ -579,7 +640,7 @@ export function Transcript({ seatId, feed, epoch, vendor, name, focusKey = null,
               /
             </kbd>
           )}
-        </label>
+        </label>}
         {q && (
           <span className="cv-search-nav">
             <span className="cv-count" role="status">
@@ -596,7 +657,12 @@ export function Transcript({ seatId, feed, epoch, vendor, name, focusKey = null,
             </button>
           </span>
         )}
-      </div>
+    </>
+  );
+
+  return (
+    <div className="transcript">
+      {toolsSlot ? createPortal(<span className="pane-search-tools">{tools}</span>, toolsSlot) : toolsSlot === undefined && <div className="cv-tools">{tools}</div>}
       <div className="transcript-scroll" ref={scroller} onScroll={onScroll} data-testid="transcript-scroll">
         <Highlight query={query}>
           <div className="cv-column">

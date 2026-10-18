@@ -6,14 +6,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => path.join(here, 'fixtures', name);
 
 async function boot(page: Page, file: string, rig: string) {
-  await page.goto('/?all');
+  await page.goto('/new');
   // The expert start-from-a-file form is under Advanced on the all-teams page.
   const advanced = page.locator('details.home-advanced');
   await advanced.locator('summary').click();
   await expect(advanced).toHaveAttribute('open', '');
   await advanced.getByLabel('Team file').fill(fixture(file));
   await advanced.getByRole('button', { name: 'Start team' }).click();
-  await expect(page).toHaveURL(new RegExp(`/rig/${rig}$`));
+  await expect(page).toHaveURL(new RegExp(`/p/${rig}/board$`));
 }
 
 test('desktop: start a team, message an agent and stop it', async ({ page }, info) => {
@@ -53,7 +53,7 @@ test('desktop: start a team, message an agent and stop it', async ({ page }, inf
 
   // Esc returns to the same board.
   await page.keyboard.press('Escape');
-  await expect(page).toHaveURL(/\/rig\/e2e-desktop$/);
+  await expect(page).toHaveURL(/\/p\/e2e-desktop\/board$/);
   await boxA.click();
   await expect(page.getByRole('region', { name: 'Agent a' })).toBeVisible();
   await page.getByRole('textbox', { name: 'Message' }).fill('hello');
@@ -62,18 +62,22 @@ test('desktop: start a team, message an agent and stop it', async ({ page }, inf
   await expect(convo.getByText('stub received: hello')).toBeVisible();
   await expect(convo.getByText('read', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Stop agent…' }).click();
+  // Controls are on the agent's Activity tab.
+  await page.getByRole('link', { name: 'Activity' }).click();
+  await page.getByRole('button', { name: 'Hard stop…' }).click();
   await expect(page.getByText(/Stops a\./)).toBeVisible();
   await page.getByRole('button', { name: 'Confirm stop agent' }).click();
-  await expect(page.getByRole('link', { name: 'a — stopped' })).toBeVisible();
+  await page.getByRole('link', { name: 'Agents' }).click();
+  await expect(page.getByRole('row', { name: /a .*stopped/ })).toBeVisible();
 });
 
 test('mobile: list view shows agents and connections, tap opens the agent', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'mobile flow');
   await boot(page, 'e2e-mobile.yaml', 'e2e-mobile');
 
-  await expect(page.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
-  const rowA = page.getByRole('button', { name: /^a — / });
+  // The Agents tab is the list: every agent as a row, connections as sentences.
+  await page.getByRole('link', { name: 'Agents' }).tap();
+  const rowA = page.getByRole('table').getByRole('link', { name: /^a/ });
   await expect(rowA).toBeVisible();
   await expect(page.getByText('a hands work to b')).toBeVisible();
 

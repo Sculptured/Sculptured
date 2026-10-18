@@ -23,9 +23,9 @@ it('expands the whole chat from the composer, retains mounted content and draft,
   const field = screen.getByLabelText('Message'), log = screen.getByRole('log');
   log.scrollTop = 42;
   await user.type(field, 'Unsent draft');
-  const trigger = within(screen.getByRole('form')).getByRole('button', { name: 'Text Mode' });
+  const trigger = within(screen.getByRole('form')).getByRole('button', { name: 'Expand editor' });
   await user.click(trigger);
-  const dialog = screen.getByRole('dialog', { name: 'Text Mode · Builder' });
+  const dialog = screen.getByRole('dialog', { name: 'Full screen · Builder' });
   expect(within(dialog).getByRole('log')).toBe(log);
   expect(within(dialog).getByLabelText('Message')).toBe(field);
   expect(field).toHaveValue('Unsent draft');
@@ -44,7 +44,7 @@ it('expands the whole chat from the composer, retains mounted content and draft,
 it('sends from full-screen chat and exits without triggering outer navigation', async () => {
   const back = vi.fn(), user = userEvent.setup();
   render(<div onKeyDown={back}><Chat /></div>);
-  await user.click(screen.getAllByRole('button', { name: 'Text Mode' })[0]);
+  await user.click(screen.getAllByRole('button', { name: 'Expand editor' })[0]);
   const dialog = screen.getByRole('dialog');
   await user.type(within(dialog).getByLabelText('Message'), 'A message{Shift>}{Enter}{/Shift}with a newline');
   await user.click(within(dialog).getByRole('button', { name: 'Send' }));
@@ -57,7 +57,7 @@ it('sends from full-screen chat and exits without triggering outer navigation', 
 it('restores background interaction when the chat unmounts in Text Mode', async () => {
   const { unmount } = render(<Chat />);
   const outside = screen.getByRole('button', { name: 'Outside chat' });
-  fireEvent.click(screen.getAllByRole('button', { name: 'Text Mode' })[0]);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Expand editor' })[0]);
   expect(outside.inert).toBe(true);
   unmount();
   expect(outside.inert).not.toBe(true);

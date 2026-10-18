@@ -64,22 +64,23 @@ describe('Handoffs: waiting state', () => {
     expect(rows.find((r) => r.id === 'dev.a@r')!.waitingFor).toEqual([]);
   });
 
-  it('shows "◷ waiting for …" on the Live graph card and in the sidebar row', async () => {
+  it('shows "◷ waiting for …" on the Run board card and in the Agents list', async () => {
     renderAt('/rig/r');
     act(() => FakeEventSource.instances[0].emit('snapshot', waitingSnapshot()));
     const box = await screen.findByRole('button', { name: 'Builder — idle, waiting for Planner' });
     expect(box).toHaveTextContent('◷waiting for Planner');
-    const row = screen.getByRole('link', { name: 'Builder — waiting for Planner' });
-    expect(row).toHaveTextContent('◷waiting for Planner');
     // Not waiting: the ordinary state only.
     expect(screen.getByRole('button', { name: 'Planner — idle' })).not.toHaveTextContent('waiting');
+    await userEvent.click(screen.getByRole('link', { name: 'Agents' }));
+    const row = (await screen.findByRole('link', { name: /Builder/ })).closest('tr')!;
+    expect(row).toHaveTextContent('◷waiting for Planner');
   });
 
   it('shows the waiting state in the agent pane header, and drops it when the handoff arrives', async () => {
     renderAt('/rig/r/agent/dev.b%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', waitingSnapshot()));
     const pane = await screen.findByRole('region', { name: 'Agent Builder' });
-    const head = within(pane).getByRole('banner');
+    const head = pane.querySelector('.ap-notices')!;
     expect(head).toHaveTextContent("◷waiting for Planner — starts when Planner finishes; Planner's result is passed along");
     act(() => FakeEventSource.instances[0].emit('event', { event: handedOver(20), seat: seatView('b', { label: 'Builder' }) }));
     expect(head).not.toHaveTextContent('waiting for');
@@ -134,7 +135,7 @@ const stuckSnapshot = () =>
   });
 
 describe('Handoffs: stuck state', () => {
-  it('shows "▲ stuck: …" in red on the card, the sidebar row and the pane header', async () => {
+  it('shows "▲ stuck: …" in red on the card and in the Agents list', async () => {
     renderAt('/rig/r');
     act(() => FakeEventSource.instances[0].emit('snapshot', stuckSnapshot()));
     const box = await screen.findByRole('button', { name: 'Builder — stuck, stuck: Planner needs attention' });
@@ -142,9 +143,10 @@ describe('Handoffs: stuck state', () => {
     expect(box.querySelector('.stuck-mark')).toHaveTextContent('▲stuck: Planner needs attention');
     expect(box.querySelector('.stuck-mark')).toHaveClass('tone-red');
     expect(box.querySelector('.waiting-mark')).toBeNull();
-    const row = screen.getByRole('link', { name: 'Builder — stuck: Planner needs attention' });
+    await userEvent.click(screen.getByRole('link', { name: 'Agents' }));
+    const row = (await screen.findByRole('link', { name: /Builder/ })).closest('tr')!;
     expect(row).toHaveTextContent('▲');
-    expect(row).toHaveTextContent('stuck: Planner needs attention');
+    expect(row.querySelector('.stuck-mark')).toHaveTextContent('stuck: Planner needs attention');
   });
 
   it('offers Restart this agent on the agent that needs attention, and calls the API', async () => {
@@ -165,7 +167,7 @@ describe('Handoffs: stuck state', () => {
     });
     act(() => FakeEventSource.instances[0].emit('snapshot', snap));
     const pane = await screen.findByRole('region', { name: 'Agent Builder' });
-    expect(within(pane).getByRole('banner')).toHaveTextContent('▲stuck: the handoff from Planner was not delivered');
+    expect(pane.querySelector('.ap-notices')).toHaveTextContent('▲stuck: the handoff from Planner was not delivered');
     await userEvent.click(within(pane).getByRole('button', { name: 'Resend handoff' }));
     expect(api.resendHandoffs).toHaveBeenCalledWith('dev.b@r');
   });
@@ -173,7 +175,11 @@ describe('Handoffs: stuck state', () => {
   it('offers Hand over again on an agent that hands work to others', async () => {
     renderAt('/rig/r/agent/dev.a%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', waitingSnapshot()));
-    const pane = await screen.findByRole('region', { name: 'Agent Planner' });
+    const chat = await screen.findByRole('region', { name: 'Agent Planner' });
+    // Not the obvious next step here, so it is one step back: on Activity, and in Ctrl K.
+    expect(within(chat).queryByRole('button', { name: 'Hand over again' })).toBeNull();
+    await userEvent.click(screen.getByRole('link', { name: 'Activity' }));
+    const pane = await screen.findByRole('region', { name: 'Activity' });
     const button = within(pane).getByRole('button', { name: 'Hand over again' });
     expect(button).toHaveAttribute('data-tip', "Send Planner's latest finished turn to Builder; every agent downstream runs once");
     // Practice agents are free: no question asked.
@@ -217,7 +223,15 @@ describe('Handoffs: Hand over again on real agents', () => {
     const real = { ...rig, seats: rig.seats.map((s) => ({ ...s, runtime: 'claude-code' as const })) };
     const seats = [seatView('a', { label: 'Planner', runtime: 'claude-code' }), seatView('b', { label: 'Builder', runtime: 'claude-code' })];
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot({ rig: real, seats })));
-    const pane = await screen.findByRole('region', { name: 'Agent Planner' });
+    await screen.findByRole('region', { name: 'Agent Planner' });
+    // Ctrl K's "Hand over again…" opens Activity and asks the same question as the button.
+    const user = userEvent.setup();
+    await user.keyboard('{Control>}k{/Control}');
+    await user.keyboard('hand over again{Enter}');
+    const pane = await screen.findByRole('region', { name: 'Activity' });
+    expect(within(pane).getByRole('alertdialog', { name: /^Re-run 1 agent downstream of Planner/ })).toBeInTheDocument();
+    await user.click(within(pane).getByRole('button', { name: 'Cancel' }));
+    expect(api.handOver).not.toHaveBeenCalled();
     await userEvent.click(within(pane).getByRole('button', { name: 'Hand over again' }));
     const ask = within(pane).getByRole('alertdialog', { name: 'Re-run 1 agent downstream of Planner? Each runs once and uses your Claude account.' });
     expect(within(ask).getByRole('button', { name: 'Cancel' })).toHaveFocus();

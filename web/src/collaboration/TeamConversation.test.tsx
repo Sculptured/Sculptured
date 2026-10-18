@@ -6,8 +6,6 @@ import { api } from '../api';
 import { ev, snapshot } from '../test-fixtures';
 import type { EventRecord } from '../generated/EventRecord';
 import { TeamConversation } from './TeamConversation';
-import { TeamLive } from '../shell/TeamLive';
-import { teamAgents } from '../shell/model';
 import { emptyState } from '../useRigStream';
 
 vi.mock('../api', async orig => {
@@ -35,7 +33,7 @@ describe('board team conversation', () => {
     expect(screen.queryByText('Intermediate result')).toBeNull();
     const list = within(screen.getByRole('list', { name: 'Team exchanges' }));
     expect(list.getByText('Review this draft')).toBeVisible();
-    expect(list.getByRole('link', { name: 'Open conversation' })).toHaveAttribute('href', '/rig/r/agent/dev.b%40r/conversation?item=m-m');
+    expect(list.getByRole('link', { name: 'Open conversation' })).toHaveAttribute('href', '/p/r/agents/dev.b/conversation?item=m-m');
     await user.click(list.getByRole('button', { name: 'Reviewer' }));
     expect(p.onOpen).toHaveBeenCalledWith('dev.b@r');
     unmount();
@@ -61,22 +59,5 @@ describe('board team conversation', () => {
     await user.keyboard('{Escape}');
     expect(p.onClose).toHaveBeenCalledOnce();
   });
-  it('starts collapsed on the board, opens without replacing the graph, and restores trigger focus', async () => {
-    const user = userEvent.setup();
-    const p = props();
-    const agents = Object.fromEntries(teamAgents('r', snap.rig, state.seats).map(a => [a.id, a]));
-    render(<MemoryRouter><TeamLive {...p} rig="board-test" agents={agents} now={0} mode="graph" onMode={() => {}} onSelect={() => {}} /></MemoryRouter>);
-    expect(screen.queryByRole('complementary', { name: 'Team conversation' })).toBeNull();
-    expect(api.latestSeatEvents).not.toHaveBeenCalled();
-    const graph = screen.getByTestId('graph-world');
-    const transform = graph.style.transform;
-    const button = screen.getByRole('button', { name: 'Conversation' });
-    await user.click(button);
-    expect(screen.getByRole('heading', { name: 'Team conversation' })).toHaveFocus();
-    expect(graph).toBeInTheDocument();
-    expect(graph.style.transform).toBe(transform);
-    await user.keyboard('{Escape}');
-    expect(button).toHaveFocus();
-    expect(screen.queryByRole('complementary', { name: 'Team conversation' })).toBeNull();
-  });
+
 });

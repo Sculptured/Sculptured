@@ -17,6 +17,7 @@ import { isDone } from '../seen';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { DEFAULT_GROUP_ID, nameMap, seatIdFor } from '../draft/ids';
 import type { Teams } from '../useTeams';
+import { agentPagePath, agentTabOf, boardPath } from '../paths';
 import { displayName, labelNames, nameForId, type NameMap } from '../vocab';
 
 export type AgentRow = {
@@ -182,7 +183,7 @@ export function buildTeams(
     const t = teams[rig];
     const snap = t?.state.snapshot;
     if (!snap) {
-      rows.push({ rig, agents: [], counts: emptyCounts(), connected: !!t?.connected, loaded: false, names: {}, title: titles[rig] ?? rig, href: structurePath(rig) });
+      rows.push({ rig, agents: [], counts: emptyCounts(), connected: !!t?.connected, loaded: false, names: {}, title: titles[rig] ?? rig, href: boardPath(rig) });
       continue;
     }
     const names = { ...labelNames(snap.rig), ...(extraNames[rig] ?? {}) };
@@ -191,7 +192,7 @@ export function buildTeams(
     const counts = emptyCounts();
     for (const a of agents) counts[a.state.key]++;
     // A running team opens on its Run board; any other opens on its design.
-    rows.push({ rig, agents: sortAgents(agents, (a) => a.state.key), counts, connected: t.connected, loaded: true, names, title: titles[rig] ?? rig, href: running ? teamPath(rig) : structurePath(rig) });
+    rows.push({ rig, agents: sortAgents(agents, (a) => a.state.key), counts, connected: t.connected, loaded: true, names, title: titles[rig] ?? rig, href: boardPath(rig) });
   }
   return rows;
 }
@@ -223,8 +224,6 @@ export function sortTeams(rows: TeamRow[], summaries: RigSummary[] | null): Team
 /** Not started yet: the agent exists only in the team's design. */
 export const NOT_STARTED: AgentState = { key: 'planned', glyph: '○', word: 'not started', tone: 'muted' };
 
-export const structurePath = (team: string, agent?: string) =>
-  `/team/${encodeURIComponent(team)}/structure${agent ? `?agent=${encodeURIComponent(agent)}` : ''}`;
 
 /** A team built here that has not started: its agents, from the draft, all "not started". */
 export function draftTeamRow(d: TeamDraft): TeamRow {
@@ -243,19 +242,18 @@ export function draftTeamRow(d: TeamDraft): TeamRow {
       summary: 'not started',
       lastMs: null,
       activity: undefined,
-      href: structurePath(d.id, a.id),
+      href: agentPagePath(d.id, seatIdFor(d, a.id)!, 'setup'),
     };
   });
   const counts = emptyCounts();
   counts.planned = agents.length;
-  return { rig: d.id, agents, counts, connected: false, loaded: true, names: nameMap(d), title: d.name.trim() || 'Unnamed team', href: structurePath(d.id), draftOnly: true };
-}
-
-export function flatAgents(rows: TeamRow[], collapsed: Set<string> = new Set()): AgentRow[] {
-  return rows.flatMap((r) => (collapsed.has(r.rig) ? [] : r.agents));
+  return { rig: d.id, agents, counts, connected: false, loaded: true, names: nameMap(d), title: d.name.trim() || 'Unnamed team', href: boardPath(d.id), draftOnly: true };
 }
 
 
-export const agentPath = (rig: string, id: string, tab?: string) =>
-  `/rig/${encodeURIComponent(rig)}/agent/${encodeURIComponent(id)}${tab ? `/${tab}` : ''}`;
-export const teamPath = (rig: string) => `/rig/${encodeURIComponent(rig)}`;
+/** An agent's page; old tab names (`visual`, `events`) open its Activity. */
+export function agentPath(rig: string, id: string, tab?: string): string {
+  const t = agentTabOf(tab);
+  return agentPagePath(rig, id, t.tab) + t.search;
+}
+

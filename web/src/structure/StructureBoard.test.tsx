@@ -7,7 +7,7 @@ import { forgetViewports } from '../shell/viewport';
 import { draftAgent, teamDraft, teamRecord } from '../test-fixtures';
 import { openRigWords } from '../test-vocab';
 import { saveTiming } from '../useTeamDraft';
-import { card, fakeTeam, OFFSET, pos, renderAt, resetApi, sizeViewport } from './harness';
+import { card, fakeTeam, OFFSET, pos, renderAt, resetApi, sizeViewport, where } from './harness';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
@@ -31,8 +31,8 @@ beforeEach(() => {
   resetApi();
   forgetViewports();
   localStorage.clear();
-  // These scenarios exercise the explicitly opened panel.
-  localStorage.setItem('sculptured.panels.v2.right', 'true');
+  // ...and every add tool, which sits under More tools until it is opened.
+  localStorage.setItem('sculptured.design.more-tools.v1', 'true');
   saveTiming.delayMs = 5;
 });
 afterEach(() => {
@@ -40,75 +40,69 @@ afterEach(() => {
 });
 
 describe('Structure board: adding agents', () => {
-  it('keeps the inspector closed during selection and dragging, with add tools exposed', async () => {
+  it('has no side panel: selecting and dragging stay on the board; a click without dragging, or Enter, opens the agent', async () => {
     localStorage.clear();
     await board();
-    const canvas = screen.getByRole('region', { name: 'Design board' });
-    expect(document.getElementById('workspace-details')).not.toBeVisible();
-    expect(document.querySelector('.structure-status')).not.toHaveAttribute('open');
-    expect(document.querySelector('.sb-tools-disclosure')).toHaveAttribute('open');
-    await userEvent.click(screen.getByText('Edit tools', { selector: 'summary' }));
-    expect(document.querySelector('.sb-tools-disclosure')).not.toHaveAttribute('open');
+    const noSide = () => expect(document.querySelector('.sb-side, .side-panel, .agent-sheet, .context-panel')).toBeNull();
+    noSide();
+    // A newcomer sees one Add agent button; the other tools are one step back, under More tools.
+    const tools = screen.getByRole('toolbar', { name: 'Add to the team' });
+    expect(within(tools).getByRole('button', { name: 'Add a Claude agent' })).toHaveTextContent('Add agent');
+    expect(within(tools).queryByRole('button', { name: 'Add a group' })).toBeNull();
+    expect(within(tools).queryByRole('button', { name: 'Add a Codex agent' })).toBeNull();
+    const more = within(tools).getByRole('button', { name: 'More tools' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(more);
+    for (const name of ['Add a Codex agent', 'Add a group', 'Add the Input', 'Saved groups', 'Full text', 'Undo', 'Redo'])
+      expect(within(tools).getByRole('button', { name })).toBeInTheDocument();
+    expect(localStorage.getItem('sculptured.design.more-tools.v1')).toBe('true');
+    await userEvent.click(within(tools).getByRole('button', { name: 'Fewer tools' }));
+    expect(within(tools).queryByRole('button', { name: 'Add a group' })).toBeNull();
     expect(api.saveTeam).not.toHaveBeenCalled();
     const builder = card('Builder');
     fireEvent.pointerDown(builder, {button:0,clientX:100,clientY:100,pointerId:1});
     fireEvent.focus(builder);
-    expect(document.getElementById('workspace-details')).not.toBeVisible();
+    noSide();
     fireEvent.pointerMove(window, {clientX:180,clientY:260,pointerId:1});
     fireEvent.pointerUp(window, {clientX:180,clientY:260,pointerId:1});
+    // The click that ends a drag only moves the card.
     fireEvent.click(builder);
     expect(pos('Builder')).toEqual([120,200]);
-    expect(document.getElementById('workspace-details')).not.toBeVisible();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    noSide();
+    expect(where()).toBe('/p/t/board?mode=design');
     fireEvent.keyDown(builder, {key:'Enter'});
-    expect(screen.getByRole('region', { name: 'Agent Builder' })).toBeVisible();
-    expect(screen.getByRole('region', { name: 'Design board' })).toBe(canvas);
+    expect(await screen.findByRole('region', { name: 'Setup' })).toBeVisible();
+    expect(where()).toBe('/p/t/agents/team.builder');
   });
 
-  it('keeps the board mounted while editing workflow input, review routes and dispatch settings', async () => {
+  it('opens workflow input, review routes and dispatch settings on their own pages, and comes back', async () => {
     vi.mocked(api.workflow).mockResolvedValue({ config: null, run: null, active: false });
     const d = teamDraft({ agents: ['dispatcher', 'builder', 'reviewer', 'frontend'].map(id => draftAgent(id)), connections: [], workflow: {
       input: '', dispatcher: 'dispatcher', collector: 'frontend', entry: 'build', max_tasks: 24, max_steps: 12,
       stages: [{ id:'build', name:'Build', agent:'builder', routes:{ ready:'review' } }, { id:'review', name:'Review', agent:'reviewer', routes:{ revise:'build', accept:null } }],
     } });
     await board(teamRecord({ draft:d }));
-    const canvas = screen.getByRole('region', { name:'Design board' });
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name:'Input: links, notes and ideas' }));
+    expect(where()).toBe('/p/t/workflow/input');
     await user.type(screen.getByLabelText('Workflow input'), 'Links and rough ideas');
     await waitFor(() => expect(lastSaved().workflow?.input).toBe('Links and rough ideas'));
-    await user.click(screen.getByRole('button', { name:'Close workflow details' }));
-    await user.click(screen.getByRole('button', { name:'Workflow route: revise' }));
+    await user.click(screen.getByRole('button', { name:'Back to the board' }));
+    await user.click(await screen.findByRole('button', { name:'Workflow route: revise' }));
     expect(screen.getByLabelText('Destination for revise')).toHaveValue('build');
     await user.selectOptions(screen.getByLabelText('Destination for revise'), 'review');
     await waitFor(() => expect(lastSaved().workflow?.stages[1].routes.revise).toBe('review'));
-    await user.click(screen.getByRole('button', { name:'Close workflow details' }));
-    await user.click(screen.getByRole('button', { name:'Dispatch N · settings' }));
+    await user.click(screen.getByRole('button', { name:'Back to the board' }));
+    await user.click(await screen.findByRole('button', { name:'Dispatch N · settings' }));
     expect(screen.getByLabelText('Maximum items')).toHaveValue(24);
     expect(screen.getByRole('button', { name:'Add reusable stage' })).toBeVisible();
-    expect(screen.getByRole('region', { name:'Design board' })).toBe(canvas);
     expect(lastSaved().connections).toEqual([]);
   });
 
-  it('hides the inspector without remounting the canvas or saving the draft', async () => {
-    await board();
-    const canvas = screen.getByRole('region', { name: 'Design board' });
-    const inspector = document.getElementById('workspace-details');
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'App menu' }));
-    await user.click(screen.getByRole('button', { name: 'Hide details panel' }));
-    expect(inspector).not.toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Show details panel' }));
-    expect(inspector).toBeVisible();
-    expect(screen.getByRole('region', { name: 'Design board' })).toBe(canvas);
-    expect(api.saveTeam).not.toHaveBeenCalled();
-  });
-
-  it('n then Enter adds an agent at the next free place; arrows move it; Enter edits its name', async () => {
+  it('n then Enter adds an agent at the next free place; arrows move it; Enter opens its Setup', async () => {
     await board();
     const user = userEvent.setup();
     await user.keyboard('n');
-    expect(document.querySelector('.sb-tools-disclosure')).toHaveAttribute('open');
     expect(screen.getByRole('button', { name: 'Add a Claude agent' })).toHaveFocus();
     await user.keyboard('{Enter}');
     const added = card('Claude 1');
@@ -120,9 +114,9 @@ describe('Structure board: adding agents', () => {
     expect(pos('Claude 1')).toEqual([584, 56]);
     await user.keyboard('{Shift>}{ArrowRight}{/Shift}');
     expect(pos('Claude 1')).toEqual([648, 56]);
-    await user.keyboard('{Enter}');
-    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus();
     await waitFor(() => expect(lastSaved().agents.find((a) => a.name === 'Claude 1')).toMatchObject({ kind: 'claude', x: 648, y: 56 }));
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('textbox', { name: 'Name' })).toHaveValue('Claude 1');
   });
 
   it('drags an agent in from the palette and drops it where the pointer is', async () => {
@@ -167,9 +161,7 @@ describe('Structure board: moving', () => {
     expect(pos('Builder')).toEqual([40, 40]);
     await user.keyboard('{Control>}{Shift>}z{/Shift}{/Control}');
     expect(pos('Builder')).toEqual([40, 88]);
-    expect(screen.getByRole('region', { name: 'Agent Builder' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('region', { name: 'Team' })).toBeInTheDocument();
     expect(card('Builder')).toHaveAttribute('aria-pressed', 'false');
   });
 });
@@ -190,17 +182,18 @@ describe('Structure board: connecting', () => {
     await waitFor(() => expect(lastSaved().connections).toEqual([expect.objectContaining({ from: 'builder', to: 'reviewer', kind: 'hands-work-to' })]));
   });
 
-  it('connects from the agent panel with Connect to…, by keyboard', async () => {
+  it("connects from the agent's Setup with Connect to…, by keyboard", async () => {
     await board(unconnected());
     const user = userEvent.setup();
     await user.click(card('Builder'));
-    const panel = screen.getByRole('dialog', { name: 'Builder details' });
-    await user.click(within(panel).getByRole('button', { name: 'Connect to…' }));
+    const links = await screen.findByRole('region', { name: 'Connections' });
+    await user.click(within(links).getByRole('button', { name: 'Connect to…' }));
     const menu = screen.getByRole('menu', { name: 'Builder hands work to' });
     expect(within(menu).getAllByRole('menuitem')[0]).toHaveFocus();
     await user.keyboard('{Enter}');
-    expect(screen.getByRole('button', { name: 'Builder hands work to Reviewer' })).toBeInTheDocument();
-    expect(within(panel).getByText(/→ hands work to Reviewer/)).toBeInTheDocument();
+    expect(within(links).getByRole('combobox', { name: 'How Builder is linked to Reviewer' })).toHaveValue('hands-work-to');
+    await user.keyboard('{Escape}');
+    expect(await screen.findByRole('button', { name: 'Builder hands work to Reviewer' })).toBeInTheDocument();
   });
 
   it('refuses a connection to itself or a duplicate, with the reason in words', async () => {
@@ -238,15 +231,19 @@ describe('Structure board: groups', () => {
     expect(head).toHaveFocus();
     // The other agents stay outside the new group: no main group is drawn around them.
     expect(screen.queryByRole('button', { name: /^Group: Main group/ })).toBeNull();
-    const gpanel = screen.getByRole('region', { name: 'Group Group 1' });
-    await user.clear(within(gpanel).getByRole('textbox', { name: 'Name' }));
-    await user.type(within(gpanel).getByRole('textbox', { name: 'Name' }), 'Review');
+    // A group's settings are a small bar over the board, not a side panel.
+    const gbar = screen.getByRole('toolbar', { name: 'Group' });
+    await user.clear(within(gbar).getByRole('textbox', { name: 'Group name' }));
+    await user.type(within(gbar).getByRole('textbox', { name: 'Group name' }), 'Review');
     expect(screen.getByRole('button', { name: /^Group: Review/ })).toBeInTheDocument();
     await user.click(card('Reviewer'));
-    await user.click(screen.getByRole('button', { name: 'Move to group…' }));
+    const setup = await screen.findByRole('region', { name: 'Setup' });
+    await user.click(setup.querySelector('.setup-advanced summary')!);
+    await user.click(within(setup).getByRole('button', { name: 'Move to group…' }));
     await user.click(screen.getByRole('menuitem', { name: 'Review' }));
-    const panel = screen.getByRole('dialog', { name: 'Reviewer details' });
-    expect(within(panel).getByText('Review', { selector: '.fld-value' })).toBeInTheDocument();
+    // Its address follows it into the group.
+    await waitFor(() => expect(where()).toMatch(/^\/p\/t\/agents\/group-[a-z0-9-]+\.reviewer/));
+    expect(within(await screen.findByRole('region', { name: 'Setup' })).getByText('Review', { selector: '.fld-value' })).toBeInTheDocument();
     await waitFor(() => {
       const d = lastSaved();
       const g = d.groups.find((x) => x.label === 'Review')!;
@@ -327,21 +324,25 @@ describe('Structure board: autosave', () => {
     const server = await board();
     const user = userEvent.setup();
     await user.click(card('Builder'));
-    const name = screen.getByRole('textbox', { name: 'Name' });
+    const name = await screen.findByRole('textbox', { name: 'Name' });
     await user.type(name, 'X');
     expect(document.querySelector('.save-state')).toHaveTextContent('saving…');
     await waitFor(() => expect(document.querySelector('.save-state')).toHaveTextContent('saved'));
+    // Saved is the normal state: nothing on screen, still announced.
+    expect(document.querySelector('.save-state')).toHaveClass('sr-only');
+    expect(document.querySelector('.save-state')).toHaveAttribute('role', 'status');
     vi.mocked(api.saveTeam).mockRejectedValue(new ApiError(409, 'draft_conflict', 'This team was changed somewhere else (it is now at version 9).'));
     await user.type(name, 'Y');
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('not saved: This team was changed somewhere else');
     expect(name).toHaveValue('BuilderXY');
-    expect(card('BuilderXY')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'BuilderXY' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start team' })).toBeDisabled();
     server.rec = teamRecord({ draft: teamDraft({ revision: 9, name: 'Their team' }) });
     await user.click(within(alert).getByRole('button', { name: 'Reload' }));
     await waitFor(() => expect(document.querySelector('.save-state')).toHaveTextContent('saved'));
-    expect(card('Builder')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Board/ }));
+    expect(await screen.findByRole('button', { name: /^Builder — / })).toBeInTheDocument();
   });
 });
 
@@ -371,10 +372,14 @@ describe('Structure board: problems and Start', () => {
     expect(start).toHaveAccessibleDescription(
       "Start team: 2 things to fix: Reviewer needs a folder to work in; Builder's connection loops back to itself",
     );
+    // The status beside Start says it in short; the full reason is its description.
+    expect(screen.getByText('Draft · 2 to fix')).toBeInTheDocument();
     const fixes = screen.getByRole('region', { name: 'Things to fix' });
+    // An agent's problem opens that agent's Setup, where it is fixed.
     await userEvent.setup().click(within(fixes).getByRole('button', { name: /Reviewer needs a folder/ }));
-    expect(screen.getByRole('region', { name: 'Agent Reviewer' })).toBeInTheDocument();
-    await waitFor(() => expect(card('Reviewer')).toHaveFocus());
+    const setup = await screen.findByRole('region', { name: 'Setup' });
+    expect(screen.getByRole('heading', { level: 1, name: 'Reviewer' })).toBeInTheDocument();
+    expect(within(setup).getByRole('status', { name: 'Problems' })).toHaveTextContent('2 to fix');
   });
 
   it('a start refused with problems shows them on the board', async () => {
@@ -408,8 +413,9 @@ describe('Structure board: problems and Start', () => {
     expect(screen.getByRole('button', { name: 'Start team' })).toBeDisabled();
     const fixes = screen.getByRole('region', { name: 'Things to fix' });
     await userEvent.setup().click(within(fixes).getByRole('button', { name: message }));
-    const panel = screen.getByRole('region', { name: 'Agent Builder' });
-    expect(within(panel).getByRole('list', { name: 'Problems' })).toHaveTextContent(message);
+    const setup = await screen.findByRole('region', { name: 'Setup' });
+    expect(within(setup).getByRole('status', { name: 'Problems' })).toHaveTextContent(/1 to fix:\s*Folder/);
+    expect(within(setup).getByRole('region', { name: 'Folder' })).toHaveTextContent(message);
     expect(openRigWords(document.querySelector<HTMLElement>('.app')!)).toEqual([]);
   });
 });
@@ -421,15 +427,16 @@ describe('Structure board: words', () => {
     const app = () => document.querySelector<HTMLElement>('.app')!;
     expect(openRigWords(app())).toEqual([]);
     await user.click(card('Builder'));
-    await user.click(screen.getByRole('button', { name: 'Connect to…' }));
+    await user.click(await screen.findByRole('button', { name: 'Connect to…' }));
     expect(openRigWords(app())).toEqual([]);
     await user.keyboard('{Escape}');
     await user.click(screen.getByRole('button', { name: 'Choose a folder for Builder' }));
     await screen.findByRole('dialog', { name: 'Choose a folder' });
     expect(openRigWords(app())).toEqual([]);
     await user.keyboard('{Escape}');
-    await user.click(screen.getByRole('button', { name: 'Builder hands work to Reviewer' }));
-    expect(screen.getByRole('region', { name: 'Connection' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Board/ }));
+    await user.click(await screen.findByRole('button', { name: 'Builder hands work to Reviewer' }));
+    expect(screen.getByRole('toolbar', { name: 'Connection' })).toBeInTheDocument();
     expect(openRigWords(app())).toEqual([]);
     await user.click(screen.getByRole('button', { name: 'Add a group' }));
     expect(openRigWords(app())).toEqual([]);
@@ -479,7 +486,6 @@ describe('Direct arrow and collapsed group editing', () => {
     await waitFor(()=>expect(lastSaved().agents[0]).toMatchObject({x:120,y:120,group_id:'g'}));
     expect(lastSaved().agents[1]).toMatchObject({x:380,y:120,group_id:'g'});
     expect(screen.getByTestId('structure-world').style.transform).toBe(transform);
-    expect(document.getElementById('workspace-details')).not.toBeVisible();
     expect(screen.queryByRole('button',{name:/Builder —/})).not.toBeInTheDocument();
   });
 
@@ -517,6 +523,7 @@ it('does not auto-fit the viewport after a drag changes the drawing bounds', asy
 it('shows every card in full on request, and back', async()=>{
   localStorage.clear();
   await board(teamRecord({draft:teamDraft()}));
+  await userEvent.click(screen.getByRole('button',{name:'More tools'}));
   const toggle=screen.getByRole('button',{name:'Full text'});
   expect(toggle).toHaveAttribute('aria-pressed','false');
   await userEvent.click(toggle);
@@ -563,14 +570,6 @@ it('drags Input without opening its editor, saves the position and supports keyb
   expect(input.style.left).toBe('-200px');
   fireEvent.click(input,{detail:0});expect(screen.getByLabelText('Workflow input')).toHaveValue('Keep these notes');
 });
-it('keeps setup errors dismissible without re-opening on a draft update',async()=>{
- await board(teamRecord({issues:[{element:{kind:'agent',id:'reviewer'},severity:'error',code:'folder-missing',message:'Reviewer needs a folder to work in',detail:null,spec_path:null}]}));
- const disclosure=document.querySelector('.structure-status')!;expect(disclosure).not.toHaveAttribute('open');
- await userEvent.click(within(disclosure as HTMLElement).getByText('Needs setup'));
- expect(disclosure).toHaveAttribute('open');await userEvent.click(screen.getByRole('button',{name:'Dismiss setup notice'}));expect(disclosure).not.toHaveAttribute('open');
- expect(screen.getByRole('button',{name:'Start team'})).toBeDisabled();
-});
-
 describe('Structure board: copy, paste and right-click', () => {
   it('Ctrl+C then Ctrl+V pastes a copy of the selected agent, selected and saved; Ctrl+D duplicates', async () => {
     await board();
@@ -657,14 +656,14 @@ describe('Structure board: the Input box', () => {
     await waitFor(() => expect(lastSaved().input).toBeUndefined());
   });
 
-  it('Upload picks files on the computer and adds their paths to the Input for the agents to open', async () => {
+  it('Add files… picks files on the computer and adds their paths to the Input for the agents to open', async () => {
     await board();
     vi.mocked(api.listFolders).mockResolvedValue({ path: '/home/me', parent: null, home: '/home/me', entries: [], truncated: false, files: [{ name: 'document_example.pdf', path: '/home/me/document_example.pdf' }] });
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Add the Input' }));
     const editor = screen.getByRole('dialog', { name: 'Input' });
     await user.type(within(editor).getByRole('textbox', { name: 'Input text' }), 'Read the manual');
-    await user.click(within(editor).getByRole('button', { name: 'Upload' }));
+    await user.click(within(editor).getByRole('button', { name: 'Add files…' }));
     await user.click(await screen.findByRole('checkbox', { name: 'document_example.pdf' }));
     await user.click(screen.getByRole('button', { name: 'Add 1 file' }));
     await waitFor(() => expect(lastSaved().input?.text).toBe('Read the manual\n/home/me/document_example.pdf'));
@@ -692,5 +691,64 @@ describe('Structure board: the Input box', () => {
     fireEvent.contextMenu(screen.getByTestId('structure-viewport'), { clientX: 400, clientY: 500 });
     await userEvent.setup().click(screen.getByRole('menuitem', { name: 'Add the Input here' }));
     await waitFor(() => expect(lastSaved().input).toMatchObject({ x: 400 - OFFSET, y: 500 - OFFSET }));
+  });
+});
+
+describe('Structure board: less on screen, nothing removed', () => {
+  it('cards show name, a muted kind line, the job and the folder; no JOB label and no footer', async () => {
+    await board();
+    const builder = card('Builder').closest('.sb-card')!;
+    expect(builder.querySelector('.sb-sec')).toBeNull();
+    expect(builder.querySelector('.box-foot')).toBeNull();
+    expect(builder).not.toHaveTextContent('no connections out');
+    expect(builder).not.toHaveTextContent(/hands work to/);
+    expect(builder.querySelector('.sb-kind')).toHaveTextContent(/^Practice · free$/);
+    // Who it hands work to is still on the board (the arrow's label) and in its panel.
+    expect(screen.getByRole('button', { name: /Builder hands work to Reviewer/ })).toBeInTheDocument();
+  });
+
+  it('shows the line legend only while a dashed line is drawn; ? always has it', async () => {
+    const d = teamDraft();
+    await board(teamRecord({ draft: d }));
+    expect(document.querySelector('.sb-legend')).toBeNull();
+    const user = userEvent.setup();
+    await user.keyboard('?');
+    const help = screen.getByRole('dialog', { name: 'Keys' });
+    expect(within(help).getByRole('region', { name: 'Lines on the board' })).toHaveTextContent('reports to / watches (not enforced)');
+    await user.keyboard('{Escape}');
+  });
+
+  it('draws the legend when the team has a reports-to or watches line', async () => {
+    const d = teamDraft({ connections: [{ id: 'c1', from: 'builder', to: 'reviewer', kind: 'hands-work-to' }, { id: 'c2', from: 'reviewer', to: 'builder', kind: 'reports-to' }] });
+    await board(teamRecord({ draft: d }));
+    expect(document.querySelector('.sb-legend')).toHaveTextContent('hands work to (it starts after)');
+    expect(document.querySelector('.sb-legend')).toHaveTextContent('reports to / watches (not enforced)');
+  });
+
+  it('Run, before the first start, says why on hover or focus, not as a printed line', async () => {
+    await board();
+    const modes = screen.getByRole('group', { name: 'Board mode' });
+    expect(within(modes).getByRole('button', { name: /Design/ })).toHaveAttribute('aria-pressed', 'true');
+    const run = within(modes).getByRole('button', { name: /^Run/ });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute('data-tip', 'Run opens once the team has started');
+    expect(run).toHaveAccessibleDescription('Run opens once the team has started');
+  });
+
+  it('the workflow list is a quiet board tool and a Ctrl K command, and opens on its own page', async () => {
+    vi.mocked(api.workflow).mockResolvedValue({ config: null, run: null, active: false });
+    const d = teamDraft({ agents: ['dispatcher', 'builder', 'reviewer', 'frontend'].map(id => draftAgent(id)), connections: [], workflow: {
+      input: '', dispatcher: 'dispatcher', collector: 'frontend', entry: 'build', max_tasks: 24, max_steps: 12,
+      stages: [{ id:'build', name:'Build', agent:'builder', routes:{ ready:'review' } }, { id:'review', name:'Review', agent:'reviewer', routes:{ revise:'build', accept:null } }],
+    } });
+    await board(teamRecord({ draft: d }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Workflow list' }));
+    expect(where()).toBe('/p/t/workflow/list');
+    await user.click(screen.getByRole('button', { name: 'Back to the board' }));
+    await screen.findByRole('region', { name: 'Design board' });
+    await user.keyboard('{Control>}k{/Control}');
+    await user.keyboard('workflow list{Enter}');
+    expect(await screen.findByRole('button', { name: 'Back to the board' })).toBeInTheDocument();
   });
 });

@@ -13,7 +13,7 @@ vi.mock('../api',async orig=>{const m=await orig<typeof import('../api')>();retu
 beforeEach(()=>{resetApi();localStorage.clear();forgetViewports();vi.mocked(api.groupBlocks).mockResolvedValue([]);vi.mocked(api.saveGroupBlock).mockImplementation(async b=>({...b,revision:b.revision+1}));});
 it('creates and edits a group on its own board and saves to Library without creating a project',async()=>{
  const user=userEvent.setup();render(<MemoryRouter><GroupLibrary/></MemoryRouter>);
- await user.click(await screen.findByRole('button',{name:'Create group block'}));
+ await user.click(await screen.findByRole('button',{name:'Create group'}));
  await user.clear(screen.getByLabelText('Group name'));await user.type(screen.getByLabelText('Group name'),'Review pair');
  await user.click(screen.getByRole('button',{name:'Add a Claude agent'}));await user.click(screen.getByRole('button',{name:'Add a Claude agent'}));
  const cards=screen.getAllByRole('button',{name:/Claude \d —/});
@@ -31,6 +31,6 @@ it('loads a saved group into the palette and supports keyboard insertion',async(
 });
 it('keeps a failed save in the editor instead of claiming it was saved',async()=>{
  vi.mocked(api.saveGroupBlock).mockRejectedValue(new Error('offline'));render(<MemoryRouter><GroupLibrary/></MemoryRouter>);
- await userEvent.click(await screen.findByRole('button',{name:'Create group block'}));await userEvent.click(screen.getByRole('button',{name:'Save group'}));
+ await userEvent.click(await screen.findByRole('button',{name:'Create group'}));await userEvent.click(screen.getByRole('button',{name:'Save group'}));
  await waitFor(()=>expect(screen.getByRole('alert')).toBeInTheDocument());expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
 });

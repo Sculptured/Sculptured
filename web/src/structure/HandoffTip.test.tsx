@@ -34,17 +34,20 @@ describe('Structure board: what a connection does', () => {
     expect(watches).not.toHaveAttribute('data-tip');
   });
 
-  it("says in the Job field when an agent's Job is sent", async () => {
+  it("says in the Job field, as its ? hint, when an agent's Job is sent", async () => {
     fakeTeam(teamRecord());
     renderAt('/team/t/structure');
     await screen.findByRole('region', { name: 'Design board' });
-    await userEvent.click(screen.getByRole('button', { name: /^Reviewer — / }));
-    expect(screen.getByRole('textbox', { name: 'Job' })).toHaveAccessibleDescription(
-      'Sent with its first handoff, as the Job reads then: you can still change it while this agent waits.',
+    const user = userEvent.setup();
+    // A card opens its agent's page; before a first start that is Setup.
+    await user.click(screen.getByRole('button', { name: /^Reviewer — / }));
+    expect(await screen.findByRole('textbox', { name: 'Job' })).toHaveAccessibleDescription(
+      'Sent with its first handoff, as it reads then: you can still change it while this agent waits.',
     );
-    await userEvent.click(screen.getByRole('button', { name: /^Builder — / }));
-    expect(screen.getByRole('textbox', { name: 'Job' })).toHaveAccessibleDescription(
-      'Sent as its first message when the team starts. With no Job, your first message to this agent is its work: when it finishes, its result is handed over.',
+    await user.keyboard('{Escape}');
+    await user.click(await screen.findByRole('button', { name: /^Builder — / }));
+    expect(await screen.findByRole('textbox', { name: 'Job' })).toHaveAccessibleDescription(
+      'Sent as its first message when the team starts. With no Job, your first message to it is its work.',
     );
   });
 });

@@ -80,6 +80,8 @@ export type NoticeItem = {
   raw?: string;
   /** Something went wrong: shown in red rather than as a quiet divider. */
   alarm?: boolean;
+  /** A session (tenure) began or ended here; `cause` is why it began (`TenureCause`). */
+  session?: { phase: 'started' | 'ended'; cause?: string };
 };
 export type Item =
   | OperatorItem
@@ -156,8 +158,8 @@ export function conversationItems(events: EventRecord[]): Item[] {
     }
   };
   let prov = '';
-  const notice = (seq: number, text: string, raw?: string, alarm?: boolean) =>
-    items.push({ kind: 'notice', key: `n-${seq}`, seq, text, raw, provenance: prov, alarm });
+  const notice = (seq: number, text: string, raw?: string, alarm?: boolean, session?: NoticeItem['session']) =>
+    items.push({ kind: 'notice', key: `n-${seq}`, seq, text, raw, provenance: prov, alarm, ...(session ? { session } : {}) });
 
   for (const e of events) {
     const b = e.body;
@@ -269,14 +271,14 @@ export function conversationItems(events: EventRecord[]): Item[] {
         );
         break;
       case 'tenure-started':
-        notice(e.seq, WORDS.sessionStarted(b.tenure, b.cause, b.driver), b.driver);
+        notice(e.seq, WORDS.sessionStarted(b.tenure, b.cause, b.driver), b.driver, undefined, { phase: 'started', cause: b.cause });
         break;
       case 'tenure-ended':
         // The process is gone: a message it had not read yet never will be.
         for (const m of messages.values()) {
           if (m.state === 'queued' || m.state === 'delivered') advance(m.messageId, 'failed', STOPPED_BEFORE_READING);
         }
-        notice(e.seq, WORDS.sessionEnded(b.tenure, b.exit_code, b.signal), undefined, b.exit_code !== 0 && b.exit_code !== null);
+        notice(e.seq, WORDS.sessionEnded(b.tenure, b.exit_code, b.signal), undefined, b.exit_code !== 0 && b.exit_code !== null, { phase: 'ended' });
         break;
       case 'events-lost':
         notice(e.seq, `${b.count} events lost — history has a gap`, undefined, true);

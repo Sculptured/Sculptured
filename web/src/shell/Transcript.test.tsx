@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
-import { buildBlocks, Transcript } from './Transcript';
+import { buildBlocks, chainSummary, Transcript } from './Transcript';
 import { openRigWords } from '../test-vocab';
 import { conversationItems } from '../conversation';
 import { ev } from '../test-fixtures';
@@ -40,7 +40,7 @@ describe('Transcript chat', () => {
     const convo = await screen.findByRole('list', { name: 'Conversation' });
     await screen.findByRole('heading', { name: 'Result' });
     const blocks = within(convo).getAllByRole('listitem').filter((li) => li.parentElement === convo);
-    expect(blocks[0]).toHaveTextContent('Session #1 started · fresh · claude');
+    expect(blocks[0]).toHaveTextContent('Session #1 started · new conversation · Claude');
     expect(blocks[1].querySelector('.bubble')).toHaveTextContent('You: run the tests');
     expect(blocks[1]).toHaveTextContent('read');
     expect(blocks[2]).toHaveTextContent('Builder');
@@ -288,7 +288,7 @@ describe('buildBlocks', () => {
       ]),
     );
     expect(blocks.map((b) => b.kind)).toEqual(['divider', 'agent', 'divider', 'divider']);
-    expect(blocks[0].kind === 'divider' && blocks[0].items.map((n) => n.text)).toEqual(['launching', 'Session #1 started · fresh · claude', 'running']);
+    expect(blocks[0].kind === 'divider' && blocks[0].items.map((n) => n.text)).toEqual(['launching', 'Session #1 started · new conversation · Claude', 'running']);
     expect(blocks[1].kind === 'agent' && blocks[1].parts.map((p) => p.kind)).toEqual(['text', 'tools', 'text']);
     expect(blocks[2].kind === 'divider' && blocks[2].items).toHaveLength(1);
     expect(blocks[3].kind === 'divider' && blocks[3].items).toHaveLength(1);
@@ -358,5 +358,74 @@ describe('Transcript scrolling', () => {
       fireEvent.scroll(el);
     });
     expect(screen.queryByRole('button', { name: /new/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('Transcript meta, folded', () => {
+  beforeEach(() => vi.mocked(api.latestSeatEvents).mockReset());
+  const restart = [
+    ev(1, { type: 'seat-lifecycle-changed', lifecycle: 'stopping', reason: null }),
+    ev(2, { type: 'tenure-ended', tenure: 1, exit_code: 0, signal: null, stderr_tail: '' }),
+    ev(3, { type: 'seat-lifecycle-changed', lifecycle: 'stopped', reason: null }),
+    ev(4, { type: 'seat-lifecycle-changed', lifecycle: 'launching', reason: null }),
+    ev(5, { type: 'tenure-started', tenure: 2, cause: 'fresh', driver: 'stub', native_session_id: null, caps: {} as never }),
+    ev(6, { type: 'seat-lifecycle-changed', lifecycle: 'running', reason: null }),
+  ];
+
+  it('folds a run of session events to one line that opens to the verbatim chain', async () => {
+    vi.mocked(api.latestSeatEvents).mockResolvedValue(restart);
+    render(<Transcript seatId="dev.a@r" feed={[]} epoch={0} vendor={claude} />);
+    const toggle = await screen.findByRole('button', { name: 'Restarted · new conversation' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const chain = document.querySelector('.divider-chain')!;
+    expect(chain).toHaveAttribute('data-raw-evidence');
+    expect(chain).not.toBeVisible();
+    // Kept in the page as evidence, and searchable.
+    expect(chain).toHaveTextContent('Session #1 ended · exit 0');
+    await userEvent.setup().click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(chain).toBeVisible();
+    expect(chain).toHaveTextContent('Stopping › Session #1 ended · exit 0 › Stopped › Launching › Session #2 started · new conversation · Practice agent › Running');
+  });
+
+  it('says what a chain did in a few words', () => {
+    const items = (es: EventRecord[]) => {
+      const b = buildBlocks(conversationItems(es))[0];
+      return b.kind === 'divider' ? b.items : [];
+    };
+    expect(chainSummary(items(restart))).toBe('Restarted · new conversation');
+    expect(chainSummary(items(restart.slice(3)))).toBe('Started · new conversation');
+    expect(chainSummary(items(restart.slice(0, 3)))).toBe('Session ended');
+  });
+
+  it('shows a turn end as one small line with no rules', async () => {
+    vi.mocked(api.latestSeatEvents).mockResolvedValue([ev(1, { type: 'turn-ended', turn_id: 't', status: 'completed' })]);
+    render(<Transcript seatId="dev.a@r" feed={[]} epoch={0} vendor={claude} />);
+    expect(await screen.findByText(/Turn completed · duration unknown/)).toBeInTheDocument();
+    expect(document.querySelector('.divider.turn button')).toBeNull();
+  });
+
+  it('in a header slot, search is an icon that / or a click opens, and folds back when left empty', async () => {
+    vi.mocked(api.latestSeatEvents).mockResolvedValue([text(1, 'The login page is ready.')]);
+    const slot = document.createElement('div');
+    document.body.appendChild(slot);
+    render(<Transcript seatId="dev.a@r" feed={[]} epoch={0} vendor={claude} toolsSlot={slot} />);
+    await screen.findByText(/The login page/);
+    expect(document.querySelector('.cv-tools')).toBeNull();
+    const icon = within(slot).getByRole('button', { name: 'Search transcript' });
+    expect(icon).toHaveAttribute('aria-keyshortcuts', '/');
+    expect(within(slot).queryByRole('searchbox')).toBeNull();
+    const user = userEvent.setup();
+    document.body.focus();
+    await user.keyboard('/');
+    const box = within(slot).getByRole('searchbox', { name: 'Search transcript' });
+    expect(box).toHaveFocus();
+    await user.keyboard('login');
+    expect(screen.getByText('1 of 1')).toBeInTheDocument();
+    await user.keyboard('{Escape}{Escape}');
+    expect(within(slot).queryByRole('searchbox')).toBeNull();
+    await user.click(within(slot).getByRole('button', { name: 'Search transcript' }));
+    expect(within(slot).getByRole('searchbox', { name: 'Search transcript' })).toHaveFocus();
+    slot.remove();
   });
 });

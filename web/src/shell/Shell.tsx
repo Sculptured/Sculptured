@@ -1,624 +1,237 @@
-import { track } from '../hosted/analytics';
-import { hasProcess } from '../status';
-import {DismissibleError} from './DismissibleError';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useMatch, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { RigHome } from '../components/RigHome';
-import { isTextField, trackPointer } from '../dom';
-import { emptyCounts, STATES, type Counts } from '../herdr';
+import { Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom';
+import { isTextField } from '../dom';
+import type { DraftIssue } from '../generated/DraftIssue';
+import type { StopRigOutcome } from '../generated/StopRigOutcome';
 import type { View } from '../keys';
 import type { Layout } from '../layout';
+import { agentsPath, boardPath, seatFromKey, type AgentTab } from '../paths';
 import { markSeen } from '../seen';
+import type { BoardHandle } from '../structure/StructureBoard';
 import type { OpenStream } from '../useRigStream';
-import { useActivity, useTeams } from '../useTeams';
-import { nameForId, WORDS, type NameMap } from '../vocab';
-import type { StopRigOutcome } from '../generated/StopRigOutcome';
-import type { DraftIssue } from '../generated/DraftIssue';
-import type { TeamDraft } from '../generated/TeamDraft';
-import { api } from '../api';
-import { draftLayout } from '../draft/geometry';
-import { nameMap } from '../draft/ids';
-import { StructureBoard, type BoardHandle } from '../structure/StructureBoard';
-import { TemplateGallery } from '../structure/TemplateGallery';
-import { useHome } from '../structure/FolderPicker';
-import { specStartConfirmation, startConfirmation } from '../structure/StartConfirm';
-import { useTeamList } from '../useTeamList';
+import type { NameMap } from '../vocab';
 import type { AgentControls } from './AgentControls';
-import { AgentPane } from './AgentPane';
-import { GotoPalette } from './GotoPalette';
+import { AppearanceControl } from './AppearanceControl';
+import { BroadcastDialog } from './Broadcast';
+import { CommandPalette, type Scope } from './CommandPalette';
+import { cycleAgent, useShellCommands } from './shellCommands';
 import { HelpOverlay } from './HelpOverlay';
 import type { GraphHandle } from './LiveGraph';
-import { agentPath, buildTeams, draftTeamRow, firstMessageIsWork, flatAgents, sortTeams, structurePath, teamPath, type AgentRow } from './model';
-import { Sidebar } from './Sidebar';
-import { StatusLine } from './StatusLine';
-import { ConnectingPanel } from './ConnectingPanel';
-import { TeamLive, type Mode } from './TeamLive';
-import { DeploymentHistoryView } from '../collaboration/DeploymentHistoryView';
-import { Toasts, type Toast } from './Toasts';
-import { Btn, Icon, Panel } from './ui';
-import { WorkspaceBar } from './WorkspaceBar';
-import { LibraryPage, librarySection } from './LibraryPage';
-import { ContextPanel } from './ContextPanel';
-
-const NARROW = '(max-width: 720px)';
-export const LEFT_PANEL_KEY = 'sculptured.panels.v3.left';
-/** Run's List/Graph choice, the same for every team. */
-export const RUN_VIEW_KEY = 'sculptured.run.view.v1';
-export const RIGHT_PANEL_KEY = 'sculptured.panels.v2.right';
-const SIDEBAR_KEY = 'sculptured.sidebar.v1';
-/** The project (team) last open in this browser: the sidebar shows its agents. */
-export const PROJECT_KEY = 'sculptured.project.v1';
-const SIDEBAR_MIN = 220;
-const SIDEBAR_MAX = 520;
-const SIDEBAR_DEFAULT = 288;
-
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = globalThis.localStorage?.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-function writeJson(key: string, value: unknown) {
-  try {
-    globalThis.localStorage?.setItem(key, JSON.stringify(value));
-  } catch {
-    // Per-browser convenience only.
-  }
-}
-
-function useNarrow(): boolean {
-  const query = () => typeof window !== 'undefined' && !!window.matchMedia?.(NARROW).matches;
-  const [narrow, setNarrow] = useState(query);
-  useEffect(() => {
-    const mq = window.matchMedia?.(NARROW);
-    if (!mq) return;
-    const on = () => setNarrow(mq.matches);
-    mq.addEventListener?.('change', on);
-    return () => mq.removeEventListener?.('change', on);
-  }, []);
-  return narrow;
-}
+import { useDetailsMenus } from './menus';
+import { agentPath, type AgentRow } from './model';
+import { ShellContext, type Pending, type RunHandle, type Shell as ShellValue } from './ShellContext';
+import { Toasts } from './Toasts';
+import { TopBar } from './TopBar';
+import { useShellData } from './useShellData';
+import { useToasts } from './useToasts';
 
 type Props = {
   openStream?: OpenStream;
-  /** Persisted positions per team (Structure board, Slice 2). */
+  /** Persisted positions per team. */
   layouts?: Record<string, Layout>;
   /** Names from team drafts; they win over spec labels. */
   names?: Record<string, NameMap>;
   onStopTeam?: (rig: string, requestId: string) => Promise<StopRigOutcome>;
 };
 
-/** The herdr-style shell: status line, agent sidebar, board or agent pane. */
-/** Lifecycles in which an agent may have a process (the server's `is_live`). */
+const NO_LAYOUTS: Record<string, Layout> = {};
+const NO_NAMES: Record<string, NameMap> = {};
 
-export function Shell({ openStream, layouts: givenLayouts = {}, names: givenNames = {}, onStopTeam }: Props) {
-  // `/team/:team/structure` and `/team/:team/progress` are the two pages of a team built here.
-  const { rig, seat: openAgent, tab, team: structureTeam, collection } = useParams();
+/** Where the app is: the open project, agent and page. */
+function useWhere() {
+  const project = useMatch('/p/:team/*');
+  const agent = useMatch('/p/:team/agents/:agent/*');
+  const team = project?.params.team;
+  const openAgent = team && agent?.params.agent ? seatFromKey(team, agent.params.agent) : undefined;
+  const page = project?.params['*']?.split('/')[0] ?? '';
+  const tab = agent?.params['*']?.split('/')[0];
+  const agentTab: AgentTab | undefined = tab === 'conversation' || tab === 'setup' || tab === 'activity' ? tab : undefined;
+  return { team, openAgent, page, agentTab };
+}
+
+function viewOf(pathname: string, page: string, openAgent: string | undefined, boardView: View | null): View {
+  if (pathname === '/') return 'home';
+  if (openAgent) return 'agent';
+  if (page === 'board') return boardView ?? 'structure';
+  if (page === 'agents' || page === 'results' || page === 'settings' || page === 'workflow') return page;
+  return 'other';
+}
+
+/** The refs pages register so the palette and keys can reach them. */
+function useShellRefs() {
+  return {
+    board: useRef<BoardHandle | null>(null),
+    run: useRef<RunHandle | null>(null),
+    graph: useRef<GraphHandle | null>(null),
+    controls: useRef<AgentControls | null>(null),
+    composer: useRef<HTMLTextAreaElement | null>(null),
+  };
+}
+
+/** Agents picked with Shift+click, for the open team only. */
+function usePicks(team: string | undefined, byId: Record<string, AgentRow>) {
+  const [picks, setPicks] = useState<{ rig: string; ids: string[] }>({ rig: '', ids: [] });
+  const picked = useMemo(() => (picks.rig === team ? picks.ids.filter((id) => byId[id]?.rig === team) : []), [picks, team, byId]);
+  const pick = useCallback(
+    (id: string) =>
+      setPicks((cur) => {
+        const ids = cur.rig === team ? cur.ids : [];
+        return { rig: team ?? '', ids: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id] };
+      }),
+    [team],
+  );
+  const setPicked = useCallback((ids: string[]) => setPicks({ rig: team ?? '', ids }), [team]);
+  return { picked, pick, setPicked };
+}
+
+/**
+ * The app frame: one top bar, then the page. It holds what every page shares (the teams, the
+ * open agent, the palette, messages to several agents, toasts and the global keys).
+ */
+export function Shell({ openStream, layouts: givenLayouts = NO_LAYOUTS, names: givenNames = NO_NAMES, onStopTeam }: Props) {
+  useDetailsMenus();
   const navigate = useNavigate();
   const location = useLocation();
-  const [params] = useSearchParams();
-  const narrow = useNarrow();
-  const library = !!useMatch('/library/:collection');
-  const collectionId = librarySection(collection);
-  const [leftOpen, setLeftOpen] = useState(() => readJson<boolean>(LEFT_PANEL_KEY, true) !== false);
-  const [rightOpen, setRightOpen] = useState(() => readJson<boolean>(RIGHT_PANEL_KEY, false) === true);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [mobileLeft, setMobileLeft] = useState<boolean | null>(null);
-  const [mobileRight, setMobileRight] = useState(false);
-  const homeList = narrow && !rig && !structureTeam && !library && !params.has('all');
-  const projectsShown = narrow ? (mobileLeft ?? homeList) : leftOpen;
-  const detailsShown = narrow ? mobileRight : rightOpen;
-  const [workspaceHref, setWorkspaceHref] = useState('/?all');
-  useEffect(() => {
-    setMenuOpen(false);
-    setMobileLeft(null);
-    setMobileRight(false);
-    if (!library) setWorkspaceHref(location.pathname + location.search);
-  }, [location.pathname, location.search, library]);
-  const toggleProjects = () => {
-    if (narrow) { setMobileLeft(!projectsShown); setMobileRight(false); }
-    else { setLeftOpen(!leftOpen); writeJson(LEFT_PANEL_KEY, !leftOpen); }
-  };
-  const toggleDetails = () => {
-    if (narrow) { setMobileRight(!mobileRight); setMobileLeft(false); }
-    else { setRightOpen(!rightOpen); writeJson(RIGHT_PANEL_KEY, !rightOpen); }
-  };
-  const teamList = useTeamList();
-  const startedTeams = useMemo(() => (teamList.summaries ?? []).filter((s) => s.started).map((s) => s.id), [teamList.summaries]);
-  const { rigs, listError, teams, names: order } = useTeams(rig, openStream, startedTeams);
-  // The open Structure board's draft wins over the last one read from the list.
-  const [boardDrafts, setBoardDrafts] = useState<Record<string, TeamDraft>>({});
-  const onBoardDraft = useCallback((d: TeamDraft) => setBoardDrafts((cur) => (cur[d.id] === d ? cur : { ...cur, [d.id]: d })), []);
-  // The team whose Structure board could not load: none of the board's keys apply there.
-  const [brokenBoard, setBrokenBoard] = useState<string | null>(null);
-  const onBoardLoadError = useCallback(
-    (reason: string | null) =>
-      setBrokenBoard((cur) => (reason !== null ? (structureTeam ?? null) : cur === structureTeam ? null : cur)),
-    [structureTeam],
-  );
-  const drafts = useMemo(() => ({ ...teamList.drafts, ...boardDrafts }), [teamList.drafts, boardDrafts]);
-  const [gallery, setGallery] = useState(false);
-  const [startWarnings, setStartWarnings] = useState<Record<string, DraftIssue[]>>({});
-  const board = useRef<BoardHandle | null>(null);
-  // Teams built here use their draft's names and positions on the Live board too.
-  const draftNames = useMemo(() => {
-    const out: Record<string, NameMap> = { ...givenNames };
-    for (const [id, d] of Object.entries(drafts)) out[id] = { ...nameMap(d), ...(givenNames[id] ?? {}) };
-    return out;
-  }, [drafts, givenNames]);
-  const layouts = useMemo(() => {
-    const out: Record<string, Layout> = {};
-    for (const [id, d] of Object.entries(drafts)) out[id] = draftLayout(d);
-    return { ...out, ...givenLayouts };
-  }, [drafts, givenLayouts]);
-  const titles = useMemo(() => Object.fromEntries(Object.entries(drafts).map(([id, d]) => [id, d.name.trim() || id])), [drafts]);
-  const activity = useActivity(teams);
+  const { team, openAgent, page, agentTab } = useWhere();
   const [seenVersion, setSeenVersion] = useState(0);
-  const [now, setNow] = useState(() => Date.now());
+  const data = useShellData(team, openStream, givenLayouts, givenNames, openAgent, seenVersion);
+  const now = useNow();
   const [selected, setSelected] = useState<string | undefined>(openAgent);
-  const [runView, setRunView] = useState<Mode>(() => (readJson<Mode>(RUN_VIEW_KEY, 'list') === 'graph' ? 'graph' : 'list'));
-  const [goto, setGoto] = useState(false);
+  const [goto, setGoto] = useState<Scope | false>(false);
   const [help, setHelp] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const [lastProject, setLastProject] = useState<string | null>(() => readJson<string | null>(PROJECT_KEY, null));
-  const [sideW, setSideW] = useState<number>(() => readJson<number>(`${SIDEBAR_KEY}.width`, SIDEBAR_DEFAULT));
-  const graph = useRef<GraphHandle | null>(null);
-  const controls = useRef<AgentControls | null>(null);
-  const composer = useRef<HTMLTextAreaElement | null>(null);
-  const answerNext = useRef(false);
+  const [broadcast, setBroadcast] = useState<{ team: string; ids: string[] } | null>(null);
+  const [boardView, setBoardView] = useState<View | null>(null);
   const [answerToken, setAnswerToken] = useState(0);
-  const toastId = useRef(0);
+  const [startWarnings, setWarnings] = useState<Record<string, DraftIssue[]>>({});
+  const pending = useRef<Pending | null>(null);
+  const lastBoard = useRef<Record<string, string>>({});
+  const refs = useShellRefs();
+  const { picked, pick, setPicked } = usePicks(team, data.byId);
+  const toasts = useToasts(data.rows, openAgent, page === 'board' ? team : undefined);
+  const view = viewOf(location.pathname, page, openAgent, boardView);
 
+  useEffect(() => { if (openAgent) setSelected(openAgent); }, [openAgent]);
+  // Viewing an agent clears its "done": remember the latest turn end you have seen.
+  const openTurnEnd = openAgent ? (data.activity[openAgent]?.lastTurnEndSeq ?? null) : null;
+  useEffect(() => { if (openAgent && markSeen(openAgent, openTurnEnd)) setSeenVersion((v) => v + 1); }, [openAgent, openTurnEnd]);
+  // The board you leave is the board you come back to (its mode; the viewport and selection are kept by the board).
+  useEffect(() => { if (team && page === 'board') lastBoard.current[team] = location.pathname + location.search; }, [team, page, location]);
+
+  const open = useCallback((a: { rig: string; id: string; href?: string }) => { setSelected(a.id); navigate(a.href ?? agentPath(a.rig, a.id)); }, [navigate]);
+  const back = useCallback(() => { if (team) navigate(lastBoard.current[team] ?? boardPath(team)); }, [team, navigate]);
+  const answerNext = useRef(false);
+  const answer = useCallback((rig: string, id: string) => { answerNext.current = true; setAnswerToken((n) => n + 1); open({ rig, id }); }, [open]);
+  const isTeam = (id: string) => !!data.teamList.summaries?.some((s) => s.id === id) || !!data.drafts[id];
+
+  const shell: ShellValue = {
+    rows: data.rows, byId: data.byId, teams: data.teams, rigs: data.rigs, listError: data.listError, summaries: data.teamList.summaries,
+    drafts: data.drafts, titles: data.titles, names: data.names, layouts: data.layouts, now, selected, setSelected, open,
+    palette: setGoto, broadcast: (t, ids) => setBroadcast({ team: t, ids }), picked, pick, setPicked, answerToken, answerNext, answer,
+    startWarnings, setStartWarnings: (t, w) => setWarnings((cur) => ({ ...cur, [t]: w })), onDraft: data.onDraft, onStopTeam,
+    reloadTeams: () => void data.teamList.reload(), isTeam, pending, refs, back, setBoardView,
+  };
+  const commands = useShellCommands({ shell, view, team, openAgent, agentTab, navigate, setHelp, setGoto, back });
+  useShellKeys({ shell, view, team, openAgent, blocked: !!goto || help || !!broadcast, navigate, setGoto, setHelp, back });
+
+  return (
+    <ShellContext.Provider value={shell}>
+      <div className={`app app-frame view-${view}`} data-path={location.pathname}>
+        <TopBar team={team} rows={data.rows} onCommand={() => setGoto('all')} onHelp={() => setHelp(true)} />
+        <div className="page-host">
+          <Outlet />
+        </div>
+        <Toasts toasts={toasts.list} onDismiss={toasts.dismiss} onOpen={(t) => { toasts.dismiss(t.id); open({ rig: t.rig, id: t.agent }); }} />
+        {broadcast && (
+          <BroadcastDialog agents={data.rows.find((r) => r.rig === broadcast.team)?.agents ?? []} initial={broadcast.ids} team={data.titles[broadcast.team] ?? broadcast.team} onClose={() => setBroadcast(null)} />
+        )}
+        {goto && (
+          <CommandPalette teams={data.rows} commands={commands()} project={team ?? data.rows[0]?.rig} scope={goto} now={now} onClose={() => setGoto(false)}
+            onJump={(a) => { setGoto(false); open(a); }} />
+        )}
+        {help && <HelpOverlay onClose={() => setHelp(false)} onCommand={() => { setHelp(false); setGoto('all'); }} />}
+        <AppearanceControl trigger={false} />
+      </div>
+    </ShellContext.Provider>
+  );
+}
+
+/** A clock for "2m ago" labels, ticking every 15 seconds. */
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(t);
   }, []);
+  return now;
+}
 
-  // The open agent is selected, so Esc returns to the board with it selected.
-  useEffect(() => {
-    if (openAgent) setSelected(openAgent);
-  }, [openAgent]);
+type KeyDeps = {
+  shell: ShellValue;
+  view: View;
+  team: string | undefined;
+  openAgent: string | undefined;
+  blocked: boolean;
+  navigate: ReturnType<typeof useNavigate>;
+  setGoto: (s: Scope | false) => void;
+  setHelp: (b: boolean) => void;
+  back: () => void;
+};
 
-  const rows = useMemo(
-    () => {
-      const built = buildTeams(teams, order, activity, draftNames, titles);
-      // A team started here runs its agents without a folder in the home folder ("." from home).
-      for (const t of built) if (drafts[t.rig]) for (const a of t.agents) if (a.folder === '.') a.folder = '~';
-      // A first agent with no Job: your next message is its work (shown above its message box).
-      for (const t of built) {
-        const live = teams[t.rig]?.state;
-        if (!live?.snapshot) continue;
-        for (const a of t.agents) a.firstMessageIsWork = !!a.teamRunning && firstMessageIsWork(live.snapshot.rig, live.seats, drafts[t.rig], a.id);
-      }
-      // Teams built here that have never started: their agents come from the draft.
-      for (const s of teamList.summaries ?? []) {
-        if (order.includes(s.id) || s.started) continue;
-        const d = drafts[s.id];
-        if (d) built.push(draftTeamRow(d));
-      }
-      // The agent you are looking at has nothing unseen.
-      for (const t of built)
-        for (const a of t.agents)
-          if (a.id === openAgent && a.state.key === 'done') a.state = { ...a.state, ...STATES.idle };
-      return sortTeams(built, rigs);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [teams, order, activity, draftNames, titles, teamList.summaries, drafts, rigs, seenVersion, openAgent],
-  );
-
-  const byId = useMemo(() => {
-    const m: Record<string, AgentRow> = {};
-    for (const t of rows) for (const a of t.agents) m[a.id] = a;
-    return m;
-  }, [rows]);
-
-  const counts = useMemo(() => {
-    const c: Counts = emptyCounts();
-    for (const t of rows) for (const k of Object.keys(c) as (keyof Counts)[]) c[k] += t.counts[k];
-    return c;
-  }, [rows]);
-
-  // Viewing an agent clears its "done": remember the latest turn end you have seen.
-  const openTurnEnd = openAgent ? (activity[openAgent]?.lastTurnEndSeq ?? null) : null;
-  useEffect(() => {
-    if (openAgent && markSeen(openAgent, openTurnEnd)) setSeenVersion((v) => v + 1);
-  }, [openAgent, openTurnEnd]);
-
-  // Toasts when a background agent becomes "needs you" or "done". First sight never toasts.
-  const prevStates = useRef(new Map<string, string>());
-  useEffect(() => {
-    const fresh: Toast[] = [];
-    for (const t of rows) {
-      if (!t.loaded) continue;
-      for (const a of t.agents) {
-        const prev = prevStates.current.get(a.id);
-        prevStates.current.set(a.id, a.state.key);
-        if (prev === undefined || prev === a.state.key || a.id === openAgent) continue;
-        // A turn that ends on the board you are watching is already in front of you.
-        if (a.state.key === 'done' && !openAgent && !structureTeam && a.rig === rig) continue;
-        // "done" means a turn just ended; idle becoming done is only history arriving.
-        if (a.state.key === 'needs-you' || (a.state.key === 'done' && prev === 'working'))
-          fresh.push({ id: ++toastId.current, agent: a.id, rig: a.rig, name: a.name, kind: a.state.key, team: t.title });
-      }
-    }
-    if (fresh.length > 0)
-      setToasts((cur) => [...cur.filter((x) => !fresh.some((f) => f.agent === x.agent)), ...fresh].slice(-5));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, openAgent]);
-
-  const dismiss = useCallback((id: number) => setToasts((cur) => cur.filter((t) => t.id !== id)), []);
-
-  const team = rig ? teams[rig] : undefined;
-  const snap = team?.state.snapshot ?? null;
-  const teamNames = useMemo(
-    () => (rig ? (rows.find((r) => r.rig === rig)?.names ?? {}) : {}),
-    [rows, rig],
-  );
-  const mode: Mode = runView;
-  const setMode = (m: Mode) => {
-    setRunView(m);
-    writeJson(RUN_VIEW_KEY, m);
-  };
-  const view: View = structureTeam ? 'structure' : !rig ? 'home' : openAgent ? 'agent' : 'team';
-  const boardBroken = view === 'structure' && brokenBoard === structureTeam;
-  const isTeam = (id: string) => !!teamList.summaries?.some((s) => s.id === id) || !!drafts[id];
-
-  const open = useCallback(
-    (a: { rig: string; id: string; href?: string }) => {
-      setSelected(a.id);
-      navigate(a.href ?? agentPath(a.rig, a.id));
-    },
-    [navigate],
-  );
-  const created = (id: string, open?: { history?: boolean }) => {
-    setGallery(false);
-    void teamList.reload();
-    navigate(open?.history ? `/rig/${encodeURIComponent(id)}?view=history` : structurePath(id));
-  };
-  const openInTeam = (id: string) => rig && open({ rig, id });
-  const answer = (id: string) => {
-    answerNext.current = true;
-    setAnswerToken((n) => n + 1);
-    openInTeam(id);
-  };
-  const back = useCallback(() => {
-    if (rig) navigate(teamPath(rig));
-  }, [rig, navigate]);
-
-  // "Answer" lands in the composer, then in the agent's open question once it has loaded (OpenQuestions).
-  useEffect(() => {
-    if (openAgent && answerNext.current) {
-      answerNext.current = false;
-      composer.current?.focus();
-    }
-  });
-
-  // The current project: the team on screen, else the one last open here, else the most active.
-  // Only its agents are listed; every other project is one row you switch to.
-  const known = (id: string | null | undefined) => (id && rows.some((r) => r.rig === id) ? id : undefined);
-  const routeProject = known(rig ?? structureTeam);
-  const project = routeProject ?? known(lastProject) ?? rows[0]?.rig;
-  useEffect(() => {
-    if (!routeProject) return;
-    setLastProject(routeProject);
-    writeJson(PROJECT_KEY, routeProject);
-  }, [routeProject]);
-  const others = useMemo(() => new Set(rows.filter((r) => r.rig !== project).map((r) => r.rig)), [rows, project]);
-  const flat = useMemo(() => flatAgents(rows, others), [rows, others]);
-  const home = useHome();
-
-  // Global keys. Bare letters never fire while typing; overlays handle their own keys.
+/** Global keys. Bare letters never fire while typing; overlays handle their own keys. */
+function useShellKeys(d: KeyDeps) {
+  const latest = useRef(d);
+  latest.current = d;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || goto || help || gallery) return;
-      const field = isTextField(e.target);
+      const c = latest.current;
+      if (e.defaultPrevented || c.blocked) return;
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setGoto(true);
+        c.setGoto('all');
         return;
       }
-      if (library && e.key !== '?') return;
-      if (e.key === 'Escape') {
-        if (field) {
-          (e.target as HTMLElement).blur();
-          return;
-        }
-        if (openAgent) {
-          e.preventDefault();
-          back();
-        }
-        return;
-      }
-      if (field || e.altKey || e.ctrlKey || e.metaKey) return;
-      const target = e.target as HTMLElement;
-      const onControl = !!target.closest?.('button, a, summary, [role="option"], [role="separator"]');
-      switch (e.key) {
-        case 'g':
-        case '/':
-          e.preventDefault();
-          setGoto(true);
-          return;
-        case '?':
-          e.preventDefault();
-          setHelp(true);
-          return;
-        case 'j':
-        case 'k': {
-          if (flat.length === 0) return;
-          e.preventDefault();
-          const i = flat.findIndex((a) => a.id === selected);
-          const next = e.key === 'j' ? Math.min(flat.length - 1, i + 1) : i < 0 ? 0 : Math.max(0, i - 1);
-          setSelected(flat[next].id);
-          return;
-        }
-        case 'Enter': {
-          if (onControl) return;
-          const a = selected ? byId[selected] : undefined;
-          if (a) {
-            e.preventDefault();
-            open(a);
-          }
-          return;
-        }
-        case 'n':
-          e.preventDefault();
-          if (view === 'structure' && !boardBroken) board.current?.addKey();
-          else setGallery(true);
-          return;
-        case 'l':
-          if (view === 'team') setMode(mode === 'graph' ? 'list' : 'graph');
-          return;
-        case 'f':
-          if (view === 'team') graph.current?.fit();
-          if (view === 'structure') board.current?.fit();
-          return;
-        case '+':
-        case '=':
-          if (view === 'team') graph.current?.zoomBy(1.2);
-          if (view === 'structure') board.current?.zoomBy(1.2);
-          return;
-        case '-':
-          if (view === 'team') graph.current?.zoomBy(1 / 1.2);
-          if (view === 'structure') board.current?.zoomBy(1 / 1.2);
-          return;
-        case 'i':
-          if (view === 'agent') void controls.current?.interrupt();
-          return;
-      }
+      if (e.key === 'Escape') return escapeKey(e, c);
+      if (isTextField(e.target) || e.altKey || e.ctrlKey || e.metaKey) return;
+      letterKey(e, c);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, []);
+}
 
-  // Sidebar resize: drag the rule, or focus it and use the arrow keys.
-  const resizeStop = useRef<(() => void) | null>(null);
-  // Unmounting mid-drag stops listening.
-  useEffect(() => () => resizeStop.current?.(), []);
-  const startResize = (e: React.PointerEvent) => {
-    const start = sideW;
-    resizeStop.current?.();
-    resizeStop.current = trackPointer(
-      e,
-      (dx) => setSideW(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, start + dx))),
-      () => {
-        resizeStop.current = null;
-        setSideW((w) => (writeJson(`${SIDEBAR_KEY}.width`, w), w));
-      },
-    );
-  };
-  const resizeKey = (e: React.KeyboardEvent) => {
-    const d = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
-    if (!d) return;
-    e.preventDefault();
-    setSideW((w) => {
-      const n = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w + d));
-      writeJson(`${SIDEBAR_KEY}.width`, n);
-      return n;
-    });
-  };
-
-  let content: React.ReactNode;
-  if (library) {
-    content = <LibraryPage section={collectionId} />;
-  } else if (structureTeam) {
-    const stream = teams[structureTeam];
-    const running = stream?.state.snapshot ? Object.values(stream.state.seats).some((s) => hasProcess(s.lifecycle)) : null;
-    const summary = teamList.summaries?.find((s) => s.id === structureTeam);
-    const started = !!summary?.started || !!rigs?.some((r) => r.name === structureTeam);
-    content = (
-      <StructureBoard
-        key={structureTeam}
-        ref={board}
-        teamId={structureTeam}
-        running={running}
-        started={started}
-        narrow={narrow}
-        detailsShown={detailsShown}
-        onShowDetails={() => { setRightOpen(true); writeJson(RIGHT_PANEL_KEY, true); }}
-        initialAgent={params.get('agent')}
-        onDraft={onBoardDraft}
-        onLoadError={onBoardLoadError}
-        onStarted={(warnings) => {
-          setStartWarnings((cur) => ({ ...cur, [structureTeam]: warnings }));
-          void teamList.reload();
-          navigate(teamPath(structureTeam));
-        }}
-      />
-    );
-  } else if (!rig) {
-    if (homeList) content = projectsShown ? null : <Panel title="Workspace"><div className="workspace-empty"><p>Choose a project to continue.</p><Btn onClick={toggleProjects}>Show projects</Btn></div></Panel>;
-    else if (params.has('all') || rigs === null || rigs.length > 0) content = <RigHome />;
-    else if (teamList.summaries === null && !teamList.error) content = null;
-    else if (teamList.summaries && teamList.summaries.length > 0) {
-      const newest = [...teamList.summaries].sort((a, b) => b.updated_at_ms - a.updated_at_ms)[0];
-      content = <Navigate replace to={structurePath(newest.id)} />;
-    } else content = <TemplateGallery inline onCreated={created} />;
-  } else if (!snap && params.get('view') === 'history') {
-    // History needs no live team: a team that never ran here (an imported run) shows its runs too.
-    content = (
-      <Panel title={<span className="team-title">{rig}</span>} className="team-live">
-        <DeploymentHistoryView rig={rig} />
-      </Panel>
-    );
-  } else if (!snap) {
-    content = <ConnectingPanel key={rig} rig={rig} />;
-  } else if (openAgent) {
-    const a = byId[openAgent];
-    if (a?.seat) {
-      content = (
-        <AgentPane
-          key={openAgent}
-          a={a}
-          tab={tab ?? 'conversation'}
-          feed={team!.state.feed[openAgent] ?? []}
-          epoch={team!.state.epoch}
-          onBack={back}
-          controlsRef={controls}
-          composerRef={composer}
-          answerToken={answerToken}
-        />
-      );
-    } else {
-      const inTeam = snap.rig.seats.some((s) => s.id === openAgent);
-      content = (
-        <Panel title={<span className="team-title">{rig}</span>}>
-          <DismissibleError className="pad tone-amber">
-            {inTeam ? WORDS.statusUnknown(nameForId(openAgent, teamNames)) : WORDS.notInTeam(nameForId(openAgent, teamNames), rig)}
-          </DismissibleError>
-          <p className="pad">
-            <Link to={teamPath(rig)} className="btn">
-              Back to {rig}
-            </Link>
-          </p>
-        </Panel>
-      );
-    }
-  } else {
-    const agents: Record<string, AgentRow> = {};
-    for (const s of snap.rig.seats) if (byId[s.id]) agents[s.id] = byId[s.id];
-    content = (
-      <TeamLive
-        draft={drafts[rig]}
-        rig={rig}
-        state={team!.state}
-        connected={team!.connected}
-        agents={agents}
-        names={teamNames}
-        layout={layouts[rig]}
-        mode={mode}
-        onMode={setMode}
-        selected={selected}
-        onOpen={openInTeam}
-        onAnswer={answer}
-        onSelect={setSelected}
-        graphRef={graph}
-        now={now}
-        title={titles[rig]}
-        teamId={isTeam(rig) ? rig : undefined}
-        startConfirm={drafts[rig] ? startConfirmation(drafts[rig], home) : specStartConfirmation(snap.rig, teamNames, home)}
-        startWarnings={startWarnings[rig]}
-        onDismissWarnings={() => setStartWarnings((cur) => ({ ...cur, [rig]: [] }))}
-        onStopTeam={onStopTeam ? (id) => onStopTeam(rig, id) : isTeam(rig) ? (id) => api.stopTeam(rig, id) : undefined}
-        onStartTeam={
-          isTeam(rig)
-            ? async (id, resume, overPlanLimit) => {
-                // Start the latest saved version, as the Structure board does.
-                const rec = await api.getTeam(rig);
-                const r = await api.startTeam(rig, rec.draft.revision, overPlanLimit ? undefined : id, !!overPlanLimit, resume);
-                setStartWarnings((cur) => ({ ...cur, [rig]: r.warnings ?? [] }));
-                void teamList.reload();
-                return r;
-              }
-            : undefined
-        }
-      />
-    );
+function escapeKey(e: KeyboardEvent, c: KeyDeps) {
+  if (isTextField(e.target)) {
+    (e.target as HTMLElement).blur();
+    return;
   }
+  if (c.view === 'team' && c.shell.picked.length > 0) {
+    e.preventDefault();
+    c.shell.setPicked([]);
+  } else if (c.view === 'agent') {
+    e.preventDefault();
+    c.back();
+  }
+}
 
-  const sidebar = (
-    <Sidebar
-      teams={rows}
-      selected={selected}
-      currentAgent={openAgent}
-      currentRig={rig ?? structureTeam}
-      project={project}
-      now={now}
-      listError={listError}
-      asHome={homeList}
-      onNewTeam={() => setGallery(true)}
-    />
-  );
-
-  return (
-    <div className={`app workspace-shell${narrow ? ' narrow' : ''}${projectsShown ? '' : ' projects-hidden'}${library ? ' area-library' : ''} view-${view}`} style={{ ['--sidebar-w' as string]: `${sideW}px` }} data-path={location.pathname}>
-      <div className="workspace-header">
-      <WorkspaceBar library={library} workspaceHref={workspaceHref} projectsShown={projectsShown} detailsShown={detailsShown} onProjects={toggleProjects} onDetails={toggleDetails}
-        team={titles[rig ?? structureTeam ?? ''] ?? rig ?? structureTeam} menuOpen={menuOpen} onMenu={() => setMenuOpen(open => !open)}
-        needsAttention={counts['needs-you'] + counts.failed}>
-      {(rig||structureTeam)&&<Link className="btn" to={`/team/${rig??structureTeam}/git`} onClick={()=>track('open-git')}>Git changes</Link>}
-      <StatusLine
-        team={rig ? (titles[rig] ?? rig) : structureTeam ? (titles[structureTeam] ?? structureTeam) : undefined}
-        counts={counts}
-        now={now}
-        onGoto={() => setGoto(true)}
-        onHelp={() => setHelp(true)}
-        connection={rig && team?.connected ? 'live' : rig && team && !team.connected && team.state.snapshot ? 'reconnecting' : undefined}
-      />
-      </WorkspaceBar>
-      </div>
-      <div className={`body${narrow && projectsShown && !homeList ? ' mobile-projects-open' : ''}`}>
-        {projectsShown && sidebar}
-        {!narrow && projectsShown && (
-          <div
-            className="resizer"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize agent list"
-            aria-valuemin={SIDEBAR_MIN}
-            aria-valuemax={SIDEBAR_MAX}
-            aria-valuenow={sideW}
-            tabIndex={0}
-            onPointerDown={startResize}
-            onKeyDown={resizeKey}
-          />
-        )}
-        {content && (
-          <main className="main" inert={narrow && projectsShown && !homeList}>
-            {narrow && (rig || structureTeam) && (
-              <Link to="/" className="narrow-back">
-                <Icon name="arrow-left" size={14} /> projects <span className="muted">·</span> <span className="team-title">{titles[(rig ?? structureTeam)!] ?? rig ?? structureTeam}</span>
-              </Link>
-            )}
-            <div className="workspace-content">
-              <div className="workspace-stage" inert={narrow && detailsShown}>{content}</div>
-              {detailsShown && (!structureTeam || narrow) && <ContextPanel library={library ? collectionId : undefined} agent={!library && selected && byId[selected]?.rig === (rig ?? structureTeam) ? byId[selected] : undefined} team={rows.find(r => r.rig === (rig ?? structureTeam))} />}
-            </div>
-          </main>
-        )}
-      </div>
-      <Toasts
-        toasts={toasts}
-        onDismiss={dismiss}
-        onOpen={(t) => {
-          dismiss(t.id);
-          open({ rig: t.rig, id: t.agent });
-        }}
-      />
-      {goto && (
-        <GotoPalette
-          teams={rows}
-          now={now}
-          onClose={() => setGoto(false)}
-          onJump={(a) => {
-            setGoto(false);
-            open(a);
-          }}
-        />
-      )}
-      {help && <HelpOverlay onClose={() => setHelp(false)} />}
-      {gallery && <TemplateGallery onCreated={created} onClose={() => setGallery(false)} />}
-    </div>
-  );
+function letterKey(e: KeyboardEvent, c: KeyDeps) {
+  const { refs } = c.shell;
+  const onControl = !!(e.target as HTMLElement).closest?.('button, a, summary, [role="option"], [role="separator"]');
+  const board = c.view === 'structure' ? refs.board.current : null;
+  const graph = c.view === 'team' ? refs.graph.current : null;
+  const act = (fn: () => void) => { e.preventDefault(); fn(); };
+  switch (e.key) {
+    case 'g': case '/': return act(() => c.setGoto('agents'));
+    case '?': return act(() => c.setHelp(true));
+    case 'n': return act(() => (board?.status() ? board.addKey() : c.navigate('/new')));
+    case 'l': if (c.team && (board || c.view === 'team')) act(() => c.navigate(agentsPath(c.team!))); return;
+    case 'f': board?.fit(); graph?.fit(); return;
+    case '+': case '=': board?.zoomBy(1.2); graph?.zoomBy(1.2); return;
+    case '-': board?.zoomBy(1 / 1.2); graph?.zoomBy(1 / 1.2); return;
+    case 'i': if (c.view === 'agent') void refs.controls.current?.interrupt(); return;
+    case '[': case ']': if (c.view === 'agent') act(() => cycleAgent(c, e.key === ']' ? 1 : -1)); return;
+    case 'Enter': {
+      const a = c.view === 'team' && !onControl && c.shell.selected ? c.shell.byId[c.shell.selected] : undefined;
+      if (a) act(() => c.shell.open(a));
+    }
+  }
 }

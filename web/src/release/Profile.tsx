@@ -17,7 +17,6 @@ export function Profile() {
   if (!hosted)
     return (
       <section className="release-page community-account">
-        <p className="eyebrow">Identity & access</p>
         <h1>Community</h1>
         <div className="release-card">
           <h2>Local workspace</h2>
@@ -37,7 +36,6 @@ export function Profile() {
     );
   return (
     <section className="release-page community-account">
-      <p className="eyebrow">Identity & access</p>
       <h1>Community</h1>
       {!session.user ? (
         <a className="btn btn-primary" href="/api/community/login">

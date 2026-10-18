@@ -10,13 +10,6 @@ import { MARK } from '../draft/issues';
 import { Btn } from '../shell/ui';
 import { WORDS } from '../vocab';
 import { plural } from '../format';
-import { TeamLimitsFields } from './TeamLimitsFields';
-import { BudgetFields } from './BudgetFields';
-import { ClaudeSetupFields } from './ClaudeSetupFields';
-import { ProtectionFields } from './ProtectionFields';
-import { ComponentsSection } from './ComponentsSection';
-import { ImproveFromRun } from './ImproveFromRun';
-import type { Edit } from './Panels';
 import '../features.css';
 
 type Props = {
@@ -24,9 +17,6 @@ type Props = {
   draft: TeamDraft;
   /** Saves pending edits first, so the spec is the team on screen. */
   flush: () => Promise<{ ok: boolean }>;
-  /** Changes the team's own settings (its limits); absent = read-only. */
-  edit?: Edit;
-  locked?: boolean;
 };
 
 const list = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
@@ -43,10 +33,10 @@ export function needsSentence(draft: TeamDraft, issues: DraftIssue[]): string {
 }
 
 /**
- * Expert tools for a team, closed by default: its spec, read-only with Copy, and Export.
- * Spec words are allowed here only (`data-advanced`).
+ * Export the team (a team file, or MADL), and under Advanced its spec, read-only with Copy.
+ * Spec words are allowed there only (`data-advanced`).
  */
-export function TeamAdvanced({ teamId, draft, flush, edit, locked = false }: Props) {
+export function TeamExport({ teamId, draft, flush }: Props) {
   const ids = useId();
   const [spec, setSpec] = useState<TeamSpec | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,92 +123,60 @@ export function TeamAdvanced({ teamId, draft, flush, edit, locked = false }: Pro
     }
   };
 
+  const status = (
+    <p className="ta-status" role="status">
+      {busy ? <span id={`${ids}-busy`}>Saving and reading the spec…</span> : exported ? <>Exported {exported}. It is in your downloads.</> : null}
+    </p>
+  );
   return (
-    <details className="team-advanced" data-advanced>
-      <summary>{WORDS.advanced}</summary>
-      <div className="ta-body">
-        {edit && <BudgetFields draft={draft} edit={edit} locked={locked} />}
-        {edit && <ClaudeSetupFields draft={draft} edit={edit} locked={locked} />}
-        {edit && <ProtectionFields draft={draft} edit={edit} locked={locked} />}
-        {edit && <ComponentsSection draft={draft} edit={edit} locked={locked} />}
-        {edit && <TeamLimitsFields draft={draft} edit={edit} locked={locked} />}
-        {edit && <ImproveFromRun teamId={teamId} draft={draft} edit={edit} locked={locked} />}
-        <p className="ta-hint">See this team as a spec file, or save it to share or keep.</p>
-        <div className="ta-actions">
-          <Btn onClick={() => void load()} disabled={busy} aria-describedby={busy ? `${ids}-busy` : undefined}>
-            View as spec
-          </Btn>
-          <Btn onClick={() => void exportSpec()} disabled={busy} aria-describedby={busy ? `${ids}-busy` : undefined}>
-            Export
-          </Btn>
-        </div>
-        <div className="ta-actions">
-          <Btn onClick={() => void exportFile()} disabled={busy}>
-            Export team file
-          </Btn>
-          <Btn onClick={() => void exportMadl()} disabled={busy} title="A Multi-Agent Descriptor Language file other tools can read">
-            Export as MADL
-          </Btn>
-          <label className="ta-check">
-            <input type="checkbox" checked={withFolders} onChange={(e) => setWithFolders(e.target.checked)} /> Include folders (paths on this computer)
-          </label>
-        </div>
-        <p className="ta-status" role="status">
-          {busy ? (
-            <span id={`${ids}-busy`}>Saving and reading the spec…</span>
-          ) : exported ? (
-            <>Exported {exported}. It is in your downloads.</>
-          ) : null}
-        </p>
-        {error && (
-          <DismissibleError className="tone-red ta-error">
-            {error}
-          </DismissibleError>
-        )}
-        {spec && (
-          <section aria-label="Team spec" className="ta-spec">
-            <p className="ta-hint">
-              This is the OpenRig format Sculptured uses internally. It is read-only here; names, jobs and positions are kept in the last comment
-              line.
-            </p>
-            {unsaved && <p className="tone-amber">Your latest edits are not saved yet, so this is the last saved version.</p>}
-            {!spec.valid && <p className="tone-amber ta-needs">{needsSentence(draft, spec.issues)}</p>}
-            {spec.issues.length > 0 && (
-              <ul className="ta-issues" aria-label="Spec check">
-                {spec.issues.map((i, n) => (
-                  <li key={`${i.code}-${i.element.id}-${n}`}>
-                    <span className={i.severity === 'error' ? 'tone-red' : 'tone-amber'} aria-hidden="true">
-                      {MARK[i.severity]}{' '}
-                    </span>
-                    {i.message}
-                    {i.spec_path && (
-                      <>
-                        {' '}
-                        <code className="ta-path">{i.spec_path}</code>
-                      </>
-                    )}
-                    {i.detail && <span className="muted"> · {i.detail}</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="ta-file">
-              <span className="ta-name">{file}</span>
-              <span className="ta-file-tools">
-                {copied && (
-                  <span role="status" className="tone-green">
-                    Copied
-                  </span>
-                )}
-                <Btn onClick={() => void copy()}>Copy</Btn>
-              </span>
-            </div>
-            <pre ref={pre} className="ta-yaml" tabIndex={0} aria-label={`${file}, read-only`}>
-              {spec.yaml}
-            </pre>
-          </section>
-        )}
+    <div className="team-export">
+      <div className="ta-actions">
+        <Btn onClick={() => void exportFile()} disabled={busy}>Export team file</Btn>
+        <Btn onClick={() => void exportMadl()} disabled={busy} title="A Multi-Agent Descriptor Language file other tools can read">Export as MADL</Btn>
+        <label className="ta-check"><input type="checkbox" checked={withFolders} onChange={(e) => setWithFolders(e.target.checked)} /> Include folders (paths on this computer)</label>
       </div>
-    </details>
+      {status}
+      {error && <DismissibleError className="tone-red ta-error">{error}</DismissibleError>}
+      <details className="team-advanced" data-advanced>
+        <summary>{WORDS.advanced}</summary>
+        <div className="ta-body">
+          <p className="ta-hint">See this team as a spec file, or save it.</p>
+          <div className="ta-actions">
+            <Btn onClick={() => void load()} disabled={busy} aria-describedby={busy ? `${ids}-busy` : undefined}>View as spec</Btn>
+            <Btn onClick={() => void exportSpec()} disabled={busy} aria-describedby={busy ? `${ids}-busy` : undefined}>Export</Btn>
+          </div>
+          {spec && <SpecView spec={spec} draft={draft} file={file} unsaved={unsaved} copied={copied} onCopy={() => void copy()} pre={pre} />}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+type SpecProps = { spec: TeamSpec; draft: TeamDraft; file: string; unsaved: boolean; copied: boolean; onCopy: () => void; pre: React.RefObject<HTMLPreElement | null> };
+
+function SpecView({ spec, draft, file, unsaved, copied, onCopy, pre }: SpecProps) {
+  return (
+    <section aria-label="Team spec" className="ta-spec">
+      <p className="ta-hint">This is the OpenRig format Sculptured uses internally. It is read-only here; names, jobs and positions are kept in the last comment line.</p>
+      {unsaved && <p className="tone-amber">Your latest edits are not saved yet, so this is the last saved version.</p>}
+      {!spec.valid && <p className="tone-amber ta-needs">{needsSentence(draft, spec.issues)}</p>}
+      {spec.issues.length > 0 && (
+        <ul className="ta-issues" aria-label="Spec check">
+          {spec.issues.map((i, n) => (
+            <li key={`${i.code}-${i.element.id}-${n}`}>
+              <span className={i.severity === 'error' ? 'tone-red' : 'tone-amber'} aria-hidden="true">{MARK[i.severity]} </span>
+              {i.message}
+              {i.spec_path && <> <code className="ta-path">{i.spec_path}</code></>}
+              {i.detail && <span className="muted"> · {i.detail}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="ta-file">
+        <span className="ta-name">{file}</span>
+        <span className="ta-file-tools">{copied && <span role="status" className="tone-green">Copied</span>}<Btn onClick={onCopy}>Copy</Btn></span>
+      </div>
+      <pre ref={pre} className="ta-yaml" tabIndex={0} aria-label={`${file}, read-only`}>{spec.yaml}</pre>
+    </section>
   );
 }

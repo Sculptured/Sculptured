@@ -8,13 +8,19 @@ const SIGNED_OUT = /not logged in|please run \/login|codex login|not signed in/i
 
 /** The agent's CLI is not signed in on its computer (seen in its latest events): say so, and sign it in
  * from here (`api.cliLogin` runs the CLI's sign-in on that computer and returns the link it prints). */
+/** The agent's CLI said it is not signed in, in its latest events. */
+export function signedOut(a: AgentRow, feed: EventRecord[]): boolean {
+  const seat = a.seat;
+  if (!seat || (seat.runtime !== 'claude-code' && seat.runtime !== 'codex')) return false;
+  return feed.slice(-30).some((e) => SIGNED_OUT.test(JSON.stringify(e.body)));
+}
+
 export function SignInNeeded({ a, feed }: { a: AgentRow; feed: EventRecord[] }) {
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const seat = a.seat;
-  if (!seat || (seat.runtime !== 'claude-code' && seat.runtime !== 'codex')) return null;
-  if (!feed.slice(-30).some((e) => SIGNED_OUT.test(JSON.stringify(e.body)))) return null;
+  if (!seat || !signedOut(a, feed)) return null;
   const cli = seat.runtime === 'codex' ? 'codex' : 'claude';
   const product = cli === 'codex' ? 'Codex' : 'Claude Code';
   const start = async () => {

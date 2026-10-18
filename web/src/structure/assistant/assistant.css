@@ -1,34 +1,34 @@
 /* The design assistant: its panel, and the proposal layer on the board. */
 .design-assistant { display: flex; flex-direction: column; min-height: 0; }
 .da-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 10px; border-bottom: 1px solid var(--line); }
-.da-avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); flex: none; }
+.da-avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--radius-md); background: var(--accent-soft); color: var(--accent); flex: none; }
 .da-title { display: grid; gap: 1px; flex: 1 1 auto; min-width: 0; }
-.da-title .muted { font-size: 11.5px; }
+.da-title .muted { font-size: var(--text-xs); }
 .da-body { display: grid; gap: 12px; padding: 12px; align-content: start; }
 .da-body p { margin: 0; }
-.da-outcome { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 8px; background: var(--raised); font-size: 12.5px; }
-.da-intro { display: grid; gap: 10px; padding: 12px; border: 1px dashed var(--line-2); border-radius: 10px; }
+.da-outcome { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: var(--radius-md); background: var(--raised); font-size: var(--text-sm); }
+.da-intro { display: grid; gap: 10px; padding: 12px; border: 1px dashed var(--line-2); border-radius: var(--radius-lg); }
 .da-suggest { display: flex; flex-wrap: wrap; gap: 6px; }
-.da-chip { padding: 5px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--panel); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.da-chip { padding: 5px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-pill); background: var(--panel); color: var(--text); font: inherit; font-size: var(--text-sm); cursor: pointer; text-align: left; }
 .da-chip:hover, .da-chip:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
 .da-talk { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.da-turn { display: grid; gap: 4px; max-width: 92%; padding: 8px 11px; border-radius: 12px; line-height: 1.45; }
+.da-turn { display: grid; gap: 4px; max-width: 92%; padding: 8px 11px; border-radius: var(--radius-lg); line-height: 1.45; }
 .da-turn p { white-space: pre-wrap; overflow-wrap: anywhere; }
-.da-turn.da-person { justify-self: end; background: var(--accent-soft); border-bottom-right-radius: 4px; }
-.da-turn.da-assistant { justify-self: start; background: var(--raised); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
-.da-who { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--muted); }
-.da-working { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--accent-soft); border-radius: 10px; background: var(--panel); }
+.da-turn.da-person { justify-self: end; background: var(--accent-soft); border-bottom-right-radius: var(--radius-sm); }
+.da-turn.da-assistant { justify-self: start; background: var(--raised); border: 1px solid var(--line); border-bottom-left-radius: var(--radius-sm); }
+.da-who { display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--muted); }
+.da-working { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--accent-soft); border-radius: var(--radius-lg); background: var(--panel); }
 .da-working-head { display: flex; align-items: center; gap: 8px; line-height: 1.35; }
-.da-clock { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.da-clock { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--text-sm); }
 .da-spinner { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--accent); animation: da-spin 0.9s linear infinite; }
-.da-progress { height: 3px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.da-progress { height: 3px; border-radius: var(--radius-pill); background: var(--line); overflow: hidden; }
 .da-progress span { display: block; width: 35%; height: 100%; border-radius: inherit; background: var(--accent); animation: da-slide 1.6s ease-in-out infinite; }
 @keyframes da-spin { to { transform: rotate(360deg); } }
 @keyframes da-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
 @media (prefers-reduced-motion: reduce) { .da-spinner, .da-progress span { animation: none; } .da-progress span { width: 100%; opacity: 0.4; } }
-.da-review { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: 0 1px 0 var(--line); }
+.da-review { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line-2); border-radius: var(--radius-lg); background: var(--panel); box-shadow: 0 1px 0 var(--line); }
 .da-review-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.da-review-note { font-size: 12px; }
+.da-review-note { font-size: var(--text-sm); }
 .da-counts { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .da-changes { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
 .da-change { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline; padding: 6px 4px; border-bottom: 1px solid var(--line); line-height: 1.45; }
@@ -36,22 +36,22 @@
 .da-change .change-badge { justify-self: start; }
 .da-change-what { min-width: 0; overflow-wrap: anywhere; }
 .da-change .da-job { grid-column: 1 / -1; }
-.da-job summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+.da-job summary { font-size: var(--text-sm); color: var(--muted); cursor: pointer; }
 .da-job-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
-.da-job-grid pre { margin: 2px 0 0; padding: 6px 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
-.da-dropped ul { margin: 6px 0 0; padding-left: 16px; display: grid; gap: 4px; font-size: 12px; }
-.da-note { font-size: 12.5px; }
+.da-job-grid pre { margin: 2px 0 0; padding: 6px 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: var(--text-sm); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); }
+.da-dropped ul { margin: 6px 0 0; padding-left: 16px; display: grid; gap: 4px; font-size: var(--text-sm); }
+.da-note { font-size: var(--text-sm); }
 .da-decide { display: flex; gap: 8px; padding-top: 2px; }
 .da-decide .btn { flex: 1 1 0; justify-content: center; }
 .da-composer { position: sticky; bottom: 0; display: grid; gap: 6px; padding: 10px 12px 12px; margin-top: auto; border-top: 1px solid var(--line); background: var(--panel); }
 .da-composer textarea { resize: vertical; min-height: 64px; }
 .da-composer-row { display: flex; align-items: center; gap: 8px; }
-.da-cli { padding: 4px 6px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; }
+.da-cli { padding: 4px 6px; border: 1px solid var(--line-2); border-radius: var(--radius-md); background: var(--bg); color: var(--text); font: inherit; font-size: var(--text-sm); }
 .da-spacer { flex: 1 1 auto; }
 @media (max-width: 640px) { .da-job-grid { grid-template-columns: 1fr; } }
 
 /* What a part is in the proposal: a word on the card, a coloured outline, removed parts faded. */
-.change-badge { display: inline-block; padding: 0 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600; line-height: 16px; border: 1px solid currentColor; white-space: nowrap; }
+.change-badge { display: inline-block; padding: 0 6px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: var(--weight-semibold); line-height: 16px; border: 1px solid currentColor; white-space: nowrap; }
 .change-badge.change-added { color: var(--green); background: var(--green-soft); }
 .change-badge.change-changed { color: var(--amber); background: var(--amber-soft); }
 .change-badge.change-removed { color: var(--red); background: var(--red-soft); }

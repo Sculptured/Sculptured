@@ -1,9 +1,8 @@
 .knowledge { padding: 16px; overflow: auto; display: grid; gap: 16px; align-content: start; }
 .knowledge header { display: flex; justify-content: space-between; align-items: center; }
 .kn-entries, .kn-areas { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-.kn-entry { border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 10px; }
+.kn-entry { border: 1px solid var(--line-2); border-radius: var(--radius-md); padding: 8px 10px; }
 .kn-entry p { margin: 0 0 4px; }
 .kn-actions { display: flex; gap: 6px; }
 .kn-area summary { cursor: pointer; }
 .kn-area ul { margin: 4px 0 0 16px; }
-.quiet-count { color: var(--muted, inherit); font-weight: 400; }

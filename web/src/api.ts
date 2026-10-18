@@ -149,6 +149,8 @@ export const api = {
   communications: (id: string, usage = false) => get<EventRecord[]>(`${teamUrl(id)}/communications${usage ? '?usage=true' : ''}`),
   /** The latest run's message, handoff and start events with long text cut: what the Run board's arrows count. */
   runCommunications: (id: string) => get<EventRecord[]>(`${teamUrl(id)}/communications?run=latest&brief=true`),
+  /** The same, with the latest run's model-usage reports (tokens, and cost where a source prices it). */
+  runUsage: (id: string) => get<EventRecord[]>(`${teamUrl(id)}/communications?run=latest&brief=true&usage=true`),
   agentControl: (id: string) => get<{mode: string | null}>(`${seatUrl(id)}/control`),
   controlAgent: (id: string, mode: "soft" | "hard" | "resume", requestId: string) => post(`${seatUrl(id)}/control`, requestId, {mode}),
   workflow: (id: string) => get<{ config: Workflow | null; run: WorkflowRun | null; active: boolean; usage?: Record<string, import('./generated/TurnTokens').TurnTokens> }>(`${teamUrl(id)}/workflow`),

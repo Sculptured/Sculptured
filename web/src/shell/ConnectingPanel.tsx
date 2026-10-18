@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { boardPath } from '../paths';
 import { WORDS } from '../vocab';
 import { Panel } from './ui';
 
@@ -22,7 +23,7 @@ export function ConnectingPanel({ rig }: { rig: string }) {
           <p className="muted">This is usually a dropped network connection, or a network that blocks live connections.</p>
           <p className="stall-actions">
             <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>Try again</button>
-            <Link className="btn" to={`/team/${encodeURIComponent(rig)}/structure`}>Open the Design board</Link>
+            <Link className="btn" to={boardPath(rig, 'design')}>Open the Design board</Link>
           </p>
         </div>
       ) : (

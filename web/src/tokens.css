@@ -1,0 +1,404 @@
+/*
+ * Sculptured design tokens. The only place raw colours, type sizes, radii, shadows and motion
+ * values live; every component stylesheet reads these custom properties.
+ *
+ * Default look: Coastal (dark) — ink, chalk and quiet sea-glass.
+ *
+ * Adding another look: add ONE block at the end of this file,
+ *   :root[data-look="<name>"] { color-scheme: …; --bg: …; --panel: …; … }
+ * overriding tokens only, and set `document.documentElement.dataset.look = '<name>'`.
+ * Component CSS must never need to change for a new look. Override the canonical tokens; the
+ * derived ones (soft tints, status, aliases) follow automatically because they are defined
+ * with var()/color-mix() on the canonical ones.
+ *
+ * Legacy names (--r, --r-sm, --r-lg, --surface, --border, --mono, …) are aliases kept so that
+ * older and in-flight CSS keeps working. Prefer the canonical names in new CSS.
+ */
+:root {
+  color-scheme: dark;
+
+  /* ── Surfaces, back to front ── */
+  --bg: #111b22;            /* app canvas behind panels */
+  --panel: #17232b;         /* panels, sheets, menus */
+  --raised: #1d2c34;        /* cards and controls on a panel */
+  --raised-2: #273942;      /* buttons, selected segments */
+  --hover: #2a3e47;         /* hover fill for rows and quiet buttons */
+  --well: #142028;          /* inset wells: inputs, code, raw output */
+  --scrim: rgb(8 14 18 / 62%); /* behind dialogs */
+  --glass: rgb(23 35 43 / 94%);
+  --glass-solid: #1b2a32;   /* --glass when the "solid surfaces" preference is on */
+  --glass-border: rgb(177 202 203 / 18%);
+  --app-tint: #1b2c34;      /* top-left wash on the app background */
+
+  /* ── Lines ── */
+  --line: #31434c;          /* hairlines and quiet borders */
+  --line-2: #435963;        /* control borders */
+  --line-3: #718b92;        /* strong borders, hover borders, separators in text */
+
+  /* ── Text ── */
+  --text: #f1f2ee;
+  --muted: #b1c0c2;         /* secondary text; AA on every surface */
+  --faint: var(--muted);    /* kept equal to muted so every text colour stays readable */
+  --text-disabled: #7d8f94;
+
+  /* ── Accent: sea-glass ── */
+  --accent: #add5ce;
+  --accent-strong: #c5e5dd; /* hover on accent fills */
+  --accent-ink: #172b31;    /* text on accent fills */
+  --accent-deep: #436766;   /* selection, accent fills that carry light text */
+  --on-hue: #142026;        /* text on red / amber / green fills */
+
+  /* ── Hues (status meanings: red = needs you / failed, green = done, amber = waiting /
+        needs setup, violet = unknown). Colour only ever adds to a glyph + word. ── */
+  --red: #f1a8ae;
+  --green: #9cd9bb;
+  --amber: #e9cb98;
+  --violet: #c3a6ff;
+  --blue: #8db7ff;
+
+  /* ── Providers ── */
+  --claude: #eba184;
+  --codex: #8db7ff;
+  --practice: #80d0c7;
+  --other: #c0c7d2;
+
+  /* ── Data series: tool kinds in a transcript, context categories ── */
+  --k-read: var(--blue);
+  --k-edit: #ecc184;
+  --k-bash: var(--violet);
+  --k-search: var(--practice);
+  --k-web: #f0a6ca;
+  --k-task: var(--claude);
+  --k-other: #a4aebd;
+  --series-1: #ad94eb;
+  --series-2: #62aed5;
+  --series-3: #50b9ab;
+  --series-4: #d9b16b;
+  --series-5: #cf8c6e;
+  --series-6: #a1b781;
+
+  /* Light and shade used for inset highlights, shadows and scrims (mixed with alpha). */
+  --light: #fff;
+  --shade: #000;
+
+  /* ── Type ── */
+  --font-ui: 'Inter', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Six steps, relative to the user's UI size (12–16px, default 13px). */
+  --text-xs: 0.84615rem;    /* 11px  meta, legends, counters */
+  --text-sm: 0.92308rem;    /* 12px  secondary text, pills, labels */
+  --text-md: 1rem;          /* 13px  body and controls */
+  --text-lg: 1.15385rem;    /* 15px  panel titles, card titles, reading text */
+  --text-xl: 1.38462rem;    /* 18px  page and dialog headings */
+  --text-2xl: 1.84615rem;   /* 24px  display: library header, empty states */
+  --leading-tight: 1.25;
+  --leading: 1.5;
+  --leading-loose: 1.65;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --tracking-tight: -0.018em;
+  --tracking-caps: 0.04em;
+
+  /* ── Space (4px grid) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --row: 30px;              /* list row height */
+  --control-h: 30px;        /* button / input height */
+  --control-h-sm: 26px;
+  --sidebar-w: 288px;       /* the project list, until the user drags its edge */
+  --header-h: 34px;         /* the Run and Design header row */
+
+  /* ── Radius: three steps and a pill ── */
+  --radius-sm: 5px;         /* chips, kbd, small toggles */
+  --radius-md: 8px;         /* controls, rows, cards, inputs */
+  --radius-lg: 12px;        /* panels, popovers, dialogs */
+  --radius-pill: 999px;
+
+  /* ── Depth ── */
+  --shadow-control: 0 1px 0 color-mix(in srgb, var(--light) 3%, transparent) inset, 0 1px 2px color-mix(in srgb, var(--shade) 25%, transparent);
+  --shadow-card: 0 1px 0 color-mix(in srgb, var(--text) 3%, transparent) inset, 0 2px 8px color-mix(in srgb, var(--shade) 10%, transparent);
+  --shadow-pop: 0 1px 0 color-mix(in srgb, var(--light) 8%, transparent) inset, 0 16px 45px color-mix(in srgb, var(--shade) 35%, transparent);
+  --shadow-overlay: 0 24px 64px color-mix(in srgb, var(--shade) 60%, transparent), 0 4px 14px color-mix(in srgb, var(--shade) 40%, transparent);
+
+  /* ── Motion ── */
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Logos board style: the loops a working agent's logo runs (slow on purpose: alive, not frantic). */
+  --logo-spin: 6s;          /* Claude starburst: one turn */
+  --logo-breathe: 3s;       /* Claude starburst: one breath */
+  --logo-turn: 4.8s;        /* Codex mark: two quarter turns with a rest */
+  --logo-sway: 2.8s;      /* Practice flask: one sway, bubbles rise */
+  --logo-orbit: 3.2s;       /* the working ring's arc */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Derived (follow the canonical tokens; a look rarely needs to touch these) ── */
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 40%, transparent);
+  --red-soft: color-mix(in srgb, var(--red) 12%, transparent);
+  --red-line: color-mix(in srgb, var(--red) 40%, transparent);
+  --green-soft: color-mix(in srgb, var(--green) 12%, transparent);
+  --green-line: color-mix(in srgb, var(--green) 35%, transparent);
+  --amber-soft: color-mix(in srgb, var(--amber) 12%, transparent);
+  --amber-line: color-mix(in srgb, var(--amber) 40%, transparent);
+  --violet-soft: color-mix(in srgb, var(--violet) 12%, transparent);
+  --focus-ring: var(--accent);
+  --selection: var(--accent-deep);
+  --scrollbar: var(--line-2);
+  --scrollbar-hover: var(--line-3);
+
+  /* Status (shape + word always; these only colour them). */
+  --status-working: var(--accent);
+  --status-needs-you: var(--red);
+  --status-blocked: var(--red);
+  --status-failed: var(--red);
+  --status-waiting: var(--amber);
+  --status-done: var(--muted);        /* reported complete: the agent says so; grey, never green */
+  --status-verified: var(--green);    /* a check Sculptured ran passed: the only green status */
+  --status-unknown: var(--violet);
+  --status-idle: var(--muted);
+
+  /* ── Look-level surfaces. Component CSS reads these instead of hard-coding a material, so a
+        look can be flat (no glass, no gradients) without touching component CSS. ── */
+  --glass-blur: blur(20px) saturate(115%);   /* backdrop-filter on glass bars and the sidebar */
+  --overlay-blur: blur(8px);                 /* backdrop-filter behind dialogs */
+  --overlay-blur-sm: blur(3px);              /* backdrop-filter behind sheets and modal drawers */
+  --app-bg: linear-gradient(145deg, var(--app-tint), var(--bg) 65%);
+  --sidebar-bg: var(--glass);
+  --sidebar-line: var(--glass-border);
+  --nav-current-bg: var(--accent-soft);       /* the open project in the sidebar */
+  --nav-current-ring: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  --sidebar-shadow: var(--panel-shadow);
+  --panel-shadow: var(--shadow-card);         /* panels floating on the app background */
+  --canvas-bg: var(--bg);                    /* board and graph canvas */
+  --canvas-dot: color-mix(in srgb, var(--line-3) 16%, transparent);
+  --canvas-dot-size: 24px;
+  --group-bg: color-mix(in srgb, var(--accent) 4%, transparent);
+  --group-line: transparent;                 /* groups are a flat tint; no outline */
+  --group-label: var(--muted);
+  --card-bg: var(--panel);                   /* board cards are flat: one solid fill, one hairline */
+  --card-bg-needs-you: color-mix(in srgb, var(--red) 8%, var(--panel));
+  --card-bg-idle: var(--panel);              /* stopped and planned cards */
+  --accent-fill: var(--accent);              /* accent fills that carry --accent-ink text */
+  --accent-fill-strong: var(--accent-strong);
+  --btn-primary-shadow: 0 1px 0 color-mix(in srgb, var(--light) 14%, transparent) inset;
+  --brand-mark-bg: linear-gradient(155deg, var(--accent-strong), var(--accent));
+  --brand-mark-shadow: inset 0 1px 0 color-mix(in srgb, var(--light) 55%, transparent), 0 2px 8px color-mix(in srgb, var(--shade) 20%, transparent);
+  --emblem-bg: var(--light);                 /* plate behind the brand emblem artwork */
+  --mask-solid: #000;                        /* the opaque end of a mask-image gradient */
+  --wash: 1;                                 /* strength of decorative accent washes and glows (0 = flat) */
+  --avatar-bg: linear-gradient(135deg, var(--accent-deep), var(--hover));
+  --avatar-ink: var(--light);
+
+  /* ── Legacy aliases ── */
+  --r-sm: var(--radius-sm);
+  --r: var(--radius-md);
+  --r-lg: var(--radius-lg);
+  --surface: var(--panel);
+  --border: var(--line);
+  --mono: var(--font-mono);
+
+  font-family: var(--font-ui);
+  font-size: var(--ui-size, 13px);
+  line-height: var(--leading);
+  font-synthesis-weight: none;
+}
+
+/* "Solid surfaces" appearance preference, and the OS asking for less transparency. */
+:root[data-surface='solid'] { --glass: var(--glass-solid); }
+@media (prefers-reduced-transparency: reduce) { :root { --glass: var(--glass-solid); } }
+/* The OS asking for more contrast: stronger secondary text and lines. */
+@media (prefers-contrast: more) { :root { --muted: #d6e0e0; --line: #5f7680; --line-2: #7f979e; --glass: var(--panel); } }
+
+/*
+ * ── Look: Standard ──────────────────────────────────────────────────────────────────────────
+ * The category standard at the craft level of Linear and GitHub Primer: neutral, flat and exact.
+ * Light and dark, following the system unless data-mode pins one (appearance.ts sets data-look
+ * and data-mode on <html> before first paint). No glass, no gradients; shadows only on popovers,
+ * menus and dialogs; a dot-grid board with groups tinted indigo.
+ *
+ * In light mode --light is the ink colour: every "lift" overlay written as
+ * color-mix(var(--light) n%, transparent) becomes a faint grey tint on white, which is what a
+ * hover or a quiet chip should be. --shade is translucent so every shadow mixed from it comes out
+ * a fraction as strong.
+ */
+:root[data-look='standard'] {
+  color-scheme: light;
+
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --raised: #ffffff;
+  --raised-2: #ffffff;
+  --hover: #f1f2f4;
+  --well: #f7f8fa;
+  --scrim: rgb(15 17 21 / 32%);
+  --glass: var(--panel);
+  --glass-solid: var(--panel);
+  --glass-border: var(--line);
+  --app-tint: var(--bg);
+
+  --line: #e6e8eb;
+  --line-2: #d9dce0;
+  --line-3: #a9aeb6;
+
+  --text: #0f1115;
+  --muted: #5f646c;
+  --faint: var(--muted);
+  --text-disabled: #9a9fa7;
+
+  --accent: #5e6ad2;
+  --accent-strong: #4f5bc4;
+  --accent-ink: #ffffff;
+  --accent-deep: #d9dcf6;
+  --on-hue: #ffffff;
+
+  --red: #c9302c;
+  --green: #1a7f4b;
+  --amber: #9a5b00;
+  --violet: #7c4dce;
+  --blue: #0b67c9;
+
+  --claude: #b4542f;
+  --codex: #0b67c9;
+  --practice: #0e766e;
+  --other: #5f646c;
+
+  --k-edit: #8f5a00;
+  --k-web: #b3367f;
+  --k-other: #5f646c;
+  --series-1: #7c4dce;
+  --series-2: #0b67c9;
+  --series-3: #0e766e;
+  --series-4: #a36b00;
+  --series-5: #bc4c00;
+  --series-6: #4f7a28;
+
+  --light: #0f1115;
+  --shade: rgb(15 17 21 / 38%);
+
+  --tracking-tight: -0.011em;
+  --sidebar-w: 220px;
+  --header-h: 56px;
+  /* 6 and 8 for controls, cards and panels; 4 only for the smallest parts (kbd chips, and the
+     segments nested 2px inside a 6px segmented tray, whose corners must stay concentric). */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Flat: cards, panels and controls carry a hairline border, no shadow (a transparent shadow, not
+     `none`, so the token still composes in lists such as a selection ring). Shadows are kept for
+     popovers, menus and dialogs. */
+  --shadow-control: 0 0 0 0 transparent;
+  --shadow-card: 0 0 0 0 transparent;
+  --shadow-pop: 0 0 0 1px rgb(15 17 21 / 2%), 0 4px 12px rgb(15 17 21 / 8%), 0 12px 32px -8px rgb(15 17 21 / 14%);
+  --shadow-overlay: 0 8px 24px rgb(15 17 21 / 12%), 0 24px 64px -12px rgb(15 17 21 / 22%);
+
+  --accent-soft: color-mix(in srgb, var(--accent) 8%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 35%, transparent);
+  --red-soft: color-mix(in srgb, var(--red) 8%, transparent);
+  --green-soft: color-mix(in srgb, var(--green) 9%, transparent);
+  --amber-soft: color-mix(in srgb, #e5a01a 13%, transparent);
+  --violet-soft: color-mix(in srgb, var(--violet) 9%, transparent);
+  --focus-ring: var(--accent);
+  --selection: var(--accent-deep);
+  --scrollbar: var(--line-2);
+  --scrollbar-hover: var(--line-3);
+
+  --glass-blur: none;
+  --overlay-blur: none;
+  --overlay-blur-sm: none;
+  --app-bg: var(--bg);
+  --sidebar-bg: var(--bg);
+  --sidebar-line: transparent;
+  --nav-current-bg: var(--panel);
+  --nav-current-ring: inset 0 0 0 1px var(--line), 0 1px 2px rgb(15 17 21 / 5%);
+  --sidebar-shadow: none;
+  --panel-shadow: none;
+  --canvas-bg: #fafbfc;
+  --canvas-dot: #dcdfe4;
+  --canvas-dot-size: 20px;
+  --group-bg: color-mix(in srgb, var(--accent) 5%, transparent);
+  --group-line: transparent;
+  --group-label: #3d47a8;
+  --card-bg: var(--raised);
+  --card-bg-needs-you: color-mix(in srgb, var(--amber-soft) 40%, var(--raised));
+  --card-bg-idle: var(--raised);
+  --accent-fill: var(--accent);
+  --accent-fill-strong: var(--accent-strong);
+  --btn-primary-shadow: none;
+  --brand-mark-bg: var(--accent);
+  --brand-mark-shadow: none;
+  --emblem-bg: var(--panel);                 /* unused here: Standard draws the plain mark (BrandMark) */
+  --wash: 0;
+  --avatar-bg: var(--accent-fill);
+  --avatar-ink: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-look='standard']:not([data-mode='light']) {
+    color-scheme: dark;
+    --bg: #0f1115; --panel: #16181d; --raised: #1b1e24; --raised-2: #22252c; --hover: #262930; --well: #121418;
+    --scrim: rgb(5 6 8 / 60%); --glass: var(--panel); --glass-solid: var(--panel); --glass-border: var(--line); --app-tint: var(--bg);
+    --line: #2a2d34; --line-2: #363a43; --line-3: #5d626c;
+    --text: #edeef0; --muted: #9ba0a8; --faint: var(--muted); --text-disabled: #656a73;
+    --accent: #8a92f0; --accent-strong: #a2a8f4; --accent-ink: #ffffff; --accent-deep: #343a73; --on-hue: #0f1115;
+    --red: #f2827a; --green: #4cc38a; --amber: #e5b04a; --violet: #b49cf4; --blue: #6ea8fe;
+    --claude: #e8916b; --codex: #6ea8fe; --practice: #4fc1b4; --other: #a4a9b1;
+    --k-edit: #e6b56a; --k-web: #ec8fc0; --k-other: #9ba0a8;
+    --series-1: #a68cf0; --series-2: #5ea4dc; --series-3: #45b5a6; --series-4: #d6ad63; --series-5: #d98a66; --series-6: #9cb67c;
+    --light: #fff; --shade: #000;
+    --shadow-control: 0 0 0 0 transparent;
+    --shadow-card: 0 0 0 0 transparent;
+    --shadow-pop: 0 0 0 1px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 40%), 0 16px 40px -8px rgb(0 0 0 / 50%);
+    --shadow-overlay: 0 12px 32px rgb(0 0 0 / 50%), 0 32px 80px -16px rgb(0 0 0 / 60%);
+    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+    --red-soft: color-mix(in srgb, var(--red) 12%, transparent);
+    --green-soft: color-mix(in srgb, var(--green) 12%, transparent);
+    --amber-soft: color-mix(in srgb, var(--amber) 13%, transparent);
+    --violet-soft: color-mix(in srgb, var(--violet) 12%, transparent);
+    --sidebar-bg: var(--bg); --panel-shadow: none; --nav-current-bg: var(--raised-2); --nav-current-ring: inset 0 0 0 1px var(--line-2);
+    --canvas-bg: #121418; --canvas-dot: #2a2d34;
+    --group-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+    --group-line: transparent; --group-label: var(--accent);
+    --card-bg-needs-you: color-mix(in srgb, var(--amber) 6%, var(--raised));
+    --accent-fill: #5e6ad2; --accent-fill-strong: #6c77da;
+    --btn-primary-shadow: none;
+    --brand-mark-bg: #5e6ad2;
+  }
+}
+:root[data-look='standard'][data-mode='dark'] {
+  color-scheme: dark;
+  --bg: #0f1115; --panel: #16181d; --raised: #1b1e24; --raised-2: #22252c; --hover: #262930; --well: #121418;
+  --scrim: rgb(5 6 8 / 60%); --glass: var(--panel); --glass-solid: var(--panel); --glass-border: var(--line); --app-tint: var(--bg);
+  --line: #2a2d34; --line-2: #363a43; --line-3: #5d626c;
+  --text: #edeef0; --muted: #9ba0a8; --faint: var(--muted); --text-disabled: #656a73;
+  --accent: #8a92f0; --accent-strong: #a2a8f4; --accent-ink: #ffffff; --accent-deep: #343a73; --on-hue: #0f1115;
+  --red: #f2827a; --green: #4cc38a; --amber: #e5b04a; --violet: #b49cf4; --blue: #6ea8fe;
+  --claude: #e8916b; --codex: #6ea8fe; --practice: #4fc1b4; --other: #a4a9b1;
+  --k-edit: #e6b56a; --k-web: #ec8fc0; --k-other: #9ba0a8;
+  --series-1: #a68cf0; --series-2: #5ea4dc; --series-3: #45b5a6; --series-4: #d6ad63; --series-5: #d98a66; --series-6: #9cb67c;
+  --light: #fff; --shade: #000;
+  --shadow-control: 0 0 0 0 transparent;
+  --shadow-card: 0 0 0 0 transparent;
+  --shadow-pop: 0 0 0 1px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 40%), 0 16px 40px -8px rgb(0 0 0 / 50%);
+  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 50%), 0 32px 80px -16px rgb(0 0 0 / 60%);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --red-soft: color-mix(in srgb, var(--red) 12%, transparent);
+  --green-soft: color-mix(in srgb, var(--green) 12%, transparent);
+  --amber-soft: color-mix(in srgb, var(--amber) 13%, transparent);
+  --violet-soft: color-mix(in srgb, var(--violet) 12%, transparent);
+  --sidebar-bg: var(--bg); --panel-shadow: none; --nav-current-bg: var(--raised-2); --nav-current-ring: inset 0 0 0 1px var(--line-2);
+  --canvas-bg: #121418; --canvas-dot: #2a2d34;
+  --group-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+  --group-line: transparent; --group-label: var(--accent);
+  --card-bg-needs-you: color-mix(in srgb, var(--amber) 6%, var(--raised));
+  --accent-fill: #5e6ad2; --accent-fill-strong: #6c77da;
+  --btn-primary-shadow: none;
+  --brand-mark-bg: #5e6ad2;
+}

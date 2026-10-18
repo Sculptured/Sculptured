@@ -9,8 +9,10 @@ import { ArrowHandles } from './ArrowHandles';
 import { closedGroupBox, GroupVisibilityButton, projectGroups, routeGroupEdges, useGroupVisibility } from '../shell/groupVisibility';
 import { effectiveModel } from '../draft/models';
 import { modelLabel } from './ModelControls';
-import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
-import { trackPointer } from '../dom';
+import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
+import { isTextField, trackPointer } from '../dom';
+import { moveAgents, removeAgents } from '../draft/bulk';
+import { SelectionBar } from './SelectionBar';
 import type { AgentKind } from '../generated/AgentKind';
 import type { CompiledEdge } from '../generated/CompiledEdge';
 import type { ConnectionKind } from '../generated/ConnectionKind';
@@ -18,7 +20,7 @@ import type { DraftIssue } from '../generated/DraftIssue';
 import type { EdgeKind } from '../generated/EdgeKind';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { addAgent, addGroup, connect, reconnect, moveAgent, moveGroup, removeElement, type Selection } from '../draft/edits';
-import { agentAt, agentBox, alignCard, BIG_STEP, drawnGroups, groupAt, nextFreeSlot, STEP, type Point } from '../draft/geometry';
+import { agentAt, agentBox, alignCard, BIG_STEP, drawnGroups, groupAt, nextFreeSlot, overlaps, STEP, type Point } from '../draft/geometry';
 import { BoardMenu, useBoardClipboard, type MenuOpen } from './BoardMenu';
 import { inputAllowed, teamInputBox, INPUT_H, INPUT_W } from '../draft/input';
 import { InputEdges, InputEditor, InputNode, INPUT_WIRE } from './InputNode';
@@ -31,6 +33,7 @@ import { placeLabels } from '../shell/labels';
 import { Btn, Icon, VendorMark } from '../shell/ui';
 import { usePanZoom, type Bounds } from '../shell/viewport';
 import { CONNECTION_WORDS, NOT_ENFORCED } from '../vocab';
+import { ConnectionLegend } from '../shell/HelpOverlay';
 import { FolderPicker, shortPath, useHome } from './FolderPicker';
 import { connectionSentence, kindVendor, LOCK_REASON, nameOf, type Edit } from './Panels';
 import { markClass, type Marks } from './assistant/compare';
@@ -38,8 +41,10 @@ import { ChangeBadge } from './assistant/ChangeBadge';
 import { QUIET_AFTER, useArrowFocus } from './arrowFocus';
 import { handoffWords } from '../shell/model';
 import { plural } from '../format';
-import { workflowBounds, inputBox, stageBoxes, workflowLinks, WorkflowGraph, WorkflowAgentActions, type WorkflowTarget } from '../workflow/WorkflowGraph';
+import { logoRouteBox, logoRouteBoxes, useBoardStyle } from '../shell/boardStyle';
+import { LogoFace, logoClasses } from '../shell/LogoNode';
 import { ComponentChips } from './ComponentChips';
+import { workflowBounds, inputBox, stageBoxes, workflowLinks, WorkflowGraph, WorkflowAgentActions, type WorkflowTarget } from '../workflow/WorkflowGraph';
 
 export type CanvasHandle = {
   fit: () => void;
@@ -47,17 +52,37 @@ export type CanvasHandle = {
   focusPalette: () => void;
   /** Pans to the element and moves keyboard focus to it. */
   show: (s: Selection) => void;
+  add: (kind: AgentKind) => void;
+  addGroup: () => void;
+  /** Selects every agent (Ctrl+A). */
+  selectAll: () => void;
 };
 
 const EDGE_KIND: Record<ConnectionKind, EdgeKind> = { 'hands-work-to': 'delegates_to', 'reports-to': 'escalates_to', watches: 'can_observe' };
 const PALETTE: AgentKind[] = OFFERED_KINDS;
 const PALETTE_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', practice: 'Practice' };
 
+/** Whether More tools is open, per browser: newcomers see one Add agent button. */
+export const MORE_TOOLS_KEY = 'sculptured.design.more-tools.v1';
+function readMoreTools(): boolean {
+  try { return globalThis.localStorage?.getItem(MORE_TOOLS_KEY) === 'true'; } catch { return false; }
+}
+function writeMoreTools(open: boolean) {
+  try { globalThis.localStorage?.setItem(MORE_TOOLS_KEY, String(open)); } catch { /* Per-browser convenience only. */ }
+}
+/** The kind "Add agent" adds: the team's most common offered kind, else the first offered. */
+export function mainKindOf(d: TeamDraft): AgentKind {
+  const counts = PALETTE.map((k) => [k, d.agents.filter((a) => a.kind === k).length] as const);
+  const best = counts.reduce((a, b) => (b[1] > a[1] ? b : a), counts[0]);
+  return best[1] > 0 ? best[0] : PALETTE[0];
+}
+
 /** The model shown on a card: the one it will run with, or the CLI's default. */
 const cardModel = (d: TeamDraft, a: TeamDraft['agents'][number]) =>
   a.kind === 'practice' ? 'free' : modelLabel(a.kind, effectiveModel(d, a).model);
 
-type Drag = { kind: 'agent' | 'group' | 'input' | 'stage' | 'team-input'; id: string; dx: number; dy: number };
+/** `ids`: several selected agents dragged together (the card under the pointer is `id`). */
+type Drag = { kind: 'agent' | 'group' | 'input' | 'stage' | 'team-input'; id: string; dx: number; dy: number; ids?: string[] };
 type Wire = { from: string; to: Point };
 type Ghost = { kind: AgentKind; at: Point } | null;
 
@@ -83,6 +108,10 @@ type Props = {
   ref?: Ref<CanvasHandle>;
   /** A proposal is shown: what each card, group and arrow is in it (see `assistant/compare.ts`). */
   marks?: Marks;
+  /** Tools at the start of the toolbar row (the board's Design | Run switch). */
+  leadTools?: ReactNode;
+  /** Extra tools at the end of the toolbar row (the design assistant, the save state). */
+  extraTools?: ReactNode;
 };
 
 /** The draft with a drag in progress applied, for drawing only. */
@@ -93,6 +122,7 @@ function withDrag(d: TeamDraft, drag: Drag | null, k: number): TeamDraft {
   if (drag.kind === 'team-input' && d.input) return { ...d, input: { ...d.input, x: d.input.x + dx, y: d.input.y + dy } };
   if (drag.kind === 'input' && d.workflow) { const b=inputBox(d); return {...d,workflow:{...d.workflow,input_position:{x:b.x+dx,y:b.y+dy}}}; }
   if (drag.kind === 'stage' && d.workflow) { const b=stageBoxes(d)[`$stage:${drag.id}`]; return b ? {...d,workflow:{...d.workflow,stages:d.workflow.stages.map(s=>s.id===drag.id?{...s,position:{x:b.x+dx,y:b.y+dy}}:s)}} : d; }
+  if (drag.kind === 'agent' && drag.ids) return { ...d, agents: d.agents.map((a) => (drag.ids!.includes(a.id) ? { ...a, x: a.x + dx, y: a.y + dy } : a)) };
   // A dragged card shows where it will land: where it is, or lined up with a nearby card.
   if (drag.kind === 'agent') return { ...d, agents: d.agents.map((a) => (a.id === drag.id ? { ...a, ...alignCard(d, a.id, { x: a.x + dx, y: a.y + dy }) } : a)) };
   return {
@@ -140,7 +170,21 @@ export function StructureCanvas(p: Props) {
   const [focusNext, setFocusNext] = useState<Selection | null>(null);
   const stops = useRef(new Set<() => void>());
   const pointerFocus = useRef(false);
-  const paletteDisclosure = useRef<HTMLDetailsElement>(null);
+  // Several agents selected at once (Shift or Ctrl+click, Shift+drag, Ctrl+A): moved, changed and deleted together.
+  const [multi, setMulti] = useState<string[]>([]);
+  const picked = useMemo(() => multi.filter((id) => draft.agents.some((a) => a.id === id)), [multi, draft.agents]);
+  const many = picked.length > 1;
+  const pickedRef = useRef(picked);
+  pickedRef.current = picked;
+  const [marquee, setMarquee] = useState<{ a: Point; b: Point } | null>(null);
+  const togglePick = (id: string) =>
+    setMulti((cur) => {
+      const base = cur.length ? cur : selection?.kind === 'agent' && selection.id !== id ? [selection.id] : [];
+      return base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+    });
+  // The Add toolbar: one primary "Add agent"; every other tool sits one step back, under More tools.
+  const [moreTools, setMoreTools] = useState(() => readMoreTools());
+  const toggleMoreTools = () => setMoreTools((m) => { writeMoreTools(!m); return !m; });
   const paletteRef = useRef<HTMLDivElement>(null);
 
   // Drags still going when the board unmounts stop listening.
@@ -159,8 +203,11 @@ export function StructureCanvas(p: Props) {
     stops.current.add(stop);
   };
 
-  // Full text: every card grows to show all its text; cards below move down (display only, never saved).
-  const [fullText, setFullText] = useState(() => { try { return localStorage.getItem('sculptured.board.fullText') === '1'; } catch { return false; } });
+  // Logos style: each agent is its provider's logo, in the same slot; arrows end at the logo.
+  const logos = useBoardStyle() === 'logos';
+  // Full text: every card grows to show all its text; cards below move down (display only, never saved). Cards style only.
+  const [fullTextWanted, setFullText] = useState(() => { try { return localStorage.getItem('sculptured.board.fullText') === '1'; } catch { return false; } });
+  const fullText = fullTextWanted && !logos;
   const toggleFullText = () => setFullText((on) => { try { localStorage.setItem('sculptured.board.fullText', on ? '0' : '1'); } catch { /* per-viewer convenience only */ } return !on; });
   const [heights, setHeights] = useState<Record<string, number>>({});
   const slots = useRef(new Map<string, HTMLElement>());
@@ -184,7 +231,7 @@ export function StructureCanvas(p: Props) {
     [shown.connections],
   );
   const projection = useMemo(() => projectGroups(boxes, Object.fromEntries(shown.agents.map(a => [a.id, groupOf(a)])), Object.fromEntries(drawnGroups(shown).map(g => [g.id, g])), collapsed), [boxes, shown, collapsed]);
-  const routes = useMemo(() => routeGroupEdges(edges, projection), [edges, projection]);
+  const routes = useMemo(() => routeGroupEdges(edges, logos ? { ...projection, boxes: logoRouteBoxes(projection.boxes) } : projection), [edges, projection, logos]);
   // A bundled arrow stands for several connections; it selects the collapsed group it leaves (or enters).
   const bundleGroup = (c: { from: string; to: string }): Selection => ({ kind: 'group', id: projection.hidden.get(c.from) ?? projection.hidden.get(c.to)! });
   const endName = (agent: string) => { const g = projection.hidden.get(agent); return g === undefined ? nameOf(draft, agent) : (draft.groups.find(x => x.id === g)?.label || 'Unnamed group'); };
@@ -233,17 +280,43 @@ export function StructureCanvas(p: Props) {
       fit,
       zoomBy: (f: number) => zoomAt(f),
       focusPalette: () => {
-        if (paletteDisclosure.current) paletteDisclosure.current.open = true;
-        paletteRef.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+        paletteRef.current?.querySelector<HTMLElement>('.palette-btn:not(:disabled)')?.focus();
       },
       show: (s: Selection) => {
         const b = boxOf(s);
         if (b) reveal(b);
         setFocusNext(s);
       },
+      add: (kind: AgentKind) => add(kind),
+      addGroup: () => newGroup(),
+      selectAll: () => selectAllRef.current(),
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- add and newGroup act through edit, which reads the latest draft
     [fit, zoomAt, reveal, boxOf],
   );
+
+  // Ctrl+A selects every agent; Esc lets go of a selection of several. Not while typing or in a dialog.
+  const selectAllRef = useRef(() => {});
+  selectAllRef.current = () => {
+    const all = draft.agents.filter((a) => !projection.hidden.has(a.id)).map((a) => a.id);
+    setMulti(all);
+    if (all.length === 1) onSelect({ kind: 'agent', id: all[0] });
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || isTextField(e.target) || document.querySelector('[aria-modal="true"]')) return;
+      const t = e.target as HTMLElement;
+      if (t !== document.body && !el.current?.closest('.sb-canvas')?.contains(t)) return;
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selectAllRef.current();
+      } else if (e.key === 'Escape' && pickedRef.current.length > 0) {
+        setMulti([]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [el]);
 
   // Focus an element once it is drawn (a new card, a problem that was clicked).
   useEffect(() => {
@@ -351,24 +424,36 @@ export function StructureCanvas(p: Props) {
 
   const dragged = useRef(false);
   /** A click (not the end of a drag) selects the agent and opens its details. */
-  const openCard = (id: string) => {
+  const openCard = (id: string, e?: React.MouseEvent) => {
     onSelect({ kind: 'agent', id });
     if (dragged.current) dragged.current = false;
-    else p.onOpen?.(id);
+    // Shift, Ctrl or Command+click adds the agent to the selection (or takes it out).
+    else if (e && (e.shiftKey || e.ctrlKey || e.metaKey)) togglePick(id);
+    else {
+      setMulti([]);
+      p.onOpen?.(id);
+    }
   };
 
   const cardDown = (id: string) => (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     pointerFocus.current = true;
     dragged.current = false;
+    // A card of a selection of several drags them all.
+    const together = many && picked.includes(id) ? picked : null;
     follow(
       e,
-      (dx, dy) => setDrag({ kind: 'agent', id, dx, dy }),
+      (dx, dy) => setDrag({ kind: 'agent', id, dx, dy, ids: together ?? undefined }),
       (moved, ev) => {
         pointerFocus.current = false;
         setDrag(null);
         if (!moved) return;
         dragged.current = true;
+        if (together) {
+          const k = vpRef.current.k;
+          edit((d) => moveAgents(d, together, (ev.clientX - e.clientX) / k, (ev.clientY - e.clientY) / k, locked));
+          return;
+        }
         const a = draft.agents.find((x) => x.id === id);
         if (!a) return;
         const k = vpRef.current.k;
@@ -489,6 +574,21 @@ export function StructureCanvas(p: Props) {
     const step = e.shiftKey ? BIG_STEP : STEP;
     const arrows: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     const move = arrows[e.key];
+    // The card is one of several selected: arrows, Delete and Esc act on them all.
+    const group = many && selection.kind === 'agent' && picked.includes(selection.id) ? picked : null;
+    if (e.key === ' ' && e.shiftKey && selection.kind === 'agent' && t.closest('[data-agent]')) {
+      e.preventDefault();
+      togglePick(selection.id);
+      return;
+    }
+    if (move && group) {
+      e.preventDefault();
+      hold();
+      edit((d) => moveAgents(d, group, move[0], move[1], locked), `move:${group.join(',')}`);
+      const b = boxOf(selection);
+      if (b) reveal({ ...b, x: b.x + move[0], y: b.y + move[1] });
+      return;
+    }
     if (move) {
       e.preventDefault();
       hold();
@@ -506,6 +606,13 @@ export function StructureCanvas(p: Props) {
         edit((d) => ({ draft: d, reason: LOCK_REASON }));
         return;
       }
+      if (group) {
+        edit((d) => removeAgents(d, group));
+        setMulti([]);
+        onSelect(null);
+        el.current?.focus();
+        return;
+      }
       if (!edit((d) => removeElement(d, selection))) {
         onSelect(null);
         el.current?.focus();
@@ -515,6 +622,7 @@ export function StructureCanvas(p: Props) {
     if (e.key === 'Escape') {
       // Leaves the selection; the board keeps keyboard focus.
       e.preventDefault();
+      setMulti([]);
       onSelect(null);
       el.current?.focus();
       return;
@@ -528,6 +636,26 @@ export function StructureCanvas(p: Props) {
   const onViewportDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('button, a, .port')) return;
+    // Shift+drag on empty board draws a box: the agents it touches join the selection. A plain drag pans.
+    if (e.shiftKey) {
+      e.preventDefault();
+      const a = toWorld(e.clientX, e.clientY);
+      follow(
+        e,
+        (_dx, _dy, ev) => setMarquee({ a, b: toWorld(ev.clientX, ev.clientY) }),
+        (moved, ev) => {
+          setMarquee(null);
+          if (!moved) return;
+          const b = toWorld(ev.clientX, ev.clientY);
+          const box = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
+          const hit = draft.agents.filter((x) => !projection.hidden.has(x.id) && overlaps(agentBox(x), box)).map((x) => x.id);
+          setMulti((cur) => [...new Set([...cur, ...hit])]);
+          if (hit.length > 0 && selection?.kind !== 'agent') onSelect({ kind: 'agent', id: hit[0] });
+        },
+      );
+      return;
+    }
+    setMulti([]);
     onSelect(null);
     startPan(e);
   };
@@ -541,19 +669,37 @@ export function StructureCanvas(p: Props) {
         })()
       : null;
   const wireTarget = wire ? agentAt({ ...draft, agents: draft.agents.filter(a => !projection.hidden.has(a.id)) }, wire.to) : null;
-  const wireFrom = wire ? (wire.from === INPUT_WIRE ? teamInputBox(draft) : boxes[wire.from]) : null;
+  const wireFrom = wire ? (wire.from === INPUT_WIRE ? teamInputBox(draft) : boxes[wire.from] && (logos ? logoRouteBox(boxes[wire.from]) : boxes[wire.from])) : null;
   const lockedNote = !locked ? null : p.marks ? 'Approve or reject the proposal to change the board.' : 'Stop the team to add components or change arrows.';
   const empty = draft.agents.length === 0;
+  const mainKind = mainKindOf(draft);
 
   return (
     <div className={`sb-canvas${af.quiet ? ' arrows-quiet' : ''}`}>
-      <details className="sb-tools-disclosure" ref={paletteDisclosure} open>
-        <summary>Edit tools</summary>
+      <div className={`sb-tools-disclosure ux-tools${moreTools ? ' ux-tools-more' : ''}`}>
       <div className="sb-toolbar" role="toolbar" aria-label="Add to the team" ref={paletteRef}>
-        <span className="tb-label" aria-hidden="true">
-          Add
-        </span>
-        {PALETTE.map((k) => {
+        {p.leadTools}
+        {(() => {
+          const v = kindVendor(mainKind);
+          return (
+            <Btn
+              className={`palette-btn ux-add-agent ${v.cls}`}
+              disabled={locked}
+              aria-describedby={locked ? `${ids}-lock` : undefined}
+              aria-label={`Add a ${PALETTE_WORD[mainKind]} agent`}
+              tip={`Drag onto the board, or click to add a ${PALETTE_WORD[mainKind]} agent. More tools has the other kinds, groups and the Input.`}
+              kbd="n"
+              onPointerDown={paletteDown(mainKind)}
+              onClick={() => add(mainKind)}
+            >
+              <Icon name="plus" size={13} />
+              Add agent
+              <VendorMark v={v} size="xs" />
+            </Btn>
+          );
+        })()}
+        {moreTools && <>
+        {PALETTE.filter((k) => k !== mainKind).map((k) => {
           const v = kindVendor(k);
           return (
             <Btn
@@ -582,26 +728,43 @@ export function StructureCanvas(p: Props) {
         </Btn>}
         {!p.groupOnly && <GroupPalette draft={draft} locked={locked} onDrag={blockDown} onAdd={b=>addBlock(b)} />}
         {!p.groupOnly && <TeamFolderButton draft={draft} locked={locked} onChoose={folder => edit(d => folderForAll(d, folder))} />}
-        <Btn onClick={toggleFullText} aria-pressed={fullText} icon="list" tip="Show every card's full text">Full text</Btn>
+        <Btn onClick={toggleFullText} aria-pressed={fullTextWanted} icon="list" disabled={logos} aria-describedby={logos ? `${ids}-fulltext` : undefined} tip={logos ? 'Full text shows in the Cards board style' : "Show every card's full text"}>Full text</Btn>
+        {logos && <span id={`${ids}-fulltext`} className="sr-only">Full text shows in the Cards board style</span>}
         {draft.connections.length > QUIET_AFTER && <Btn onClick={af.toggleAll} aria-pressed={af.allArrows} icon="route" tip="Draw every arrow at full strength. Otherwise a busy board shows a card's arrows when you point at it or select it.">All arrows</Btn>}
+        </>}
+        <Btn variant="ghost" className="ux-more-tools" onClick={toggleMoreTools} aria-expanded={moreTools} aria-label={moreTools ? 'Fewer tools' : 'More tools'} icon={moreTools ? 'chevron-down' : 'chevron-right'} tip={moreTools ? 'Show only Add agent' : 'Codex and other kinds, groups, the Input, saved groups, the project folder and Full text'}>
+          {moreTools ? 'Fewer' : 'More'}<span className="ux-wide-word"> tools</span>
+        </Btn>
         <span className="tb-sep" aria-hidden="true">
           ·
         </span>
         <Btn variant="ghost" icon="undo" iconOnly onClick={p.onUndo} disabled={!p.canUndo} aria-label="Undo" kbd="Ctrl+Z" />
         <Btn variant="ghost" icon="redo" iconOnly onClick={p.onRedo} disabled={!p.canRedo} aria-label="Redo" kbd="Ctrl+Shift+Z" />
+        {p.extraTools}
         {lockedNote && (
           <span id={`${ids}-lock`} className="reason tb-reason">
             {lockedNote}
           </span>
         )}
       </div>
-      </details>
+      </div>
       <div className="sb-viewport-wrap">
-      <p className="sb-legend muted">
-        <span><svg aria-hidden="true" width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="currentColor" strokeWidth="1.5" /></svg> hands work to (it starts after)</span>
-        <span><svg aria-hidden="true" width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" /></svg> reports to / watches (not enforced)</span>
-      </p>
-      <span role="group" aria-label="Zoom" className="seg zoom-float">
+      {many && (
+        <SelectionBar
+          draft={draft}
+          ids={picked}
+          edit={edit}
+          locked={locked}
+          onClear={() => {
+            setMulti([]);
+            el.current?.focus();
+          }}
+          onGrouped={(id) => selectNew({ kind: 'group', id })}
+        />
+      )}
+      {/* Solid lines need no key; the legend shows only while a dashed (not enforced) line is drawn. `?` always has it. */}
+      {draft.connections.some((c) => c.kind !== 'hands-work-to') && <ConnectionLegend className="sb-legend muted" />}
+      <span role="group" aria-label="Zoom" className="zoom-float">
         <Btn variant="ghost" size="sm" icon="minus" iconOnly onClick={() => zoomAt(1 / 1.2)} aria-label="Zoom out" kbd="-" />
         <Btn variant="ghost" size="sm" icon="plus" iconOnly onClick={() => zoomAt(1.2)} aria-label="Zoom in" kbd="+" />
         <Btn variant="ghost" size="sm" icon="fit" iconOnly onClick={fit} aria-label="Fit" tip="Fit to view" kbd="f" />
@@ -622,7 +785,7 @@ export function StructureCanvas(p: Props) {
           <div className="sb-empty" aria-live="polite">
             <p className="sb-empty-title">This {p.groupOnly ? 'group' : 'team'} has no agents yet.</p>
             <p className="muted">
-              Drag <span className="kbdish">+ Claude</span> or <span className="kbdish">+ Codex</span> onto the board, right-click it, or
+              Drag <span className="kbdish">+ Claude</span> or <span className="kbdish">+ Codex</span> onto the board, right-click it, or{' '}
               {p.groupOnly ? <>use <kbd>Tab</kbd> to reach Add, then <kbd>⏎</kbd>.</> : <>press <kbd>n</kbd> then <kbd>⏎</kbd>.</>}
             </p>
           </div>
@@ -691,7 +854,7 @@ export function StructureCanvas(p: Props) {
                 /></g>
               );
             })}
-            <InputEdges draft={shown} boxes={boxes} marker={`sb-arrow-${ids}`} />
+            <InputEdges draft={shown} boxes={logos ? logoRouteBoxes(boxes) : boxes} marker={`sb-arrow-${ids}`} />
             {wire && wireFrom && (
               <path
                 className="edge wire"
@@ -705,7 +868,7 @@ export function StructureCanvas(p: Props) {
             const g = routes.get(edges[index]);
             return c && g && g.merged.length === 1 && <ArrowHandles geometry={g} label={connectionSentence(draft,c)} onDrag={(end,e) => reconnectDown(c.id,end)(e)} onEdit={() => p.onInspect?.({kind:'connection',id:c.id})} />;
           })()}
-          {shown.workflow && p.onWorkflow && <WorkflowGraph collapsed={collapsed} draft={shown} cardHeight={cardHeight} onOpen={p.onWorkflow} onReveal={reveal} inputControls={inputControls} stageControls={locked ? undefined : (stage: string) => boxControls({stage})} readOnly={locked} onReconnect={locked ? undefined : workflowReconnect} />}
+          {shown.workflow && p.onWorkflow && <WorkflowGraph collapsed={collapsed} draft={shown} cardHeight={cardHeight} agentBox={logos ? logoRouteBox : undefined} onOpen={p.onWorkflow} onReveal={reveal} inputControls={inputControls} stageControls={locked ? undefined : (stage: string) => boxControls({stage})} readOnly={locked} onReconnect={locked ? undefined : workflowReconnect} />}
           {shown.connections.map((c) => {
             const g = spots.get(c.id);
             if (!g) return null;
@@ -744,7 +907,6 @@ export function StructureCanvas(p: Props) {
             const errs = errorsOf(ai);
             const sel = selection?.kind === 'agent' && selection.id === a.id;
             const v = kindVendor(a.kind);
-            const outs = draft.connections.filter((c) => c.from === a.id);
             const folderIssue = ai.find((i) => i.code.startsWith('folder') || i.code === 'home-unknown');
             const state = errs.length ? `${plural(errs.length, 'thing')} to fix` : 'ready';
             const dragging = drag?.kind === 'agent' && drag.id === a.id;
@@ -756,10 +918,10 @@ export function StructureCanvas(p: Props) {
                 style={{ left: a.x, top: a.y, width: CARD_W, height: fullText ? 'auto' : CARD_H, minHeight: CARD_H }}
                 ref={(el) => { if (el) slots.current.set(a.id, el); else slots.current.delete(a.id); }}
               >
-                <div className={`sb-card ${v.cls}${sel ? ' selected' : ''}${errs.length ? ' has-error' : ''}${wireTarget === a.id && wire?.from !== a.id ? ' wire-target' : ''}${mark(a.id)}`}>
+                <div className={`sb-card ${logos ? logoClasses(v, false, false) : v.cls}${sel ? ' selected' : ''}${many && picked.includes(a.id) ? ' multi-selected' : ''}${errs.length ? ' has-error' : ''}${wireTarget === a.id && wire?.from !== a.id ? ' wire-target' : ''}${mark(a.id)}`}>
                   <button
                     type="button"
-                    className="sb-main"
+                    className={`sb-main${logos ? ' logo-main' : ''}`}
                     data-agent={a.id}
                     aria-label={`${a.name.trim() || 'Unnamed agent'} — ${PALETTE_WORD[a.kind]}, ${state}`}
                     aria-describedby={ai.length ? `${ids}-p-${a.id}` : undefined}
@@ -769,9 +931,25 @@ export function StructureCanvas(p: Props) {
                       onSelect({ kind: 'agent', id: a.id });
                       if (!pointerFocus.current) reveal(agentBox(a));
                     }}
-                    onClick={() => openCard(a.id)}
+                    onClick={(e) => openCard(a.id, e)}
                     onContextMenu={(e) => menuAt(e, { kind: 'agent', id: a.id })}
                   >
+                    {logos ? (
+                      <LogoFace
+                        v={v}
+                        name={a.name.trim() || 'Unnamed agent'}
+                        badge={<ChangeBadge marks={p.marks} id={a.id} />}
+                        extra={<ComponentChips agent={a} draft={draft} />}
+                        status={ai.length > 0 ? (
+                          <span className={`state pill logo-status ${errs.length ? 'tone-red' : 'tone-amber'}`} title={ai.map((i) => i.message).join('\n')}>
+                            <span className="glyph" aria-hidden="true">{MARK[errs.length ? 'error' : 'warning']}</span>
+                            <span className="word">{errs.length ? `${errs.length} to fix` : `${ai.length} to check`}</span>
+                          </span>
+                        ) : (
+                          <span className="logo-kind">{v.name} · {a.kind === 'practice' ? 'free' : cardModel(draft, a)}</span>
+                        )}
+                      />
+                    ) : <>
                     <span className="box-head">
                       <VendorMark v={v} size="md" />
                       <span className="box-name" title={a.name.trim() || undefined}>{a.name.trim() || 'Unnamed agent'}</span>
@@ -783,26 +961,25 @@ export function StructureCanvas(p: Props) {
                         </span>
                       )}
                     </span>
+                    {/* One small muted line: kind and model. The job speaks for itself, so it has no label. */}
                     <span className={`sb-kind ${v.cls}`}>
-                      <span className="kind-word">{v.name}</span>
-                      <span className="muted"> · {a.kind === 'practice' ? 'free' : cardModel(draft, a)}</span>
+                      {v.name} · {a.kind === 'practice' ? 'free' : cardModel(draft, a)}
                     </span>
-                    <span className="sb-sec">job</span>
+                    <ComponentChips agent={a} draft={draft} />
                     <span className={`sb-job${a.job.trim() ? '' : ' muted'}`}>{a.job.trim() || 'No job yet. Select the agent to write one.'}</span>
                     <span className={`sb-folder${folderIssue ? ' tone-red' : ''}`} title={(a.folder || draft.folder) ?? undefined}>
-                      {folderIssue ? <span aria-hidden="true">▲</span> : <Icon name="folder" size={12} />}
+                      {folderIssue ? <span aria-hidden="true">▲</span> : <Icon name="folder" size={11} />}
                       {folderIssue && a.folder && <span className="folder-why">{FOLDER_ISSUE_WORDS[folderIssue.code] ?? 'folder problem'} ·</span>}
                       <span className={a.folder ? 'mono' : undefined}>{(a.folder || draft.folder) ? shortPath((a.folder || draft.folder)!, home) : a.kind === 'practice' ? '~ (home folder)' : 'needs a folder'}</span>
                     </span>
-                    <ComponentChips agent={a} draft={draft} />
+                    </>}
                   </button>
-                  <div className="box-foot" onFocus={draft.workflow ? () => reveal(agentBox(a)) : undefined}>
-                    {draft.workflow && p.onWorkflow ? <WorkflowAgentActions draft={draft} agent={a.id} onOpen={p.onWorkflow} /> : <span className="box-foot-text">
-                      {outs.length === 0
-                        ? 'no connections out'
-                        : `→ ${CONNECTION_WORDS[outs[0].kind]} ${nameOf(draft, outs[0].to)}${outs.length > 1 ? ` +${outs.length - 1}` : ''}`}
-                    </span>}
-                  </div>
+                  {/* The arrows show who it hands work to (the agent's panel lists them); only a workflow's actions need a footer. */}
+                  {draft.workflow && p.onWorkflow && !logos && (
+                    <div className="box-foot" onFocus={() => reveal(agentBox(a))}>
+                      <WorkflowAgentActions draft={draft} agent={a.id} onOpen={p.onWorkflow} />
+                    </div>
+                  )}
                   {!locked && !draft.workflow && (
                     <span className="port out" role="presentation" data-tip="Drag to another agent to connect" onPointerDown={portDown(a.id)} />
                   )}
@@ -818,6 +995,13 @@ export function StructureCanvas(p: Props) {
           })}
           {shown.input && teamInputBox(shown) && <InputNode draft={shown} box={teamInputBox(shown)!} selected={team.open} locked={locked} controls={team.controls} onPortDown={team.portDown} />}
           {team.ghost && <div className="team-input-slot sb-ghost" style={{ left: team.ghost.x, top: team.ghost.y, width: INPUT_W, height: INPUT_H }} aria-hidden="true"><span>Input</span></div>}
+          {marquee && (
+            <div
+              className="sb-marquee"
+              aria-hidden="true"
+              style={{ left: Math.min(marquee.a.x, marquee.b.x), top: Math.min(marquee.a.y, marquee.b.y), width: Math.abs(marquee.a.x - marquee.b.x), height: Math.abs(marquee.a.y - marquee.b.y) }}
+            />
+          )}
           {groupGhost && <div className="group-box sb-group-ghost" style={{left:groupGhost.at.x,top:groupGhost.at.y,width:200,height:132}} aria-hidden="true">{groupGhost.block.name}</div>}
           {ghost && (
             <div className="card-slot sb-ghost" style={{ left: ghost.at.x, top: ghost.at.y, width: CARD_W, height: CARD_H }} aria-hidden="true">

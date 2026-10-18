@@ -29,13 +29,13 @@ test('desktop: two Codex agents start, run and hand work over', async ({ page, r
   expect(saved.ok()).toBe(true);
 
   await page.goto(`/team/${draft.id}/structure`);
-  await expect(page.getByRole('region', { name: 'Structure board' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Design board' })).toBeVisible();
   await page.getByRole('button', { name: 'Start team' }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toContainText('Start 2 Codex agents?');
   await page.screenshot({ path: `${SHOTS}/codex-start-confirm.png` });
   await dialog.getByRole('button', { name: 'Start team' }).click();
-  await expect(page).toHaveURL(new RegExp(`/rig/${draft.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/p/${draft.id}/board\\?mode=run$`));
 
   const builder = `team.builder@${draft.id}`;
   await expect

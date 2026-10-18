@@ -1,6 +1,6 @@
 import { closedGroupBox, GroupVisibilityButton, projectGroups, routeGroupEdges, useGroupVisibility } from './groupVisibility';
 import { needsAttention } from '../status';
-import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import type { CompiledRig } from '../generated/CompiledRig';
 import type { CompiledEdge } from '../generated/CompiledEdge';
 import type { EventRecord } from '../generated/EventRecord';
@@ -26,6 +26,9 @@ import { routeEdges } from './edgeGeometry';
 import { useSecondClock } from './secondClock';
 import { allArrowsWanted, QUIET_AFTER } from '../structure/arrowFocus';
 import { CheckMark } from './CheckMark';
+import { logoRouteBox, logoRouteBoxes, useBoardStyle, useLogoMotion } from './boardStyle';
+import { LogoBox } from './LogoNode';
+import { ComponentChips } from '../structure/ComponentChips';
 export { routeEdges, edgeGeometry } from './edgeGeometry';
 export type { EdgeGeom } from './edgeGeometry';
 
@@ -130,17 +133,23 @@ function ChipRow({ chips, toolCount }: { chips: ToolChip[]; toolCount: number })
 export function AgentBox({
   a,
   selected,
+  picked = false,
   onOpen,
   onAnswer,
   onFocusBox,
   now,
+  components,
 }: {
   a: AgentRow;
   selected: boolean;
+  /** One of several agents picked to message together. */
+  picked?: boolean;
   onOpen: () => void;
   onAnswer: () => void;
   onFocusBox?: () => void;
   now: number;
+  /** The components this agent uses, as chips. */
+  components?: ReactNode;
 }) {
   const seat = a.seat;
   const reason = seat && needsAttention(seat.lifecycle) ? seat.lifecycle_reason : null;
@@ -150,7 +159,7 @@ export function AgentBox({
   const stuck = a.state.key === 'stuck' ? a.stuck : undefined;
   const label = seat ? `${a.name} — ${a.state.word}${stuck || waiting.length ? `, ${a.summary}` : ''}` : WORDS.unknownAgent(a.name);
   return (
-    <div className={`agent-box ${a.vendor.cls} st-${a.state.key} tone-box-${a.state.tone}${selected ? ' selected' : ''}`}>
+    <div className={`agent-box ${a.vendor.cls} st-${a.state.key} tone-box-${a.state.tone}${selected ? ' selected' : ''}${picked ? ' picked' : ''}`}>
       <button
         type="button"
         className="box-main"
@@ -169,18 +178,20 @@ export function AgentBox({
           {a.state.key === 'working' && seat?.current_tool && <span className="box-tool"> · {seat.current_tool.toLowerCase()}</span>}
           {seat?.check && <CheckMark check={seat.check} />}
         </span>
-        <span className="box-chips">
-          {stuck ? (
-            <StuckMark reason={stuck.reason} className="box-waiting" />
-          ) : waiting.length > 0 ? (
-            // Waiting for a handoff: no turn yet, so this line says what it waits for.
-            <WaitingMark names={waiting} className="box-waiting" />
-          ) : chips.length > 0 ? (
-            <ChipRow chips={chips} toolCount={a.activity?.toolCount ?? chips.length} />
-          ) : (
-            <span className="chip chip-none">no tools this turn</span>
-          )}
-        </span>
+        {components}
+        {/* The tool line shows only when there is something to say: stuck, waiting, or a tool. */}
+        {(stuck || waiting.length > 0 || chips.length > 0) && (
+          <span className="box-chips">
+            {stuck ? (
+              <StuckMark reason={stuck.reason} className="box-waiting" />
+            ) : waiting.length > 0 ? (
+              // Waiting for a handoff: no turn yet, so this line says what it waits for.
+              <WaitingMark names={waiting} className="box-waiting" />
+            ) : (
+              <ChipRow chips={chips} toolCount={a.activity?.toolCount ?? chips.length} />
+            )}
+          </span>
+        )}
         {reason ? (
           <span className="box-last reason clamp" data-raw-evidence data-raw-evidence-title="" title={reason}>
             {reason}
@@ -224,6 +235,8 @@ type Props = {
   layout?: Layout;
   names?: NameMap;
   selected?: string;
+  /** Agents picked to message together. */
+  picked?: Set<string>;
   onOpen: (id: string) => void;
   onAnswer: (id: string) => void;
   onSelect?: (id: string) => void;
@@ -233,7 +246,7 @@ type Props = {
   pulses?: Set<string>;
 };
 
-export function LiveGraph({ viewportKey, rig, compiled, agents, layout: given, names = {}, selected, onOpen, onAnswer, onSelect, now, ref, pulses, draft, onWorkflow, observedLabels, liveOnly }: Props) {
+export function LiveGraph({ viewportKey, rig, compiled, agents, layout: given, names = {}, selected, picked, onOpen, onAnswer, onSelect, now, ref, pulses, draft, onWorkflow, observedLabels, liveOnly }: Props) {
   const [hover, setHover] = useState<string | null>(null);
   const { collapsed, setCollapsed } = useGroupVisibility(rig);
   const label = (e:CompiledEdge) => observedLabels?.[`${e.from}→${e.to}`] ?? edgeLabel(e);
@@ -241,11 +254,17 @@ export function LiveGraph({ viewportKey, rig, compiled, agents, layout: given, n
   const workflowDraft = useMemo(() => draft?.workflow ? { ...draft, agents: draft.agents.map(a => {
     const b = layout.seats[seatIdFor(draft, a.id) ?? '']; return b ? { ...a, x:b.x, y:b.y } : a;
   }), groups: draft.groups.map(g => ({ ...g, ...layout.pods[g.id] })) } : undefined, [draft, layout]);
+  // Components show as chips on the agent they belong to, read from the draft behind each running seat.
+  const draftAgentBySeat = useMemo(() => new Map(draft ? draft.agents.map(a => [seatIdFor(draft, a.id) ?? '', a] as const) : []), [draft]);
+  const chipsFor = (seatId: string) => { const da = draftAgentBySeat.get(seatId); return da ? <ComponentChips agent={da} draft={draft} /> : undefined; };
   const projection = useMemo(() => projectGroups(layout.seats, Object.fromEntries([...(draft?.agents.map(a => [seatIdFor(draft, a.id)!, a.group_id ?? 'team']) ?? []), ...compiled.seats.map(s => [s.id, s.pod])]), layout.pods, collapsed), [layout, compiled.seats, collapsed, draft]);
   // Many or deep spawned agents fold into "+N more" / "+N deeper"; their saved boxes stay put.
   const fold = useMemo(() => foldChildren(compiled), [compiled]);
   const drawnEdges = useMemo(() => compiled.edges.filter((e) => !fold.hidden.has(e.from) && !fold.hidden.has(e.to)), [compiled.edges, fold]);
-  const routes = useMemo(() => routeGroupEdges(drawnEdges, projection), [drawnEdges, projection]);
+  // Logos style: same slots, but the arrows end at the logo, not at the slot's edge.
+  const logos = useBoardStyle() === 'logos';
+  const motion = useLogoMotion();
+  const routes = useMemo(() => routeGroupEdges(drawnEdges, logos ? { ...projection, boxes: logoRouteBoxes(projection.boxes) } : projection), [drawnEdges, projection, logos]);
   // Labels sit beside their curves, never on a curve, a card or another label.
   const spots = useMemo(
     () =>
@@ -321,7 +340,7 @@ export function LiveGraph({ viewportKey, rig, compiled, agents, layout: given, n
   const H = layout.height + 200;
 
   return (
-    <div className={`graph-wrap${quiet ? ' arrows-quiet' : ''}`}>
+    <div className={`graph-wrap${quiet ? ' arrows-quiet' : ''}${logos ? ' board-logos' : ''}`}>
       <div
         className="graph-viewport"
         ref={viewportEl}
@@ -380,7 +399,7 @@ export function LiveGraph({ viewportKey, rig, compiled, agents, layout: given, n
               );
             })}
           </svg>
-          {workflowDraft && onWorkflow && <WorkflowGraph collapsed={collapsed} draft={workflowDraft} onOpen={onWorkflow} onReveal={reveal} readOnly />}
+          {workflowDraft && onWorkflow && <WorkflowGraph collapsed={collapsed} draft={workflowDraft} onOpen={onWorkflow} onReveal={reveal} readOnly agentBox={logos ? logoRouteBox : undefined} />}
           {drawnEdges.map((e, i) => {
             const g = spots.get(String(i));
             if (!g || !edgeInView(e)) return null;
@@ -414,17 +433,34 @@ export function LiveGraph({ viewportKey, rig, compiled, agents, layout: given, n
             }
             return (
               <div key={s.id} className="card-slot" style={{ left: b.x, top: b.y, width: b.w, height: b.h }} onPointerEnter={() => setHover(s.id)} onPointerLeave={() => setHover((h) => (h === s.id ? null : h))}>
-                <AgentBox
-                  a={a}
-                  selected={selected === s.id}
-                  onOpen={() => onOpen(s.id)}
-                  onAnswer={() => onAnswer(s.id)}
-                  onFocusBox={() => {
-                    reveal(b);
-                    onSelect?.(s.id);
-                  }}
-                  now={now}
-                />
+                {logos ? (
+                  <LogoBox
+                    a={a}
+                    selected={selected === s.id}
+                    picked={!!picked?.has(s.id)}
+                    onOpen={() => onOpen(s.id)}
+                    onFocusBox={() => {
+                      reveal(b);
+                      onSelect?.(s.id);
+                    }}
+                    motion={motion}
+                    chips={chipsFor(s.id)}
+                  />
+                ) : (
+                  <AgentBox
+                    a={a}
+                    selected={selected === s.id}
+                    picked={!!picked?.has(s.id)}
+                    onOpen={() => onOpen(s.id)}
+                    onAnswer={() => onAnswer(s.id)}
+                    onFocusBox={() => {
+                      reveal(b);
+                      onSelect?.(s.id);
+                    }}
+                    now={now}
+                    components={chipsFor(s.id)}
+                  />
+                )}
               </div>
             );
           })}

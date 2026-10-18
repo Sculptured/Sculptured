@@ -69,8 +69,9 @@ describe('Design assistant', () => {
     expect(screen.getByText('Approve or reject the proposal to change the board.')).toBeInTheDocument();
     expect(api.saveTeam).not.toHaveBeenCalled();
 
+    // A proposed agent is not saved yet, so it has no page: the board shows it and selects it.
     await userEvent.click(within(changes).getByRole('button', { name: 'QA' }));
-    expect(await screen.findByRole('region', { name: 'Agent QA' })).toBeVisible();
+    await waitFor(() => expect(card('QA')).toHaveFocus());
 
     await userEvent.click(within(bar).getByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(api.saveTeam).toHaveBeenCalled());

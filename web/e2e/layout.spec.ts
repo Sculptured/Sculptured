@@ -95,9 +95,7 @@ function liveCards(page: Page) {
 }
 
 async function openLive(page: Page) {
-  await page.goto(`/rig/${RIG}`);
-  await expect(page.getByRole('button', { name: 'Graph', exact: true })).toBeVisible();
-  if ((await page.locator('.agent-box').count()) === 0) await page.getByRole('button', { name: 'Graph', exact: true }).click();
+  await page.goto(`/p/${RIG}/board?mode=run`);
   await expect(page.locator('.agent-box')).toHaveCount(3);
 }
 
@@ -185,13 +183,17 @@ for (const { w, h } of WIDTHS) {
 }
 
 
-test.describe('Design page header', () => {
-  test('a team not started yet keeps its title on the mode bar row', async ({ page }) => {
+test.describe('Project tab row', () => {
+  test('a team not started yet keeps its name, tabs and Start on one row', async ({ page }) => {
     await setup(page, 1440, 900, 13, mockProgress);
     await page.goto(`/team/${DRAFT_ONLY}/structure`);
-    await expect(page.locator('.mode-note')).toHaveText('Run opens once the team has started');
+    // Why Run is off is its tooltip and description, not a printed line.
+    const run = page.getByRole('group', { name: 'Board mode' }).getByRole('button', { name: /Run/ });
+    await expect(run).toHaveAttribute('data-tip', 'Run opens once the team has started');
+    await expect(run).toBeDisabled();
     await shot(page, 'fixture-design-not-started');
-    const [nav, title] = await Promise.all(['.mode-nav', '.mode-tabs .team-title'].map((sel) => page.locator(sel).evaluate((el) => el.getBoundingClientRect())));
-    expect(title.top, 'team title wrapped below the mode tabs').toBeLessThan(nav.bottom);
+    const [name, tabs, start] = await Promise.all(['.pb-name', '.pb-tabs', '.start-btn'].map((sel) => page.locator(sel).evaluate((el) => el.getBoundingClientRect())));
+    expect(tabs.top, 'tabs wrapped below the project name').toBeLessThan(name.bottom);
+    expect(start.top, 'Start wrapped below the tabs').toBeLessThan(tabs.bottom);
   });
 });

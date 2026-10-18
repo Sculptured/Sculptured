@@ -37,7 +37,6 @@ export function GitPage() {
   }
   return (
     <section className="release-page">
-      <p className="eyebrow">Project history</p>
       <header className="release-heading">
         <div>
           <h1>Git</h1>

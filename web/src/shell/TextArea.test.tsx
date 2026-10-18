@@ -18,8 +18,8 @@ function Editor({ submit = vi.fn() }: { submit?: () => void }) {
 it('edits the same value full screen and returns focus without submitting', async () => {
   const submit = vi.fn(), user = userEvent.setup();
   render(<Editor submit={submit} />);
-  await user.click(screen.getByRole('button', { name: 'Text Mode' }));
-  const dialog = screen.getByRole('dialog', { name: 'Text Mode' });
+  await user.click(screen.getByRole('button', { name: 'Expand editor' }));
+  const dialog = screen.getByRole('dialog', { name: 'Expanded editor' });
   const field = within(dialog).getByRole('textbox', { name: 'Job' });
   expect(field).toHaveFocus();
   expect(field).toHaveAttribute('maxlength', '100');
@@ -28,12 +28,12 @@ it('edits the same value full screen and returns focus without submitting', asyn
   await user.keyboard('{Enter}Another line');
   await user.click(within(dialog).getByRole('button', { name: 'Done' }));
   expect(screen.getByLabelText('Job')).toHaveValue('A long pasted instruction\nAnother line');
-  expect(screen.getByRole('button', { name: 'Text Mode' })).toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Expand editor' })).toHaveFocus();
   expect(submit).not.toHaveBeenCalled();
 });
 it('Escape keeps edits and read-only or disabled behavior is preserved', async () => {
   render(<Editor />);
-  fireEvent.click(screen.getByRole('button', { name: 'Text Mode' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Expand editor' }));
   const dialog = screen.getByRole('dialog');
   fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Kept' } });
   fireEvent(dialog, new Event('cancel', { cancelable: true }));

@@ -7,7 +7,7 @@ import { compiledRig, draftAgent, FakeEventSource, seatView, teamDraft, teamReco
 import { forgetViewports } from '../shell/viewport';
 import { ALL_TEAMS_STREAM } from '../useTeams';
 import { fakeTeam, renderAt, resetApi, where } from './harness';
-import { startConfirmation } from './StartConfirm';
+import { limitNotes, startConfirmation, STOP_ANY_TIME } from './StartConfirm';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
@@ -16,6 +16,7 @@ vi.mock('../api', async (orig) => {
 });
 
 const WEB = '/home/me/projects/web-shop';
+const NO_LIMITS = 'No run budget or agent limits are set: agents work until they finish or you stop them.';
 const claude = (id: string, over = {}) => draftAgent(id, { kind: 'claude', folder: WEB, ...over });
 /** Lead hands work to Builder and Tester; Builder hands work to Reviewer (Codex). */
 const realTeam = () =>
@@ -48,6 +49,7 @@ describe('startConfirmation', () => {
       // The Practice helper has no upstream either, so it starts first too.
       body: 'They run in ~/projects/web-shop and use your Claude account. First to start: Lead and Helper.',
       efficiency: [],
+      limits: [NO_LIMITS],
       team: 't',
     });
   });
@@ -59,12 +61,29 @@ describe('startConfirmation', () => {
       title: 'Start 3 Claude agents and 1 Codex agent?',
       body: 'They run in 2 folders (~/projects/web-shop and ~/notes) and use your Claude and Codex accounts. First to start: Lead.',
       efficiency: [],
+      limits: [NO_LIMITS],
       team: 't',
     });
     // Without a known home folder the full path is shown.
     expect(startConfirmation(teamDraft({ agents: [claude('solo')], connections: [] }), null)?.body).toBe(
       `They run in ${WEB} and use your Claude account. First to start: Solo.`,
     );
+  });
+});
+
+describe('what the confirmation says about reach and limits', () => {
+  it('says plainly when agents work in the whole home folder', () => {
+    const noFolder = teamDraft({ agents: [draftAgent('solo', { kind: 'claude', folder: null })], connections: [] });
+    expect(startConfirmation(noFolder, '/home/me')?.broad).toMatch(/^This agent works in your whole home folder \(~\), so it can read and change any file in it\./);
+    const homeItself = teamDraft({ agents: [claude('lead'), draftAgent('helper', { kind: 'codex', folder: '/home/me/' })], connections: [] });
+    expect(startConfirmation(homeItself, '/home/me')?.broad).toMatch(/^Helper works in your whole home folder/);
+    expect(startConfirmation(teamDraft({ agents: [claude('lead')], connections: [] }), '/home/me')?.broad).toBeUndefined();
+  });
+
+  it('names agents with their own limits, and says when nothing limits the run', () => {
+    const d = teamDraft({ agents: [claude('lead', { advanced: { ...draftAgent('x').advanced, token_limit: { tokens: 1000, counts: 'all', include_subagents: true }, minute_limit: { hard: 30 } } }), claude('builder')], connections: [] });
+    expect(limitNotes(d)).toEqual(['Agent limits: Lead (tokens, time). At the soft value an agent is asked to wrap up; at the hard value it is stopped.']);
+    expect(limitNotes(teamDraft({ agents: [claude('lead')], connections: [] }))).toEqual([NO_LIMITS]);
   });
 });
 
@@ -81,6 +100,9 @@ describe('Start team asks first when the team has real agents', () => {
     expect(dialog).toHaveAccessibleDescription(
       'They run in 2 folders (~/projects/web-shop and ~/notes) and use your Claude and Codex accounts. First to start: Lead.',
     );
+    // Starting is never a one-way door; no agent works in the whole home folder here.
+    expect(dialog).toHaveTextContent(STOP_ANY_TIME);
+    expect(within(dialog).queryByText(/whole home folder/)).toBeNull();
     // The safe choice has focus, and board keys do not fire behind the dialog.
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
     await user.keyboard('g');
@@ -98,7 +120,7 @@ describe('Start team asks first when the team has real agents', () => {
     await user.click(start);
     await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Start team' }));
     await waitFor(() => expect(api.startTeam).toHaveBeenCalledWith('t', expect.any(Number), expect.any(String), false, false));
-    await waitFor(() => expect(where()).toBe('/rig/t'));
+    await waitFor(() => expect(where()).toBe('/p/t/board?mode=run'));
   });
 
   it('a Practice-only team starts at once, with no dialog', async () => {
@@ -149,8 +171,8 @@ describe('what a Start may cost', () => {
     const c = startConfirmation(wide(), '/home/me')!;
     expect(c.efficiency).toEqual([
       'Up to 8 agents can work at the same time: Lead hands work to 8 at once. Each uses your plan.',
-      'Agents can start helpers without limit. Set Most agents and Levels of children in Advanced.',
-      'No run budget is set, so nothing stops this run before your plan runs out. Set one in Advanced → Run budget.',
+      'Agents can start helpers without limit. Set Most agents and Levels of children in Settings → More settings.',
+      'No run budget is set, so nothing stops this run before your plan runs out. Set one in Settings → Run budget.',
     ]);
   });
 
@@ -158,7 +180,7 @@ describe('what a Start may cost', () => {
     const d = { ...wide(), budget: { plan: [{ provider: 'claude', window: 'five_hour', hard: 30 }], tokens: { soft: 1_000_000, hard: 2_000_000 }, max_working: 4 } };
     expect(startConfirmation(d, '/home/me')!.efficiency).toEqual([
       'Up to 8 agents could work at the same time (Lead hands work to 8 at once); the run budget lets 4 work at once and the rest wait.',
-      'Agents can start helpers without limit. Set Most agents and Levels of children in Advanced.',
+      'Agents can start helpers without limit. Set Most agents and Levels of children in Settings → More settings.',
       'Run budget: Claude 5-hour: wrap up at 25.5%, stop at 30%; tokens: wrap up at 1.0M, stop at 2.0M.',
       'Sculptured wraps up first and stops early by about one model call for each agent working (up to 4 at once), so a run usually ends near each hard value. Usage is reported after each call, so it can pass a hard value by a little.',
     ]);

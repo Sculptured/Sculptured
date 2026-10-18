@@ -11,13 +11,13 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 async function newTeam(page: Page, template: RegExp, name: string) {
   await page.goto('/');
-  await page.locator('.sidebar-foot .new-team').click();
-  const gallery = page.getByRole('dialog', { name: /Start from/ });
+  await page.getByRole('link', { name: 'New project' }).first().click();
+  const gallery = page.getByRole('region', { name: 'New project' });
   await expect(gallery.getByRole('checkbox', { name: /Practice agents/ })).toBeChecked();
   await gallery.getByRole('textbox', { name: 'name' }).fill(name);
   await gallery.getByRole('button', { name: template }).click();
-  await expect(page).toHaveURL(/\/team\/[^/]+\/structure$/);
-  return page.url().match(/\/team\/([^/]+)\/structure$/)![1];
+  await expect(page).toHaveURL(/\/p\/[^/]+\/board\?mode=design$/);
+  return page.url().match(/\/p\/([^/]+)\/board/)![1];
 }
 
 async function centre(l: Locator) {
@@ -41,12 +41,12 @@ const saved = (page: Page) => expect(page.locator('.save-state')).toHaveText(/�
 
 /** Run: every agent of the team on one list, the default view. */
 async function checkRun(page: Page, agent: string) {
-  await page.getByRole('link', { name: 'Run', exact: true }).click();
-  await expect(page).toHaveURL(/\/rig\/[^/]+$/);
+  await page.getByRole('group', { name: 'Board mode' }).getByRole('button', { name: 'Run' }).click();
+  await expect(page).toHaveURL(/\/p\/[^/]+\/board\?mode=run$/);
   await expect(page.getByRole('button', { name: new RegExp(`^${agent} — `) }).first()).toBeVisible();
 }
 
-/** Advanced, in the Team panel: View as spec shows the read-only spec; Export downloads it. */
+/** Advanced, under Settings → Export: View as spec shows the read-only spec; Export downloads it. */
 async function checkAdvanced(page: Page, scope: Locator, teamId: string, agent: string) {
   const advanced = scope.locator('details.team-advanced');
   await advanced.locator('summary').click();
@@ -81,7 +81,7 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
   await expect(projects.getByRole('button')).toHaveCount(2);
   await projects.getByRole('button', { name: 'Open alpha' }).click();
   await picker.getByRole('button', { name: /^Use ~\/projects\/alpha$/ }).click();
-  await expect(page.getByRole('region', { name: 'Agent Maker' })).toContainText('~/projects/alpha');
+  await expect(page.getByRole('region', { name: 'Folder' })).toContainText('~/projects/alpha');
   await saved(page);
 
   // Drag a Practice agent in, then connect Reviewer ● → it.
@@ -102,7 +102,7 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
 
   // Start → Live.
   await page.getByRole('button', { name: 'Start team' }).click();
-  await expect(page).toHaveURL(new RegExp(`/rig/${id}$`));
+  await expect(page).toHaveURL(new RegExp(`/p/${id}/board\\?mode=run$`));
   await expect(page.getByRole('button', { name: /^Maker — / })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Reviewer — / })).toBeVisible();
 
@@ -119,13 +119,14 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
   await checkRun(page, 'Maker');
 
   // Structure is read-only while the team runs; Advanced still shows the spec and exports it.
-  await page.getByRole('link', { name: 'Design', exact: true }).click();
-  await expect(page.getByText(/This team is running/)).toBeVisible();
+  await page.getByRole('group', { name: 'Board mode' }).getByRole('button', { name: 'Design' }).click();
+  await expect(page.getByText(/Running: you can rename agents/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add a Claude agent' })).toBeDisabled();
-  await checkAdvanced(page, page.getByRole('region', { name: 'Team' }), id, 'Maker');
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await checkAdvanced(page, page.getByRole('region', { name: 'Export' }), id, 'Maker');
 
-  // Stop.
-  await page.getByRole('link', { name: 'Run', exact: true }).click();
+  // Stop (the project bar has it on every page).
+  await page.getByRole('link', { name: 'Board' }).click();
   await page.getByRole('button', { name: 'Stop team…' }).click();
   await page.getByRole('button', { name: 'Confirm stop team' }).click();
   await expect(page.getByRole('link', { name: 'Maker — stopped' })).toBeVisible({ timeout: 20_000 });
@@ -138,18 +139,17 @@ test('mobile: gallery → form edits → Start → list → message → Progress
   test.skip(info.project.name !== 'mobile', 'mobile flow');
   const id = await newTeam(page, /^Builder → Reviewer$/, `E2E phone ${Date.now()}`);
 
-  // The Structure board is a simple form on a phone.
-  await expect(page.getByTestId('structure-viewport')).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: 'Team name' })).toBeVisible();
-  const builder = page.locator('details.fe-agent', { has: page.locator('summary', { hasText: 'Builder' }) });
-  await builder.getByRole('textbox', { name: 'Job' }).fill('Write the change notes');
+  // On a phone an agent is set up on its own one-column page.
+  await page.getByRole('link', { name: 'Agents' }).tap();
+  await page.getByRole('table').getByRole('link', { name: /^Builder/ }).tap();
+  await page.getByRole('region', { name: 'Setup' }).getByRole('textbox', { name: 'Job' }).fill('Write the change notes');
   await saved(page);
 
   await page.getByRole('button', { name: 'Start team' }).tap();
-  await expect(page).toHaveURL(new RegExp(`/rig/${id}$`));
-  await expect(page.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(new RegExp(`/p/${id}/board\\?mode=run$`));
+  await page.getByRole('link', { name: 'Agents' }).tap();
   await expect(page.getByText('Builder hands work to Reviewer')).toBeVisible();
-  const row = page.getByRole('button', { name: /^Builder — / });
+  const row = page.getByRole('table').getByRole('link', { name: /^Builder/ });
   await expect(row).toBeVisible();
   await row.tap();
   const convo = page.getByRole('list', { name: 'Conversation' });
@@ -161,10 +161,9 @@ test('mobile: gallery → form edits → Start → list → message → Progress
 
   await checkRun(page, 'Builder');
 
-  await page.getByRole('link', { name: 'Design', exact: true }).tap();
-  await checkAdvanced(page, page.locator('.form-editor'), id, 'Builder');
+  await page.getByRole('link', { name: 'Settings' }).tap();
+  await checkAdvanced(page, page.getByRole('region', { name: 'Export' }), id, 'Builder');
 
-  await page.getByRole('link', { name: 'Run', exact: true }).tap();
   await page.getByRole('button', { name: 'Stop team…' }).tap();
   await page.getByRole('button', { name: 'Confirm stop team' }).tap();
   await expect(page.getByRole('button', { name: /^Builder — stopped/ })).toBeVisible({ timeout: 20_000 });

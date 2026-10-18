@@ -33,27 +33,39 @@ function live(u: PlanUsageView | undefined, now: number): PlanWindow[] {
   return (u?.usage.windows ?? []).filter((w) => w.resets_at === null || w.resets_at * 1000 > now);
 }
 
-function fullest(ws: PlanWindow[]): number | null {
-  const ps = ws.map((w) => w.used_percent).filter((p): p is number => p !== null);
-  return ps.length ? Math.max(...ps) : null;
+const tone = (p: number | null) => (p === null ? '' : p >= HOLD ? 'tone-red' : p >= 70 ? 'tone-amber' : 'tone-green');
+
+/** This computer's CLIs and their plan usage, polled (faster while a sign-in is under way). */
+function useCliStatus(fast: boolean) {
+  const [clis, setClis] = useState<CliStatus[] | null>(null);
+  const [usage, setUsage] = useState<PlanUsageView[]>([]);
+  const load = useCallback(() => {
+    void api.clis().then((c) => setClis(Array.isArray(c) ? c : null), () => setClis(null));
+    void api.planUsage().then((u) => setUsage(Array.isArray(u) ? u : []), () => setUsage([]));
+  }, []);
+  usePolling(load, fast ? 3000 : 60000);
+  return { clis, usage };
 }
 
-const tone = (p: number | null) => (p === null ? '' : p >= HOLD ? 'tone-red' : p >= 70 ? 'tone-amber' : 'tone-green');
+/**
+ * In the top bar's Account link: a small ▲ while an installed CLI is not signed in, so a signed-out
+ * Claude Code or Codex is noticed before a start fails. Account and usage has the details.
+ */
+export function SignInAlert() {
+  const { clis } = useCliStatus(false);
+  const out = (clis ?? []).filter((c) => c.installed && c.signed_in === false);
+  if (out.length === 0) return null;
+  const said = out.map((c) => `${LABEL[c.name] ?? c.name} not signed in`).join(', ');
+  return <span className="tone-amber tb-alert" data-tip={said}><span aria-hidden="true">▲</span><span className="sr-only"> {said}</span></span>;
+}
 
 /** Whether this computer's Claude Code and Codex CLIs are signed in and how much of each plan is used
  *  (as the CLIs report it), with sign-in from the browser. The CLI runs its own sign-in (it opens the
- *  system browser); Sculptured stores no credentials. */
+ *  system browser); Sculptured stores no credentials. Shown on the Account and usage page. */
 export function CliAccounts() {
-  const [clis, setClis] = useState<CliStatus[] | null>(null);
-  const [usage, setUsage] = useState<PlanUsageView[]>([]);
   const [started, setStarted] = useState<Record<string, LoginStarted>>({});
   const [error, setError] = useState<string | null>(null);
-  const load = useCallback(() => {
-    void api.clis().then(setClis, () => setClis(null));
-    void api.planUsage().then(setUsage, () => setUsage([]));
-  }, []);
-  const waiting = Object.keys(started).length > 0;
-  usePolling(load, waiting ? 3000 : 60000);
+  const { clis, usage } = useCliStatus(Object.keys(started).length > 0);
   const signIn = async (name: string) => {
     setError(null);
     try {
@@ -65,22 +77,8 @@ export function CliAccounts() {
   };
   if (!clis) return null;
   const now = Date.now();
-  const ready = clis.every((c) => c.signed_in === true);
   return (
-    <details className="cli-accounts" data-ready={ready}>
-      <summary>
-        {clis.map((c) => {
-          const p = fullest(live(usage.find((u) => u.usage.provider === c.name), now));
-          const signed = c.signed_in === true;
-          return (
-            <span key={c.name} className={signed ? tone(p) || 'tone-green' : 'tone-amber'}>
-              <span aria-hidden="true">{signed ? '● ' : '▲ '}</span>
-              {LABEL[c.name] ?? c.name}
-              {signed && p !== null && ` ${Math.round(p)}%`}{' '}
-            </span>
-          );
-        })}
-      </summary>
+    <div className="cli-accounts" data-ready={clis.every((c) => c.signed_in === true)}>
       <ul aria-label="Agent accounts">
         {clis.map((c) => {
           const u = usage.find((x) => x.usage.provider === c.name);
@@ -124,6 +122,6 @@ export function CliAccounts() {
         })}
       </ul>
       {error && <p className="tone-red" role="alert">{error}</p>}
-    </details>
+    </div>
   );
 }

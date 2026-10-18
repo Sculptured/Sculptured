@@ -1,14 +1,104 @@
-/* The project's Input box on the Design board, and its editor. */
-.team-input-node { position: absolute; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; text-align: left; color: var(--text); background: var(--panel); border: 1px dashed var(--accent); border-radius: 12px; font: inherit; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+/* The Input on the board (the project's Input box and a workflow's Input), and its editor. */
+
+/* ── The board card: title, what goes in, what was added, and an obvious open affordance. ── */
+.input-card {
+  position: absolute; display: flex; flex-direction: column; gap: 6px; padding: 12px 12px 10px; overflow: hidden;
+  text-align: left; font: inherit; color: var(--text); background: var(--card-bg);
+  border: 1px solid var(--accent-line); border-radius: var(--radius-lg);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.input-card.is-empty { border-style: dashed; }
+.input-card:hover { border-color: var(--accent); }
+.input-card.selected, .input-card:focus-visible { border-color: var(--accent); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.input-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.input-card-icon {
+  display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: var(--radius-md);
+  color: var(--accent); background: var(--accent-soft);
+}
+.input-card-title { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: var(--leading-tight); }
+.input-card-what { font-size: var(--text-xs); line-height: 15px; color: var(--muted); }
+.input-card-body { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; overflow: hidden; }
+.input-card-counts { font-size: var(--text-sm); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; color: var(--text); }
+.input-card-item { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--text-xs); line-height: 16px; color: var(--muted); }
+.input-card-item .icon { flex: none; color: var(--accent); }
+.input-card-item-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.input-card-more { font-size: var(--text-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.input-card-empty {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; text-align: center;
+  font-size: var(--text-sm); line-height: 16px; color: var(--muted);
+  background: color-mix(in srgb, var(--accent) 5%, transparent); border: 1px dashed var(--line-2); border-radius: var(--radius-md);
+}
+.input-card-empty .icon { flex: none; color: var(--accent); }
+.input-card-foot { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: auto; font-size: var(--text-xs); }
+.input-card-to { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.input-card-open {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; margin-left: auto; padding: 2px 8px; white-space: nowrap;
+  font-weight: var(--weight-medium); color: var(--accent); background: var(--accent-soft); border-radius: var(--radius-pill);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.input-card:hover .input-card-open, .input-card:focus-visible .input-card-open { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+/* The project's Input box is shorter (140px): the counts and one item, or the empty line. */
+.input-card.is-compact { gap: 5px; padding: 10px 12px 8px; }
+.input-card.is-compact:not(.is-empty) .input-card-what { display: none; }
+.input-card.is-compact .input-card-empty { padding: 4px 6px; }
+
+/* ── The project's Input box: drag to move, ● to give it to an agent. ── */
+.team-input-node { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .team-input-node:active { cursor: grabbing; }
-.team-input-node.selected, .team-input-node:focus-visible { border-style: solid; outline: 2px solid var(--accent); outline-offset: 2px; }
-.team-input-node strong { font-size: 1rem; }
-.team-input-node .team-input-text { flex: 1; overflow: hidden; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.team-input-node small, .team-input-node .muted { color: var(--muted); }
 .team-input-slot { position: absolute; }
 .team-input-slot .port.out { top: 50%; }
 .edge.input-edge { stroke-dasharray: 2 5; }
 .structure:has(.team-input-editor) { position: relative; }
-.team-input-editor fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
+.team-input-editor fieldset { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 10px 12px; margin: 12px 0; }
 .team-input-editor fieldset label { flex-direction: row; align-items: center; gap: 9px; margin: 6px 0; }
-.team-input-editor textarea { width: 100%; box-sizing: border-box; }
+
+/* ── Editing the Input: add a link, add a note, the list, and the whole text one step back. ── */
+.input-material { display: flex; flex-direction: column; gap: var(--space-5); }
+.im-locked { margin: 0; }
+.im-add { display: flex; flex-direction: column; gap: var(--space-4); }
+.im-form { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; }
+.input-material .im-label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; font-weight: var(--weight-medium); color: var(--text); }
+.im-label .icon { color: var(--accent); }
+.im-row { display: flex; gap: var(--space-2); align-items: stretch; }
+.im-row .fld-input { flex: 1; min-width: 0; }
+.im-note { width: 100%; min-height: 76px; line-height: var(--leading); resize: vertical; }
+.im-form .text-field { display: flex; flex-direction: column; }
+.im-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.im-or { font-size: var(--text-sm); }
+.im-error { margin: 0; font-size: var(--text-sm); }
+.im-title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text); }
+.im-counts { font-size: var(--text-md); font-weight: var(--weight-regular); color: var(--muted); font-variant-numeric: tabular-nums; }
+.im-list { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-5); border-top: 1px solid var(--line); }
+.im-empty {
+  display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4); color: var(--muted);
+  border: 1px dashed var(--line-2); border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.im-empty p { margin: 0; max-width: 60ch; }
+.im-empty-icon { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: var(--radius-md); color: var(--accent); background: var(--accent-soft); }
+.im-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.im-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: var(--space-3); padding: 10px 8px 10px 12px; background: var(--panel); }
+.im-item + .im-item { border-top: 1px solid var(--line); }
+.im-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--accent); background: var(--accent-soft); }
+.im-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 3px; }
+.im-text { color: var(--text); overflow-wrap: anywhere; }
+.im-note-text { white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.im-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.im-path { font-size: var(--text-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.im-raw { border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.im-raw > summary { cursor: pointer; font-weight: var(--weight-medium); color: var(--muted); padding: 4px 0; }
+.im-raw > summary:hover { color: var(--text); }
+.im-raw[open] > summary { margin-bottom: var(--space-2); color: var(--text); }
+.im-raw > p { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+.im-raw textarea { width: 100%; box-sizing: border-box; min-height: 160px; line-height: var(--leading); }
+
+/* The workflow's Input as its own page: one roomy column, like an agent's Setup. */
+.input-page { --ap-w: 720px; }
+.input-col { gap: var(--space-5); }
+.input-page-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.input-page-back { margin-left: -8px; }
+.input-page-title { display: flex; align-items: center; gap: 10px; margin: var(--space-2) 0 0; font-size: var(--text-xl); font-weight: var(--weight-semibold); }
+.input-page-title .input-card-icon { width: 32px; height: 32px; }
+.input-page-lede { margin: 0; color: var(--muted); max-width: 62ch; }
+.input-page .workflow-input { padding: 0; border: 0; background: transparent; }
+.input-page .textbook-setup { margin-top: var(--space-5); }
+.team-input-editor .workflow-inspector-body > p.muted { margin: 0 0 var(--space-4); }

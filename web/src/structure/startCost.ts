@@ -49,8 +49,8 @@ export function efficiencyNotes(d: TeamDraft, handsTo: Edge[]): string[] {
   const notes: string[] = [];
   const cap = d.budget?.max_working;
   if (n >= MANY_AT_ONCE) notes.push(cap && cap < n ? `Up to ${n} agents could work at the same time (${why}); the run budget lets ${cap} work at once and the rest wait.` : `Up to ${n} agents can work at the same time: ${why}. Each uses your plan.`);
-  if (!d.limits?.max_agents && !d.limits?.max_child_levels) notes.push('Agents can start helpers without limit. Set Most agents and Levels of children in Advanced.');
+  if (!d.limits?.max_agents && !d.limits?.max_child_levels) notes.push('Agents can start helpers without limit. Set Most agents and Levels of children in Settings → More settings.');
   if (budget.length) notes.push(...budget);
-  else if (!d.agents.some((a) => a.advanced.token_limit)) notes.push('No run budget is set, so nothing stops this run before your plan runs out. Set one in Advanced → Run budget.');
+  else if (!d.agents.some((a) => a.advanced.token_limit)) notes.push('No run budget is set, so nothing stops this run before your plan runs out. Set one in Settings → Run budget.');
   return notes;
 }

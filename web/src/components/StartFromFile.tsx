@@ -2,6 +2,7 @@ import {DismissibleError} from '../shell/DismissibleError';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { boardPath } from '../paths';
 import { diagnosticsOf, errorText } from '../errors';
 import type { Diagnostic } from '../generated/Diagnostic';
 import { Btn } from '../shell/ui';
@@ -27,7 +28,7 @@ function useBoot(path: string) {
       const r = await bootOnce((id) => api.boot(path.trim(), id));
       const notes = specNotes(r.diagnostics ?? []);
       if (notes.some((d) => d.severity === 'warning')) setBooted({ rig: r.rig, notes });
-      else navigate(`/rig/${encodeURIComponent(r.rig)}`);
+      else navigate(boardPath(r.rig));
     } catch (err) {
       setError(err as Error);
     } finally {
@@ -38,13 +39,12 @@ function useBoot(path: string) {
 }
 
 /** The expert path: team files and their problems use spec words, so all of it is under Advanced. */
-export function StartFromFile() {
+export function StartFromFile({ bare = false }: { bare?: boolean }) {
   const [path, setPath] = useState('');
   const { busy, error, booted, boot } = useBoot(path);
   const bootReason = busy ? 'Starting…' : !path.trim() ? 'Enter a team file path to start.' : null;
-  return (
-    <details className="home-advanced" data-advanced>
-      <summary>Advanced</summary>
+  const body = (
+    <>
       <form onSubmit={boot} className="boot-form" aria-label="Start a team from a file">
         <h2 className="sub-title">Start a team from a file</h2>
         <div className="boot-line">
@@ -64,6 +64,13 @@ export function StartFromFile() {
       </form>
       {booted && <BootWarnings booted={booted} />}
       {error && <BootError error={error} />}
+    </>
+  );
+  if (bare) return <div className="start-from-file">{body}</div>;
+  return (
+    <details className="home-advanced" data-advanced>
+      <summary>Advanced</summary>
+      {body}
     </details>
   );
 }
@@ -75,7 +82,7 @@ function BootWarnings({ booted }: { booted: Booted }) {
         Started {booted.rig}. The team file has {booted.notes.filter((d) => d.severity === 'warning').length === 1 ? 'a warning' : 'warnings'}:
       </p>
       <SpecNoteList notes={booted.notes} />
-      <Link to={`/rig/${encodeURIComponent(booted.rig)}`} className="btn btn-secondary">
+      <Link to={boardPath(booted.rig)} className="btn btn-secondary">
         Open {booted.rig}
       </Link>
     </section>

@@ -52,11 +52,7 @@ beforeEach(() => {
   forgetViewports();
   resetSeenCache();
   localStorage.clear();
-  // These scenarios exercise the explicitly opened panel.
-  localStorage.setItem('sculptured.panels.v2.left', 'true');
   saveTiming.delayMs = 5;
-  // These tests exercise the Run graph; Run opens on List unless the graph was chosen.
-  localStorage.setItem('sculptured.run.view.v1', JSON.stringify('graph'));
 });
 afterEach(() => {
   saveTiming.delayMs = 500;
@@ -69,26 +65,26 @@ describe('New team: Start from…', () => {
     vi.mocked(api.listTeams).mockResolvedValue([]);
     vi.mocked(api.createTeam).mockImplementation(async () => teamRecord({ draft: teamDraft({ id: 'builder-and-reviewer', name: 'Builder and Reviewer' }) }));
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
+    const gallery = await screen.findByRole('region', { name: 'New project' });
     expect(within(gallery).getByRole('radio', { name: /Claude/ })).toBeChecked();
     expect(within(gallery).queryByRole('radio', { name: /Practice/ })).toBeNull();
     const tpl = await within(gallery).findByRole('button', { name: 'Builder → Reviewer' });
-    expect(tpl).toHaveAccessibleDescription(/Claude builds, then hands the work to Codex to review\. 2 agents · Claude/);
+    expect(tpl).toHaveAccessibleDescription(/One agent builds, then hands the work to a second agent to review\. 2 agents · Claude/);
     expect(openRigWords(document.querySelector<HTMLElement>('.app')!)).toEqual([]);
     await userEvent.setup().click(tpl);
     expect(api.createTeam).toHaveBeenCalledWith('builder-reviewer', false, null, expect.any(String));
-    await waitFor(() => expect(where()).toBe('/team/builder-and-reviewer/structure'));
+    await waitFor(() => expect(where()).toBe('/p/builder-and-reviewer/board?mode=design'));
     expect(await screen.findByRole('button', { name: /^Builder — / })).toBeInTheDocument();
   });
 
   it('with Claude (the default) it says real CLIs are used, and passes the typed name', async () => {
     vi.mocked(api.createTeam).mockRejectedValue(new ApiError(400, 'unknown_template', 'no template "x"'));
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
+    const gallery = await screen.findByRole('region', { name: 'New project' });
     const user = userEvent.setup();
     expect(within(gallery).getByText(/use your own CLI logins and may cost money/)).toBeInTheDocument();
     expect(await within(gallery).findByRole('button', { name: 'Solo agent' })).toHaveAccessibleDescription(/1 agent · Claude/);
-    await user.type(within(gallery).getByRole('textbox', { name: 'name' }), 'Docs crew');
+    await user.type(within(gallery).getByRole('textbox', { name: 'Name' }), 'Docs crew');
     await user.click(within(gallery).getByRole('button', { name: 'Solo agent' }));
     expect(api.createTeam).toHaveBeenCalledWith('solo', false, 'Docs crew', expect.any(String));
     expect(await within(gallery).findByRole('alert')).toHaveTextContent('Could not create the team: That template is not available.');
@@ -100,7 +96,7 @@ describe('New team: Start from…', () => {
     vi.mocked(api.listTeams).mockResolvedValue([]);
     vi.mocked(api.createTeam).mockResolvedValue(rec);
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
+    const gallery = await screen.findByRole('region', { name: 'New project' });
     const user = userEvent.setup();
     await user.click(within(gallery).getByRole('radio', { name: /Codex/ }));
     expect(within(gallery).getByText(/Codex agents use your own CLI logins/)).toBeInTheDocument();
@@ -110,26 +106,24 @@ describe('New team: Start from…', () => {
     expect(saved.agents.every((a) => a.kind === 'codex')).toBe(true);
   });
 
-  it('n opens Start from… over the current board, and Esc closes it', async () => {
+  it('n opens the New project page from a Run board', async () => {
     started();
     renderAt('/rig/t');
     await waitFor(() => expect(streamFor('t')).toBeDefined());
     act(() => streamFor('t').emit('snapshot', snapT()));
-    const user = userEvent.setup();
-    await user.keyboard('n');
-    expect(await screen.findByRole('dialog', { name: 'New project · Start from…' })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-    expect(screen.queryByRole('dialog', { name: 'New project · Start from…' })).toBeNull();
+    await userEvent.setup().keyboard('n');
+    expect(await screen.findByRole('region', { name: 'New project' })).toBeInTheDocument();
+    expect(where()).toBe('/new');
   });
 
   it('Import from file sits under Advanced and lists what was not imported', async () => {
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
-    const advanced = within(gallery).getByText('Advanced').closest('details')!;
+    const gallery = await screen.findByRole('region', { name: 'New project' });
+    const advanced = within(gallery).getByText(/^Advanced/).closest('details')!;
     expect(advanced).toHaveAttribute('data-advanced');
     expect(advanced).not.toHaveAttribute('open');
     const user = userEvent.setup();
-    await user.click(within(advanced).getByText('Advanced'));
+    await user.click(within(advanced).getByText(/^Advanced/));
     vi.mocked(api.importTeam).mockResolvedValue({
       team: teamRecord({ draft: teamDraft({ id: 'imp', name: 'Imported' }) }),
       dropped: [{ path: 'pods[0].members[0].profile', severity: 'warning', message: 'profile "fast" is not kept' }],
@@ -140,15 +134,15 @@ describe('New team: Start from…', () => {
     expect(done).toHaveTextContent('Imported Imported. 1 part was not imported:');
     expect(within(done).getByRole('list', { name: 'Not imported' })).toHaveTextContent('profile "fast" is not kept');
     await user.click(within(done).getByRole('button', { name: 'Open Imported' }));
-    await waitFor(() => expect(where()).toBe('/team/imp/structure'));
+    await waitFor(() => expect(where()).toBe('/p/imp/board?mode=design'));
   });
 
   it('imports a JSON team file, and lists every issue when it cannot', async () => {
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
-    const advanced = within(gallery).getByText('Advanced').closest('details')!;
+    const gallery = await screen.findByRole('region', { name: 'New project' });
+    const advanced = within(gallery).getByText(/^Advanced/).closest('details')!;
     const user = userEvent.setup();
-    await user.click(within(advanced).getByText('Advanced'));
+    await user.click(within(advanced).getByText(/^Advanced/));
     const box = within(advanced).getByRole('textbox', { name: 'Team file contents' });
     vi.mocked(api.importTeamFile).mockRejectedValueOnce(
       new ApiError(422, 'team_invalid', '2 things to fix', undefined, [
@@ -165,15 +159,15 @@ describe('New team: Start from…', () => {
     expect(api.importTeam).not.toHaveBeenCalled();
     vi.mocked(api.importTeamFile).mockResolvedValueOnce({ team: teamRecord({ draft: teamDraft({ id: 'imp', name: 'Imported' }) }), warnings: [] });
     await user.click(within(advanced).getByRole('button', { name: 'Import' }));
-    await waitFor(() => expect(where()).toBe('/team/imp/structure'));
+    await waitFor(() => expect(where()).toBe('/p/imp/board?mode=design'));
   });
 
   it('imports a MADL file (YAML or JSON) and lists what Sculptured could not keep', async () => {
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
-    const advanced = within(gallery).getByText('Advanced').closest('details')!;
+    const gallery = await screen.findByRole('region', { name: 'New project' });
+    const advanced = within(gallery).getByText(/^Advanced/).closest('details')!;
     const user = userEvent.setup();
-    await user.click(within(advanced).getByText('Advanced'));
+    await user.click(within(advanced).getByText(/^Advanced/));
     vi.mocked(api.importMadl).mockResolvedValue({
       team: teamRecord({ draft: teamDraft({ id: 'imp', name: 'CAD review' }) }),
       dropped: [{ path: '/channels/0', severity: 'warning', message: 'Sculptured does not use channels yet' }],
@@ -198,24 +192,24 @@ describe('New team: Start from…', () => {
 
   it('imports a past run and opens its history', async () => {
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
-    const advanced = within(gallery).getByText('Advanced').closest('details')!;
+    const gallery = await screen.findByRole('region', { name: 'New project' });
+    const advanced = within(gallery).getByText(/^Advanced/).closest('details')!;
     const user = userEvent.setup();
-    await user.click(within(advanced).getByText('Advanced'));
+    await user.click(within(advanced).getByText(/^Advanced/));
     vi.mocked(api.deployments).mockResolvedValue([]);
     vi.mocked(api.importRun).mockResolvedValue({ team: teamRecord({ draft: teamDraft({ id: 'past', name: 'Past' }) }), run: { start_seq: -1, started_ms: 1, initial_agents: 1, source: 'sculptured' }, warnings: [] });
     const file = new File(['{"format":"sculptured.session/v1"}\n'], 'r.sculptured-session.jsonl', { type: 'application/x-ndjson' });
     await user.upload(within(advanced).getByLabelText('Session or run files'), file);
     await waitFor(() => expect(api.importRun).toHaveBeenCalledWith('{"format":"sculptured.session/v1"}\n'));
-    await waitFor(() => expect(where()).toBe('/rig/past?view=history'));
+    await waitFor(() => expect(where()).toBe('/p/past/results/history'));
   });
 
   it('a past run whose team was left out says why before opening it', async () => {
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
-    const advanced = within(gallery).getByText('Advanced').closest('details')!;
+    const gallery = await screen.findByRole('region', { name: 'New project' });
+    const advanced = within(gallery).getByText(/^Advanced/).closest('details')!;
     const user = userEvent.setup();
-    await user.click(within(advanced).getByText('Advanced'));
+    await user.click(within(advanced).getByText(/^Advanced/));
     vi.mocked(api.deployments).mockResolvedValue([]);
     vi.mocked(api.importRun).mockResolvedValue({
       team: teamRecord({ draft: teamDraft({ id: 'past', name: 'Past (imported run)' }) }),
@@ -227,12 +221,12 @@ describe('New team: Start from…', () => {
     expect(note).toHaveTextContent("The run's team could not be imported");
     expect(where()).toBe('/');
     await user.click(within(note).getByRole('button', { name: 'Open Past (imported run)' }));
-    await waitFor(() => expect(where()).toBe('/rig/past?view=history'));
+    await waitFor(() => expect(where()).toBe('/p/past/results/history'));
   });
 
   it('offers Describe it, which opens the generator', async () => {
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
+    const gallery = await screen.findByRole('region', { name: 'New project' });
     const user = userEvent.setup();
     await user.click(within(gallery).getByRole('button', { name: /Describe it/ }));
     expect(await screen.findByRole('textbox', { name: 'Describe the team' })).toBeInTheDocument();
@@ -249,10 +243,10 @@ describe('New team: Start from…', () => {
 
   it('a file with errors shows them, under Advanced only', async () => {
     renderAt('/');
-    const gallery = await screen.findByRole('region', { name: 'New project · Start from…' });
-    const advanced = within(gallery).getByText('Advanced').closest('details')!;
+    const gallery = await screen.findByRole('region', { name: 'New project' });
+    const advanced = within(gallery).getByText(/^Advanced/).closest('details')!;
     const user = userEvent.setup();
-    await user.click(within(advanced).getByText('Advanced'));
+    await user.click(within(advanced).getByText(/^Advanced/));
     vi.mocked(api.importTeam).mockRejectedValue(
       new ApiError(422, 'spec_invalid', 'the spec has errors', [{ path: 'pods[0].members[0].runtime', severity: 'error', message: 'unknown runtime "gpt"' }]),
     );
@@ -274,22 +268,21 @@ describe('Leaving the Structure board', () => {
     await user.clear(screen.getByRole('textbox', { name: 'Name' }));
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Maker');
     expect(api.saveTeam).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('link', { name: /all teams/ }));
-    await waitFor(() => expect(where()).toBe('/?all'));
+    await user.click(screen.getByRole('link', { name: /all projects/ }));
+    await waitFor(() => expect(where()).toBe('/'));
     await waitFor(() => expect(api.saveTeam).toHaveBeenCalled());
     expect(server.rec.draft.agents.find((a) => a.id === 'builder')?.name).toBe('Maker');
   });
 });
 
 describe('A team that could not be loaded', () => {
-  it('n opens Start from… when the team cannot be loaded', async () => {
+  it('says why, and n opens New project', async () => {
     vi.mocked(api.getTeam).mockRejectedValue(new ApiError(404, 'not_found', 'no team'));
     renderAt('/team/t/structure');
     expect(await screen.findByText(/^Could not load this team:/)).toBeInTheDocument();
-    // Let the board's load-error effect update the shell's shortcut routing.
     await act(async () => {});
     await userEvent.setup().keyboard('n');
-    expect(await screen.findByRole('dialog', { name: 'New project · Start from…' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'New project' })).toBeInTheDocument();
   });
 });
 
@@ -309,19 +302,18 @@ describe('Start team → Live', () => {
     renderAt('/team/t/structure');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /^Builder — / }));
-    await user.clear(screen.getByRole('textbox', { name: 'Name' }));
+    await user.clear(await screen.findByRole('textbox', { name: 'Name' }));
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Maker');
+    // Start team is in the project bar on every page, here the agent's Setup.
     await user.click(screen.getByRole('button', { name: 'Start team' }));
-    await waitFor(() => expect(where()).toBe('/rig/t'));
+    await waitFor(() => expect(where()).toBe('/p/t/board?mode=run'));
     expect(order).toEqual(['save 1', 'start 2']);
     await waitFor(() => expect(streamFor('t')).toBeDefined());
     act(() => streamFor('t').emit('snapshot', snapT()));
     expect(await screen.findByRole('button', { name: 'Maker — idle' })).toBeInTheDocument();
     const warn = screen.getByRole('status', { name: 'Start warnings' });
-    expect(warn).toHaveTextContent('Started with a warning:');
-    expect(within(warn).getByRole('listitem')).toHaveTextContent('△ Codex is not available yet');
-    const tabs = screen.getByRole('navigation', { name: 'Board' });
-    expect(within(tabs).getByRole('link', { name: 'Design' })).toHaveAttribute('href', '/team/t/structure');
+    expect(warn).toHaveTextContent('Started with a warning: Codex is not available yet');
+    expect(within(screen.getByRole('group', { name: 'Board mode' })).getByRole('button', { name: /Design/ })).toBeEnabled();
   });
 
   it('the Live board uses the draft’s positions, and its list fallback the draft’s names', async () => {
@@ -330,8 +322,10 @@ describe('Start team → Live', () => {
     await waitFor(() => expect(streamFor('t')).toBeDefined());
     act(() => streamFor('t').emit('snapshot', snapT()));
     await waitFor(() => expect((screen.getByRole('button', { name: 'Builder — idle' }).closest('.card-slot') as HTMLElement).style.left).toBe('520px'));
+    // l opens the Agents list, the board's text fallback, with the design's names.
     await userEvent.setup().keyboard('l');
-    expect(screen.getByRole('button', { name: 'Reviewer — idle' })).toHaveTextContent('Reviewer');
+    expect(where()).toBe('/p/t/agents');
+    expect(screen.getByRole('link', { name: /Reviewer/ })).toBeInTheDocument();
   });
 });
 
@@ -417,11 +411,11 @@ describe('After Sculptured restarts', () => {
     const alert = await screen.findByRole('alertdialog', { name: 'The team could not start' });
     expect(alert).toHaveTextContent('1 thing to fix');
     expect(alert).toHaveTextContent("Builder's folder is outside your home folder");
-    expect(within(alert).getByRole('link', { name: 'Design board' })).toHaveAttribute('href', '/team/t/structure');
+    expect(within(alert).getByRole('link', { name: 'Design board' })).toHaveAttribute('href', '/p/t/board?mode=design');
     expect(alert).not.toHaveTextContent('SERVER TEXT');
   });
 
-  it('a plan hold on Live pops up and Start anyway starts past it', async () => {
+  it('a plan hold pops up and Start anyway starts past it', async () => {
     started(teamRecord({ started_revision: 1, live: false }));
     vi.mocked(api.startTeam).mockRejectedValueOnce(new ApiError(409, 'plan_limit', 'Codex plan is at 100% of its weekly limit. New work is held at 90%.')).mockResolvedValueOnce({ rig: 't', warnings: [] });
     renderAt('/rig/t');
@@ -441,7 +435,7 @@ describe('After Sculptured restarts', () => {
     await waitFor(() => expect(streamFor('t')).toBeDefined());
     act(() => streamFor('t').emit('snapshot', lost()));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Start team' })).toBeEnabled());
-    expect(screen.queryByText(/This team is running/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Running: you can rename agents/)).not.toBeInTheDocument();
   });
 
   it('a running team offers no Start on Live', async () => {
@@ -460,51 +454,55 @@ describe('A running team on the Structure board', () => {
     renderAt('/team/t/structure');
     await waitFor(() => expect(streamFor('t')).toBeDefined());
     act(() => streamFor('t').emit('snapshot', snapT()));
-    expect(await screen.findByText(/This team is running\. You can rename agents, edit their jobs and move cards/)).toBeInTheDocument();
+    expect(await screen.findByText(/Running: you can rename agents, edit jobs and move cards/)).toBeInTheDocument();
     const add = screen.getByRole('button', { name: 'Add a Claude agent' });
     expect(add).toBeDisabled();
     expect(add).toHaveAccessibleDescription('Stop the team to add components or change arrows.');
     const user = userEvent.setup();
     await user.click(card('Builder'));
-    expect(screen.getByRole('button', { name: 'Delete agent…' })).toBeDisabled();
+    await user.click(await screen.findByRole('link', { name: 'Setup' }));
+    expect(await screen.findByRole('button', { name: 'Delete agent…' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Connect to…' })).toHaveAccessibleDescription('Stop the team to change this.');
-    expect(screen.getByRole('button', { name: 'Start team' })).toBeDisabled();
+    // One primary action: while it runs, Stop team…
+    expect(screen.queryByRole('button', { name: 'Start team' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Stop team…' })).toBeEnabled();
     const name = screen.getByRole('textbox', { name: 'Name' });
     expect(name).toBeEnabled();
     await user.type(name, '!');
     await waitFor(() => expect(api.saveTeam).toHaveBeenCalled());
     // No port to drag a new connection from.
-    expect(card('Builder!').parentElement!.querySelector('.port.out')).toBeNull();
+    await user.click(screen.getByRole('link', { name: 'Board' }));
+    expect((await screen.findByRole('button', { name: /^Builder! — / })).parentElement!.querySelector('.port.out')).toBeNull();
   });
 });
 
-describe('Teams in the sidebar', () => {
-  it('follows a team that just started even before the next rig list, on its Structure board too', async () => {
+describe('Teams on the Projects page and in the switcher', () => {
+  it('follows a team that just started even before the next rig list, on its Design board too', async () => {
     started();
     vi.mocked(api.listRigs).mockResolvedValue([]);
     renderAt('/team/t/structure');
     await waitFor(() => expect(streamFor('t')).toBeDefined());
     act(() => streamFor('t').emit('snapshot', snapT()));
-    const side = screen.getByRole('navigation', { name: 'Agents' });
-    expect(within(side).getByRole('link', { name: 'Builder — idle' })).toBeInTheDocument();
-    expect(await screen.findByText(/This team is running/)).toBeInTheDocument();
+    expect(await screen.findByText(/Running: you can rename agents/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop team…' })).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('link', { name: 'Agents' }));
+    expect(await screen.findByRole('link', { name: /Builder/ })).toBeInTheDocument();
   });
 
-  it('lists a team that has not started with its agents, and a row opens that agent on the Structure board', async () => {
+  it('lists a team that has not started, and its Agents open each agent on Setup', async () => {
     fakeTeam();
-    renderAt('/rig/none?all');
-    const side = await screen.findByRole('navigation', { name: 'Agents' });
-    const team = await within(side).findByRole('region', { name: 'team My team' });
-    expect(within(team).getByText('not started', { selector: '.rollup' })).toBeInTheDocument();
-    // Another project is one row; switching to it lists its agents.
+    renderAt('/');
+    const row = (await screen.findByRole('link', { name: 'My team' })).closest('tr')!;
+    expect(row).toHaveTextContent('Draft · not started');
     const user = userEvent.setup();
-    await user.click(within(team).getByRole('link', { name: 'Switch to My team — not started' }));
-    expect(where()).toBe('/team/t/structure');
-    const row = await within(team).findByRole('link', { name: 'Reviewer — not started' });
-    expect(row).toHaveAttribute('href', '/team/t/structure?agent=reviewer');
-    await userEvent.setup().click(row);
-    expect(await screen.findByRole('region', { name: 'Agent Reviewer' })).toBeInTheDocument();
-    expect(within(team).getByRole('link', { name: 'My team' })).toHaveAttribute('href', '/team/t/structure');
+    await user.click(within(row).getByRole('link', { name: '2 agents in My team' }));
+    expect(where()).toBe('/p/t/agents');
+    const table = await screen.findByRole('table');
+    expect(within(table).getAllByText('not started').length).toBeGreaterThan(0);
+    await user.click(within(table).getByRole('link', { name: /Reviewer/ }));
+    expect(await screen.findByRole('region', { name: 'Setup' })).toBeInTheDocument();
+    expect(where()).toBe('/p/t/agents/team.reviewer/setup');
   });
 
   it('does not toast a turn that ends on the board you are watching', async () => {
@@ -518,7 +516,7 @@ describe('Teams in the sidebar', () => {
         seat: viewT('builder'),
       }),
     );
-    expect(await screen.findByRole('button', { name: 'Builder — done' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Builder — done (reported)' })).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Notifications' })).queryAllByRole('listitem')).toHaveLength(0);
   });
 });
@@ -531,18 +529,15 @@ describe('Narrow screens', () => {
     delete window.matchMedia;
   });
 
-  it('the Structure board is a simple form: one section per agent, add buttons, Start team', async () => {
+  it('Design opens on the board, and an agent is set up on its own one-column page', async () => {
     window.matchMedia = mq(true);
     fakeTeam();
     renderAt('/team/t/structure');
-    await screen.findByRole('textbox', { name: 'Team name' });
-    expect(screen.queryByTestId('structure-viewport')).toBeNull();
-    expect(screen.queryByRole('navigation', { name: 'Agents' })).toBeNull();
+    expect(await screen.findByTestId('structure-viewport')).toBeInTheDocument();
     const user = userEvent.setup();
-    expect(screen.queryByRole('button', { name: 'Add a Practice agent' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Add a Claude agent' }));
-    expect(await screen.findByText('Claude 1', { selector: '.fe-name' })).toBeInTheDocument();
-    expect(screen.getAllByRole('textbox', { name: 'Job' }).length).toBeGreaterThanOrEqual(2);
+    await user.click(card('Builder'));
+    const setup = await screen.findByRole('region', { name: 'Setup' });
+    expect(within(setup).getByRole('textbox', { name: 'Job' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start team' })).toBeEnabled();
     expect(openRigWords(document.querySelector<HTMLElement>('.app')!)).toEqual([]);
   });

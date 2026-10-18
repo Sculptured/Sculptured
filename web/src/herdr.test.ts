@@ -14,7 +14,7 @@ describe('agent states', () => {
     expect(s({ activity: 'waiting-input' })).toMatchObject({ key: 'needs-you' });
     expect(s({ activity: 'working' })).toMatchObject({ key: 'working', glyph: '⣟', word: 'working' });
     expect(s({ activity: 'idle' })).toMatchObject({ key: 'idle', glyph: '○', word: 'idle' });
-    expect(agentState(seatView('a'), true)).toMatchObject({ key: 'done', glyph: '✓', word: 'done', tone: 'green' });
+    expect(agentState(seatView('a'), true)).toMatchObject({ key: 'done', glyph: '✓', word: 'done (reported)', tone: 'reported' });
     expect(s({ activity: 'unknown' })).toMatchObject({ key: 'unknown', glyph: '∅', word: 'unknown', tone: 'violet' });
     expect(s({ lifecycle: 'stale', activity: 'working' })).toMatchObject({ key: 'unknown' });
     expect(agentState(undefined)).toMatchObject({ key: 'unknown' });

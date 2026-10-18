@@ -36,6 +36,31 @@ export const EDGE_WORDS: Record<EdgeKind, string> = {
 
 export const NOT_ENFORCED = 'not enforced';
 
+/** Why an agent's session began, in plain words (the server's `TenureCause`). */
+export const CAUSE_WORDS: Record<string, string> = {
+  fresh: 'new conversation',
+  resume: 'resumed its last conversation',
+  handover: 'handed over',
+  fork: 'forked',
+};
+
+/** The program that runs an agent's session, by the name the runner reports. */
+export const DRIVER_WORDS: Record<string, string> = {
+  stub: 'Practice agent',
+  claude: 'Claude',
+  'claude-code': 'Claude',
+  codex: 'Codex',
+};
+
+/** The one user-facing noun for what the sidebar lists: a project holds a team's design and history. */
+export const PROJECT_WORDS = {
+  noProjects: 'No projects yet.',
+  allProjects: 'all projects',
+  allProjectsTip: 'Every project on this computer',
+  newProject: 'New project',
+  couldNotLoad: 'Could not load projects',
+} as const;
+
 /** Agent display names keyed by internal address (seat id). Teams pass names from their draft. */
 export type NameMap = Record<string, string>;
 
@@ -72,7 +97,7 @@ export const WORDS = {
   confirmStopTeam: 'Confirm stop team',
   stopTeamConsequence: (team: string) => `Stops every running agent in ${team}. Their history is kept.`,
   stoppingTeam: (team: string) => `Stopping ${team}…`,
-  teamCounts: (running: number, total: number) => `${running} of ${total} sessions open`,
+  teamCounts: (running: number, total: number) => `${running} of ${total} agents running`,
   needAttention: (n: number) => `${n} ${n === 1 ? 'needs' : 'need'} attention`,
   desired: (d: Desired) => (d === 'running' ? 'set to run' : 'set to stop'),
   connecting: (team: string) => `Connecting to ${team}…`,
@@ -86,9 +111,16 @@ export const WORDS = {
   inspectorFor: (name: string) => `Inspector for ${name}`,
   closeInspector: 'Back to the team',
   session: (n: number) => (n > 0 ? `session #${n}` : 'not started yet'),
-  sessionStarted: (n: number, cause: string, driver: string) => `Session #${n} started · ${cause} · ${driver}`,
+  sessionStarted: (n: number, cause: string, driver: string) => `Session #${n} started · ${CAUSE_WORDS[cause] ?? cause} · ${DRIVER_WORDS[driver] ?? driver}`,
   sessionEnded: (n: number, exit: number | null, signal: number | null) =>
     `Session #${n} ended · exit ${exit ?? 'unknown'}${signal !== null ? ` · signal ${signal}` : ''}`,
+  /** A run of session events folded to one line; the verbatim chain opens on click. */
+  sessionChain: (started: boolean, ended: boolean, cause: string | undefined, last: string) =>
+    started && ended ? `Restarted · ${CAUSE_WORDS[cause ?? ''] ?? cause ?? 'new session'}`
+      : started ? `Started · ${CAUSE_WORDS[cause ?? ''] ?? cause ?? 'new session'}`
+      : ended ? 'Session ended'
+      : last,
+  showSessionEvents: 'Show each event',
   agentControls: 'Agent controls',
   stopAgent: 'Hard stop…',
   confirmStopAgent: 'Confirm stop agent',

@@ -50,7 +50,7 @@ async function startFromStructure(page: Page, id: string) {
   await page.goto(`/team/${id}/structure`);
   await expect(page.getByRole('region', { name: 'Structure board' })).toBeVisible();
   await page.getByRole('button', { name: 'Start team' }).click();
-  await expect(page).toHaveURL(new RegExp(`/rig/${id}$`));
+  await expect(page).toHaveURL(new RegExp(`/p/${id}/board\\?mode=run$`));
 }
 
 test('desktop: a Practice chain of three runs in order after Start', async ({ page, request }, info) => {
@@ -97,6 +97,8 @@ test('desktop: a Practice chain of three runs in order after Start', async ({ pa
   await expect(page.getByRole('list', { name: 'Conversation' })).toContainText('stub received: Add a forgot-password link.');
   await page.waitForTimeout(500);
   expect(await queuedBy(request, builder, 'handoff')).toHaveLength(1);
+  // Hand over again sits under Details (and in Ctrl K).
+  await page.getByRole('button', { name: 'Details & controls' }).click();
   await page.getByRole('button', { name: 'Hand over again' }).click();
   await expect.poll(async () => (await queuedBy(request, reviewer, 'handoff')).length, { timeout: 20_000 }).toBe(2);
   const more = await queuedBy(request, builder, 'handoff');

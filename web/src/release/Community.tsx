@@ -11,8 +11,8 @@ import type { Publication } from "../generated/Publication";
 import type { CommunitySession } from "../generated/CommunitySession";
 import { hosted } from "./Nav";
 import { AgentDesignGuide } from "./AgentDesignGuide";
-import { TemplatePreview } from "../structure/TemplateGallery";
 import { ComponentBlockCard, type ComponentBlock } from "./ComponentBlockCard";
+import { TemplatePreview } from "../structure/TemplateGallery";
 import { sanitizeExport, downloadBlock } from "./sharing";
 export async function communityRequest<T>(
   path: string,
@@ -112,7 +112,6 @@ export function Community() {
     <section
       className={`release-page ${(session.user?.settings as { compact?: boolean })?.compact !== false ? "community-compact" : ""}`}
     >
-      <p className="eyebrow">Built by people. Composed by you.</p>
       <header className="release-heading">
         <div>
           <h1>

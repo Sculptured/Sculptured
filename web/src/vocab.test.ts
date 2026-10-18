@@ -27,7 +27,7 @@ describe('vocab', () => {
 
   it('calls the stub a Practice agent and counts in words', () => {
     expect(RUNTIME_LABEL.stub).toBe('Practice agent');
-    expect(WORDS.teamCounts(1, 3)).toBe('1 of 3 sessions open');
+    expect(WORDS.teamCounts(1, 3)).toBe('1 of 3 agents running');
     expect(WORDS.needAttention(1)).toBe('1 needs attention');
     expect(WORDS.needAttention(2)).toBe('2 need attention');
     expect(WORDS.session(0)).toBe('not started yet');

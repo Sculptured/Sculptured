@@ -11,7 +11,16 @@ import { plural } from '../format';
 import { efficiencyNotes } from './startCost';
 
 /** What starting a team with real agents does, said before it happens. */
-export type StartConfirmation = { title: string; body: string; efficiency: string[]; team?: string };
+export type StartConfirmation = {
+  title: string; body: string; efficiency: string[]; team?: string;
+  /** Said plainly when agents may work in the whole home folder. */
+  broad?: string;
+  /** Each agent's own limits, or that none are set. */
+  limits?: string[];
+};
+
+/** Said in every Start confirmation: starting is never a one-way door. */
+export const STOP_ANY_TIME = 'You can stop the team at any time: Stop team…, at the top of every project page, ends every agent. Their history is kept.';
 /** What the person chose in the confirmation. */
 export type StartChoice = { resume: boolean };
 
@@ -27,6 +36,10 @@ function describe(agents: Starter[], handsTo: { from: string; to: string }[], ho
   const accounts = [claude.length ? 'Claude' : '', codex.length ? 'Codex' : ''].filter(Boolean);
   const folders = [...new Set([...claude, ...codex].map((a) => (a.folder ? shortPath(a.folder, home) : '~ (home folder)')))];
   const where = folders.length === 1 ? folders[0] : `${folders.length} folders (${list(folders.slice(0, 3))}${folders.length > 3 ? ', …' : ''})`;
+  // No folder, or the home folder itself: the agent can reach every file you own there.
+  const atHome = [...claude, ...codex].filter((a) => !a.folder || a.folder === '~' || (home !== null && a.folder.replace(/\/+$/, '') === home.replace(/\/+$/, '')));
+  const broad = atHome.length === 0 ? undefined
+    : `${atHome.length === claude.length + codex.length ? (atHome.length === 1 ? 'This agent works' : 'These agents work') : `${list(atHome.map((a) => a.name))} ${atHome.length === 1 ? 'works' : 'work'}`} in your whole home folder (~), so ${atHome.length === 1 ? 'it' : 'they'} can read and change any file in it. To narrow this, choose a project folder on the Design board.`;
   // The first to start: agents no other agent of the team hands work to. They get their job at once.
   const ids = new Set(agents.map((a) => a.id));
   const heads = agents.filter((a) => !handsTo.some((c) => c.to === a.id && c.from !== a.id && ids.has(c.from)));
@@ -34,7 +47,20 @@ function describe(agents: Starter[], handsTo: { from: string; to: string }[], ho
     title: `Start ${list(who)}?`,
     body: `They run in ${where} and use your ${list(accounts)} account${accounts.length > 1 ? 's' : ''}. First to start: ${heads.length ? list(heads.map((a) => a.name)) : 'unknown'}.`,
     efficiency: [],
+    broad,
   };
+}
+
+const LIMIT_WORDS = (a: TeamDraft['agents'][number]) =>
+  [a.advanced.token_limit ? 'tokens' : '', a.advanced.turn_limit ? 'turns' : '', a.advanced.minute_limit ? 'time' : ''].filter(Boolean);
+
+/** Which agents have their own limits; when nothing limits the run at all, that is said too. */
+export function limitNotes(d: TeamDraft): string[] {
+  const limited = d.agents.filter((a) => a.kind !== 'practice' && LIMIT_WORDS(a).length > 0);
+  if (limited.length > 0) return [`Agent limits: ${limited.map((a) => `${a.name.trim() || 'Unnamed agent'} (${LIMIT_WORDS(a).join(', ')})`).join('; ')}. At the soft value an agent is asked to wrap up; at the hard value it is stopped.`];
+  const b = d.budget;
+  const budget = !!b && ((b.plan?.length ?? 0) > 0 || !!b.tokens || !!b.minutes);
+  return budget ? [] : ['No run budget or agent limits are set: agents work until they finish or you stop them.'];
 }
 
 /**
@@ -49,7 +75,7 @@ export function startConfirmation(d: TeamDraft | undefined, home: string | null)
     handsTo,
     home,
   );
-  return c && { ...c, efficiency: efficiencyNotes(d, handsTo), team: d.id };
+  return c && { ...c, efficiency: efficiencyNotes(d, handsTo), limits: limitNotes(d), team: d.id };
 }
 
 /** The same from a started team's compiled spec, for when its design has not loaded yet. */
@@ -94,6 +120,17 @@ function CostNotes({ notes }: { notes: string[] }) {
   return <ul className="pad start-cost tone-amber" aria-label="What this may cost">{notes.map((n) => <li key={n}>{n}</li>)}</ul>;
 }
 
+/** How far the agents reach, what limits them, and that a Start can always be undone by Stop. */
+function ReachAndLimits({ c }: { c: StartConfirmation }) {
+  return (
+    <>
+      {c.broad && <p className="pad tone-amber ux-broad-grant"><span aria-hidden="true">△ </span>{c.broad}</p>}
+      {c.limits && c.limits.length > 0 && <ul className="pad ux-start-limits" aria-label="Limits">{c.limits.map((n) => <li key={n}>{n}</li>)}</ul>}
+      <p className="pad muted ux-stop-anytime">{STOP_ANY_TIME}</p>
+    </>
+  );
+}
+
 /** Escape closes; every other key stays in the dialog, so board shortcuts don't fire behind it. */
 function keys(onCancel: () => void) {
   return (e: React.KeyboardEvent) => {
@@ -124,6 +161,7 @@ export function StartConfirm({ c, onConfirm, onCancel }: { c: StartConfirmation;
           <span className="panel-title" id="start-confirm-title"><Icon name="play" size={15} /> {c.title}</span>
         </div>
         <p className="pad" id="start-confirm-body">{c.body}</p>
+        <ReachAndLimits c={c} />
         <FreshOrResume agents={agents} resume={resume} setResume={setResume} />
         <CostNotes notes={c.efficiency} />
         <div className="start-confirm-actions">
