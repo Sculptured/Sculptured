@@ -1,0 +1,42 @@
+[
+  {
+    "name": "no-recursive-delete",
+    "tool_pattern": "Bash",
+    "conditions": [
+      "matches(parameters, '\\brm\\s+-[a-zA-Z]*[rR]')"
+    ],
+    "reason": "Recursive deletes are not allowed. Move files aside instead, or ask the person."
+  },
+  {
+    "name": "no-secrets",
+    "tool_pattern": ".*",
+    "conditions": [
+      "matches(parameters, '(^|[/\\\\\"\\s])\\.env(\\.[\\w.-]+)?($|[\"\\s])|id_rsa|\\.pem\\b')"
+    ],
+    "reason": "Secret files (.env, private keys) are off limits."
+  },
+  {
+    "name": "no-force-push",
+    "tool_pattern": "Bash",
+    "conditions": [
+      "matches(parameters, 'git\\s+push\\b.*(--force|\\s-f\\b)')"
+    ],
+    "reason": "Force-pushing can overwrite others' work; push normally or ask the person."
+  },
+  {
+    "name": "no-pipe-to-shell",
+    "tool_pattern": "Bash",
+    "conditions": [
+      "matches(parameters, '(curl|wget)[^|]*\\|\\s*(ba|z)?sh')"
+    ],
+    "reason": "Running a downloaded script directly is not allowed."
+  },
+  {
+    "name": "no-disk-formatting",
+    "tool_pattern": "Bash",
+    "conditions": [
+      "any_of(parameters, 'mkfs', 'dd if=', 'diskutil erase')"
+    ],
+    "reason": "Disk formatting commands are not allowed."
+  }
+]

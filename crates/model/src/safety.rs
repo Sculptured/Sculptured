@@ -60,9 +60,11 @@ pub fn check(rules: &[SafetyRule], tool: &str, input: &Value) -> Option<String> 
     Some(format!("safety rule {:?}: {}", rule.name, rule.reason.as_deref().unwrap_or("this call is not allowed in this team.")))
 }
 
-/// Ready-made rules people can add in one click; the web app reads the same file.
+/// Ready-made rules people can add in one click. The web app has the same list in
+/// `web/src/structure/safety-presets.json` (a test keeps the two equal): server builds see only the
+/// crates, so the crate keeps its own copy.
 pub fn presets() -> Vec<SafetyRule> {
-    serde_json::from_str(include_str!("../../../web/src/structure/safety-presets.json")).expect("the presets file is valid")
+    serde_json::from_str(include_str!("safety-presets.json")).expect("the presets file is valid")
 }
 
 #[derive(Debug, PartialEq)]
@@ -190,6 +192,14 @@ mod tests {
         }
         assert!(check(&rules, "Read", &json!({ "file_path": "/w/.env" })).is_some());
         assert!(check(&rules, "Read", &json!({ "file_path": "/w/src/environment.rs" })).is_none());
+    }
+
+    #[test]
+    fn the_web_apps_presets_are_the_same_list() {
+        let web = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/src/structure/safety-presets.json");
+        let Ok(text) = std::fs::read_to_string(&web) else { return }; // a build without the web app
+        let theirs: Vec<SafetyRule> = serde_json::from_str(&text).unwrap();
+        assert_eq!(theirs, presets(), "copy crates/model/src/safety-presets.json to {}", web.display());
     }
 
     #[test]
