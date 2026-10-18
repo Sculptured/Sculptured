@@ -523,10 +523,10 @@ export function Shell({ openStream, layouts: givenLayouts = {}, names: givenName
         onStopTeam={onStopTeam ? (id) => onStopTeam(rig, id) : isTeam(rig) ? (id) => api.stopTeam(rig, id) : undefined}
         onStartTeam={
           isTeam(rig)
-            ? async (id, resume) => {
+            ? async (id, resume, overPlanLimit) => {
                 // Start the latest saved version, as the Structure board does.
                 const rec = await api.getTeam(rig);
-                const r = await api.startTeam(rig, rec.draft.revision, id, false, resume);
+                const r = await api.startTeam(rig, rec.draft.revision, overPlanLimit ? undefined : id, !!overPlanLimit, resume);
                 setStartWarnings((cur) => ({ ...cur, [rig]: r.warnings ?? [] }));
                 void teamList.reload();
                 return r;

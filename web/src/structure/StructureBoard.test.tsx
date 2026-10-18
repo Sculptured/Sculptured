@@ -383,7 +383,8 @@ describe('Structure board: problems and Start', () => {
       new ApiError(422, 'team_invalid', '1 thing to fix', undefined, [issue('agent', 'builder', 'Builder needs a folder to work in')]),
     );
     await userEvent.setup().click(screen.getByRole('button', { name: 'Start team' }));
-    expect(await screen.findByText(/Could not start: 1 thing to fix/)).toBeInTheDocument();
+    const dialog = await screen.findByRole('alertdialog', { name: 'The team could not start' });
+    expect(dialog).toHaveTextContent('1 thing to fix');
     expect(card('Builder')).toHaveAccessibleName('Builder — Practice, 1 thing to fix');
   });
 

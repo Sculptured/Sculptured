@@ -414,11 +414,25 @@ describe('After Sculptured restarts', () => {
     await waitFor(() => expect(streamFor('t')).toBeDefined());
     act(() => streamFor('t').emit('snapshot', lost()));
     await userEvent.setup().click(screen.getByRole('button', { name: 'Start team' }));
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('Could not start: 1 thing to fix');
+    const alert = await screen.findByRole('alertdialog', { name: 'The team could not start' });
+    expect(alert).toHaveTextContent('1 thing to fix');
     expect(alert).toHaveTextContent("Builder's folder is outside your home folder");
     expect(within(alert).getByRole('link', { name: 'Design board' })).toHaveAttribute('href', '/team/t/structure');
     expect(alert).not.toHaveTextContent('SERVER TEXT');
+  });
+
+  it('a plan hold on Live pops up and Start anyway starts past it', async () => {
+    started(teamRecord({ started_revision: 1, live: false }));
+    vi.mocked(api.startTeam).mockRejectedValueOnce(new ApiError(409, 'plan_limit', 'Codex plan is at 100% of its weekly limit. New work is held at 90%.')).mockResolvedValueOnce({ rig: 't', warnings: [] });
+    renderAt('/rig/t');
+    await waitFor(() => expect(streamFor('t')).toBeDefined());
+    act(() => streamFor('t').emit('snapshot', lost()));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Start team' }));
+    const held = await screen.findByRole('alertdialog', { name: 'Your plan is near its limit' });
+    expect(held).toHaveTextContent('Codex plan is at 100%');
+    await user.click(within(held).getByRole('button', { name: 'Start anyway' }));
+    await waitFor(() => expect(api.startTeam).toHaveBeenLastCalledWith('t', expect.any(Number), undefined, true, false));
   });
 
   it('the Structure board is not locked and Start team is enabled', async () => {

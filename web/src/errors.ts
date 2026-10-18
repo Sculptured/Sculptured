@@ -104,7 +104,8 @@ export const issuesOf = (e: unknown): DraftIssue[] => (e instanceof ApiError ? (
 export const UNREACHABLE = 'Could not reach Sculptured. Check that it is still running, then try again.';
 
 /** One sentence for any error from the API client. */
-const VERBATIM = new Set(['generate_unusable', 'generate_failed', 'generate_invalid', 'generate_timeout', 'design_too_large', 'proposal_invalid', 'no_request', 'cli_not_signed_in', 'cli_missing', 'not_allowed_here', 'computer_timeout', 'session_file_invalid', 'runner_without_reports', 'no_logs', 'no_sessions']);
+// Start refusals name the plan, the computer or the project in the server's words; generic words would hide why.
+const VERBATIM = new Set(['plan_limit', 'needs_computer', 'project_archived', 'generate_unusable', 'generate_failed', 'generate_invalid', 'generate_timeout', 'design_too_large', 'proposal_invalid', 'no_request', 'cli_not_signed_in', 'cli_missing', 'not_allowed_here', 'computer_timeout', 'session_file_invalid', 'runner_without_reports', 'no_logs', 'no_sessions']);
 
 export function errorText(e: unknown): string {
   if (!(e instanceof ApiError)) return UNREACHABLE;

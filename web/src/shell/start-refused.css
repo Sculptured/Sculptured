@@ -1,0 +1,6 @@
+.start-refused { max-width: min(520px, calc(100vw - 32px)); width: 100%; border: 1px solid var(--line, #d0d5dd); border-radius: var(--radius-lg, 10px); padding: 20px; background: var(--panel, #fff); color: var(--text, #101828); }
+.start-refused::backdrop { background: rgba(16, 24, 40, 0.45); }
+.start-refused h2 { margin: 0 0 8px; font-size: var(--text-lg, 18px); }
+.start-refused p { margin: 0 0 10px; overflow-wrap: anywhere; }
+.start-refused ul { margin: 0 0 10px; padding-left: 18px; }
+.start-refused-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }

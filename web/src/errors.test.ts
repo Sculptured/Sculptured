@@ -79,11 +79,10 @@ describe('errorText: server errors in plain words', () => {
       expect(ERROR_WORDS[code], code).toMatch(/\w/);
   });
 
-  it('says to connect a computer when the hosted beta needs one', () => {
-    const words = errorText(new ApiError(409, 'needs_computer', 'server text is not shown'));
-    expect(words).toContain('Computers');
-    expect(words).toContain('connect');
-    expect(words).not.toMatch(/error 409|server text/);
+  it("gives a start refusal in the server's own words, which name the computer, plan or project", () => {
+    expect(errorText(new ApiError(409, 'needs_computer', 'Choose which computer runs this team: Design → Run on.'))).toBe('Choose which computer runs this team: Design → Run on.');
+    expect(errorText(new ApiError(409, 'plan_limit', 'Codex plan is at 100% of its weekly limit.'))).toBe('Codex plan is at 100% of its weekly limit.');
+    expect(errorText(new ApiError(409, 'needs_computer', ''))).not.toMatch(/^$/);
   });
 
   it('says how to update an older agent runner', () => {

@@ -1,4 +1,5 @@
 import {DismissibleError} from '../shell/DismissibleError';
+import { StartRefused } from '../shell/StartRefused';
 import { RenameProject } from './RenameProject';
 import { errorText } from '../errors';
 import { useEffect, useId, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
@@ -420,6 +421,8 @@ export function StructureBoard({ teamId, running, started, narrow, detailsShown 
 
   return (
     <section className={`panel structure${narrow ? ' narrow-structure' : ''}`} aria-label={`Structure of ${draft.name || 'this team'}`}>
+      <StartRefused refusal={startError ? { text: startError, code: planHeld ? 'plan_limit' : undefined } : null}
+        onClose={() => { setStartError(null); setPlanHeld(false); }} onAnyway={() => void start(true)} />
       <div className="panel-bar">
         <span className="panel-title">
           <ModeTabs teamId={teamId} mode="structure" started={started} name={draft.name || 'Unnamed team'} title={<RenameProject draft={draft} edit={edit} />} />
@@ -455,19 +458,6 @@ export function StructureBoard({ teamId, running, started, narrow, detailsShown 
               <p className="tone-amber notice" role="status">
                 {t.notice}
               </p>
-            )}
-            {startError && (
-              <DismissibleError className="tone-red notice">
-                Could not start: {startError}
-                {planHeld && (
-                  <>
-                    {' '}
-                    <button type="button" className="btn btn-sm" onClick={() => void start(true)}>
-                      Start anyway
-                    </button>
-                  </>
-                )}
-              </DismissibleError>
             )}
           </div>
           </details>

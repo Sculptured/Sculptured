@@ -1,6 +1,7 @@
 import { track } from '../hosted/analytics';
 import { hasProcess, needsAttention } from '../status';
 import {DismissibleError} from './DismissibleError';
+import { StartRefused } from './StartRefused';
 import { errorText, issuesOf, STARTING_REASON } from '../errors';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
@@ -72,7 +73,8 @@ type Props = {
   startWarnings?: DraftIssue[];
   onDismissWarnings?: () => void;
   /** Starts the team again (a team built here whose agents have no process). */
-  onStartTeam?: (requestId: string, resume: boolean) => Promise<StartResult>;
+  /** `overPlanLimit`: start past a plan hold (the person chose Start anyway). */
+  onStartTeam?: (requestId: string, resume: boolean, overPlanLimit?: boolean) => Promise<StartResult>;
   /** Asked before Start when the team has real (non-Practice) agents. */
   startConfirm?: StartConfirmation | null;
 };
@@ -158,18 +160,19 @@ export function TeamLive(p: Props) {
   const reasons = [...new Set(views.map((s) => s.lifecycle_reason ?? ''))];
   const sharedReason = reasons.length === 1 && reasons[0] ? reasons[0] : null;
   const [startingNow, setStartingNow] = useState(false);
-  const [startError, setStartError] = useState<{ text: string; issues: DraftIssue[] } | null>(null);
+  const [startError, setStartError] = useState<{ text: string; issues: DraftIssue[]; code?: string; resume: boolean } | null>(null);
   const startOnce = useRequestOnce();
   const confirmStart = useStartConfirm();
-  const startTeam = async (resume = false) => {
+  const startTeam = async (resume = false, overPlanLimit = false) => {
     if (!p.onStartTeam) return;
     const onStart = p.onStartTeam;
     setStartError(null);
     setStartingNow(true);
     try {
-      await startOnce((id) => onStart(id, resume));
+      if (overPlanLimit) await onStart('', resume, true);
+      else await startOnce((id) => onStart(id, resume));
     } catch (e) {
-      setStartError({ text: errorText(e), issues: issuesOf(e) });
+      setStartError({ text: errorText(e), issues: issuesOf(e), code: (e as { code?: string } | null)?.code, resume });
     } finally {
       setStartingNow(false);
     }
@@ -329,26 +332,9 @@ export function TeamLive(p: Props) {
           {canStart && <p className="muted">Press Start team to launch every agent again. Each agent gets its job again as its first message.</p>}
         </div>
       )}
-      {startError && (
-        <DismissibleError className="error tone-red bar-note start-error">
-          <p>Could not start: {startError.text}</p>
-          {startError.issues.length > 0 && (
-            <ul>
-              {startError.issues.map((i, n) => (
-                <li key={`${i.code}-${n}`}>
-                  <span aria-hidden="true">{i.severity === 'error' ? '▲' : '△'} </span>
-                  {i.message}
-                </li>
-              ))}
-            </ul>
-          )}
-          {p.teamId && (
-            <p>
-              Fix it on the <Link to={structurePath(p.teamId)}>Design board</Link>.
-            </p>
-          )}
-        </DismissibleError>
-      )}
+      <StartRefused refusal={startError} onClose={() => setStartError(null)} onAnyway={() => void startTeam(startError?.resume ?? false, true)}>
+        {startError && startError.code !== 'plan_limit' && p.teamId && <p>Fix it on the <Link to={structurePath(p.teamId)}>Design board</Link>.</p>}
+      </StartRefused>
       {p.startWarnings && p.startWarnings.length > 0 && (
         <div className="bar-note start-warnings tone-amber" role="status" aria-label="Start warnings">
           <p>
