@@ -271,6 +271,12 @@
   position: static; inset: auto; width: auto; max-width: none; height: auto; max-height: none; border-radius: var(--radius-lg); box-shadow: none;
 }
 .results-stack { display: flex; flex-direction: column; gap: var(--space-5); }
+/* History draws its tree in a pan-and-zoom area whose cards are placed absolutely, so it has no
+   height of its own: the page is a column and the drawing takes the height under the tabs, never
+   less than a readable minimum (the page scrolls then). */
+.results-page.results-history { display: flex; flex-direction: column; padding-bottom: var(--space-5); }
+.results-history > .deployment-history { flex: 1 1 auto; min-height: 480px; }
+.results-history .history-body { border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
 
 /* ── Settings ── */
 .settings-page { display: flex; flex-direction: column; gap: var(--space-6); }
@@ -336,7 +342,10 @@
 .settings-page section.fld { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .settings-page section.fld > .fld-hint, .settings-page .own-copies { align-self: stretch; }
 .settings-page .kind-switch, .setup .kind-switch { width: auto; max-width: 360px; }
-.settings-page .ta-limit input { width: 120px; }
+/* A limit's box keeps its own column inside the settings column, at every width. */
+.settings-page .ta-limits { min-width: 0; }
+.settings-page .ta-limit { grid-template-columns: minmax(0, 1fr) minmax(0, 120px); }
+.settings-page .ta-limit input { width: 100%; min-width: 0; }
 .page-host { background: var(--panel); }
 @media (max-width: 720px) {
   .page-board .sb-toolbar { flex-wrap: wrap; }

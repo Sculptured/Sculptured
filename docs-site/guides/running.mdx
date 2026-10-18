@@ -7,7 +7,7 @@ Start a team from the **Design** board, then follow its work in **Run**. Agents 
 
 ```mermaid
 flowchart LR
-  D["Design board"] -- "Start team" --> C["Checks: Ready or Needs setup"]
+  D["Design board"] -- "Start team" --> C["Checks: ready to start or things to fix"]
   C -- "Start Claude and Codex agents?" --> L["Agents launch, givers first"]
   L -- "Job as first message" --> W["Agents work"]
   W -- "finished turn" --> H["Handoff to the next agent"]
@@ -17,42 +17,42 @@ flowchart LR
 
 ## Before you start
 
-The status button next to **Start team** on the Design board reads **Ready**, **Needs setup** or **Running**. Open it to see what is left to do.
+The project's status, next to **Start team** at the right of the tab row, reads **Draft · ready to start**, **Draft · N to fix** or **Running**.
 
-- **Needs setup** lists the things to fix, such as an agent with no name, a missing folder or a loop of arrows with no starting point. Start team stays off until they are fixed. Warnings do not block a start.
-- **Ready** says what happens next: "Each agent gets its job as its first message." In a team with a workflow, the dispatcher reads Input first and the workers wait for assignments.
+- **Draft · N to fix** opens the Design board, where **Things to fix** lists the problems, such as an agent with no name, a missing folder or a loop of arrows with no starting point. Start team stays off until they are fixed, and says why. Warnings do not block a start.
+- **Draft · ready to start** means each agent gets its job as its first message. In a team with a workflow, the dispatcher reads Input first and the workers wait for assignments.
 - In the hosted app the team runs on a connected computer. If none is connected, Start says "This needs your computer: your folders and agents run there, not on the server." See [Connect a computer](/connect-a-computer).
 
 ## Start the team
 
 <Steps>
-  <Step title="Press Start team">It sits at the top right of the Design board.</Step>
+  <Step title="Press Start team">It sits at the right of the project's tab row, on every page of the project.</Step>
   <Step title="Confirm real agents">If the team has Claude or Codex agents, Sculptured first asks "Start …?". It names where they run, whose accounts they use and which agent starts first.</Step>
   <Step title="Watch the launch">Agents launch in order, givers before the agents they hand work to. Each one shows <em>launching</em>, then <em>running</em>.</Step>
-  <Step title="Open the Run board">The **Run** tab opens once the team has started. Before then it reads "Run opens once the team has started".</Step>
+  <Step title="Open the Run board">The board switches to **Run** once the team has started. Before then **Run** is off and says "Run opens once the team has started".</Step>
 </Steps>
 
 If something goes wrong, the board says "Could not start:" and lists the issues, with a link back to the Design board. While a team runs you can still rename agents, edit their Jobs and move cards. To add, remove or reconnect agents, stop the team first.
 
 ## The Run board
 
-Use **Graph** to follow the running agents and their connections. Switch to **List** at the top, or press <kbd>l</kbd>, to see every agent, including stopped and planned agents.
+The Run board draws the running agents and their connections. Open the **Agents** tab, or press <kbd>l</kbd>, to see every agent, including stopped and planned agents. **Cards** and **Logos** switch how agents are drawn.
 
 <Frame caption="What to look for: each card's status in words, what it last said, its tokens, and the messages observed between agents.">
-  ![The Run board in Graph view with three Practice agents: Planner needs you, Builder 1 and Builder 2 are done, with message counts on the arrows](/images/quickstart/run-board.png)
+  ![The Run board with three Practice agents: Planner needs you, Builder 1 and Builder 2 are done, with message counts on the arrows](/images/quickstart/run-board.png)
 </Frame>
 
 | Part | What it shows |
 | --- | --- |
 | **Agent card** | Name, state, its latest reply ("› …"), tokens, and the time since its last activity. A card that needs you has an **Answer** button. |
-| **Status** | "set to run · 2 of 3 sessions open", how many agents need you, and notices such as "reconnecting" or "history has a gap". |
-| **More → Conversation** | One timeline of updates, messages, handoffs, questions and reported results, with a **Needs You** row. |
-| **More → Token use** | Tokens each agent has used over time: output, cached input read, and context now. |
-| **More → Communications** | Who talks to whom, message traffic, delivery and read state, and captured payload sizes. See [Context and communication](/guides/context). |
-| **More → History** | Earlier runs of this team, with **Download run**. Switch back with **Current**. |
-| **More → Work evidence** | For a team with a workflow: each item, its stage, its history, and decisions waiting for you. |
+| **Status** (tab row) | For example "Running · 2 of 3 working" or "Needs you · 1 of 3". Notices such as "history has a gap" show on the board. |
+| **Results › Team conversation** | One timeline of updates, messages, handoffs, questions and reported results, with a **Needs You** row. |
+| **Results › Usage** | Tokens each agent has used over time: output, cached input read, and context now. |
+| **Results › Communications** | Who talks to whom, message traffic, delivery and read state, and captured payload sizes. See [Context and communication](/guides/context). |
+| **Results › History** | Earlier runs of this team, with **Download run**. |
+| **Work evidence** (Run board) | For a team with a workflow: each item, its stage, its history, and decisions waiting for you. |
 
-Open an agent to read its **Transcript**, **Visual progress** and **Events**, and to send it messages. See [Control live agents](/guides/control).
+Click an agent to open its page: **Conversation** to read it and send it messages, **Setup** for its design, and **Activity** for its progress and events. See [Control live agents](/guides/control).
 
 ## What the states mean
 
@@ -82,7 +82,7 @@ Only **hands work to** arrows move work. **Reports to** and **watches** describe
 
 ## Pass work along again
 
-The agent pane shows handoff actions when they apply:
+The agent's page shows handoff actions when they apply:
 
 | Button | When it shows | What it does |
 | --- | --- | --- |
@@ -92,11 +92,11 @@ The agent pane shows handoff actions when they apply:
 
 If the downstream agents are real Claude or Codex agents, **Hand over again** first asks "Re-run N agents downstream of …?". Each one runs once and uses your account.
 
-<Tip>When Claude Code or Codex is not signed in on the computer, the agent pane says so and offers **Sign in to Claude Code** or **Sign in to Codex**. After you sign in, press **Hand over again** or **Restart this agent** so the agent tries again.</Tip>
+<Tip>When Claude Code or Codex is not signed in on the computer, the agent's page says so and offers **Sign in to Claude Code** or **Sign in to Codex**. After you sign in, press **Hand over again** or **Restart this agent** so the agent tries again.</Tip>
 
 ## Cost and limits
 
-- Each card and agent pane shows tokens in and out. "tokens unknown" means the CLI has not reported usage yet.
+- Each card and agent page shows tokens in and out. "tokens unknown" means the CLI has not reported usage yet.
 - If agents have a **token limit**, the Run board shows "Token limits · N reached" once one is hit. An agent at its limit is asked to wrap up and stop.
 - Usage is reported after turns, so an agent can exceed its limit by up to one turn.
 
@@ -104,13 +104,13 @@ See [Limits and usage](/reference/limits) for token accounting, budgets and plan
 
 ## Finish or start again
 
-<Frame caption="What to look for: **History** at the top right, the run to show under **Deployment**, and **Download run** to save it as a file.">
-  ![History of a run: each agent's last observed state, its runtime, output tokens and when it launched](/images/guides/history.png)
+<Frame caption="What to look for: **Results › History**, the run to show under **Deployment**, and **Download run** to save it as a file. Click an agent's box for its recorded events; **List** shows the same agents as a list.">
+  ![Results › History of a run, as a tree: a box for each agent, Planner, Builder 1 and Builder 2, with its last observed state, its runtime, output tokens and when it launched](/images/guides/history.png)
 </Frame>
 
 - **Stop team…** asks you to confirm, then stops every running agent. "Their history is kept."
 - An agent that could not be stopped is listed with its computer's reason. The others still stop.
-- When no agent runs, **Start team** appears on the Run board. Every agent gets its Job again as its first message.
+- When no agent runs, **Start team** appears in the project's tab row. Every agent gets its Job again as its first message.
 - If Sculptured restarted while the team ran, the board asks "N agents stopped mid-work. Resume them where they left off?" Choose **Resume**, **Start fresh** or **Leave stopped**. Nothing relaunches until you answer.
 
 ## Next steps

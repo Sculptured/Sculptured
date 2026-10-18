@@ -79,6 +79,9 @@ describe('Results', () => {
     await userEvent.setup().click(within(tabs).getByRole('link', { name: 'History' }));
     expect(where()).toBe('/p/r/results/history');
     await waitFor(() => expect(api.deployments).toHaveBeenCalled());
+    // The tree's cards are placed absolutely, so History is the page's column that gives it its height.
+    expect(screen.getByRole('main')).toHaveClass('results-history');
+    expect(document.querySelector('.results-history > .deployment-history')).not.toBeNull();
   });
 
   it('before a first start, says there is nothing yet', async () => {

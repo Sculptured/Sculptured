@@ -14,7 +14,7 @@ Choose the setup that matches how you want to run the app. Both lead to the same
     You need a beta invite and a computer with Claude Code or Codex installed. The runner supports Windows on 64-bit Intel or AMD, macOS 11 or later, and Linux; the **Computers** page lists available builds.
 
     1. Open your invite link. Enter your name, email and a password of at least 12 characters, then choose **Create account**. For later visits, sign in at **app.usesculptured.com**.
-    2. Open **Computers** in the sidebar. Under **Connect a computer**, select the system of the computer that will run your agents and choose **Copy connect command**.
+    2. Open **Computers** from the **⋯** menu at the top right. Under **Connect a computer**, select the system of the computer that will run your agents and choose **Copy connect command**.
     3. Open a terminal on that computer—PowerShell on Windows—paste the command and press Enter.
     4. Return to **Computers** and wait for **Connected**. Check that Claude Code or Codex is installed and signed in; use the sign-in controls if needed.
 
@@ -43,7 +43,7 @@ Choose the setup that matches how you want to run the app. Both lead to the same
 
 <Steps>
   <Step title="Choose a template">
-    Choose **New project** in the sidebar. Set **agents run on** to **Claude** or **Codex**, then select **Builder → Reviewer**.
+    Choose **New project** on the Projects page, or under **Projects** in the top bar. Set **Agents run on** to **Claude** or **Codex**, then select **Builder → Reviewer**.
 
     <Frame caption="Choose an agent provider, then a template.">
       ![The New project page with the Claude or Codex choice and templates including Solo agent and Builder → Reviewer](/images/quickstart/start-from.png)
@@ -60,10 +60,10 @@ Choose the setup that matches how you want to run the app. Both lead to the same
 
     For example, ask the builder to fix one reproducible bug and add a regression test. Ask the reviewer to inspect the change, run the relevant tests and report any remaining issues.
 
-    The toolbar shows **Needs setup** while required details are missing. Open it to see what to fix. **Ready** means the team can start; it does not assess the quality of the jobs.
+    The project's status, next to **Start team** in the tab row, reads **Draft · N to fix** while required details are missing; **Things to fix** on the Design board lists them. **Draft · ready to start** means the team can start; it does not assess the quality of the jobs.
 
     <Frame caption="The Design board shows each agent's Job and whether the team is ready to start.">
-      ![A Design board with a Planner connected to two builders and Ready and Start team controls in the toolbar](/images/quickstart/design-board.png)
+      ![A Design board with a Planner connected to two builders, each showing its Job; the project's tab row shows Draft · ready to start and Start team](/images/quickstart/design-board.png)
     </Frame>
   </Step>
 </Steps>
@@ -72,7 +72,7 @@ Choose the setup that matches how you want to run the app. Both lead to the same
 
 <Steps>
   <Step title="Start the team">
-    Choose **Start team** and review the confirmation. Agents use your own Claude Code or Codex sign-in and may incur charges or consume plan usage. You can set a per-agent **Token limit** before starting; see [Limits and usage](/reference/limits).
+    Choose **Start team**, at the right of the project's tab row, and review the confirmation. Agents use your own Claude Code or Codex sign-in and may incur charges or consume plan usage. You can set a per-agent **Token limit** before starting; see [Limits and usage](/reference/limits).
 
     Once you confirm, Sculptured opens the **Run** view. The builder receives its Job first. When it finishes a work turn, its final reply is passed to the reviewer along with the reviewer's Job.
 
@@ -81,7 +81,7 @@ Choose the setup that matches how you want to run the app. Both lead to the same
     </Frame>
   </Step>
   <Step title="Follow the work">
-    Open an agent to read its conversation and tool calls. Send guidance through its message box, or open **More → Conversation** to follow updates across the team.
+    Open an agent to read its conversation and tool calls. Send guidance through its message box, or open **Results › Team conversation** to follow updates across the team.
 
     If an agent shows **needs you**, choose **Answer** and respond on the question card. Use **Allow** or **Deny** for a tool approval. Questions and approvals have timeouts; [Questions and approvals](/guides/questions) explains what happens when they expire.
 

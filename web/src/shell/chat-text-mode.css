@@ -12,3 +12,9 @@
   .chat-text-mode .chat-mode-toggle { right:8px; }
 }
 .chat-mode-icon { display:none; }
+/* Full screen's head: the agent's name, the transcript search and Exit full screen, in one row. */
+.chat-mode-head { flex:none; display:flex; align-items:center; gap:var(--space-2); min-height:52px; padding:var(--space-2) clamp(12px,4vw,48px); border-bottom:1px solid var(--line); background:var(--panel); }
+.chat-mode-name { flex:0 1 auto; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--text-lg); font-weight:var(--weight-semibold); color:var(--text); }
+.chat-mode-tools { flex:1 1 auto; min-width:0; display:inline-flex; justify-content:flex-end; align-items:center; }
+.chat-text-mode .chat-mode-head .chat-mode-toggle { position:static; flex:none; }
+.chat-mode-tools .pane-search-tools { justify-content:flex-end; }

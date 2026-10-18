@@ -1,9 +1,9 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { EventRecord } from '../generated/EventRecord';
 import { agentPagePath } from '../paths';
 import { Composer, type AgentControls } from '../shell/AgentControls';
-import { ChatTextMode } from '../shell/ChatTextMode';
+import { ChatTextMode, ChatTextModeButton, useChatTextMode } from '../shell/ChatTextMode';
 import { HandoffActions } from '../shell/HandoffActions';
 import type { AgentRow } from '../shell/model';
 import { OpenQuestions } from '../shell/OpenQuestions';
@@ -53,6 +53,22 @@ function Notices({ a, feed, handOverInline, askHandOver }: { a: AgentRow; feed: 
   );
 }
 
+/**
+ * Full screen's own head, shown only while the conversation fills the screen (the agent page's
+ * header is behind it): the agent's name, the transcript search and Exit full screen.
+ */
+function FullScreenHead({ name, toolsRef }: { name: string; toolsRef: (el: HTMLElement | null) => void }) {
+  const mode = useChatTextMode();
+  if (!mode?.active) return null;
+  return (
+    <header className="chat-mode-head">
+      <h2 className="chat-mode-name">{name}</h2>
+      <span className="chat-mode-tools" ref={toolsRef} />
+      <ChatTextModeButton />
+    </header>
+  );
+}
+
 type Props = { a: AgentRow; c: AgentControls; feed: EventRecord[]; epoch: number; searchSlot: HTMLElement | null; handOverInline: boolean; askHandOver: number };
 
 /** The Conversation tab: the transcript and the message box, full width at a comfortable measure. */
@@ -65,6 +81,8 @@ export function AgentConversation({ a, c, feed, epoch, searchSlot, handOverInlin
   const focusKey = new URLSearchParams(location.search).get('item');
   const fromVisual = (location.state as { from?: string } | null)?.from === 'visual';
   const backToVisual = useCallback(() => navigate(-1), [navigate]);
+  // In full screen the transcript's search moves into its head, keeping what was typed.
+  const [fullScreenTools, setFullScreenTools] = useState<HTMLElement | null>(null);
   // Answer lands in the message box (then in the agent's open question once it has loaded).
   useEffect(() => {
     if (!shell.answerNext.current) return;
@@ -73,10 +91,11 @@ export function AgentConversation({ a, c, feed, epoch, searchSlot, handOverInlin
   });
   return (
     <ChatTextMode className={`agent-pane ap-chat ${a.vendor.cls} st-${a.state.key}`} name={a.name} onOpen={() => {}}>
+      <FullScreenHead name={a.name} toolsRef={setFullScreenTools} />
       <Notices a={a} feed={feed} handOverInline={handOverInline} askHandOver={askHandOver} />
       <div className="pane-body">
         <Transcript key={seat.id} seatId={seat.id} feed={feed} epoch={epoch} vendor={a.vendor} name={a.name} focusKey={focusKey}
-          onReturn={fromVisual ? backToVisual : undefined} returnLabel="Activity" toolsSlot={searchSlot} />
+          onReturn={fromVisual ? backToVisual : undefined} returnLabel="Activity" toolsSlot={fullScreenTools ?? searchSlot} />
       </div>
       {a.firstMessageIsWork && !seat.current_turn && <FirstMessageHint seatId={seat.id} feed={feed} epoch={epoch} />}
       <Composer key={seat.id} c={c} inputRef={shell.refs.composer} />

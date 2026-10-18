@@ -234,6 +234,28 @@ describe('Agent page', () => {
     expect(activity).toHaveTextContent('idle · no turn in progress');
   });
 
+  it('expands the conversation to full screen from the message box, with its name, search and Exit full screen', async () => {
+    renderAt('/rig/r/agent/dev.a%40r');
+    act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
+    await screen.findByText('stub received: hello');
+    const user = userEvent.setup();
+    const field = screen.getByRole('textbox', { name: 'Message' });
+    await user.type(field, 'Unsent draft');
+    await user.click(within(screen.getByRole('form', { name: 'Send a message' })).getByRole('button', { name: 'Expand editor' }));
+    const full = screen.getByRole('dialog', { name: 'Full screen · a' });
+    expect(within(full).getByRole('heading', { name: 'a' })).toBeInTheDocument();
+    // The transcript and the draft are the same ones, and the search came along.
+    expect(within(full).getByText('stub received: hello')).toBeInTheDocument();
+    expect(within(full).getByRole('textbox', { name: 'Message' })).toBe(field);
+    expect(within(full).getByRole('button', { name: 'Search transcript' })).toBeInTheDocument();
+    const exit = within(full).getByRole('button', { name: 'Exit full screen' });
+    expect(exit).toHaveFocus();
+    await user.click(exit);
+    expect(screen.queryByRole('dialog', { name: /Full screen/ })).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('Unsent draft');
+    expect(screen.queryByRole('button', { name: 'Exit full screen' })).toBeNull();
+  });
+
   // M1: the provenance shown is that of the latest lifecycle change, not a constant.
   it('shows the provenance of the latest lifecycle change', () => {
     const h = header(seatView('a', { lifecycle: 'attention', lifecycle_reason: 'did not become ready within 60s', lifecycle_provenance: 'heuristic' }));

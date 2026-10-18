@@ -9,7 +9,7 @@ You may have run Claude Code or Codex on its own, outside Sculptured. You can st
 - **A team you can run:** one agent per agent in the session, with the same kinds and models. Arrows go from each agent to the subagents it started. Each agent's job is what it was asked to do. Press **Start** to run it again.
 
 <Note>
-This is an **Advanced** feature: it's under *Start from… → Advanced*, not on the main path.
+This is an **Advanced** feature: it's under *New project → Advanced: import a team file or a past run*, not on the main path.
 </Note>
 
 ## Find the session file
@@ -51,9 +51,9 @@ These folders start with a dot, so file pickers hide them. To show hidden files:
 
 <Steps>
 <Step title="Open Import a past run">
-On the home page, choose **Start from…**, open **Advanced**, and find **Import a past run**.
+Choose **New project** (on the Projects page, or under **Projects** in the top bar), open **Advanced: import a team file or a past run**, and find **Import a past run**.
 
-<Frame caption="What to look for: **Session or run files** under Import a past run, at the bottom of Advanced.">
+<Frame caption="What to look for: **Session or run files** under Import a past run, after the team file import in Advanced.">
   ![The Advanced section of New project: a team file import, then Import a past run with a Session or run files picker](/images/import/import-form.png)
 </Frame>
 </Step>
@@ -71,7 +71,7 @@ Before anything is created, Sculptured shows a summary, for example *Claude Code
 </Frame>
 </Step>
 <Step title="Import">
-Press **Import**, or **Import anyway** if something is missing. The run opens in **History**. The new team is in your projects, ready for the Design board.
+Press **Import**, or **Import anyway** if something is missing. The run opens in the new project's **Results › History**. The new team is in your projects, ready for the Design board.
 </Step>
 </Steps>
 
@@ -85,8 +85,8 @@ Press **Import**, or **Import anyway** if something is missing. The run opens in
 
 Every line is marked as *converted* from the session file. Sculptured didn't observe it live. Thinking isn't shown, the same as in live runs.
 
-<Frame caption="What to look for: **Imported · Claude Code** under Deployment, and the main agent above the subagents it started.">
-  ![History of an imported run: the main agent Login page with arrows to Explore auth, Write tests and Explore db, each with its status, runtime and tokens; the header says it was imported from a Claude Code file](/images/import/history.png)
+<Frame caption="What to look for: **Imported · Claude Code** under Deployment, and the main agent above the subagents it started, joined by arrows. **List** shows the same agents as a list.">
+  ![Results › History of an imported run, as a tree: the main agent Login page at the top, with arrows down to the subagents it started, Explore auth, Write tests and Explore db; each box shows its status, runtime, tokens and launch time, and the header says it was imported from a Claude Code file](/images/import/history.png)
 </Frame>
 
 **The team** is built only from facts in the session:
@@ -112,8 +112,8 @@ Every line is marked as *converted* from the session file. Sculptured didn't obs
 
 A team built straight from a session reads like that session: its jobs are one-off prompts. To turn it into a team you'd reuse:
 
-1. Open the team on the Design board.
-2. Open **Advanced** and choose **Improve this team with AI**.
+1. Open the team's **Settings** tab.
+2. Open **More settings** and choose **Improve this team with AI**.
 3. Pick Claude Code or Codex, then press **Ask**. It uses your own CLI and plan.
 
 **What it reads:** a summary of the session, which includes each agent, what it was asked, which tools it used and how often, and the last thing it said. It never sees file contents, tool inputs or tool output.
@@ -121,7 +121,7 @@ A team built straight from a session reads like that session: its jobs are one-o
 **What comes back:** a list of proposed changes, such as agents added, changed or removed, and arrows added or removed. Every change is labelled **AI-reconstructed**. Nothing changes until you press **Apply**, and **Discard** leaves the team as it was.
 
 <Frame caption="What to look for: every change labelled **AI-reconstructed**, then **Apply** or **Discard**. This sample proposal came from a stand-in CLI used for the screenshot.">
-  ![The Improve this team with AI result in the Design board's Advanced panel: a rationale, then added and removed agents and arrows, each labelled AI-reconstructed, with Apply and Discard](/images/import/improve.png)
+  ![The Improve this team with AI result under More settings in the team's Settings: a rationale, then added and removed agents and arrows, each labelled AI-reconstructed, with Apply and Discard](/images/import/improve.png)
 </Frame>
 
 ## Privacy

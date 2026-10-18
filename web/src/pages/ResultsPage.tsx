@@ -45,7 +45,7 @@ export function ResultsPage() {
   // History needs no live team: a team that never ran here can hold an imported run.
   if (current === 'history' && !p.live)
     return (
-      <main className="page page-wide results-page">
+      <main className="page page-wide results-page results-history">
         <SubTabs team={p.team} current={current} />
         <DeploymentHistoryView rig={p.team} />
       </main>
@@ -61,7 +61,7 @@ export function ResultsPage() {
       </main>
     );
   return (
-    <main className="page page-wide results-page">
+    <main className={`page page-wide results-page${current === 'history' ? ' results-history' : ''}`}>
       <SubTabs team={p.team} current={current} />
       {!p.live ? <p role="status" className="muted">{WORDS.connecting(p.title)}</p> : <Section p={p} current={current} />}
     </main>

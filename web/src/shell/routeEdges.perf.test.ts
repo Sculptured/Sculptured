@@ -60,8 +60,11 @@ export function referenceRouteEdges(edges: CompiledEdge[], seats: Record<string,
       const candidates=reciprocal||parallel.length>1||e.from===e.to?[loop,top,bottom,west,east,g]:[g,top,bottom,west,east];
       const cost=(candidate:EdgeGeom)=>{
         const points=sample(candidate);let n=0;
+        const [start,,,end]=candidate.pts;
         for(const p of points.slice(1,-1)) {
           for(const [id,c] of boxes){const margin=id===e.from||id===e.to?0:10;if(p.x>c.x-margin&&p.x<c.x+c.w+margin&&p.y>c.y-margin&&p.y<c.y+c.h+margin)n+=10000;}
+          // Other arrows sharing a port are not crowding near this arrow's own ends.
+          if(Math.hypot(p.x-start.x,p.y-start.y)<=32||Math.hypot(p.x-end.x,p.y-end.y)<=32)continue;
           for(const previous of drawn)if(previous.some(q=>Math.hypot(p.x-q.x,p.y-q.y)<9))n+=12;
         }
         return n;

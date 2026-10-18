@@ -14,7 +14,7 @@ Sculptured is a visual workspace for teams of agents performing complex tasks. G
 
 Agents run on your own computer through your installed [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) CLI, with your existing sign-in. Use the hosted app with a connected computer, or build and run the app locally using the steps below.
 
-![The board of an example team: groups of agents with their jobs and folders, connected by arrows showing who hands work to whom](docs/images/board.png)
+![The Run board of an example team: four groups of agents, connected by arrows showing who hands work to whom; two agents are working, one needs you and has an Answer button, and the rest are done](docs/images/board.png)
 
 ## Work with a team of agents
 

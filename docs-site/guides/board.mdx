@@ -13,13 +13,13 @@ Use the **Design** board to build a team: choose its working folder, add agents,
 
 ## Start a project
 
-Press **New project** in the Projects sidebar, or press <kbd>n</kbd> anywhere except the Design board (there, <kbd>n</kbd> adds an agent). The **New project · Start from…** panel offers:
+Press **New project** on the Projects page or in the **Projects** menu of the top bar, or press <kbd>n</kbd> anywhere except the Design board (there, <kbd>n</kbd> adds an agent). The **New project** page offers:
 
 - **Agents run on:** Claude or Codex, for every agent in the template.
 - **name:** the project's name. Leave it empty to use the template's.
 - **Describe it:** your own Claude Code or Codex drafts a team from a description. See [designing teams](/guides/agent-design#let-an-agent-draft-the-team).
 - **Templates:** Solo agent, Builder → Reviewer, Planner → 2 Builders, Blank canvas, Textbook creator, Adaptive support team, Independent reviewers, and Design and revise. See [examples](/guides/examples).
-- **Advanced:** import a team file (`.sculptured-team.json`, or an OpenRig YAML file), or import a past run (`.sculptured-session.jsonl`), which opens read-only in History. See [team files](/guides/team-files).
+- **Advanced:** import a team file (`.sculptured-team.json`, or an OpenRig YAML file), or import a past run (`.sculptured-session.jsonl`), which opens read-only in Results › History. See [team files](/guides/team-files).
 
 <Warning>Claude and Codex agents use your own CLI logins and may cost money once started.</Warning>
 
@@ -44,7 +44,7 @@ Every agent needs a folder to work in. Set one folder for the whole project and 
 
 ## Add agents
 
-The **Edit tools** bar above the board has **Add** buttons for **Claude** and **Codex**. Drag one onto the board, or click it to add the agent in the next free spot. You can also right-click the board and choose **Add a Claude agent here**. A new agent opens its details so you can name it and write its Job.
+The Design toolbar above the board has **Add agent**, which adds the kind most of the team runs on (Claude in a new team). **More tools** next to it shows the other kind, **Codex**. Drag either onto the board, or click it to add the agent in the next free spot. You can also right-click the board and choose **Add a Claude agent here**. A new agent opens its details so you can name it and write its Job.
 
 Cards go exactly where you drop them. A card dragged close to another lines up with it: the same row or column, or the usual spacing beside it.
 
@@ -96,7 +96,7 @@ Each piece of work can go around an ordinary loop at most three times. At that p
 
 ## The Input
 
-The **Input** holds what the project is about: the goal, links and notes. Drag **Input** from the **Edit tools** bar onto the board, click it, or right-click the board and choose **Add the Input here**. It starts out pointing to the agents where the work starts (those nobody hands work to), and its editor opens so you can write it.
+The **Input** holds what the project is about: the goal, links and notes. Open **More tools** in the Design toolbar and drag **Input** onto the board, click it, or right-click the board and choose **Add the Input here**. It starts out pointing to the agents where the work starts (those nobody hands work to), and its editor opens so you can write it.
 
 - **Give it to more agents:** drag from the Input's <span>●</span> to an agent, or tick the agent under **Goes to** in its editor.
 - **Edit or remove it:** click it, or right-click it. **Remove the Input** (or <kbd>Delete</kbd> on it) takes it off the board.
@@ -105,7 +105,7 @@ When the team starts, each agent the Input goes to gets it after its own Job. An
 
 ## Groups
 
-A group organizes agents that share a purpose. Choose **Group** in the toolbar or **New group here** in the board's context menu to add an empty group. Add agents to it using the steps below.
+A group organizes agents that share a purpose. Open **More tools** in the Design toolbar and choose **Group**, or right-click empty board and choose **New group here**, to add an empty group. You can also select several agents and choose **Group** in the bar that appears over the board. Add agents to it using the steps below.
 
 - **Put an agent in:** drag its card into the box, or choose its group under **Group** in its details.
 - **Take it out:** drag the card onto empty board, or right-click it and choose **Take out of its group**.

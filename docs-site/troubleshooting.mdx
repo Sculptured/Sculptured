@@ -49,8 +49,8 @@ Find your symptom below and expand it for the likely cause and next step. For an
 ## Starting a team
 
 <AccordionGroup>
-  <Accordion title="The Start button says “Needs setup”">
-    The team has something to fix before it can start. Open the list under the button: each item is pinned to the agent, group or arrow it is about. Errors block starting; warnings don't.
+  <Accordion title="The project's status says “Draft · N to fix” and Start team is off">
+    The team has something to fix before it can start. **Start team** says why when you point at it. Click the status (**Draft · N to fix**, next to Start team in the project's tab row) to open the Design board, where **Things to fix** lists each problem; clicking one selects the agent, group or arrow it is about. Errors block starting; warnings don't.
   </Accordion>
   <Accordion title="“Connect a computer first: Computers → Connect a computer.”">
     With a Sculptured account, agents run on a computer you connect, and none is connected now. Open **Computers**, copy the connect command, and run it on the computer that has Claude Code or Codex. See [Connect a computer](/connect-a-computer).
@@ -117,7 +117,7 @@ Find your symptom below and expand it for the likely cause and next step. For an
     Protections refused reading a large file whole, or a file outside the agent's contract. The agent is told why and how to read only the part it needs, and usually carries on by itself. To allow larger reads, change **Advanced** → **Protections** on the team; to allow those paths, change the agent's **Contract**. See [Protections](/guides/budgets#protections-keep-each-agents-context-small).
   </Accordion>
   <Accordion title="An agent continued in a fresh conversation by itself">
-    Its context passed the team's protection limit, so between turns it wrote its notes to `.sculptured/notes/` in its folder and continued in a fresh conversation from them. Every later step is then cheaper. The limit is in the team's **Advanced** → **Protections**.
+    Its context passed the team's protection limit, so between turns it wrote its notes to `.sculptured/notes/` in its folder and continued in a fresh conversation from them. Every later step is then cheaper. The limit is in the team's **Settings** → **More settings** → **Protections**.
   </Accordion>
   <Accordion title="The Knowledge view says “No map yet”">
     A project map is made each time the team starts. If the team has started since then, the runner on the agents' computer is older than project maps: reinstall it from **Computers**. See [What agents know](/guides/knowledge).

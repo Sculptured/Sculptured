@@ -41,7 +41,7 @@ stateDiagram-v2
 | Stopping | ◑ stopping | A stop was sent and Sculptured is waiting for the process to exit. If the computer is offline, the stop is carried out as soon as it reconnects. | Wait. |
 | Stopped | ■ stopped | No process. Its history is kept. | Restart the agent, or start the team again. |
 | Stale | ◇ stale | The computer's link was lost while the agent was running. What you see is the last known state, not the current one. | Wait for the computer to reconnect, or check the computer. |
-| Needs attention | ▲ needs attention | The agent stopped when it should not have, could not start, or was lost in a restart. The agent pane says why. | Read the reason, then Restart, Resume, Start fresh or Leave stopped. |
+| Needs attention | ▲ needs attention | The agent stopped when it should not have, could not start, or was lost in a restart. The agent's page says why. | Read the reason, then Restart, Resume, Start fresh or Leave stopped. |
 
 <Note>A **Failed** state exists in the data model, but nothing sets it today. An agent that could not run shows **needs attention** with its reason.</Note>
 
@@ -64,7 +64,7 @@ The board and the Run view combine lifecycle and activity into one word per agen
 | --- | --- | --- |
 | ◉ needs you | The agent waits for your answer, or needs attention. | Open it and answer, or read its reason. |
 | ▲ stuck | The agent is idle and its handoffs cannot go on by themselves. The pane says why. | Use **Hand over again** or **Resend handoff**, or send guidance. |
-| ⧗ waiting for a slot | Its next message waits until fewer of the run's agents work at once (the run budget's **Most agents working at once**). The agent pane says "waiting for a slot to run". It is not stuck. | Nothing: it starts when a slot frees. Raise the limit in [Run budgets](/guides/budgets) to run more at once. |
+| ⧗ waiting for a slot | Its next message waits until fewer of the run's agents work at once (the run budget's **Most agents working at once**). The agent's page says "waiting for a slot to run". It is not stuck. | Nothing: it starts when a slot frees. Raise the limit in [Run budgets](/guides/budgets) to run more at once. |
 | ⣟ working | A turn is running. | Watch, or send guidance. |
 | ✓ done | A turn ended since you last looked. It does not mean the work is right. | Read the result and its evidence. |
 | ○ idle | Running, with nothing to do. | Nothing, or send new work. |

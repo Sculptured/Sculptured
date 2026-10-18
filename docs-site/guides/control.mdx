@@ -3,20 +3,20 @@ title: Control live agents
 description: Message an agent, interrupt its current turn, request a summary or stop its session.
 ---
 
-Open an agent on the **Run** board to read its conversation and control its session. Use its message box for guidance and **Details & controls** for interrupt and stop actions. **Start team** and **Stop team…** at the top of the board apply to the whole team.
+Click an agent on the board, or its name on the **Agents** tab, to open its page. Read and message it on its **Conversation** tab, and interrupt or stop it on its **Activity** tab. **Start team** and **Stop team…** in the project's tab row apply to the whole team.
 
-## The agent pane
+## The agent's page
 
 | Part | What it holds |
 | --- | --- |
-| **Header** | Claude or Codex agent, its name, and its state. **Back** (<kbd>Esc</kbd>) returns to the team. |
-| **Transcript** | The conversation: your messages, the agent's replies, its tool calls and their results. |
-| **Visual progress** | Tool calls, files changed, commands, checks and context, as a picture. See [Context and communication](/guides/context). |
-| **Events** | The raw recorded events, the evidence behind everything else. |
-| **Details & controls** (the **⋯** button) | Wrap-up and stop controls, its check, folder, session number, tokens in and out, and the evidence for its latest status. |
-| **Message box** | Send the agent a message. <kbd>⏎</kbd> sends, <kbd>⇧⏎</kbd> adds a line. |
+| **Header** | **Board** (<kbd>Esc</kbd>) goes back to the board as you left it. Then the agent's name, its state, and what it runs on (Claude, Codex or Practice, and the model). |
+| **Conversation** | The transcript (your messages, the agent's replies, its tool calls and their results), then the message box. <kbd>⏎</kbd> sends, <kbd>⇧⏎</kbd> adds a line. The search icon in the tab row (or <kbd>/</kbd>) searches the transcript. |
+| **Setup** | The agent's design: name, what it runs on, Job, folder, connections, and Advanced. See [Compose on the board](/guides/board). |
+| **Activity** | **Interrupt**, **Soft stop** and **Hard stop…**, then its check, folder, session number, tokens in and out, and the evidence for its latest status. Below them, **Progress** shows tool calls, files changed, commands and checks as a picture (see [Context and communication](/guides/context)), and **Raw events** shows every recorded event verbatim, the evidence behind everything else. |
 
-Notices appear under the header when they apply: handoff actions such as **Hand over again**, "isn't signed in on the computer", a stall warning, whom it is waiting for, and the reason for its last status change.
+Conversation is the first tab once the team has started. Before that, the page opens on Setup.
+
+Notices appear above the transcript when they apply: a question waiting for you, "isn't signed in on the computer", a stall warning, whom it is waiting for, and the reason for its last status change. **Hand over again** is on the Activity tab, and also above the transcript when the agent's CLI was signed out.
 
 ## Send guidance
 
@@ -35,22 +35,22 @@ Messages can only go to a running agent. Otherwise the box says why, for example
 
 ## Interrupt, wrap up or stop
 
-Open **Details & controls** (**⋯** in the pane header).
+Open the agent's **Activity** tab. The controls are at the top.
 
 | Control | What it does |
 | --- | --- |
-| **Interrupt** (<kbd>i</kbd>) | Cuts off the current turn so you can redirect the agent. It is off when no turn is in progress, or when this kind of agent can't be interrupted. |
+| **Interrupt** (<kbd>i</kbd>, on any of the agent's tabs) | Cuts off the current turn so you can redirect the agent. It is off when no turn is in progress, or when this kind of agent can't be interrupted. |
 | **Soft stop · ~5K** | Asks the agent to finish the current task, summarize and hand off, then stop. Sculptured stops the session after the wrap-up turn, about 5,000 more output tokens, or 5 minutes, whichever comes first. The button reads **Wrapping up…** meanwhile. |
 | **Hard stop…** | Stops the agent's process after you confirm, with no wrap-up turn. Agents it started stop too. "Messages it has not read yet will be marked as not delivered." |
-| **Stop team…** (Run board) | Stops every running agent in the team. "Their history is kept." |
+| **Stop team…** (the project's tab row) | Stops every running agent in the team. "Their history is kept." |
 
 <Warning>Usage reports can arrive late, so a soft stop can go past 5,000 output tokens. The wrap-up message tells the agent never to claim success to finish faster. Still read its summary as agent-reported.</Warning>
 
-After a soft stop the pane says "Wrap-up finished; session stopped." When an output budget stopped it, the pane says "Output budget reached; session stopped."
+After a soft stop, Activity says "Wrap-up finished; session stopped." When an output budget stopped it, Activity says "Output budget reached; session stopped."
 
 ## Stalled agents
 
-If an agent keeps hitting the same error, the pane may show **Stalled (heuristic)** with the reason. This is an inference from recent events, labelled as a heuristic. Sculptured does not intervene automatically. You can:
+If an agent keeps hitting the same error, its Conversation tab may show **Stalled (heuristic)** above the transcript, with the reason. This is an inference from recent events, labelled as a heuristic. Sculptured does not intervene automatically. You can:
 
 - **Nudge**: interrupt the agent with a message asking it to stop, summarize what it tried, and try a different approach;
 - **Soft stop**: ask it to wrap up.
@@ -59,8 +59,8 @@ If an agent keeps hitting the same error, the pane may show **Stalled (heuristic
 
 - **An open, idle session is not working.** "No active work; sessions are open" means nothing is in progress.
 - **Unknown is not stopped.** While an agent's computer is unreachable, the agent is *stale*: its activity is the last known one, and it may still be running. See [When the computer drops off](/guides/offline).
-- **Run shows the running agents.** Switch to **List** for every agent, including stopped and planned ones. The Design board keeps the full design.
-- **Each status has evidence.** Under Details & controls, "status" names who said so, such as observed by the computer or inferred by Sculptured.
+- **Run shows the running agents.** The **Agents** tab lists every agent, including stopped and planned ones. The Design board keeps the full design.
+- **Each status has evidence.** On the Activity tab, "status" names who said so, such as observed by the computer or inferred by Sculptured.
 
 The full table is in [Agent states](/reference/states).
 
@@ -72,7 +72,7 @@ Agents can create helpers with `spawn_agent`, message each other with `send_agen
 - they run on the same computer as their parent;
 - they appear on the Run board with their parent. **Focus selected subtree** shows one branch, **Up to parent** widens it, and **Whole tree** goes back.
 
-There are **no limits on children unless you set them**. To set them, open the team's **Advanced** settings on the Design board (with the team stopped):
+There are **no limits on children unless you set them**. To set them, open the team's **Settings** tab and then **More settings** (with the team stopped):
 
 | Setting | What it limits | When it is reached |
 | --- | --- | --- |
@@ -81,21 +81,23 @@ There are **no limits on children unless you set them**. To set them, open the t
 
 Leave a field blank for no limit. When a limit stops a spawn, the parent's card on the Run board says so.
 
-<Frame caption="What to look for: **Advanced** at the bottom of the team's details panel, with the two limits. Blank means no limit.">
-  ![The Design board with its details panel open at Advanced: Limits on spawned agents, with Most agents, children included and Most levels of children both set to no limit](/images/guides/team-limits.png)
+<Frame caption="What to look for: **Limits on spawned agents** under **More settings** in the team's Settings. Blank means no limit.">
+  ![The team's Settings page with More settings open: Limits on spawned agents, with Most agents, children included and Most levels of children both set to no limit](/images/guides/team-limits.png)
 </Frame>
 
-The Run board stays readable with many children. A parent with more than six shows five of them and a **+N more** card that lists the rest. Children below the third level fold into a **+N deeper** card. Either card opens a list of those agents with their status, and each opens that agent. **List** always shows every agent. A token limit or the team's output budget still applies to children, so set one of those to cap cost.
+The Run board stays readable with many children. A parent with more than six shows five of them and a **+N more** card that lists the rest. Children below the third level fold into a **+N deeper** card. Either card opens a list of those agents with their status, and each opens that agent. The **Agents** tab always lists every agent. A token limit or the team's output budget still applies to children, so set one of those to cap cost.
 
 <Frame caption="What to look for: the **+N more** card next to the drawn children. It opens a list of the rest.">
-  ![The Run board: a Lead researcher card with arrows to three of its helper agents, and a +3 more card for the helpers that are not drawn](/images/guides/more-children.png)
+  ![The Run board: a Lead researcher card with arrows to five of its helper agents, and a +3 more card for the helpers that are not drawn](/images/guides/more-children.png)
 </Frame>
 
 A hard stop of a parent stops its descendants first. Helpers that a CLI starts by itself, and other processes an agent launches, are not managed children. Sculptured does not track or stop them.
 
-## Text Mode
+## Full screen
 
-**Text Mode** expands the conversation, transcript and message box to fill the page. Use it for long reading or writing. **Exit Text Mode** returns to the board.
+**Expand editor** shows on the message box when you point at it or type in it (always on a touch screen). It opens the conversation full screen: the agent's name, the transcript search, the transcript and the message box fill the window, for long reading or writing. What you typed, and where you were in the transcript, stay as they were. **Exit full screen** (or <kbd>Esc</kbd>) returns to the agent's page.
+
+The Job box on an agent's Setup tab has its own **Expand editor**, which opens the Job in a full-window editor; **Done** returns to the page.
 
 ## Next steps
 

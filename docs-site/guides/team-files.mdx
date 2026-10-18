@@ -9,9 +9,9 @@ There are three kinds of file:
 
 | File | Holds | Made with | Opened with |
 | --- | --- | --- | --- |
-| Team file, `.sculptured-team.json` | A whole team | **Export team file** on the team's **Advanced** section | **New project · Start from…** → **Advanced** → **Import** |
+| Team file, `.sculptured-team.json` | A whole team | **Export team file** under **Export** in the team's **Settings** | **New project** → **Advanced: import a team file or a past run** → **Import** |
 | Group file, `.group.json` | One reusable group | **Export** on a group in **Reusable groups** | **Import group file** in **Reusable groups** |
-| Run file, `.sculptured-session.jsonl` | One past run: the team as it started, then every event | **Download run** in History | **Start from…** → **Advanced** → **Import a past run** |
+| Run file, `.sculptured-session.jsonl` | One past run: the team as it started, then every event | **Download run** in **Results › History** | **New project** → **Advanced: import a team file or a past run** → **Import a past run** |
 
 ```mermaid
 flowchart LR
@@ -27,8 +27,8 @@ flowchart LR
 ## Export a team
 
 <Steps>
-  <Step title="Open the team">Open the project and its team on the board.</Step>
-  <Step title="Open Advanced">Open the team's **Advanced** section.</Step>
+  <Step title="Open the team">Open the project.</Step>
+  <Step title="Open Settings">Open its **Settings** tab and find **Export**.</Step>
   <Step title="Choose about folders">Leave **Include folders (paths on this computer)** off to share the file. Folders are paths on one computer, so they rarely make sense anywhere else. Turn it on to keep a backup for the same computer.</Step>
   <Step title="Export">Choose **Export team file**. The file goes to your downloads as `<team>.sculptured-team.json`.</Step>
 </Steps>
@@ -40,8 +40,8 @@ To share a team with tools other than Sculptured, choose **Export as MADL** inst
 ## Import a team
 
 <Steps>
-  <Step title="Start a new project">Open **New project · Start from…**.</Step>
-  <Step title="Open Advanced">Open **Advanced** at the bottom of the gallery.</Step>
+  <Step title="Start a new project">Open **New project**.</Step>
+  <Step title="Open Advanced">Open **Advanced: import a team file or a past run** at the bottom of the page.</Step>
   <Step title="Choose the file">Choose the file, or paste its contents into the box. A `.sculptured-team.json` file, a [MADL file](/guides/madl) and an OpenRig YAML file are all accepted.</Step>
   <Step title="Import">Choose **Import**. A new team is created, with a new id made from its name.</Step>
   <Step title="Fix what the board lists">Set a folder and fix anything listed under things to fix before you start the team.</Step>
