@@ -1,5 +1,6 @@
 mod controls;
 pub mod context_ceiling;
+pub mod silence;
 pub(crate) mod history;
 pub mod budgets;
 pub mod token_limits;

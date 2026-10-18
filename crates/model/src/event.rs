@@ -106,6 +106,9 @@ pub enum EventBody {
     MessageHeld { message_id: String, reason: String },
     /// A protection refused one of the agent's tool calls, with the reason the agent read.
     ProtectionApplied { call_id: String, reason: String },
+    /// Heuristic: the agent has been in a turn with no output for a long time (an idea from Gas Town's
+    /// patrol). Flagged only; the operator decides. Its next output clears it.
+    StallSuspected { reason: String },
     /// The agent's context passed the team's ceiling: it writes its notes and continues fresh.
     ContextCeilingReached {
         #[ts(type = "number")]

@@ -1384,6 +1384,23 @@
           ]
         },
         {
+          "description": "Heuristic: the agent has been in a turn with no output for a long time (an idea from Gas Town's\npatrol). Flagged only; the operator decides. Its next output clears it.",
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "stall-suspected"
+            }
+          },
+          "required": [
+            "type",
+            "reason"
+          ]
+        },
+        {
           "description": "The agent's context passed the team's ceiling: it writes its notes and continues fresh.",
           "type": "object",
           "properties": {

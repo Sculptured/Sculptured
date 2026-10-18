@@ -50,10 +50,17 @@ After a soft stop, Activity says "Wrap-up finished; session stopped." When an ou
 
 ## Stalled agents
 
-If an agent keeps hitting the same error, its Conversation tab may show **Stalled (heuristic)** above the transcript, with the reason. This is an inference from recent events, labelled as a heuristic. Sculptured does not intervene automatically. You can:
+Its Conversation tab may show **Stalled (heuristic)** above the transcript, with the reason, when an agent:
 
-- **Nudge**: interrupt the agent with a message asking it to stop, summarize what it tried, and try a different approach;
+- keeps hitting the same error, three times in a row; or
+- has had no output for 30 minutes in the middle of its turn, for example a command that never finishes. An agent waiting for your answer to a question is not counted.
+
+This is an inference from recent events, labelled as a heuristic, and the agent also shows under **Needs you**. Sculptured does not intervene automatically. You can:
+
+- **Nudge**: interrupt the agent with a message. One that keeps failing is asked to summarize what it tried and try a different approach; one that went quiet is asked to stop anything that will not finish, say where it is, and continue;
 - **Soft stop**: ask it to wrap up.
+
+A silent agent's flag clears as soon as it produces output again.
 
 ## Read the state accurately
 

@@ -553,6 +553,32 @@ fn attention_keeps_unread_messages_queued() {
     }
 }
 
+/// Silence (an idea from Gas Town's patrol): an agent in a turn with no output for a long time is found,
+/// flagged once by a heuristic event, and cleared by its next output; one waiting for a person is not.
+#[test]
+fn an_agent_silent_in_its_turn_is_flagged_once_and_its_next_output_clears_it() {
+    let mut s = store();
+    s.ingest("local", ev(1, A, running())).unwrap();
+    s.ingest("local", ev(2, B, running())).unwrap();
+    s.ingest("local", ev(3, A, EventBody::TurnStarted { turn_id: "t1".into() })).unwrap();
+    s.ingest("local", ev(4, A, EventBody::ToolCalled { turn_id: None, call_id: "c1".into(), name: "Bash".into(), input: json!({}), parent_call_id: None })).unwrap();
+    s.ingest("local", ev(5, B, EventBody::TurnStarted { turn_id: "t2".into() })).unwrap();
+    s.ingest("local", ev(6, B, EventBody::ToolCalled { turn_id: None, call_id: "c2".into(), name: "mcp__rig__request_input".into(), input: json!({}), parent_call_id: None })).unwrap();
+    let quiet = 30 * 60_000;
+    assert!(s.silent_seats(1004 + quiet - 1, quiet).unwrap().is_empty(), "not yet");
+    let found = s.silent_seats(1006 + 31 * 60_000, quiet).unwrap();
+    assert_eq!(found.len(), 1, "an agent waiting for a person's answer is not silent: {found:?}");
+    assert_eq!(found[0].seat, A);
+    assert!(found[0].reason().contains("31 minutes") && found[0].reason().contains("Bash"), "{}", found[0].reason());
+
+    s.append_local(Actor::System("controld".into()), Subject::Seat(A.into()), Provenance::Heuristic, EventBody::StallSuspected { reason: found[0].reason() }).unwrap();
+    let stall = s.seat(A).unwrap().unwrap().stalled.expect("flagged");
+    assert!(stall.silent, "{stall:?}");
+    assert!(s.silent_seats(1006 + 90 * 60_000, quiet).unwrap().is_empty(), "flagged once");
+    s.ingest("local", ev(7, A, EventBody::AgentText { turn_id: None, text: "still building".into() })).unwrap();
+    assert!(s.seat(A).unwrap().unwrap().stalled.is_none(), "its next output clears it");
+}
+
 /// Stall flags: the same tool error three times in a row flags the agent (heuristic); a success clears it.
 #[test]
 fn the_same_tool_error_three_times_in_a_row_flags_a_stall_and_a_success_clears_it() {

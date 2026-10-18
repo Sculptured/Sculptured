@@ -106,6 +106,7 @@ There are two kinds:
 | `tenure-started` / `tenure-ended` | session columns reset. An ended process fails unread messages ("the agent stopped before reading this message"). |
 | `turn-*`, `tool-called`, `usage-reported`, `limit-reached` | `current_turn`, `current_tool` (top-level calls only), token totals, `limit_hit` |
 | `tool-resulted` | the `stalled` flag (`store/stall.rs`, heuristic), `actions.ok` |
+| `stall-suspected` | the `stalled` flag with `silent: true`, raised by `collaboration/silence.rs` for a running agent in a turn with no event for 30 minutes (not in `request_input` or `approve`); cleared by its next output event |
 | `check-started` / `check-ran` | `seats.last_check` |
 | `restore-needed`, `handoff-waiting`, `model-observed` | `restore_offer`, `waiting_for` and `handoff_stuck`, model columns |
 | `question-*` | `questions` rows and `seats.open_questions` (`projections/questions.rs`) |

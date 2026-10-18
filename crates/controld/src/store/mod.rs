@@ -7,6 +7,7 @@ mod runs;
 mod origins;
 mod schema;
 mod stall;
+pub use stall::Silent;
 mod workflow;
 mod collaboration;
 mod decisions;

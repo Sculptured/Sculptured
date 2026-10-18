@@ -58,7 +58,13 @@ fn project(tx: &Transaction, ev: &EventRecord) -> rusqlite::Result<()> {
 fn project_seat(tx: &Transaction, ev: &EventRecord) -> rusqlite::Result<()> {
     let Subject::Seat(seat) = &ev.subject else { return Ok(()) };
     tx.execute("UPDATE seats SET last_event_ms = ?2 WHERE id = ?1", params![seat, ev.at_ms])?;
+    if matches!(ev.body, EventBody::AgentText { .. } | EventBody::ToolCalled { .. } | EventBody::ToolResulted { .. } | EventBody::ThinkingRecorded { .. }
+        | EventBody::UsageReported { .. } | EventBody::ContextReported { .. } | EventBody::TurnEnded { .. })
+    {
+        super::stall::on_output(tx, seat)?;
+    }
     match &ev.body {
+        EventBody::StallSuspected { reason } => super::stall::on_suspected(tx, seat, reason, ev.at_ms),
         EventBody::SeatLifecycleChanged { lifecycle, reason } => project_lifecycle(tx, seat, ev, *lifecycle, reason.as_deref()),
         EventBody::MessageQueued { .. }
         | EventBody::MessageDelivered { .. }

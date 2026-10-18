@@ -287,6 +287,9 @@ export function conversationItems(events: EventRecord[]): Item[] {
         // The refused call's own result says it too; this marks it as Sculptured's doing.
         notice(e.seq, `Sculptured refused this call: ${b.reason.replace(/^Sculptured protection:\s*/, '')}`, b.reason);
         break;
+      case 'stall-suspected':
+        notice(e.seq, `May be stalled (heuristic): ${b.reason}`, b.reason);
+        break;
       case 'context-ceiling-reached':
         notice(e.seq, `Context ${Math.round(b.used_tokens / 1000)}k passed the ${Math.round(b.ceiling / 1000)}k limit: this agent writes its notes and continues in a fresh conversation`);
         break;

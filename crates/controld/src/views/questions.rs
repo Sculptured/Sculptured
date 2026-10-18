@@ -28,8 +28,9 @@ pub struct LimitHit {
     pub at_ms: i64,
 }
 
-/// A heuristic stall: the agent keeps failing the same way inside its turn. Flagged only; nothing
-/// acts on it. Cleared by a successful tool result, a new turn (for example a nudge) or a new session.
+/// A heuristic stall: the agent keeps failing the same way inside its turn, or has gone silent in it.
+/// Flagged only; nothing acts on it. Cleared by a successful tool result (a silent one by any output),
+/// a new turn (for example a nudge) or a new session.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Stall {
@@ -37,6 +38,10 @@ pub struct Stall {
     pub reason: String,
     #[ts(type = "number")]
     pub at_ms: i64,
+    /// No output for a long time in its turn, rather than a repeated error.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub silent: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
