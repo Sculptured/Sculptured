@@ -5,6 +5,7 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Added
+- Waves on the item board (an idea from Gas Town's convoys): `itemBoardModel::waves` levels a batch's items by `depends_on` (unknown ones ignored, cycles cut) and the board lists each wave's state and count; shown only when there is more than one wave.
 - `sculptured doctor` (an idea from Gas Town's `gt doctor`): the CLIs' install and sign-in (`localops::clis::status`), the built-in components' programs (`hostd::supervisor::find_program`, now public), and each runner's allowed folders, approvals and secret names. Read-only.
 - Re-briefing after compaction (an idea from Gas Town's `gt prime`): `LaunchParams.briefing` for protected Claude agents, written by the runner to `briefings/<seat>.md`, given back by a `SessionStart` hook (matcher `compact`) running `sculptured rebrief`.
 - A computer's own cap (an idea from Gas Town's scheduler): `host_limits` (`PUT /api/hosts/{id}/limit`, `max_working` in `GET /api/hosts`) holds new messages for any agent on that computer while that many work there across all teams (`gate::busy_on_host`), released by the same slot delivery as the team cap; set on the Computers page.

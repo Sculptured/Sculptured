@@ -113,3 +113,29 @@ export function itemBoard(run: WorkflowRun, usage: Record<string, TurnTokens>, n
     },
   };
 }
+
+export type Wave = { wave: number; topics: string[]; done: number; started: boolean };
+
+/** Topics grouped by what they wait for: wave 1 needs nothing, each later wave needs an earlier one
+ * (an idea from Gas Town's convoys). A dependency on a topic not in the run is ignored; dependencies
+ * are acyclic, and a cycle is cut. Empty when every topic is in one wave. */
+export function waves(run: WorkflowRun): Wave[] {
+  const ids = new Set(run.tasks.map((t) => t.input.id));
+  const level = new Map<string, number>();
+  const of = (t: WorkflowTask, seen: Set<string>): number => {
+    const known = level.get(t.input.id);
+    if (known !== undefined) return known;
+    const deps = (t.input.depends_on ?? []).filter((d) => ids.has(d) && !seen.has(d));
+    const next = new Set(seen).add(t.input.id);
+    const n = 1 + Math.max(0, ...deps.map((d) => of(run.tasks.find((x) => x.input.id === d)!, next)));
+    level.set(t.input.id, n);
+    return n;
+  };
+  run.tasks.forEach((t) => of(t, new Set()));
+  const count = Math.max(0, ...level.values());
+  if (count < 2) return [];
+  return Array.from({ length: count }, (_, i) => {
+    const in_ = run.tasks.filter((t) => level.get(t.input.id) === i + 1);
+    return { wave: i + 1, topics: in_.map((t) => t.input.title), done: in_.filter((t) => t.status === 'complete').length, started: in_.some((t) => t.status !== 'queued') };
+  });
+}

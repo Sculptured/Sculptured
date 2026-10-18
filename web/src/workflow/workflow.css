@@ -37,6 +37,11 @@
 .decision-outcomes .btn { min-height: 44px; }
 
 .item-board-summary { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0; }
+.item-waves { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.item-waves li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.item-waves li span { overflow-wrap: anywhere; }
+.item-waves progress { width: 72px; flex: none; }
+.item-waves .wave-waiting { color: var(--muted, #475467); }
 .item-board-summary dt { font-weight: var(--weight-semibold); }
 .item-board-summary dd { margin: 0 12px 0 0; }
 .item-board { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }

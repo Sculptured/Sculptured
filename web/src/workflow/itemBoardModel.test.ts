@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { itemBoard, stageOrder, usesPipeline } from './itemBoardModel';
+import { itemBoard, stageOrder, usesPipeline, waves } from './itemBoardModel';
 import type { Workflow } from '../generated/Workflow';
 import type { WorkflowRun } from '../generated/WorkflowRun';
 import type { WorkflowTask } from '../generated/WorkflowTask';
@@ -63,4 +63,15 @@ it('adds up estimated costs with their sources, and says when some turns had non
   expect(columns[2].cards[0]).toMatchObject({ costUsd: 0.25, costPartial: true, costSources: ['claude-code'] });
   expect(columns.at(-1)!.cards[0]).toMatchObject({ costUsd: 1.5, costPartial: false, costSources: ['openai-list-prices'] });
   expect(summary.costPerDone).toBeCloseTo(1.5);
+});
+
+it('groups topics into waves by what they wait for, with each wave\'s progress (an idea from Gas Town\'s convoys)', () => {
+  const t = (id: string, status: WorkflowTask['status'], depends_on: string[] = []) => task(id, 'build', status, [], { input: { id, title: id.toUpperCase(), context: 'c', depends_on } });
+  const r: WorkflowRun = { ...run, tasks: [t('a', 'complete'), t('b', 'complete'), t('c', 'assigned', ['a']), t('d', 'queued', ['a', 'c']), t('e', 'queued', ['missing'])] };
+  expect(waves(r)).toEqual([
+    { wave: 1, topics: ['A', 'B', 'E'], done: 2, started: true },
+    { wave: 2, topics: ['C'], done: 0, started: true },
+    { wave: 3, topics: ['D'], done: 0, started: false },
+  ]);
+  expect(waves({ ...run, tasks: [t('x', 'queued'), t('y', 'queued')] }), 'independent topics are one wave, so nothing to draw').toEqual([]);
 });

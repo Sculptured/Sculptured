@@ -40,7 +40,7 @@ flowchart LR
 ```
 
 1. **Input.** Drop links, notes, questions and goals into the Input box on the board. It is saved with the project, up to 64 KB. Nothing runs until you start the team.
-2. **Dispatcher.** When the team starts, only the dispatcher gets a start message, with the Input. It creates one batch of items (1 to the **Maximum items** you set, at most 64). Items may be independent or depend on other items. A dependent item waits for its prerequisites to complete.
+2. **Dispatcher.** When the team starts, only the dispatcher gets a start message, with the Input. It creates one batch of items (1 to the **Maximum items** you set, at most 64). Items may be independent or depend on other items. A dependent item waits for its prerequisites to complete. When some items depend on others, the Run view's item board shows them as **waves**: wave 1 needs nothing, each later wave needs an earlier one, and each wave says whether it is done, in progress or waiting, with how many of its items are done.
 3. **Stages.** Each item enters the **First stage**. An idle agent gets one item at a time. It reports an outcome with Sculptured's `complete_work` tool; a plain chat reply never moves an item.
 4. **Assembly.** Once every item is complete, the **Assembly** agent gets one last assignment to put the results together.
 

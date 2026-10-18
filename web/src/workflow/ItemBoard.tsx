@@ -1,7 +1,7 @@
 import type { CostSource } from '../generated/CostSource';
 import type { TurnTokens } from '../generated/TurnTokens';
 import type { WorkflowRun } from '../generated/WorkflowRun';
-import { itemBoard, type Card } from './itemBoardModel';
+import { itemBoard, waves, type Card, type Wave } from './itemBoardModel';
 
 const TOKENS_NOTE = 'Input + output tokens as Claude Code or Codex reported them (cache reads not included); they may arrive up to one turn late.';
 
@@ -19,6 +19,18 @@ export function costTitle(sources: CostSource[]): string {
   return `Estimate at API prices from ${sources.map((s) => SOURCE_WORDS[s]).join(' and ')}. Claude or ChatGPT plan subscribers are not billed this amount.`;
 }
 
+/** The waves of topics, in order: each needs the one before; where each is, in words beside its bar. */
+function Waves({ list }: { list: Wave[] }) {
+  if (!list.length) return null;
+  const state = (w: Wave) => (w.done === w.topics.length ? 'done' : w.started ? 'in progress' : `waiting for wave ${w.wave - 1}`);
+  return <ol className="item-waves" aria-label="Waves">
+    {list.map((w) => <li key={w.wave} className={`wave-${state(w) === 'done' ? 'done' : w.started ? 'active' : 'waiting'}`}>
+      <progress value={w.done} max={w.topics.length} aria-hidden="true" />
+      <span>Wave {w.wave} · {state(w)} · {w.done} of {w.topics.length}: {w.topics.join(', ')}</span>
+    </li>)}
+  </ol>;
+}
+
 /** Where each item is, what it's waiting for and what it has used. A card opens the item's timeline below. */
 export function ItemBoard({ run, usage, now = Date.now() }: { run: WorkflowRun; usage: Record<string, TurnTokens>; now?: number }) {
   const { columns, summary } = itemBoard(run, usage, now);
@@ -28,6 +40,7 @@ export function ItemBoard({ run, usage, now = Date.now() }: { run: WorkflowRun; 
   };
   const sendBacks = Object.entries(summary.sendBacks).map(([stage, n]) => `${run.config.stages.find((s) => s.id === stage)?.name ?? stage}: ${n}`).join(' · ');
   return <section className="item-board-section" aria-label="Item board">
+    <Waves list={waves(run)} />
     <dl className="item-board-summary">
       <dt>Done</dt><dd>{summary.done}</dd>
       <dt>Waiting for a person</dt><dd>{summary.waiting}{summary.waiting > 0 && ` (${duration(summary.waitingMs)} in all)`}</dd>
