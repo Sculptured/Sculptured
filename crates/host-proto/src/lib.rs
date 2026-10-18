@@ -76,6 +76,10 @@ pub struct LaunchParams {
     /// The components it is given, as manifests (feature `components`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub components: Vec<model::Component>,
+    /// Claude agents with protections: the agent's briefing, given back to it after Claude compacts its
+    /// context. An older runner ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub briefing: Option<String>,
 }
 
 /// How a new tenure gets its native session.

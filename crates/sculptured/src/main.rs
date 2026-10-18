@@ -132,6 +132,10 @@ fn main() -> ExitCode {
     if std::env::args_os().nth(1).is_some_and(|a| a == "guard") {
         return guard::run();
     }
+    // And this one after Claude compacts an agent's context.
+    if std::env::args_os().nth(1).is_some_and(|a| a == "rebrief") {
+        return guard::rebrief(std::env::args_os().nth(2));
+    }
     migrate_legacy_environment();
     let cli = Cli::parse();
     // `hostd` has read its token from the environment by now. Remove it so no agent

@@ -24,3 +24,27 @@ pub fn run() -> ExitCode {
     }
     ExitCode::SUCCESS
 }
+
+/// `sculptured rebrief <file>`: Claude Code's SessionStart hook after a compaction. Prints the agent's
+/// briefing as context for the conversation that continues, or nothing when the file is gone.
+pub fn rebrief(file: Option<std::ffi::OsString>) -> ExitCode {
+    if let Some(text) = file.and_then(|f| std::fs::read_to_string(f).ok()).filter(|t| !t.trim().is_empty()) {
+        println!("{}", rebrief_output(&text));
+    }
+    ExitCode::SUCCESS
+}
+
+fn rebrief_output(briefing: &str) -> serde_json::Value {
+    let context = format!("Your conversation was just compacted. Your briefing again, so nothing in it is lost:\n\n{briefing}");
+    serde_json::json!({ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": context } })
+}
+
+#[cfg(test)]
+mod rebrief_tests {
+    #[test]
+    fn the_briefing_comes_back_as_context_for_the_session() {
+        let out = super::rebrief_output("Your role: Writer [a]");
+        assert_eq!(out["hookSpecificOutput"]["hookEventName"], "SessionStart");
+        assert!(out["hookSpecificOutput"]["additionalContext"].as_str().unwrap().ends_with("Your role: Writer [a]"));
+    }
+}

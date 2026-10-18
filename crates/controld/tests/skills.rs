@@ -46,6 +46,9 @@ async fn skills_and_kindex_reach_each_agent_the_way_its_cli_can_use_them() {
     let params = controld::launch::launch_params(&s.st, "local", &rig.name, &spec, s.home.path()).unwrap();
     assert_eq!((params.skills.len(), params.integrations.clone()), (1, vec!["kindex".to_string()]), "built-in ones by name too, for older runners");
     assert_eq!(params.components.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["kindex", "notes"]);
+    assert!(params.briefing.as_deref().is_some_and(|b| b.contains("Your role: Writer")), "a protected Claude agent's briefing travels with its launch, for after a compaction");
+    let (rig_b, spec_b) = controld::launch::compiled_seat(&s.st, &b).unwrap();
+    assert!(controld::launch::launch_params(&s.st, "local", &rig_b.name, &spec_b, s.home.path()).unwrap().briefing.is_none(), "Codex has no compaction hook");
     let dropped = |who: &str| events(&s.st, who).into_iter().filter_map(|e| match e.body { model::EventBody::FeaturesDropped { features, note } => Some((features, note)), _ => None }).collect::<Vec<_>>();
     wait_for("the missing program is told on the agent", || dropped(&a).iter().any(|(f, _)| f == &["notes".to_string()])).await;
     let (_, note) = dropped(&a).into_iter().find(|(f, _)| f == &["notes".to_string()]).unwrap();

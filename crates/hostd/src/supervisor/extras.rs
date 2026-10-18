@@ -104,6 +104,16 @@ impl Supervisor {
         std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     }
 
+    /// The agent's briefing in this runner's data, readable by this user only, for `sculptured rebrief`.
+    pub(super) fn briefing_file(&self, seat: &str, text: &str) -> Option<PathBuf> {
+        let host = self.inner.seat_tools.as_ref()?;
+        let dir = host.socket.parent().unwrap_or_else(|| Path::new(".")).join("briefings");
+        std::fs::create_dir_all(&dir).ok()?;
+        let file = dir.join(format!("{}.md", seat.replace(|c: char| !(c.is_ascii_alphanumeric() || "@.-_".contains(c)), "_")));
+        crate::private::write_file(&file, text.as_bytes()).ok()?;
+        Some(file)
+    }
+
     /// Where a Claude agent reads its remote servers (with their secrets), readable by this user only.
     pub(super) fn remote_mcp_file(&self, seat: &str) -> Option<PathBuf> {
         let host = self.inner.seat_tools.as_ref()?;

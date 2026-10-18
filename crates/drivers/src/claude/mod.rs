@@ -86,8 +86,8 @@ impl ClaudeStreamDriver {
         a
     }
 
-    /// Protections: a PreToolUse hook running `guard`, the shell output cap, and Claude Code's lowest
-    /// compaction threshold as a backstop within long turns (Sculptured's own context ceiling acts
+    /// Protections: a PreToolUse hook running `guard`, the shell output cap, the briefing given back
+    /// after a compaction (`rebrief`), and Claude Code's lowest compaction threshold as a backstop within long turns (Sculptured's own context ceiling acts
     /// between turns). Passed with `--settings`, so they apply whatever setting sources load.
     /// More tool hooks (Signet-Eval) run on every call, after the guard.
     fn protection_args(p: Option<&crate::ProtectionLaunch>, more: &[String]) -> Vec<String> {
@@ -99,6 +99,11 @@ impl ClaudeStreamDriver {
         let mut settings = json!({ "hooks": { "PreToolUse": pre } });
         let mut out = vec![];
         if let Some(p) = p {
+            if let Some(file) = &p.briefing_file {
+                // A compaction can summarize the briefing away; give it back as context (an idea from Gas Town's `gt prime`).
+                let command = format!("\"{}\" rebrief \"{}\"", p.guard.display(), file.display());
+                settings["hooks"]["SessionStart"] = json!([{ "matcher": "compact", "hooks": [{ "type": "command", "command": command, "timeout": 5 }] }]);
+            }
             settings["bashOutputMaxChars"] = json!(p.rules.shell_output_chars);
             out.extend(["--autocompact".to_string(), "100000".to_string()]);
         }

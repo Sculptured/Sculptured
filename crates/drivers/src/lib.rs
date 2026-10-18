@@ -104,6 +104,8 @@ pub struct ProtectionLaunch {
     pub rules: model::GuardRules,
     /// The `sculptured` binary; its `guard` subcommand is the hook.
     pub guard: std::path::PathBuf,
+    /// The agent's briefing, given back by `sculptured rebrief` after Claude compacts its context.
+    pub briefing_file: Option<std::path::PathBuf>,
 }
 
 impl LaunchSpec {

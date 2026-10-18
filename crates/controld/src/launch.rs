@@ -56,12 +56,15 @@ fn fitted_params(
         }
     };
     let (claude_setup, protection) = claude_settings(st, rig, seat);
+    // Given back after a compaction, which can summarize it away (Claude only: its SessionStart hook).
+    let briefing = protection.as_ref().and_then(|_| st.store.lock().unwrap().draft(rig).ok().flatten()).and_then(|d| crate::team_context::briefing(&d, &seat.id));
     let (skills, integrations, components) = agent_extras(st, rig, seat);
     let mut params = LaunchParams {
         skills,
         integrations,
         components,
         protection,
+        briefing,
         claude_setup,
         cwd,
         model: seat.model.clone(),

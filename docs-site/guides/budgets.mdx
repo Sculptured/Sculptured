@@ -109,7 +109,9 @@ Most of a long run's tokens are agents re-reading their own conversation on ever
 | **Shell output an agent sees, at most** | 8,000 characters | Longer output is saved to a file; the agent gets its path and a short preview. |
 | **Continue an agent fresh from its notes at** | 60,000 tokens of context | Between turns, the agent is asked to write its notes (`.sculptured/notes/<agent>.md`), then continues in a fresh conversation from them. A turn is never interrupted. |
 
-Claude agents get all three; Codex agents get the context limit only. Every refusal and every fresh continue shows in the agent's conversation. An agent on a computer whose runner predates protections runs without them, and its page says so: reinstall the runner from **Computers**.
+Claude agents get all three; Codex agents get the context limit only. Every refusal and every fresh continue shows in the agent's conversation.
+
+When Claude Code compacts a Claude agent's conversation within a long turn, a summary can drop parts of the agent's briefing (its role, its contract, who decides what). With protections on, Sculptured gives the briefing back right after each compaction. An idea from Gas Town. An agent on a computer whose runner predates protections runs without them, and its page says so: reinstall the runner from **Computers**.
 
 ### Safety rules
 

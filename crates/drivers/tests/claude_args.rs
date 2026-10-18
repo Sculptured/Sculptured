@@ -99,7 +99,7 @@ fn extra_folders_are_passed_with_add_dir() {
 fn protections_add_the_guard_hook_the_output_cap_and_a_compaction_backstop() {
     let mut s = spec();
     assert!(after(&ClaudeStreamDriver::args(&s, None, "s1"), "--settings").is_none(), "no protections, no settings");
-    s.protection = Some(drivers::ProtectionLaunch { rules: model::GuardRules { max_read_bytes: 102_400, shell_output_chars: 8000, ..Default::default() }, guard: "/opt/My Apps/sculptured".into() });
+    s.protection = Some(drivers::ProtectionLaunch { rules: model::GuardRules { max_read_bytes: 102_400, shell_output_chars: 8000, ..Default::default() }, guard: "/opt/My Apps/sculptured".into(), briefing_file: None });
     let a = ClaudeStreamDriver::args(&s, None, "s1");
     let settings: Value = serde_json::from_str(after(&a, "--settings").expect("--settings")).unwrap();
     assert_eq!(settings["bashOutputMaxChars"], 8000);
@@ -127,6 +127,17 @@ fn skills_load_as_a_plugin_folder_and_integrations_as_an_mcp_server() {
 }
 
 #[test]
+fn after_compaction_a_protected_claude_agent_gets_its_briefing_back() {
+    let mut s = spec();
+    let rules = model::GuardRules { max_read_bytes: 102_400, shell_output_chars: 8000, ..Default::default() };
+    s.protection = Some(drivers::ProtectionLaunch { rules, guard: "/opt/sculptured".into(), briefing_file: Some("/data/briefings/dev.a@r.md".into()) });
+    let settings: Value = serde_json::from_str(after(&ClaudeStreamDriver::args(&s, None, "s1"), "--settings").unwrap()).unwrap();
+    let start = &settings["hooks"]["SessionStart"][0];
+    assert_eq!(start["matcher"], "compact", "only after a compaction, not at every start: {settings}");
+    assert_eq!(start["hooks"][0]["command"], r#""/opt/sculptured" rebrief "/data/briefings/dev.a@r.md""#);
+}
+
+#[test]
 fn a_remote_servers_secret_is_passed_in_a_file_not_on_the_command_line() {
     let mut s = spec();
     s.remote_mcp = vec![drivers::RemoteMcp { name: "openfoam".into(), url: "https://mcp.example.com/mcp".into(), headers: vec![("Authorization".into(), "Bearer s3cret".into())] }];
@@ -144,11 +155,11 @@ fn safety_rules_widen_the_hook_to_every_tool_and_signet_runs_after_the_guard() {
     let mut s = spec();
     let mut rules = model::GuardRules { max_read_bytes: 102_400, shell_output_chars: 8000, ..Default::default() };
     rules.writes = vec!["src/".into()];
-    s.protection = Some(drivers::ProtectionLaunch { rules: rules.clone(), guard: "/opt/sculptured".into() });
+    s.protection = Some(drivers::ProtectionLaunch { rules: rules.clone(), guard: "/opt/sculptured".into(), briefing_file: None });
     let hooks = |s: &LaunchSpec| -> Value { serde_json::from_str::<Value>(after(&ClaudeStreamDriver::args(s, None, "s1"), "--settings").unwrap()).unwrap()["hooks"]["PreToolUse"].clone() };
     assert_eq!(hooks(&s)[0]["matcher"], "Read|Bash|Write|Edit|MultiEdit|NotebookEdit", "a write contract needs the edit tools");
     rules.safety = model::safety::presets();
-    s.protection = Some(drivers::ProtectionLaunch { rules, guard: "/opt/sculptured".into() });
+    s.protection = Some(drivers::ProtectionLaunch { rules, guard: "/opt/sculptured".into(), briefing_file: None });
     s.tool_hooks = vec![r#""/home/u/.cargo/bin/signet-eval" --rules-path "/data/signet/rules.yaml""#.into()];
     let h = hooks(&s);
     assert_eq!((h[0]["matcher"].as_str(), h[1]["matcher"].as_str()), (Some(""), Some("")), "safety rules see every tool");

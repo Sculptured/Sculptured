@@ -65,6 +65,7 @@ sequenceDiagram
 - **Start size.** The first context reading of a conversation is its instructions, tools and briefing. The ceiling acts only above twice that, so a fresh conversation that starts large cannot trip it straight away and restart in a loop.
 - **Pending requests** live in `AppState.context_asked` (seat → seq of the request). Only a turn that ends after the request counts as the note's turn.
 - An agent with a control in progress (a stop, a budget wrap-up) is left to that control.
+- **Within a turn**, Claude's own compaction (`--autocompact`) can summarize the briefing away. `launch_params` sends the briefing (`team_context::briefing`) as `LaunchParams.briefing` for Claude agents with protections; the runner writes it privately to `<runner data>/hostd/briefings/<seat>.md` (`ProtectionLaunch.briefing_file`), and the driver adds a `SessionStart` hook with matcher `compact` running `sculptured rebrief <file>`, which prints it as `additionalContext`. An older runner ignores the field.
 
 ## 5. Contracts
 
@@ -105,6 +106,7 @@ Shell commands are not checked against the contract.
 | Writes outside the contract are refused; notes pass | `model/src/protection.rs::writes_outside_the_agents_contract_are_refused_and_its_notes_always_pass` |
 | Reads outside the contract are refused; the agent's own writes can be read | `model/src/protection.rs::reads_outside_the_agents_contract_are_refused_but_its_own_writes_can_be_read` |
 | The guard answers quickly and passes anything else | `sculptured/tests/guard.rs::a_whole_read_of_a_large_file_is_refused_quickly_and_anything_else_passes` |
+| After a compaction, a protected Claude agent gets its briefing back | `drivers/tests/claude_args.rs::after_compaction_a_protected_claude_agent_gets_its_briefing_back`, `sculptured/src/guard.rs::the_briefing_comes_back_as_context_for_the_session`, `controld/tests/skills.rs` |
 | Claude gets the hook, the output cap and the compaction backstop | `drivers/tests/claude_args.rs::protections_add_the_guard_hook_the_output_cap_and_a_compaction_backstop` |
 | A refusal is recorded as a protection, other errors are not | `hostd/tests/mapping.rs::a_protection_refusal_is_recorded_as_such_and_other_errors_are_not` |
 | Past the ceiling, an agent continues fresh from its notes | `controld/tests/run_budget.rs::an_agent_past_the_context_ceiling_continues_fresh_from_its_notes` |
