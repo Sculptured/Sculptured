@@ -48,7 +48,7 @@ async function queuedBy(request: APIRequestContext, seatId: string, actor: strin
 
 async function startFromStructure(page: Page, id: string) {
   await page.goto(`/team/${id}/structure`);
-  await expect(page.getByRole('region', { name: 'Structure board' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Design board' })).toBeVisible();
   await page.getByRole('button', { name: 'Start team' }).click();
   await expect(page).toHaveURL(new RegExp(`/p/${id}/board\\?mode=run$`));
 }
@@ -80,7 +80,7 @@ test('desktop: a Practice chain of three runs in order after Start', async ({ pa
   expect(toReviewer[0].text).toMatch(/^Handed over by Builder\n\nReview what the builder hands you\.\n\n--- Builder's result ---\n/);
 
   // Live: nobody waits any more.
-  await expect(page.getByRole('button', { name: /^Reviewer — (idle|done)$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Reviewer — (idle|done \(reported\))$/ })).toBeVisible();
   await expect(page.locator('.agent-box .waiting-mark')).toHaveCount(0);
   await page.screenshot({ path: `${SHOTS}/handoff-2-live-chain-done.png` });
 
@@ -97,8 +97,8 @@ test('desktop: a Practice chain of three runs in order after Start', async ({ pa
   await expect(page.getByRole('list', { name: 'Conversation' })).toContainText('stub received: Add a forgot-password link.');
   await page.waitForTimeout(500);
   expect(await queuedBy(request, builder, 'handoff')).toHaveLength(1);
-  // Hand over again sits under Details (and in Ctrl K).
-  await page.getByRole('button', { name: 'Details & controls' }).click();
+  // Hand over again sits on the agent's Activity tab (and in Ctrl K).
+  await page.getByRole('link', { name: 'Activity' }).click();
   await page.getByRole('button', { name: 'Hand over again' }).click();
   await expect.poll(async () => (await queuedBy(request, reviewer, 'handoff')).length, { timeout: 20_000 }).toBe(2);
   const more = await queuedBy(request, builder, 'handoff');
@@ -109,7 +109,9 @@ test('desktop: a Practice chain of three runs in order after Start', async ({ pa
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Stop team…' }).click();
   await page.getByRole('button', { name: 'Confirm stop team' }).click();
-  await expect(page.getByRole('link', { name: 'Reviewer — stopped' })).toBeVisible({ timeout: 20_000 });
+  // Stopped agents leave the Run board; the Agents page lists them.
+  await page.getByRole('link', { name: 'Agents' }).click();
+  await expect(page.getByRole('row', { name: /\bReviewer\b.*stopped/ })).toBeVisible({ timeout: 20_000 });
 });
 
 test("desktop: downstream agents wait with a clock; a jobless first agent's first message is its work", async ({ page, request }, info) => {
@@ -121,7 +123,7 @@ test("desktop: downstream agents wait with a clock; a jobless first agent's firs
 
   await expect(page.getByRole('button', { name: 'Builder — idle, waiting for Planner' })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('button', { name: 'Reviewer — idle, waiting for Builder' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Builder — waiting for Planner' })).toContainText('◷');
+  await expect(page.locator('.agent-box', { has: page.getByRole('button', { name: 'Builder — idle, waiting for Planner' }) }).locator('.waiting-mark')).toContainText('◷');
   await expect(page.locator('.agent-box .stuck-mark')).toHaveCount(0);
   await page.screenshot({ path: `${SHOTS}/handoff-4-live-waiting.png` });
 
@@ -147,5 +149,7 @@ test("desktop: downstream agents wait with a clock; a jobless first agent's firs
 
   await page.getByRole('button', { name: 'Stop team…' }).click();
   await page.getByRole('button', { name: 'Confirm stop team' }).click();
-  await expect(page.getByRole('link', { name: 'Reviewer — stopped' })).toBeVisible({ timeout: 20_000 });
+  // Stopped agents leave the Run board; the Agents page lists them.
+  await page.getByRole('link', { name: 'Agents' }).click();
+  await expect(page.getByRole('row', { name: /\bReviewer\b.*stopped/ })).toBeVisible({ timeout: 20_000 });
 });

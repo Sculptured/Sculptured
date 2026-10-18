@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 
 /**
  * The demo path a new user walks, against the real binary, Practice agents only:
@@ -9,15 +9,21 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  * the real home folder.
  */
 
-async function newTeam(page: Page, template: RegExp, name: string) {
-  await page.goto('/');
-  await page.getByRole('link', { name: 'New project' }).first().click();
+/**
+ * The gallery offers the template; the team is then created through the API with Practice agents,
+ * since the gallery only offers Claude and Codex and this test must never start a real model.
+ */
+async function newTeam(page: Page, request: APIRequestContext, template: string, name: string) {
+  await page.goto('/new');
   const gallery = page.getByRole('region', { name: 'New project' });
-  await expect(gallery.getByRole('checkbox', { name: /Practice agents/ })).toBeChecked();
-  await gallery.getByRole('textbox', { name: 'name' }).fill(name);
-  await gallery.getByRole('button', { name: template }).click();
-  await expect(page).toHaveURL(/\/p\/[^/]+\/board\?mode=design$/);
-  return page.url().match(/\/p\/([^/]+)\/board/)![1];
+  await expect(gallery.getByRole('button', { name: new RegExp(`^${template}`) })).toBeVisible();
+  const t = ((await (await request.get('/api/team-templates')).json()) as { id: string; title: string }[]).find((x) => x.title === template)!;
+  const created = await request.post('/api/teams', { data: { request_id: `create-${name}`, template: t.id, practice: true, name } });
+  expect(created.ok()).toBe(true);
+  const id: string = (await created.json()).draft.id;
+  await page.goto(`/p/${id}/board?mode=design`);
+  await expect(page.getByRole('region', { name: 'Design board' })).toBeVisible();
+  return id;
 }
 
 async function centre(l: Locator) {
@@ -41,6 +47,7 @@ const saved = (page: Page) => expect(page.locator('.save-state')).toHaveText(/�
 
 /** Run: every agent of the team on one list, the default view. */
 async function checkRun(page: Page, agent: string) {
+  await page.getByRole('link', { name: 'Board' }).click();
   await page.getByRole('group', { name: 'Board mode' }).getByRole('button', { name: 'Run' }).click();
   await expect(page).toHaveURL(/\/p\/[^/]+\/board\?mode=run$/);
   await expect(page.getByRole('button', { name: new RegExp(`^${agent} — `) }).first()).toBeVisible();
@@ -60,12 +67,12 @@ async function checkAdvanced(page: Page, scope: Locator, teamId: string, agent: 
   const text = await readFile((await download.path())!, 'utf8');
   expect(text).toContain('pods:');
   expect(text).toContain(agent);
-  await expect(advanced.getByRole('status')).toContainText(`Exported ${teamId}.rig.yaml`);
+  await expect(scope.getByRole('status')).toContainText(`Exported ${teamId}.rig.yaml`);
 }
 
-test('desktop: gallery → Structure edits → Start → Live → message → Progress → Advanced → Stop', async ({ page }, info) => {
+test('desktop: gallery → Structure edits → Start → Live → message → Progress → Advanced → Stop', async ({ page, request }, info) => {
   test.skip(info.project.name !== 'desktop', 'desktop flow');
-  const id = await newTeam(page, /^Builder → Reviewer$/, `E2E ${Date.now()}`);
+  const id = await newTeam(page, request, 'Builder → Reviewer', `E2E ${Date.now()}`);
 
   // Structure: rename, a Job, and a folder from the picker. The throwaway home holds only "projects".
   await page.getByRole('button', { name: /^Builder — / }).click();
@@ -75,7 +82,7 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
   const picker = page.getByRole('dialog', { name: 'Choose a folder' });
   await expect(picker.getByRole('button', { name: 'Up' })).toBeDisabled();
   const homeList = picker.getByRole('list', { name: /^Folders in/ });
-  await expect(homeList.getByRole('button')).toHaveCount(1);
+  // Other specs may leave their own folders in the shared throwaway home.
   await homeList.getByRole('button', { name: 'Open projects' }).click();
   const projects = picker.getByRole('list', { name: /^Folders in/ });
   await expect(projects.getByRole('button')).toHaveCount(2);
@@ -83,14 +90,18 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
   await picker.getByRole('button', { name: /^Use ~\/projects\/alpha$/ }).click();
   await expect(page.getByRole('region', { name: 'Folder' })).toContainText('~/projects/alpha');
   await saved(page);
+  // Clicking a card opened the agent's Setup page; back to the Design board.
+  await page.getByRole('button', { name: 'Board', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Design board' })).toBeVisible();
 
-  // Drag a Practice agent in, then connect Reviewer ● → it.
+  // Drag an agent in, then connect Reviewer ● → it. The palette offers only Claude and Codex,
+  // so the new Claude card is undone again before Start: this test never runs a real model.
   const vp = (await page.getByTestId('structure-viewport').boundingBox())!;
-  await drag(page, await centre(page.getByRole('button', { name: 'Add a Practice agent' })), { x: vp.x + vp.width * 0.5, y: vp.y + vp.height * 0.8 });
-  await expect(page.getByRole('button', { name: /^Practice 1 — / })).toBeVisible();
+  await drag(page, await centre(page.getByRole('button', { name: 'Add a Claude agent' })), { x: vp.x + vp.width * 0.5, y: vp.y + vp.height * 0.8 });
+  await expect(page.getByRole('button', { name: /^Claude 1 — / })).toBeVisible();
   const port = page.locator('.sb-card', { has: page.getByRole('button', { name: /^Reviewer — / }) }).locator('.port.out');
-  await drag(page, await centre(port), await centre(page.getByRole('button', { name: /^Practice 1 — / })));
-  await expect(page.getByRole('button', { name: 'Reviewer hands work to Practice 1', exact: true })).toBeVisible();
+  await drag(page, await centre(port), await centre(page.getByRole('button', { name: /^Claude 1 — / })));
+  await expect(page.getByRole('button', { name: 'Reviewer hands work to Claude 1', exact: true })).toBeVisible();
   // Labels are never clipped and never sit on a card.
   const cards = await page.locator('.sb-card').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON() as Rect));
   for (const label of await page.locator('.sb-edge-label').all()) {
@@ -98,6 +109,12 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
     for (const c of cards) expect(overlap(lb, c)).toBe(false);
     expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }
+  // Undo the connection and the Claude card: only the two Practice agents start.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByRole('button', { name: /^Claude 1 — / })).toHaveCount(0);
+  await expect(page.locator('.sb-card')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /^(Maker|Reviewer) — Practice/ })).toHaveCount(2);
   await saved(page);
 
   // Start → Live.
@@ -109,7 +126,7 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
   // Message an agent: its Job came first ("sent at start"), then what you send.
   await page.getByRole('button', { name: /^Maker — / }).click();
   const convo = page.getByRole('list', { name: 'Conversation' });
-  await expect(convo.getByText('(sent at start)')).toBeVisible();
+  await expect(convo.getByText('Job · sent at start')).toBeVisible();
   await expect(convo.getByText('stub received: tool:npm test')).toBeVisible();
   await page.getByRole('textbox', { name: 'Message' }).fill('hello');
   await page.getByRole('button', { name: 'Send' }).click();
@@ -129,15 +146,15 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
   await page.getByRole('link', { name: 'Board' }).click();
   await page.getByRole('button', { name: 'Stop team…' }).click();
   await page.getByRole('button', { name: 'Confirm stop team' }).click();
-  await expect(page.getByRole('link', { name: 'Maker — stopped' })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole('button', { name: 'Stop team…' })).toBeDisabled();
-  // A stopped team can be started again from Live.
-  await expect(page.getByRole('button', { name: 'Start team' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start team' })).toBeVisible({ timeout: 20_000 });
+  // A stopped team can be started again. Stopped agents leave the Run board; the Agents page lists them.
+  await page.getByRole('link', { name: 'Agents' }).click();
+  await expect(page.getByRole('row', { name: /\bMaker\b.*stopped/ })).toBeVisible({ timeout: 20_000 });
 });
 
-test('mobile: gallery → form edits → Start → list → message → Progress → Advanced → Stop', async ({ page }, info) => {
+test('mobile: gallery → form edits → Start → list → message → Progress → Advanced → Stop', async ({ page, request }, info) => {
   test.skip(info.project.name !== 'mobile', 'mobile flow');
-  const id = await newTeam(page, /^Builder → Reviewer$/, `E2E phone ${Date.now()}`);
+  const id = await newTeam(page, request, 'Builder → Reviewer', `E2E phone ${Date.now()}`);
 
   // On a phone an agent is set up on its own one-column page.
   await page.getByRole('link', { name: 'Agents' }).tap();
@@ -166,5 +183,7 @@ test('mobile: gallery → form edits → Start → list → message → Progress
 
   await page.getByRole('button', { name: 'Stop team…' }).tap();
   await page.getByRole('button', { name: 'Confirm stop team' }).tap();
-  await expect(page.getByRole('button', { name: /^Builder — stopped/ })).toBeVisible({ timeout: 20_000 });
+  // Stopped agents leave the Run board; the Agents page lists them.
+  await page.getByRole('link', { name: 'Agents' }).click();
+  await expect(page.getByRole('row', { name: /\bBuilder\b.*stopped/ })).toBeVisible({ timeout: 20_000 });
 });

@@ -106,21 +106,24 @@ async function checkLive(page: Page) {
     expect(c.innerScroll, 'card scrolls inside').not.toMatch(/auto|scroll/);
     expect(c.lastInside, 'last reply leaves its card').toBe(true);
   }
-  for (const n of await lines(page, '.agent-box .box-last')) expect(n).toBeLessThanOrEqual(2);
+  // The last reply, or the reason an agent needs you, is clamped to three lines.
+  for (const n of await lines(page, '.agent-box .box-last')) expect(n).toBeLessThanOrEqual(3);
   await noPageScrollX(page);
 }
 
 async function checkVisual(page: Page, w: number, size: number) {
-  await noScrollX(page, '.pane-body');
+  await noScrollX(page, '.ap-activity');
   await noScrollX(page, '.vp');
   for (const scope of ['.vp-panel', '.vp-card', '.vp-claim']) await contained(page, scope);
   await noPageScrollX(page);
   for (const n of await lines(page, '.vp-trigger-text, .vp-reply-text')) expect(n, 'turn text clamped to two lines').toBeLessThanOrEqual(2);
   if (w < 1280) return; // narrower, the card head wraps; the clamps above still hold
-  // A turn card's height, less its tool-call nodes (one row per ~20 calls), stays small however long its text.
+  // A turn card's height, less its tool-call nodes (one row per ~20 calls) and its work summary, stays small however long its text.
   const heights = await page.locator('.vp-card').evaluateAll((els) =>
-    els.map((e) => e.getBoundingClientRect().height - (e.querySelector('.vp-nodes-wrap')?.getBoundingClientRect().height ?? 0)),
+    els.map((e) => e.getBoundingClientRect().height - (['.vp-nodes-wrap', '.phase-brief'] as const).reduce((sum, sel) => sum + (e.querySelector(sel)?.getBoundingClientRect().height ?? 0), 0)),
   );
+  // The work summary's rows are cut to 260 characters, so each stays a few lines.
+  for (const n of await lines(page, '.phase-activity > span')) expect(n, 'work summary row').toBeLessThanOrEqual(4);
   for (const ch of heights) expect(ch, 'turn card height without its nodes').toBeLessThan(220 + (size - 12) * 16);
 }
 

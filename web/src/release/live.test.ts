@@ -20,6 +20,14 @@ describe("Live is an evidence view", () => {
     expect(result.layout.seats["dev.a@r"]).toEqual(layout.seats["dev.a@r"]);
     expect(layout.seats["dev.b@r"]).toBeDefined();
   });
+  it("keeps agents that need you or failed, whose cards carry the reason", () => {
+    const c = compiledRig();
+    const seats = {
+      "dev.a@r": seatView("a", { lifecycle: "attention", lifecycle_reason: "folder missing" }),
+      "dev.b@r": seatView("b", { lifecycle: "failed" }),
+    };
+    expect(liveProjection(c, seats, []).compiled.seats.map((s) => s.id)).toEqual(["dev.a@r", "dev.b@r"]);
+  });
   it("creates a route from recorded messages, never from planned edges", () => {
     const c = compiledRig(),
       seats = { "dev.a@r": seatView("a"), "dev.b@r": seatView("b") };

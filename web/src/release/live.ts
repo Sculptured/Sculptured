@@ -19,8 +19,9 @@ export function liveProjection(
     // Scope is an explicit user navigation; give this smaller tree its own compact coordinates.
     given = undefined;
   }
+  // An agent that needs you or failed stays on the board: its card carries the reason.
   const live = compiled.seats.filter((s) =>
-    ["running", "launching", "stopping"].includes(seats[s.id]?.lifecycle),
+    ["running", "launching", "stopping", "attention", "failed"].includes(seats[s.id]?.lifecycle),
   );
   const ids = new Set(live.map((s) => s.id));
   const boundaries = new Map<string, number>();

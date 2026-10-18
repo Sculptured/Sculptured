@@ -7,12 +7,13 @@ const fixture = (name: string) => path.join(here, 'fixtures', name);
 
 async function boot(page: Page, file: string, rig: string) {
   await page.goto('/new');
-  // The expert start-from-a-file form is under Advanced on the all-teams page.
-  const advanced = page.locator('details.home-advanced');
+  // The expert start-from-a-file form is under Advanced on the New project page.
+  const advanced = page.locator('details.gallery-advanced');
   await advanced.locator('summary').click();
   await expect(advanced).toHaveAttribute('open', '');
-  await advanced.getByLabel('Team file').fill(fixture(file));
-  await advanced.getByRole('button', { name: 'Start team' }).click();
+  const form = advanced.getByRole('form', { name: 'Start a team from a file' });
+  await form.getByLabel('Team file').fill(fixture(file));
+  await form.getByRole('button', { name: 'Start team' }).click();
   await expect(page).toHaveURL(new RegExp(`/p/${rig}/board$`));
 }
 
@@ -24,11 +25,7 @@ test('desktop: start a team, message an agent and stop it', async ({ page }, inf
   await expect(boxA).toBeVisible();
   await expect(page.getByRole('button', { name: /^b — / })).toBeVisible();
 
-  // Connection labels are their own elements and are not clipped.
-  const label = page.locator('.edge-label').first();
-  await expect(label).toHaveText('hands work to');
-  const lb = (await label.boundingBox())!;
-  expect(lb.width).toBeGreaterThan(40);
+  // Run draws only the messages it saw, so connection labels are checked on Design (team.spec).
 
   // Ruling 31: a long lifecycle reason must stay inside its box (real-browser layout check).
   const boxC = page.getByRole('button', { name: /^c — needs you/ });
@@ -42,12 +39,11 @@ test('desktop: start a team, message an agent and stop it', async ({ page }, inf
   expect(rb.x).toBeGreaterThanOrEqual(cb.x);
   expect(rb.x + rb.width).toBeLessThanOrEqual(cb.x + cb.width);
 
-  // The agent pane shows the full reason.
+  // The agent's page shows the full reason.
   const fullReason = (await reason.textContent())!.trim();
   await boxC.click();
-  const paneC = page.getByRole('region', { name: 'Agent c' });
-  await expect(paneC).toBeVisible();
-  await expect(paneC.getByText(`Reason: ${fullReason}`)).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'c', exact: true })).toBeVisible();
+  await expect(page.getByText(`Reason: ${fullReason}`)).toBeVisible();
   expect(fullReason).toContain('/nonexistent/sculptured-e2e/');
   expect(fullReason).toMatch(/lifecycle\/reason$/);
 
@@ -55,7 +51,7 @@ test('desktop: start a team, message an agent and stop it', async ({ page }, inf
   await page.keyboard.press('Escape');
   await expect(page).toHaveURL(/\/p\/e2e-desktop\/board$/);
   await boxA.click();
-  await expect(page.getByRole('region', { name: 'Agent a' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'a', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Message' }).fill('hello');
   await page.getByRole('textbox', { name: 'Message' }).press('Enter');
   const convo = page.getByRole('list', { name: 'Conversation' });
@@ -82,6 +78,6 @@ test('mobile: list view shows agents and connections, tap opens the agent', asyn
   await expect(page.getByText('a hands work to b')).toBeVisible();
 
   await rowA.tap();
-  await expect(page.getByRole('region', { name: 'Agent a' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'a', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();
 });
