@@ -19,7 +19,7 @@ fn with_reason(mut input: Value, params: &Value) -> Value {
 }
 
 fn permission_prompt(text: String, tool: &str, input: Value) -> QuestionPrompt {
-    QuestionPrompt { header: None, text, options: vec![], allow_other: false, tool: Some(tool.into()), tool_input: Some(input) }
+    QuestionPrompt { urgency: None, header: None, text, options: vec![], allow_other: false, tool: Some(tool.into()), tool_input: Some(input) }
 }
 
 /// `requestUserInput`: the first question is asked; None when there is none.
@@ -32,7 +32,7 @@ fn user_input(p: &Value, id: &Value) -> Option<Asked> {
         .flatten()
         .map(|o| QuestionOption { label: o["label"].as_str().unwrap_or_default().to_string(), description: s(&o["description"]) })
         .collect();
-    let prompt = QuestionPrompt {
+    let prompt = QuestionPrompt { urgency: None,
         header: s(&first["header"]),
         text: first["question"].as_str().unwrap_or_default().to_string(),
         options,

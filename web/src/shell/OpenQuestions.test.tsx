@@ -83,3 +83,9 @@ it('takes the focus when the person chose Answer', async () => {
   rerender(<OpenQuestions seat="s-1" name="Planner" feed={[]} focusToken={1} />);
   expect(box).toHaveFocus();
 });
+
+it('marks an urgent question as the agent says it is', async () => {
+  serve([question({ prompt: { header: null, text: 'The build server is down: wait or skip?', options: [], allow_other: true, tool: null, tool_input: null, urgency: 'high' } })]);
+  render(<OpenQuestions seat="s-1" name="Planner" feed={[]} />);
+  expect(await screen.findByText('Urgent, says the agent')).toBeInTheDocument();
+});

@@ -285,7 +285,7 @@ pods:
 #[tokio::test]
 async fn orphaned_questions_are_withdrawn_on_start() {
     let mut store = Store::open_in_memory().unwrap();
-    let prompt = QuestionPrompt { header: None, text: "Which?".into(), options: vec![], allow_other: true, tool: None, tool_input: None };
+    let prompt = QuestionPrompt { urgency: None, header: None, text: "Which?".into(), options: vec![], allow_other: true, tool: None, tool_input: None };
     let orphan = EventBody::QuestionRaised { question_id: "q-orphan".into(), source: QuestionSource::RequestInput, prompt, turn_id: None };
     store.append_local(Actor::Seat("team.a@t".into()), Subject::Seat("team.a@t".into()), Provenance::AgentReported, orphan).unwrap();
     // An `approve` question (Claude's permission-prompt seat tool: stored NativePermission, recorded
@@ -294,7 +294,7 @@ async fn orphaned_questions_are_withdrawn_on_start() {
     store.upsert_rig(&rig, &controld::store::RigSource::File { path: "/specs/o.yaml".into() }, Desired::Running).unwrap();
     let running = EventBody::SeatLifecycleChanged { lifecycle: SeatLifecycle::Running, reason: None };
     store.append_local(Actor::System("test".into()), Subject::Seat("dev.a@o".into()), Provenance::ProtocolObserved, running).unwrap();
-    let prompt = QuestionPrompt {
+    let prompt = QuestionPrompt { urgency: None,
         header: None,
         text: "Allow Bash to run?".into(),
         options: vec![],
@@ -582,7 +582,7 @@ async fn a_restart_keeps_native_questions_of_running_agents() {
     let running = EventBody::SeatLifecycleChanged { lifecycle: SeatLifecycle::Running, reason: None };
     store.append_local(Actor::System("test".into()), Subject::Seat("dev.a@o".into()), Provenance::ProtocolObserved, running).unwrap();
     let native = |id: &str| {
-        let prompt = QuestionPrompt { header: None, text: "Which?".into(), options: vec![], allow_other: true, tool: None, tool_input: None };
+        let prompt = QuestionPrompt { urgency: None, header: None, text: "Which?".into(), options: vec![], allow_other: true, tool: None, tool_input: None };
         EventBody::QuestionRaised { question_id: id.into(), source: QuestionSource::NativeQuestion, prompt, turn_id: None }
     };
     // Raised through hostd's mapping: protocol-observed. The running agent's comes first.
@@ -633,7 +633,7 @@ fn put(store: &mut Store, seat: &str, body: EventBody) -> EventRecord {
 }
 
 fn native_question(id: &str, turn: &str) -> EventBody {
-    let prompt = QuestionPrompt { header: None, text: "Which?".into(), options: vec![], allow_other: true, tool: None, tool_input: None };
+    let prompt = QuestionPrompt { urgency: None, header: None, text: "Which?".into(), options: vec![], allow_other: true, tool: None, tool_input: None };
     EventBody::QuestionRaised { question_id: id.into(), source: QuestionSource::NativeQuestion, prompt, turn_id: Some(turn.into()) }
 }
 

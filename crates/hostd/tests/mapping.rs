@@ -143,7 +143,7 @@ fn exit_reasons_name_a_signal_or_say_unknown() {
 #[test]
 fn questions_map_to_events_and_activity() {
     let mut c = ctx(true);
-    let prompt = QuestionPrompt { header: None, text: "x".repeat(9000), options: vec![], allow_other: true, tool: None, tool_input: None };
+    let prompt = QuestionPrompt { urgency: None, header: None, text: "x".repeat(9000), options: vec![], allow_other: true, tool: None, tool_input: None };
     let out = map_event(
         &mut c,
         "dev.a@r",

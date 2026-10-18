@@ -5,6 +5,7 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Added
+- Question urgency (agent-reported, an idea from Gas Town's escalation severity): `request_input` takes `urgency` (`low` | `normal` | `high`, `model::Urgency`, `QuestionPrompt.urgency`); the inbox sorts high first and low last, and the question card marks urgent ones. No re-escalation: an unanswered question still times out to the agent's own decision.
 - Waves on the item board (an idea from Gas Town's convoys): `itemBoardModel::waves` levels a batch's items by `depends_on` (unknown ones ignored, cycles cut) and the board lists each wave's state and count; shown only when there is more than one wave.
 - `sculptured doctor` (an idea from Gas Town's `gt doctor`): the CLIs' install and sign-in (`localops::clis::status`), the built-in components' programs (`hostd::supervisor::find_program`, now public), and each runner's allowed folders, approvals and secret names. Read-only.
 - Re-briefing after compaction (an idea from Gas Town's `gt prime`): `LaunchParams.briefing` for protected Claude agents, written by the runner to `briefings/<seat>.md`, given back by a `SessionStart` hook (matcher `compact`) running `sculptured rebrief`.

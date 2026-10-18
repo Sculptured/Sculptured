@@ -130,7 +130,7 @@ pub fn expired_question(
     source: QuestionSource,
     tool: Option<&str>,
 ) {
-    let prompt = QuestionPrompt {
+    let prompt = QuestionPrompt { urgency: None,
         header: None,
         text: "Which?".into(),
         options: vec![],

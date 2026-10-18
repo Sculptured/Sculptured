@@ -268,7 +268,7 @@ async fn an_answer_is_refused_plainly_on_an_older_runner_and_the_question_reopen
     let seat = "dev.a@r";
     let running = EventBody::SeatLifecycleChanged { lifecycle: SeatLifecycle::Running, reason: None };
     s.st.local_event(Actor::System("hostd".into()), Subject::Seat(seat.into()), Provenance::ProtocolObserved, running).unwrap();
-    let prompt = QuestionPrompt { header: None, text: "Which colour?".into(), options: vec![], allow_other: true, tool: None, tool_input: None };
+    let prompt = QuestionPrompt { urgency: None, header: None, text: "Which colour?".into(), options: vec![], allow_other: true, tool: None, tool_input: None };
     let raised = EventBody::QuestionRaised { question_id: "q1".into(), source: QuestionSource::NativeQuestion, prompt, turn_id: None };
     s.st.local_event(Actor::Seat(seat.into()), Subject::Seat(seat.into()), Provenance::ProtocolObserved, raised).unwrap();
     wait_for("question open", || s.st.store.lock().unwrap().seat(seat).unwrap().unwrap().open_questions == 1).await;

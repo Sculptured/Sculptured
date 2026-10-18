@@ -13,6 +13,7 @@ Changes you can see or use, by date. The open-source core's full history is on [
 - **A component that is not built in runs on a connected computer only after its owner approves it there**, with `sculptured approve-component`.
 - **A refused start pops up** with its reason, and a plan hold offers **Start anyway**.
 - **More kinds of components:** remote MCP servers at a web address (such as a hosted OpenFOAM server), skill packs, and Claude plugins installed on the agent's computer. **New component** makes one from a short form. A remote server's key stays on the agent's computer: the manifest names it as `${NAME}`, and the computer's owner sets it with `sculptured set-secret NAME`.
+- **Urgent questions first:** an agent can mark its question urgent or low; urgent ones come first in Needs you, marked as the agent's own word. An idea from Gas Town.
 - **Waves on the item board:** when a workflow's items depend on each other, the Run view shows them as waves, each done, in progress or waiting. An idea from Gas Town's convoys.
 - **`sculptured doctor`** checks a computer for its agents: Claude Code and Codex installed and signed in, allowed folders, component programs, approvals and secret names. See [CLI](/reference/cli#sculptured-doctor).
 - **Briefings survive compaction:** when Claude Code compacts a Claude agent's conversation, Sculptured gives the agent its briefing back (with protections on). An idea from Gas Town.

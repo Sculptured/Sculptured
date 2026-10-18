@@ -29,7 +29,7 @@ pub use workflow::{ReviewPersona, Escalation, Guard, GuardState, TaskStatus, ASS
 
 pub use action::{ActionClass, RiskFlag};
 pub use question::{
-    timeout_instruction, Answer, DecisionSource, QuestionOption, QuestionPrompt, QuestionSource, QuestionState,
+    timeout_instruction, Answer, DecisionSource, QuestionOption, QuestionPrompt, QuestionSource, QuestionState, Urgency,
     RestoreDecision, SessionMode,
 };
 pub use report::{cap_findings, Finding, ReportVerdict, MAX_FINDING, MAX_FINDINGS};

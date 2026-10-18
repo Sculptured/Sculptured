@@ -47,6 +47,22 @@ pub struct QuestionPrompt {
     pub tool: Option<String>,
     /// Permission prompts: the tool's input, verbatim.
     pub tool_input: Option<serde_json::Value>,
+    /// How urgent the asking agent says it is (agent-reported); urgent ones come first in Needs you.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub urgency: Option<Urgency>,
+}
+
+/// An agent's own word on how much a question holds up (an idea from Gas Town's escalation severity).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum Urgency {
+    /// A preference it could decide itself.
+    Low,
+    Normal,
+    /// The work cannot go on, or others wait on the answer.
+    High,
 }
 
 /// Cuts `s` to at most `max` bytes on a char boundary, marking the cut with `…`.
@@ -70,6 +86,7 @@ impl QuestionPrompt {
         // A permission prompt (it names a tool) is cut in the middle, so the end of a command stays visible.
         let permission = self.tool.is_some();
         Self {
+            urgency: self.urgency,
             header: self.header.map(|h| cut(h, Self::MAX_LABEL)),
             text: if !permission {
                 cut(self.text, Self::MAX_TEXT)

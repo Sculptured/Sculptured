@@ -2679,6 +2679,17 @@
         },
         "tool_input": {
           "description": "Permission prompts: the tool's input, verbatim."
+        },
+        "urgency": {
+          "description": "How urgent the asking agent says it is (agent-reported); urgent ones come first in Needs you.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Urgency"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -3488,6 +3499,27 @@
         "completed",
         "failed",
         "interrupted"
+      ]
+    },
+    "Urgency": {
+      "description": "An agent's own word on how much a question holds up (an idea from Gas Town's escalation severity).",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "normal"
+          ]
+        },
+        {
+          "description": "A preference it could decide itself.",
+          "type": "string",
+          "const": "low"
+        },
+        {
+          "description": "The work cannot go on, or others wait on the answer.",
+          "type": "string",
+          "const": "high"
+        }
       ]
     },
     "Wave": {

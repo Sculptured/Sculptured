@@ -68,7 +68,8 @@ fn request_input_tool() -> Value {
         "inputSchema": { "type": "object", "properties": {
             "question": { "type": "string" },
             "options": { "type": "array", "items": { "type": "string" } },
-            "header": { "type": "string" }
+            "header": { "type": "string" },
+            "urgency": { "type": "string", "enum": ["low", "normal", "high"], "description": "high: your work cannot go on, or others wait on the answer; low: a preference you could decide yourself. Urgent questions are shown first." }
         }, "required": ["question"] }
     })
 }

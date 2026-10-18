@@ -218,7 +218,7 @@ fn scripted_turn(shared: &Shared, core: &mut Core, turn: String, text: &str) -> 
 fn ask_turn(core: &mut Core, turn: String, rest: &str, silent: bool, allow_other: bool) -> Result<(), DriverError> {
     let (question, options) = split(rest);
     core.emit(DriverEvent::Text { turn_id: Some(turn.clone()), text: format!("stub asks: {question}") })?;
-    let prompt = QuestionPrompt {
+    let prompt = QuestionPrompt { urgency: None,
         header: None,
         text: question,
         options: options.iter().map(|l| QuestionOption { label: l.clone(), description: None }).collect(),
@@ -232,7 +232,7 @@ fn ask_turn(core: &mut Core, turn: String, rest: &str, silent: bool, allow_other
 
 /// `perm:` in restricted posture asks before running the command.
 fn permission_turn(core: &mut Core, turn: String, cmd: &str) -> Result<(), DriverError> {
-    let prompt = QuestionPrompt {
+    let prompt = QuestionPrompt { urgency: None,
         header: None,
         text: format!("Allow Bash to run `{cmd}`?"),
         options: vec![],

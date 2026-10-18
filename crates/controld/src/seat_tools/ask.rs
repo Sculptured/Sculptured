@@ -22,7 +22,11 @@ pub(super) async fn request_input(st: &AppState, seat: &str, args: &Value) -> Re
         Some(_) => return Err(invalid("options must be a list")),
     };
     let header = args.get("header").and_then(Value::as_str).map(str::to_string);
-    let prompt = QuestionPrompt { header, text, options, allow_other: true, tool: None, tool_input: None };
+    let urgency = match args.get("urgency") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(serde_json::from_value::<model::Urgency>(v.clone()).map_err(|_| invalid("urgency must be low, normal or high"))?),
+    };
+    let prompt = QuestionPrompt { urgency, header, text, options, allow_other: true, tool: None, tool_input: None };
     let (id, answer) = ask(st, seat, QuestionSource::RequestInput, prompt).await?;
     let (text, timed_out) = match &answer {
         Answer::Expired => (expired_text(st, seat, &id), true),
@@ -69,7 +73,7 @@ pub(super) async fn approve(st: &AppState, seat: &str, args: &Value) -> Result<O
     let tool_name = string_arg(args, "tool_name")?.to_string();
     let input = args.get("input").cloned().filter(Value::is_object).ok_or_else(|| invalid("input must be an object"))?;
     let text = format!("Allow {tool_name} to run?");
-    let prompt = QuestionPrompt { header: None, text, options: vec![], allow_other: false, tool: Some(tool_name), tool_input: Some(input.clone()) };
+    let prompt = QuestionPrompt { urgency: None, header: None, text, options: vec![], allow_other: false, tool: Some(tool_name), tool_input: Some(input.clone()) };
     let (id, answer) = ask(st, seat, QuestionSource::NativePermission, prompt).await?;
     let behaviour = match &answer {
         Answer::Allow | Answer::Expired => json!({ "behavior": "allow", "updatedInput": input }),

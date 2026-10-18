@@ -28,7 +28,7 @@ fn new_event_bodies() -> Vec<EventBody> {
         EventBody::QuestionRaised {
             question_id: "q1".into(),
             source: QuestionSource::RequestInput,
-            prompt: QuestionPrompt { header: None, text: "Which?".into(), options: vec![], allow_other: true, tool: None, tool_input: None },
+            prompt: QuestionPrompt { urgency: None, header: None, text: "Which?".into(), options: vec![], allow_other: true, tool: None, tool_input: None },
             turn_id: Some("turn-1".into()),
         },
         EventBody::QuestionDecided { question_id: "q1".into(), decision: "Blue".into(), rationale: None, source: DecisionSource::NextMessage },
@@ -65,7 +65,7 @@ fn new_event_bodies_round_trip() {
 
 #[test]
 fn prompt_is_capped() {
-    let p = QuestionPrompt {
+    let p = QuestionPrompt { urgency: None,
         header: Some("h".repeat(5000)),
         text: "é".repeat(10_000),
         options: (0..500).map(|i| QuestionOption { label: format!("{i}{}", "x".repeat(400)), description: Some("d".repeat(5000)) }).collect(),
@@ -90,7 +90,7 @@ fn prompt_is_capped() {
     assert!(input["command"].as_str().unwrap().contains(NOT_STORED));
 
     // An agent question (no tool) is cut at the end, marked with `…`.
-    let q = QuestionPrompt { header: None, text: "é".repeat(10_000), options: vec![], allow_other: true, tool: None, tool_input: None }.capped();
+    let q = QuestionPrompt { urgency: None, header: None, text: "é".repeat(10_000), options: vec![], allow_other: true, tool: None, tool_input: None }.capped();
     assert!(q.text.len() <= QuestionPrompt::MAX_TEXT + 4, "{}", q.text.len());
     assert!(q.text.ends_with('…'));
 }
@@ -101,7 +101,7 @@ const NOT_STORED: &str = "bytes not stored; this command is too long to show in 
 const DANGER: &str = "; rm -rf ~/work";
 
 fn approval(command: &str) -> QuestionPrompt {
-    QuestionPrompt {
+    QuestionPrompt { urgency: None,
         header: None,
         text: format!("Allow Bash to run: {command}"),
         options: vec![],

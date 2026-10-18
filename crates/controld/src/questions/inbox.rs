@@ -144,6 +144,12 @@ pub fn inbox(st: &AppState) -> Result<Vec<InboxItem>, ApiError> {
     let mut items: Vec<InboxItem> = rows.into_iter().map(|q| question_item(st, q)).collect();
     items.extend(seats.into_iter().map(seat_item));
     items.extend(decisions);
-    items.sort_by(|a, b| a.opened_at_ms.cmp(&b.opened_at_ms).then_with(|| a.id.cmp(&b.id)));
+    // Urgent questions first, low ones last (as their agents say); otherwise oldest first.
+    let rank = |i: &InboxItem| match i.question.as_ref().and_then(|q| q.prompt.urgency) {
+        Some(model::Urgency::High) => 0,
+        Some(model::Urgency::Low) => 2,
+        _ => 1,
+    };
+    items.sort_by(|a, b| rank(a).cmp(&rank(b)).then(a.opened_at_ms.cmp(&b.opened_at_ms)).then_with(|| a.id.cmp(&b.id)));
     Ok(items)
 }

@@ -91,7 +91,7 @@ function Asked({ q, name }: { q: QuestionView; name: string }) {
   const title = permission ? `${name} wants to run ${q.prompt.tool ?? 'a tool'}` : q.prompt.header ?? `${name} asks`;
   return (
     <>
-      <p className="question-title"><strong>{title}</strong></p>
+      <p className="question-title"><strong>{title}</strong>{q.prompt.urgency === 'high' && <>{' · '}<span className="tone-amber question-urgency">Urgent, says the agent</span></>}</p>
       <p className="question-text" data-raw-evidence>{q.prompt.text}</p>
       {permission && q.consequence.length > 0 && (
         <ul className="question-risks" aria-label="What it would do (Sculptured's reading)">

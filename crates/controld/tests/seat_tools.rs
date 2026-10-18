@@ -133,3 +133,19 @@ pods:
         "a Practice agent asks through perm:"
     );
 }
+
+/// Urgency (agent-reported, an idea from Gas Town's escalation severity): an urgent question comes first
+/// in Needs you, even when asked later; an unknown urgency is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_urgent_question_comes_first_in_needs_you() {
+    let (s, _sup, _dir) = with_tools().await;
+    let (one, two) = (practice_team(&s, "solo").await, practice_team(&s, "solo").await);
+    let (a, b) = (seat(&one, "claude"), seat(&two, "claude"));
+    let (_ca, _ra, _qa) = request_call(&s, &a, json!({ "question": "Which font?", "urgency": "low" })).await;
+    let (_cb, _rb, qb) = request_call(&s, &b, json!({ "question": "The build server is down: wait or skip?", "urgency": "high" })).await;
+    let (_, inbox) = get(&s.router, "/api/inbox").await;
+    assert_eq!(inbox[0]["id"], format!("q:{qb}"), "{inbox}");
+    assert_eq!(inbox[0]["question"]["prompt"]["urgency"], "high");
+    let (ok, _, error) = direct(&s, &a, "request_input", json!({ "question": "x", "urgency": "now!" })).await;
+    assert!(!ok && error.unwrap_or_default().contains("urgency"));
+}

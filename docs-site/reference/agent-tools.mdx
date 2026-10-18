@@ -63,6 +63,7 @@ Asks the person running the team a question and waits for the answer. The questi
 | `question` | string | yes | The question. |
 | `options` | list of strings, or `{label, description}` objects | no | Choices to offer. You can always type another answer. |
 | `header` | string | no | A short label shown above the question. |
+| `urgency` | `low`, `normal` or `high` | no | How much the question holds up the work, in the agent's own words: `high` when it cannot go on or others wait on the answer, `low` for a preference it could decide itself. Urgent questions come first in **Needs you** and are marked *Urgent, says the agent*; low ones come last. |
 
 The agent receives `{ text, question_id, timed_out }`.
 
