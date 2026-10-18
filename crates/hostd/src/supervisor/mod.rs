@@ -1,7 +1,7 @@
 mod lifecycle;
 mod tools;
 mod extras;
-pub use extras::{APPROVED_FILE as APPROVED_COMPONENTS_FILE, SECRETS_FILE as COMPONENT_SECRETS_FILE};
+pub use extras::{find_program, APPROVED_FILE as APPROVED_COMPONENTS_FILE, SECRETS_FILE as COMPONENT_SECRETS_FILE};
 
 use crate::journal::Journal;
 use crate::mapping::Mapped;

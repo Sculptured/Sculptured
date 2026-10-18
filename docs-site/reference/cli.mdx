@@ -147,6 +147,14 @@ sculptured approve-component <digest> [--data-dir <DIR>]
 
 Lets agents on this computer use a component that is not built in. The digest is in the note on the agent that went without it, next to what the component runs or connects to. Approve only what you would run yourself. Agents given the component start it at their next launch; nothing is restarted. A changed manifest has a new digest and needs approving again.
 
+## `sculptured doctor`
+
+```bash
+sculptured doctor [--data-dir <DIR>]
+```
+
+Checks what this computer has for its agents and prints one line each: Claude Code and Codex (installed, signed in), the built-in components' programs, and for each runner its allowed folders, how many components are approved here, and the names of component secrets set here (never their values). Lines marked `fix` need something done. It changes nothing.
+
 ## `sculptured set-secret`
 
 ```bash

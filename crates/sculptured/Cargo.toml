@@ -16,6 +16,7 @@ path = "src/background.rs"
 [dependencies]
 controld.workspace = true
 hostd.workspace = true
+localops.workspace = true
 drivers.workspace = true
 model.workspace = true
 tokio.workspace = true

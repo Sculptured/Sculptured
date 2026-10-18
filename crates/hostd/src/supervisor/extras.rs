@@ -199,7 +199,7 @@ pub(crate) fn write_plugin(dir: &Path, skills: &[Skill]) -> std::io::Result<()> 
 }
 
 /// A program on PATH, or in the usual per-user install folders (login services start with a short PATH).
-fn find_program(name: &str) -> Option<PathBuf> {
+pub fn find_program(name: &str) -> Option<PathBuf> {
     let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from);
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();

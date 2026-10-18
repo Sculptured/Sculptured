@@ -2276,6 +2276,7 @@ dependencies = [
  "drivers",
  "hostd",
  "libc",
+ "localops",
  "model",
  "reqwest",
  "rpassword",

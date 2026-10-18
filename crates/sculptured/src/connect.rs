@@ -480,6 +480,14 @@ pub fn run_approve_component(digest: &str, data_dir: Option<PathBuf>) -> Result<
     Ok(())
 }
 
+/// Every runner's data folder on this computer, or only the one given.
+pub fn runner_dirs(data_dir: Option<PathBuf>) -> Result<Vec<PathBuf>, String> {
+    Ok(match data_dir {
+        Some(d) => vec![runner_dir(Some(d))?],
+        None => { let base = runner_dir(None)?; std::iter::once(base.clone()).chain(crate::runners::other_dirs(&base)).collect() }
+    })
+}
+
 /// `sculptured set-secret NAME`: keeps a component's secret for every runner on this computer (or the
 /// one in `--data-dir`), read at each launch. The value comes from the terminal unechoed, or from stdin.
 pub fn run_set_secret(name: &str, remove: bool, data_dir: Option<PathBuf>) -> Result<(), String> {

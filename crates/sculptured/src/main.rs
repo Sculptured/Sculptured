@@ -1,6 +1,7 @@
 //! `sculptured serve` runs controld and supervises a local hostd child process.
 //! `sculptured hostd` runs the host runtime; controld normally starts it.
 mod connect;
+mod doctor;
 mod guard;
 mod runners;
 mod web_cache;
@@ -110,6 +111,12 @@ enum Cmd {
         #[arg(long)]
         data_dir: Option<PathBuf>,
     },
+    /// Check what this computer has for its agents: Claude Code and Codex, allowed folders, component
+    /// programs, approvals and secrets (names only). Changes nothing.
+    Doctor {
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+    },
     /// Keep a secret a component names (such as ${OPENFOAM_TOKEN}) on this computer, for its agents.
     /// The value is typed or piped in, never given on the command line.
     SetSecret {
@@ -181,6 +188,10 @@ async fn run(cli: Cli) -> ExitCode {
         }
         Cmd::Allow { folder, data_dir } => connect::run_allow(&folder, data_dir),
         Cmd::ApproveComponent { digest, data_dir } => connect::run_approve_component(&digest, data_dir),
+        Cmd::Doctor { data_dir } => match connect::runner_dirs(data_dir) {
+            Ok(dirs) => doctor::run(dirs).await,
+            Err(e) => Err(e),
+        },
         Cmd::SetSecret { name, remove, data_dir } => connect::run_set_secret(&name, remove, data_dir),
         Cmd::Stop { data_dir } => connect::run_stop(data_dir),
     };
