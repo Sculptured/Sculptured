@@ -702,3 +702,23 @@ async fn a_failed_answer_reopens_only_while_the_agent_can_take_it() {
     }
     assert_eq!(s.st.store.lock().unwrap().seat(b).unwrap().unwrap().open_questions, 0);
 }
+
+/// The project's Questions page: every question its agents asked, answered or not, newest first.
+#[tokio::test]
+async fn a_projects_questions_list_every_agents_questions_newest_first() {
+    let (s, agent) = ready().await;
+    say(&s, &agent, "ask:Which colour?|Blue|Green").await;
+    let first = raised(&s, &agent, 0).await;
+    let (status, _) = call(&s.router, "POST", &format!("/api/questions/{first}/answer"), answer_body("Green")).await;
+    assert_eq!(status, StatusCode::OK);
+    let after = events(&s.st, &agent).last().unwrap().seq;
+    say(&s, &agent, "ask:Which size?|S|M").await;
+    let second = raised(&s, &agent, after).await;
+    let team = s.st.store.lock().unwrap().seat(&agent).unwrap().unwrap().rig;
+    let (status, list) = get(&s.router, &format!("/api/teams/{team}/questions")).await;
+    assert_eq!(status, StatusCode::OK, "{list}");
+    let ids: Vec<&str> = list.as_array().unwrap().iter().map(|q| q["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, [second.as_str(), first.as_str()], "newest first");
+    assert_eq!(list[1]["answer"]["text"], "Green", "with the answer given");
+    assert_eq!(list[0]["state"], "open");
+}

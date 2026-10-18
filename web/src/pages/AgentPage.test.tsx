@@ -32,12 +32,12 @@ describe('Agent page', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it('has three tabs, Conversation first; raw events wait one step back on Activity', async () => {
+  it('has four tabs, Conversation first; raw events wait one step back on Activity', async () => {
     renderAt('/rig/r/agent/dev.a%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
     await screen.findByText('stub received: hello');
     const tabs = screen.getByRole('navigation', { name: 'Agent pages' });
-    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Conversation', 'Setup', 'Activity']);
+    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Conversation', 'Setup', 'Activity', 'Questions']);
     expect(within(tabs).getByRole('link', { name: 'Conversation' })).toHaveAttribute('aria-current', 'page');
     // The header says who, its status and what it runs on; Board goes back.
     expect(screen.getByRole('heading', { level: 1, name: 'a' })).toBeInTheDocument();

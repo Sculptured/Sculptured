@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/inbox", get(get_inbox))
         .route("/api/seats/{id}/questions", get(get_seat_questions))
+        .route("/api/teams/{id}/questions", get(get_team_questions))
         .route("/api/questions/{id}/answer", post(post_answer))
         .route("/api/questions/{id}/acknowledge", post(post_acknowledge))
         .route("/api/questions/{id}/send-again", post(post_send_again))
@@ -122,7 +123,13 @@ async fn get_inbox(State(st): State<AppState>) -> Response {
 }
 
 async fn get_seat_questions(State(st): State<AppState>, Path(id): Path<String>) -> Response {
-    let rows = questions_where(st.store.lock().unwrap().connection(), "seat = ?1 ORDER BY opened_at_ms DESC LIMIT 50", [&id]);
+    let rows = questions_where(st.store.lock().unwrap().connection(), "seat = ?1 ORDER BY opened_at_ms DESC, opened_seq DESC LIMIT 200", [&id]);
+    respond(rows.map_err(ApiError::from).map(|rows| rows.into_iter().map(|q| view(&st, q)).collect::<Vec<_>>()))
+}
+
+/// Every question the team's agents asked, newest first: the project's Questions page.
+async fn get_team_questions(State(st): State<AppState>, Path(id): Path<String>) -> Response {
+    let rows = questions_where(st.store.lock().unwrap().connection(), "rig = ?1 ORDER BY opened_at_ms DESC, opened_seq DESC LIMIT 500", [&id]);
     respond(rows.map_err(ApiError::from).map(|rows| rows.into_iter().map(|q| view(&st, q)).collect::<Vec<_>>()))
 }
 

@@ -13,6 +13,7 @@ import { ResetPage } from './hosted/ResetPage';
 import { AdminPage } from './hosted/AdminPage';
 import { ConnectPage } from './hosted/ConnectPage';
 import { ComputersPage } from './hosted/ComputersPage';
+import { QuestionsPage } from './questions/QuestionsPage';
 import { AccountPage } from './account/AccountPage';
 import { OpsPage } from './hosted/OpsPage';
 import { WhatWeRecord } from './hosted/WhatWeRecord';
@@ -60,6 +61,7 @@ function ProjectRoutes() {
       <Route path="board" element={<BoardPage />} />
       <Route path="agents" element={<AgentsPage />} />
       <Route path="agents/:agent/:tab?" element={<AgentPage />} />
+      <Route path="questions" element={<QuestionsPage />} />
       <Route path="results" element={<ResultsPage />} />
       <Route path="results/:section" element={<ResultsPage />} />
       <Route path="settings" element={<SettingsPage />} />

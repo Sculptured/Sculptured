@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import type { DraftIssue } from '../generated/DraftIssue';
-import { agentsPath, boardPath, resultsPath, settingsPath } from '../paths';
+import { agentsPath, boardPath, questionsPath, resultsPath, settingsPath } from '../paths';
 import { DismissibleError } from '../shell/DismissibleError';
 import { StartRefused } from '../shell/StartRefused';
 import { useShell } from '../shell/ShellContext';
@@ -25,6 +25,7 @@ function Tabs({ team }: { team: string }) {
     <nav className="pb-tabs" aria-label="Project">
       {tab(boardPath(team), 'Board', onWorkflow)}
       {tab(agentsPath(team), 'Agents')}
+      {tab(questionsPath(team), 'Questions')}
       {tab(resultsPath(team), 'Results')}
       {tab(settingsPath(team), 'Settings')}
     </nav>
@@ -32,7 +33,7 @@ function Tabs({ team }: { team: string }) {
 }
 
 /**
- * Under the top bar on every project page: the project's name, its four pages as tabs, its status
+ * Under the top bar on every project page: the project's name, its pages as tabs, its status
  * (shape plus words) and the one primary action, Start team or Stop team…
  */
 export function ProjectBar() {

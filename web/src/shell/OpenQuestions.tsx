@@ -7,7 +7,7 @@ import type { QuestionView } from '../generated/QuestionView';
 import { usePolled } from '../usePolling';
 
 /** A question that needs the person: open, an answer that may not have arrived, or one that timed out unseen. */
-function needsYou(q: QuestionView): boolean {
+export function needsYou(q: QuestionView): boolean {
   if (q.state === 'open') return true;
   if (q.state === 'answered') return q.unconfirmed !== null;
   return q.state === 'expired' && !q.acknowledged && q.late_answer === null;
@@ -58,7 +58,7 @@ type Act = {
   run: (call: () => Promise<unknown>) => Promise<void>;
 };
 
-function QuestionCard({ q, name, onDone }: { q: QuestionView; name: string; onDone: () => void }) {
+export function QuestionCard({ q, name, onDone }: { q: QuestionView; name: string; onDone: () => void }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

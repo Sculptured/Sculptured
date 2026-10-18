@@ -1,0 +1,9 @@
+.question-log { display: grid; gap: 12px; }
+.ql-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.ql-entry { border: 1px solid var(--line, #d0d5dd); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0; }
+.ql-entry.ql-waiting { border-color: var(--amber, #b54708); }
+.ql-meta { font-size: var(--text-sm, 13px); color: var(--muted, #475467); margin: 0; }
+.ql-text, .ql-result, .ql-header { margin: 0; overflow-wrap: anywhere; }
+.ql-choices { margin: 0; padding-left: 18px; }
+.ql-choices .picked { font-weight: 600; }
+.ql-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }

@@ -5,6 +5,7 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Added
+- Questions pages: `GET /api/teams/{id}/questions` (every question of a team, newest first, at most 500; the agent list now returns up to 200); the project's **Questions** tab (`/p/:team/questions`) and each agent's **Questions** tab (`questions/QuestionLog`): open questions answered in place (the existing question card), answers with the offered choices and the one picked, the agent's own decision on expiry, late answers, withdrawn ones; filters by outcome and agent.
 - Question urgency (agent-reported, an idea from Gas Town's escalation severity): `request_input` takes `urgency` (`low` | `normal` | `high`, `model::Urgency`, `QuestionPrompt.urgency`); the inbox sorts high first and low last, and the question card marks urgent ones. No re-escalation: an unanswered question still times out to the agent's own decision.
 - Waves on the item board (an idea from Gas Town's convoys): `itemBoardModel::waves` levels a batch's items by `depends_on` (unknown ones ignored, cycles cut) and the board lists each wave's state and count; shown only when there is more than one wave.
 - `sculptured doctor` (an idea from Gas Town's `gt doctor`): the CLIs' install and sign-in (`localops::clis::status`), the built-in components' programs (`hostd::supervisor::find_program`, now public), and each runner's allowed folders, approvals and secret names. Read-only.

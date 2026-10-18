@@ -18,12 +18,14 @@ import { DismissibleError } from '../shell/DismissibleError';
 import { AgentActivity } from './AgentActivity';
 import { AgentConversation } from './AgentConversation';
 import { AgentSetup } from './AgentSetup';
+import { AgentQuestions } from '../questions/QuestionsPage';
 import { useProject, type Project } from './ProjectContext';
 
 const TABS: { id: AgentTab; label: string }[] = [
   { id: 'conversation', label: 'Conversation' },
   { id: 'setup', label: 'Setup' },
   { id: 'activity', label: 'Activity' },
+  { id: 'questions', label: 'Questions' },
 ];
 
 /** "Claude · Opus 4.1": what the agent runs on, from its design when there is one. */
@@ -35,7 +37,7 @@ function runsOn(draft: TeamDraft | null, d: DraftAgent | undefined, row: AgentRo
 
 type HeadProps = { p: Project; seat: string; name: string; row?: AgentRow; d?: DraftAgent; tab: AgentTab; headingRef?: RefObject<HTMLHeadingElement | null>; tools?: ReactNode };
 
-/** Back to the board, who the agent is, its status and what it runs on; then its three tabs. */
+/** Back to the board, who the agent is, its status and what it runs on; then its tabs. */
 function AgentHead({ p, seat, name, row, d, tab, headingRef, tools }: HeadProps) {
   const shell = useShell();
   const v = d ? kindVendor(d.kind) : row!.vendor;
@@ -94,7 +96,7 @@ export function AgentPage() {
   return (
     <main className={`page agent-page ap-on-${current}`}>
       <AgentHead p={p} seat={seat} name={name} row={row} d={d} tab={current} />
-      {current === 'setup' ? <AgentSetup p={p} agentId={d?.id} /> : <NotStarted p={p} seat={seat} tab={current} />}
+      {current === 'setup' ? <AgentSetup p={p} agentId={d?.id} /> : current === 'questions' ? <AgentQuestions team={p.team} seat={seat} name={name} feed={[]} /> : <NotStarted p={p} seat={seat} tab={current} />}
     </main>
   );
 }
@@ -124,6 +126,7 @@ function LiveAgent({ p, seat, row, d, name, tab }: { p: Project; seat: string; r
       <AgentHead p={p} seat={seat} name={name} row={row} d={d} tab={tab} headingRef={heading} tools={tab === 'conversation' ? <span className="pane-search" ref={setSearch} /> : null} />
       {tab === 'conversation' && <AgentConversation a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} searchSlot={search} handOverInline={inline} askHandOver={inline ? askHandOver : 0} />}
       {tab === 'setup' && <AgentSetup p={p} agentId={d?.id} />}
+      {tab === 'questions' && <AgentQuestions team={p.team} seat={seat} name={name} feed={feed} />}
       {tab === 'activity' && <AgentActivity a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} handOverInline={inline} askHandOver={askHandOver} askOnOpen={askOnOpen} onAsked={() => setAskOnOpen(false)} />}
     </main>
   );

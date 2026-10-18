@@ -77,10 +77,10 @@ describe('the frame: one top bar, then a project tab row, then the page', () => 
     expect(within(bar).getByRole('link', { name: 'Community' })).toHaveAttribute('href', '/community');
   });
 
-  it('every project page has Board · Agents · Results · Settings, a status in shape and words, and one primary action', async () => {
+  it('every project page has Board · Agents · Questions · Results · Settings, a status in shape and words, and one primary action', async () => {
     await twoTeams('/rig/r');
     const tabs = screen.getByRole('navigation', { name: 'Project' });
-    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Board', 'Agents', 'Results', 'Settings']);
+    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Board', 'Agents', 'Questions', 'Results', 'Settings']);
     expect(within(tabs).getByRole('link', { name: 'Board' })).toHaveAttribute('aria-current', 'page');
     const status = document.querySelector('.project-bar .pstatus')!;
     expect(status).toHaveTextContent('Running · none working');

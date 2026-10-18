@@ -1,12 +1,12 @@
 /**
  * Every page's address. A project (team) lives under `/p/:team`, one page per job:
- * Board, Agents, an Agent (Conversation, Setup, Activity), Results and Settings.
+ * Board, Agents, an Agent (Conversation, Setup, Activity, Questions), Questions, Results and Settings.
  */
 
 const enc = encodeURIComponent;
 
 export type BoardMode = 'design' | 'run';
-export type AgentTab = 'conversation' | 'setup' | 'activity';
+export type AgentTab = 'conversation' | 'setup' | 'activity' | 'questions';
 export type ResultsSection = 'summary' | 'conversation' | 'usage' | 'communications' | 'knowledge' | 'history';
 
 export const RESULTS_SECTIONS: { id: ResultsSection; label: string }[] = [
@@ -21,6 +21,8 @@ export const RESULTS_SECTIONS: { id: ResultsSection; label: string }[] = [
 export const boardPath = (team: string, mode?: BoardMode) => `/p/${enc(team)}/board${mode ? `?mode=${mode}` : ''}`;
 export const agentsPath = (team: string) => `/p/${enc(team)}/agents`;
 export const settingsPath = (team: string) => `/p/${enc(team)}/settings`;
+/** Every question the team's agents asked: open ones, answers, choices and the agents' own decisions. */
+export const questionsPath = (team: string) => `/p/${enc(team)}/questions`;
 export const resultsPath = (team: string, section?: ResultsSection) =>
   `/p/${enc(team)}/results${section && section !== 'summary' ? `/${section}` : ''}`;
 /** A workflow's own page: `input`, `settings`, `run`, `list` or `stage:<id>`. */

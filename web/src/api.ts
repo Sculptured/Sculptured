@@ -278,6 +278,8 @@ export const api = {
 
   inbox: () => request<InboxItem[]>('GET', '/api/inbox'),
   seatQuestions: (id: string) => request<QuestionView[]>('GET', `${seatUrl(id)}/questions`),
+  /** Every question the team's agents asked, newest first. */
+  teamQuestions: (id: string) => request<QuestionView[]>('GET', `${teamUrl(id)}/questions`),
   answer: (questionId: string, answer: Answer, requestId = newRequestId()) => {
     track('answer-question');
     return request<QuestionView>('POST', `${questionUrl(questionId)}/answer`, { request_id: requestId, answer });

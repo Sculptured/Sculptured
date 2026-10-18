@@ -10,7 +10,7 @@ import { openRigWords } from '../test-vocab';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
-  return { ...m, api: { ...m.api, latestSeatEvents: vi.fn(), teamRecent: vi.fn(), listRigs: vi.fn(), send: vi.fn(), gitStatus: vi.fn(), deployments: vi.fn() } };
+  return { ...m, api: { ...m.api, latestSeatEvents: vi.fn(), teamRecent: vi.fn(), listRigs: vi.fn(), send: vi.fn(), gitStatus: vi.fn(), deployments: vi.fn(), teamQuestions: vi.fn(), seatQuestions: vi.fn() } };
 });
 
 beforeEach(() => {
@@ -24,6 +24,8 @@ beforeEach(() => {
   vi.mocked(api.send).mockReset().mockResolvedValue({ message_id: 'm1' });
   vi.mocked(api.gitStatus).mockReset().mockRejectedValue(new Error('no folder'));
   vi.mocked(api.deployments).mockReset().mockResolvedValue([]);
+  vi.mocked(api.teamQuestions).mockReset().mockResolvedValue([]);
+  vi.mocked(api.seatQuestions).mockReset().mockResolvedValue([]);
 });
 
 describe('Agents list', () => {
@@ -87,5 +89,30 @@ describe('Results', () => {
   it('before a first start, says there is nothing yet', async () => {
     await twoTeams('/p/none/results');
     expect(await screen.findByRole('heading', { name: 'No runs yet' })).toBeInTheDocument();
+  });
+});
+
+describe('Questions', () => {
+  const asked = (id: string, seat: string, text: string, answer: string | null) => ({
+    id, seat, rig: 'r', source: 'request-input' as const, state: answer ? 'answered' as const : 'open' as const, opened_at_ms: 1, deadline_ms: null,
+    prompt: { header: null, text, options: [], allow_other: true, tool: null, tool_input: null },
+    answer: answer ? { kind: 'text' as const, text: answer } : null, answered_at_ms: answer ? 2 : null, late_answer: null, decision: null, withdrawn_reason: null,
+    acknowledged: false, consequence: [], expired_seq: null, unconfirmed: null,
+  });
+
+  it('the project has a Questions page with every agent\'s questions, and each agent its own Questions tab', async () => {
+    vi.mocked(api.teamQuestions).mockResolvedValue([asked('q2', 'dev.b@r', 'Ship it?', null), asked('q1', 'dev.a@r', 'Which colour?', 'Green')]);
+    vi.mocked(api.seatQuestions).mockResolvedValue([asked('q1', 'dev.a@r', 'Which colour?', 'Green')]);
+    await twoTeams('/p/r/questions');
+    expect(await screen.findByRole('heading', { name: 'Questions' })).toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('link', { name: 'Questions' })).toHaveAttribute('aria-current', 'page');
+    const list = await screen.findByRole('list', { name: 'Questions' });
+    expect(list.textContent).toContain('You answered: Green');
+    expect(within(list).getByRole('textbox')).toBeInTheDocument();
+    await userEvent.setup().click(within(list).getByRole('link', { name: 'a' }));
+    expect(where()).toBe('/p/r/agents/dev.a');
+    await userEvent.setup().click(within(screen.getByRole('navigation', { name: 'Agent pages' })).getByRole('link', { name: 'Questions' }));
+    expect(where()).toBe('/p/r/agents/dev.a/questions');
+    expect(await screen.findByText(/You answered: Green/)).toBeInTheDocument();
   });
 });
