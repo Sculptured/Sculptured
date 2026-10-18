@@ -334,7 +334,6 @@
   --btn-primary-shadow: none;
   --brand-mark-bg: var(--accent);
   --brand-mark-shadow: none;
-  --emblem-bg: var(--panel);                 /* unused here: Standard draws the plain mark (BrandMark) */
   --wash: 0;
   --avatar-bg: var(--accent-fill);
   --avatar-ink: #ffffff;
