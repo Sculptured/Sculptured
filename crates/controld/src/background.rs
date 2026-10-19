@@ -14,4 +14,5 @@ pub fn ensure_running(st: &AppState) {
     rt.spawn(crate::claims::run(st.clone()));
     rt.spawn(crate::budget::run(st.clone()));
     rt.spawn(crate::run_reports::run(st.clone()));
+    rt.spawn(crate::traces::export::run(st.clone()));
 }

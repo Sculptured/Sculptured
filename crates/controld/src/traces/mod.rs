@@ -1,3 +1,4 @@
-//! Sending a team's runs as OpenTelemetry traces to the team's chosen endpoint (Laminar first).
-//! See docs/design/2026-10-19-trace-export.md.
+//! Sending a team's runs as OpenTelemetry traces (Laminar or any OTLP/HTTP collector).
+pub mod export;
+pub mod settings;
 pub mod spans;

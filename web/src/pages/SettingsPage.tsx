@@ -15,6 +15,7 @@ import { ProjectFolder } from '../structure/ProjectFolder';
 import { ProtectionFields } from '../structure/ProtectionFields';
 import { TeamExport } from '../structure/TeamAdvanced';
 import { TeamLimitsFields } from '../structure/TeamLimitsFields';
+import { TraceSettings } from '../structure/TraceSettings';
 import { useProject, type Project } from './ProjectContext';
 import { ComponentsSection } from '../structure/ComponentsSection';
 import { liveFacts } from './useProjectRun';
@@ -53,7 +54,19 @@ export function SettingsPage() {
       <General p={p} locked={locked} />
       <Group title="Default models" hint="Each agent uses these unless its group or its own setup picks another."><TeamModelFields {...c} /></Group>
       <Group title="Run budget"><BudgetFields {...c} /></Group>
-      {draft.workflow && (
+      <Shortcuts p={p} />
+      <MoreSettings p={p} locked={locked} />
+      <Group title="Export"><TeamExport teamId={p.team} draft={draft} flush={p.t.flush} /></Group>
+      <DangerZone p={p} />
+    </main>
+  );
+}
+
+/** Links to the team's workflow pages (when it has a workflow) and its Git changes. */
+function Shortcuts({ p }: { p: Project }) {
+  return (
+    <>
+      {p.draft?.workflow && (
         <Group title="Workflow">
           <p className="set-links">
             <Link className="btn" to={workflowPath(p.team, 'input')}>Input</Link>
@@ -65,17 +78,23 @@ export function SettingsPage() {
       <Group title="Git">
         <p className="set-links"><Link className="btn" to={`/p/${encodeURIComponent(p.team)}/git`}>Open Git changes</Link></p>
       </Group>
-      <details className="set-sec set-more">
-        <summary><h2 className="set-title">More settings</h2> <span className="muted">· components, setup, protection, limits, improve from a run</span></summary>
-        <ComponentsSection draft={draft} edit={p.t.edit} locked={locked} />
-        <ClaudeSetupFields {...c} />
-        <ProtectionFields {...c} />
-        <TeamLimitsFields {...c} />
-        <ImproveFromRun teamId={p.team} draft={draft} edit={p.t.edit} locked={locked} />
-      </details>
-      <Group title="Export"><TeamExport teamId={p.team} draft={draft} flush={p.t.flush} /></Group>
-      <DangerZone p={p} />
-    </main>
+    </>
+  );
+}
+
+/** Under "More settings": components, setup, protection, limits, improve from a run, send traces. */
+function MoreSettings({ p, locked }: { p: Project; locked: boolean }) {
+  const c = { draft: p.draft!, edit: p.t.edit, locked };
+  return (
+    <details className="set-sec set-more">
+      <summary><h2 className="set-title">More settings</h2> <span className="muted">· components, setup, protection, limits, improve from a run, send traces</span></summary>
+      <ComponentsSection draft={p.draft!} edit={p.t.edit} locked={locked} />
+      <ClaudeSetupFields {...c} />
+      <ProtectionFields {...c} />
+      <TeamLimitsFields {...c} />
+      <ImproveFromRun teamId={p.team} draft={p.draft!} edit={p.t.edit} locked={locked} />
+      <TraceSettings teamId={p.team} />
+    </details>
   );
 }
 

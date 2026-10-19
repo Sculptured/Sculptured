@@ -1,0 +1,42 @@
+---
+title: Send traces
+description: Send a team's runs as OpenTelemetry traces to Laminar or another collector you already use.
+---
+
+If you already watch your AI work in an observability tool, Sculptured can send each run there as one trace. Laminar is built in; any collector that takes OTLP over HTTP (Langfuse, Datadog, Honeycomb, your company's own) works the same way. The board stays the main view: traces are a copy for the tools you already have.
+
+Sending is off until you turn it on, team by team.
+
+## Turn it on
+
+<Steps>
+  <Step title="Open the team's settings">Open the team, then **Settings** → **More settings** → **Send traces**.</Step>
+  <Step title="Choose where">Leave **Send to** on **Laminar**, or choose **Another OTLP/HTTP collector** and give its address (it usually ends in `/v1/traces`).</Step>
+  <Step title="Add the key">Paste the project API key from your tool. Sculptured's server keeps it and sends it only to that address, as `authorization: Bearer <key>`. It is never shown again; the page only says **A key is saved**.</Step>
+  <Step title="Choose what to send">**Timings, tokens and costs** (the default), or **Also prompts and outputs**.</Step>
+  <Step title="Save">Tick **Send this team's runs as traces** and choose **Save**. The next run is sent as it goes; a run already going is sent from its start.</Step>
+</Steps>
+
+## What a trace holds
+
+| Span | What it carries |
+|---|---|
+| **run** | The team. Events for budget changes, questions asked and answered, hand-overs, suspected stalls and checks. |
+| **agent** | One per session of an agent: its name, Claude Code or Codex, and the computer. |
+| **turn** | The model as observed, tokens in and out (with cache reads and writes), the cost when it is priced, and how the turn ended. Marked as an LLM span. |
+| **tool** | The tool's name and whether it failed, under its turn (or the call that started it). |
+
+A turn or tool goes when it ends, an agent span when its session ends, and the run span once the run has stopped and its agents' sessions have ended (or a minute after the stop).
+
+**Also prompts and outputs** adds each turn's input message and the agent's reply, each cut to 4 KB. Choose it only if the tool you send to may hold your prompts and your agents' outputs.
+
+## When a send fails
+
+A failed send is tried again every few seconds with the same spans, so nothing is lost while the collector is down. The settings show why the last send failed (for example, the key was refused). If the collector stays unreachable for a long time, Sculptured keeps the newest 20,000 spans and says how many it dropped.
+
+## Addresses you can use
+
+- On your own computer: any `https://` address, or `http://` to this computer (`localhost`, `127.0.0.1`) for a collector you run locally.
+- In the hosted app: a public `https://` address only. The server will not send to itself or its own network.
+
+Redirects are not followed, so the key reaches only the address you entered.

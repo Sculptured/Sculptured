@@ -79,6 +79,10 @@ The server's data is backed up every night. Admins can see account details, comp
 
 Claude Code and Codex send your agents' prompts and the files they read to Anthropic or OpenAI, as they do when you use them directly. That traffic goes from your computer to the provider, under your own Claude or ChatGPT plan or API key. Sculptured is not a party to it.
 
+## Traces you choose to send
+
+If you turn on [Send traces](/guides/send-traces) for a team, its runs go to the address you chose: timings, token counts, costs, agent and tool names, and, only if you choose it, prompts and outputs (each cut to 4 KB). The API key you give is kept on the server and sent only to that address.
+
 ## Community
 
 Community uses your Sculptured account. Publishing a block makes its definition public: its agents' roles and jobs, its connections, and the title and license you choose. Machine-specific folders, model overrides and workflow input are removed first, but review the jobs for private details before you publish.

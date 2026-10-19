@@ -134,9 +134,9 @@ impl Builder {
         match &e.body {
             EventBody::TenureStarted { tenure, driver, .. } => {
                 self.driver_of.insert(seat.to_string(), driver.clone());
-                let name = self.ctx.names.get(seat).cloned().unwrap_or_else(|| seat.to_string());
+                let name = self.ctx.names.get(seat).or_else(|| self.ctx.names.get(crate::seat_ids::member_of(seat))).cloned().unwrap_or_else(|| seat.to_string());
                 let attrs = vec![("sculptured.agent".into(), Attr::Str(name.clone())), ("sculptured.seat".into(), Attr::Str(seat.into())),
-                    ("sculptured.driver".into(), Attr::Str(driver.clone())), ("sculptured.session".into(), Attr::Int(i64::from(*tenure)))];
+                    ("sculptured.driver".into(), Attr::Str(driver.clone())), ("sculptured.session".into(), Attr::Int(i64::from(*tenure))), ("sculptured.computer".into(), Attr::Str(e.host.clone()))];
                 self.begin(format!("agent:{seat}"), seat, format!("agent {name}"), Some(self.run_id.clone()), e.at_ms, attrs);
                 vec![]
             }
@@ -259,6 +259,11 @@ impl Builder {
     }
 
     /// The run's own span, once the run has ended: from its first event to `end_ms`, with what happened.
+    /// Agent, turn and tool spans begun and not yet ended.
+    pub fn open_spans(&self) -> usize {
+        self.open.len()
+    }
+
     pub fn finish_run(&mut self, end_ms: i64) -> Span {
         let attrs = vec![("sculptured.team".into(), Attr::Str(self.ctx.team_name.clone())), ("sculptured.team_id".into(), Attr::Str(self.ctx.team.clone())), ("lmnr.span.type".into(), Attr::Str("DEFAULT".into()))];
         Span { trace_id: self.trace_id.clone(), span_id: self.run_id.clone(), parent: None, name: format!("run {}", self.ctx.team_name), start_ms: self.run_start.unwrap_or(end_ms),
@@ -363,6 +368,7 @@ mod tests {
         assert_eq!(attr(turn, "lmnr.span.type"), Some(&Attr::Str("LLM".into())));
         assert_eq!(attr(tool, "lmnr.span.type"), Some(&Attr::Str("TOOL".into())));
         assert_eq!(attr(agent, "sculptured.agent"), Some(&Attr::Str("Writer".into())));
+        assert_eq!(attr(agent, "sculptured.computer"), Some(&Attr::Str("h".into())), "the computer it ran on");
         assert_eq!(attr(&run, "sculptured.team"), Some(&Attr::Str("My team".into())));
         assert!(spans.iter().all(|s| attr(s, "lmnr.span.input").is_none() && attr(s, "lmnr.span.output").is_none()), "timings, tokens and costs only");
     }

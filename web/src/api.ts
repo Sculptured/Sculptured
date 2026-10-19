@@ -124,6 +124,10 @@ export type GeneratedTeam = { label: string; rationale: string; file: TeamFileV1
 export type TeamFileV1 = { format: string; team: import('./generated/TeamDraft').TeamDraft; settings: { posture?: string | null; own_copies: boolean; question_timeout_min?: number | null } };
 
 /** One turn of a design-assistant conversation. */
+/** A team's trace export, as the server shows it (never the key). */
+export type TraceExportView = { enabled: boolean; endpoint: string; key_saved: boolean; content: 'metadata' | 'full'; last_error: string | null; last_sent_ms: number | null };
+/** Saving it: no `key` keeps the saved one, '' removes it. */
+export type SaveTraces = { enabled: boolean; endpoint: string; content: 'metadata' | 'full'; key?: string };
 export type AssistantTurn = { role: 'person' | 'assistant'; text: string };
 /** The assistant's proposed design: nothing is saved until the person approves it. */
 export type DesignProposal = { summary: string; madl: string; draft: TeamDraft; dropped: Diagnostic[]; issues: DraftIssue[] };
@@ -314,6 +318,8 @@ export const api = {
   copyAction: (id: string, action: 'merge' | 'remove', seat: string, requestId = newRequestId()) =>
     request<import('./generated/AgentCopies').AgentCopies>('POST', `${teamUrl(id)}/copies/${action}`, { request_id: requestId, seat }),
   teamSettings: (id: string) => request<TeamSettings>('GET', `${teamUrl(id)}/settings`),
+  traces: (id: string) => request<TraceExportView>('GET', `${teamUrl(id)}/traces`),
+  saveTraces: (id: string, t: SaveTraces, requestId = newRequestId()) => request<TraceExportView>('PUT', `${teamUrl(id)}/traces`, { request_id: requestId, ...t }),
   saveTeamSettings: (id: string, settings: TeamSettings, requestId = newRequestId()) =>
     request<TeamSettings>('PUT', `${teamUrl(id)}/settings`, { request_id: requestId, settings }),
   restore: (seat: string, decision: RestoreDecision, requestId = newRequestId()) =>
