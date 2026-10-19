@@ -2,6 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from '
 import { ReleasePage } from './release/ReleasePage';
 import { Profile } from './release/Profile';
 import { Community } from './release/Community';
+import { CommunityHost } from './community/CommunityHost';
+import { CommunitySection } from './community/routes';
 import { GitPage } from './release/GitPage';
 import { hosted } from './release/Nav';
 import { Shell } from './shell/Shell';
@@ -90,11 +92,11 @@ export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
       <Route path="/computers" element={<ComputersPage />} />
       <Route path="/ops" element={<OpsPage />} />
       <Route path="/what-we-record" element={<WhatWeRecord />} />
+      <Route element={<CommunityHost openStream={openStream} />}><Route path="/community/*" element={<CommunitySection />} /></Route>
       <Route element={<Shell openStream={openStream} />}>
         <Route path="/" element={<ProjectsHome />} />
         <Route path="/new" element={<NewProject />} />
         <Route path="/account" element={<AccountPage />} />
-        <Route path="/community/*" element={<main className="page page-wide"><Community /></main>} />
         <Route path="/library/:collection" element={<LibraryRoute />} />
         {ProjectRoutes()}
       </Route>

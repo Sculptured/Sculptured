@@ -43,3 +43,7 @@
 .cm-reports { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .cm-reports li { padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
 .cm-reports blockquote { margin: 0 0 8px; white-space: pre-line; }
+.cm-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--space-3, 12px); border-bottom: 1px solid var(--line); }
+.cm-tabs a { padding: 6px 10px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+.cm-tabs a.on { color: var(--text); border-bottom-color: var(--accent, currentColor); }
+.cm-frame { min-height: 100vh; background: var(--bg); }

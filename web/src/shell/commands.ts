@@ -173,6 +173,10 @@ function appCommands(c: CommandContext): Command[] {
   return [
     { id: 'app.library', section: 'Go to', title: 'Library', words: 'saved groups templates', run: () => c.go('/library/groups') },
     { id: 'app.community', section: 'Go to', title: 'Community', words: 'share profile', run: () => c.go('/community') },
+    { id: 'community.people', section: 'Go to', title: 'Community: People', words: 'profiles directory', run: () => c.go('/community/people') },
+    { id: 'community.me', section: 'Go to', title: 'Your Community profile', words: 'handle avatar bio', run: () => c.go('/community/me') },
+    { id: 'community.saved', section: 'Go to', title: 'Community: Saved blocks', run: () => c.go('/community/saved') },
+    { id: 'community.publish', section: 'Go to', title: 'Publish a group to Community…', words: 'share upload', run: () => c.go('/community/publish') },
     { id: 'app.docs', section: 'Go to', title: 'Docs', words: 'help guides manual documentation how to', run: () => window.open(DOCS_URL, '_blank', 'noopener') },
     { id: 'app.account', section: 'Go to', title: 'Account and usage', words: 'tokens plan sign in settings', run: () => c.go('/account') },
     { id: 'app.appearance', section: 'App', title: 'Appearance…', words: 'font text size theme settings', run: c.act.appearance },

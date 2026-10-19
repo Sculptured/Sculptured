@@ -19,7 +19,7 @@ type Props = {
   onHelp: () => void;
 };
 
-/** The one bar on every page: home, the project switcher, Library, Account, Docs, Ctrl K and the app menu. */
+/** The one bar on every page: home, the project switcher, Library, Community, Account, Docs, Ctrl K and the app menu. */
 export function TopBar({ team, rows, onCommand, onHelp }: Props) {
   return (
     <header className="topbar">
@@ -30,6 +30,7 @@ export function TopBar({ team, rows, onCommand, onHelp }: Props) {
       <ProjectSwitcher team={team} rows={rows} />
       <nav className="tb-nav" aria-label="Go to">
         <NavLink to="/library/groups" className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Library</NavLink>
+        <NavLink to="/community" className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Community</NavLink>
         <AccountLink />
         <a href={DOCS_URL} className="tb-link" target="_blank" rel="noreferrer" data-tip="Guides and reference, in a new tab">Docs</a>
       </nav>
@@ -97,7 +98,8 @@ function AppMenu({ onHelp }: { onHelp: () => void }) {
         <Link to="/library/groups" className="tb-narrow-only">Library</Link>
         <Link to="/account" className="tb-narrow-only">Account</Link>
         <a href={DOCS_URL} className="tb-narrow-only" target="_blank" rel="noreferrer">Docs</a>
-        <Link to="/community">Community</Link>
+        <Link to="/community" className="tb-narrow-only">Community</Link>
+        {s.kind === 'signed-in' && <Link to="/community/me">Your Community profile</Link>}
         {s.kind === 'signed-in' && <Link to="/computers">Computers</Link>}
         {s.kind === 'signed-in' && s.user.role === 'admin' && <Link to="/admin">Admin</Link>}
         <button type="button" onClick={openAppearance}>Appearance…</button>

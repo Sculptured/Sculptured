@@ -91,3 +91,12 @@ describe('every page of a project is one Ctrl K away', () => {
     expect(cmds.find((x) => x.id === 'view.run')!.disabled).toBe('Run opens once the team has started.');
   });
 });
+
+describe('Community', () => {
+  it('its pages are one Ctrl K away', () => {
+    const gone: string[] = [];
+    const cmds = buildCommands({ ...ctx(), go: (to: string) => gone.push(to) });
+    for (const id of ['community.people', 'community.me', 'community.saved', 'community.publish']) cmds.find((x) => x.id === id)!.run();
+    expect(gone).toEqual(['/community/people', '/community/me', '/community/saved', '/community/publish']);
+  });
+});

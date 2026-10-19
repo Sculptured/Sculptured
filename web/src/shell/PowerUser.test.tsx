@@ -96,7 +96,8 @@ describe('Command palette in the app', () => {
     await user.clear(screen.getByRole('combobox'));
     await user.keyboard('>');
     expect(screen.getAllByRole('option').length).toBeGreaterThan(10);
-    expect(openRigWords(screen.getByRole('dialog', { name: 'Command palette' }))).toEqual([]);
+    // Community's "profile" is the plain word, as on its pages.
+    expect(openRigWords(screen.getByRole('dialog', { name: 'Command palette' }), ['profile', 'profiles'])).toEqual([]);
   });
 
   it('goes to every page of the project, and Stop team… opens the same confirmation as the button', async () => {

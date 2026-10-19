@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { HostedGate } from './HostedGate';
 import { afterEach, expect, it, vi } from 'vitest';
 import { loadSession } from './session';
 import { JoinPage } from './JoinPage';
@@ -62,4 +63,10 @@ it('the admin page creates an invite and shows its link once', async () => {
 it('an unavailable gateway is an error, never a signed-in session without a user', async () => {
   vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(reply(503, { error: { code: 'database_unavailable', message: 'busy' } }));
   await expect(loadSession()).rejects.toThrow();
+});
+
+it('signed out, Community pages open without sending you to sign in', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url) => (String(url).endsWith('/gw/api/me') ? reply(401, { error: { code: 'login_required' } }) : reply(404, {})));
+  render(<MemoryRouter initialEntries={['/community/people']}><HostedGate><Routes><Route path="/community/*" element={<p>community page</p>} /><Route path="/login" element={<p>login page</p>} /></Routes></HostedGate></MemoryRouter>);
+  expect(await screen.findByText('community page')).toBeInTheDocument();
 });

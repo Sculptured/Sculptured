@@ -6,7 +6,10 @@ import { remember, takeRemembered } from './afterLogin';
 
 const Ctx = createContext<HostedSession>({ kind: 'local' });
 export const useHosted = () => useContext(Ctx);
-const OPEN = [/^\/join\//, /^\/reset\//, /^\/login$/, /^\/what-we-record$/];
+/** Supplies a session directly (tests, and pages rendered outside the gate). */
+export const HostedProvider = Ctx.Provider;
+// Community is readable signed out; signing in is only needed to save, publish or edit a profile.
+const OPEN = [/^\/join\//, /^\/reset\//, /^\/login$/, /^\/what-we-record$/, /^\/community(\/|$)/];
 
 export function HostedGate({ children }: { children: ReactNode }) {
   const [s, setS] = useState<HostedSession | null>(null);
