@@ -1,63 +1,54 @@
 ---
 title: Community
-description: Find ready-made groups of agents, save the versions you use, and publish your own.
+description: Find ready-made groups of agents and the people who made them, save the versions you use, and publish your own.
 ---
 
-Community is a shared catalog of **blocks**. A block is one group of agents: their names, Jobs, arrows and, if it has one, a workflow. You can browse it without an account. Sign in to save blocks and to publish your own.
+Community is a shared catalog of **blocks**, and the people who publish them. A block is one group of agents: their names, Jobs, arrows and, if it has one, a workflow. Community is a section of Sculptured, under **Community** in the top bar, and you use it with your Sculptured account: there is no second sign-in. You can browse it without signing in. Sign in to save blocks, publish your own and edit your profile.
 
-Adding a block to a project never starts an agent. You always review it in your own Library first, choose a folder, and start the team yourself.
+Adding a block to a project never starts an agent. You always review it first, choose a folder, and start the team yourself.
 
 ```mermaid
 flowchart LR
   subgraph community["Community"]
-    E["Explore"] -- "Save block" --> S["Saved (pinned version)"]
-    P["Publish a block"] --> E
+    E["Explore"] -- "Save" --> S["Saved"]
+    E --> PR["People and profiles"]
   end
   subgraph you["Your Sculptured"]
-    L["Library: Reusable groups"] -- "Add to project" --> B["Project board"]
-    L -- "Export" --> GF[".group.json"]
+    L["Library: Reusable groups"] -- "Publish a group" --> E
+    L -- "Add to project" --> B["Project board"]
   end
-  E -- "Add to project" --> L
-  S -- "Add to project" --> L
-  E -- "Download group" --> GF
-  GF -- "Import group file" --> L
-  GF -- "Group export" --> P
+  E -- "Add to project (review first)" --> B
+  E -- "Save to Library" --> L
 ```
 
-## Open Community
+<Note>On Sculptured you run yourself (`sculptured serve`), Community still opens its own page for now. Signing it in with a Sculptured account comes in a later version.</Note>
 
-From your workspace, open **Community** in the workspace menu. The first time, enter your Community service address under **Service address** and choose **Save connection**. After that the page shows **Open your account →**, **Browse blocks** and **Saved blocks**, and the address you are connected to. Choose **Change address** to switch.
-
-Community opens on its own site. It has four tabs:
+## The tabs
 
 | Tab | What it shows |
 | --- | --- |
-| **Explore** | Every published block, newest first, 24 to a page. Search matches titles, descriptions and tags. |
-| **Saved** | The blocks you saved, each at the version you saved. |
-| **My publications** | The blocks you published, including ones you unpublished. |
-| **Learn** | How to design a team: the same advice as [Designing teams of agents](/guides/agent-design). |
+| **Explore** | Every published block, newest first, 24 to a page. Search matches titles, descriptions, tags, and the author's name or handle (`@ana` works too). |
+| **People** | Everyone who chose a handle, most published first. Search by name or handle. |
+| **Saved** | The blocks you saved. **Remove save** takes one out. |
+| **Yours** | The blocks you published, with **Unpublish** and **Publish a group**. |
+| **Moderation** | Open reports, for Community moderators only. |
+
+**Learn** (`/community/learn`) has the same advice as [Designing teams of agents](/guides/agent-design).
 
 ## Use a block
 
 <Steps>
-  <Step title="Inspect it">Choose a block's title or **Inspect**. The panel shows its description, its agents and Jobs, its arrows or workflow, and, under **Complete group & fingerprint**, the exact definition and its fingerprint.</Step>
-  <Step title="Save it (optional)">Choose **Save block** to keep it in **Saved**. You need to be signed in.</Step>
-  <Step title="Add it to a project">Choose **Add to project**. Your workspace opens at **Library → Reusable groups** with the block, ready to review.</Step>
-  <Step title="Review and save it">Read every Job and arrow, then save the group to your Library.</Step>
-  <Step title="Insert and start">Add the group to a project, set the folder, fix anything the board lists, and start the team.</Step>
+  <Step title="Open it">Choose a block's title. Its page shows the board, who published it (their picture and name link to their profile), the description, what it does, and under **Inspect this block** its exact definition.</Step>
+  <Step title="Add it to a project">Choose **Add to project**, pick a project or a new one, and choose **Add & open project**. The copy has no folders or model choices, and its agents start **Restricted** with fresh sessions.</Step>
+  <Step title="Or keep it in your Library">Choose **Save to Library**. The Library copy remembers where it came from (**From Community · v1**); when the block gets a newer version, the button says **Update to v2** and updates the same copy.</Step>
+  <Step title="Start the team yourself">Set the folder, fix anything the board lists, and start the team.</Step>
 </Steps>
 
-**Add to project** opens the workspace you last opened Community from. If that does not work, choose **Download group** instead, then **Import group file** in **Reusable groups**.
+**Save** keeps a block in **Saved** (sign in first). **Download group** saves its file instead.
 
-<Warning>Blocks are instructions written by other people. Publishing a block does not verify it. Read every Job before starting agents, especially agents that can edit files or run commands.</Warning>
+<Warning>Community supplied instructions. Publishing is not verification. Read every Job before starting agents, especially agents that can edit files or run commands.</Warning>
 
-Agents from a block start **Restricted** and with fresh sessions. Raise their permission yourself if the work needs it.
-
-## Saved versions are pinned
-
-When you save a block, you save the version that is current at that moment. If the block changes later, your saved copy does not. Save it again to move to the newest version. Choose **Remove save** to take it out of **Saved**.
-
-A block that is unpublished, or hidden by a moderator, no longer appears in Explore.
+A block of a kind this version cannot open yet (such as a component) says **Opens in a later version.**
 
 ## Sculptured's examples
 
@@ -70,21 +61,35 @@ Community includes blocks published by **Sculptured examples**, under the Apache
 
 Each one is a whole example team gathered into one group. See [Examples](/guides/examples) for how to run them, and the [pattern catalog](/guides/pattern-catalog) for smaller teaching blocks.
 
+## Your profile
+
+Open **Your Community profile** from the app menu (or **Ctrl K**). Everything on it is public:
+
+| Field | Rules |
+| --- | --- |
+| **Display name** | 1 to 80 characters. |
+| **Handle** | 3 to 30 lowercase letters, digits or dashes, starting and ending with a letter or digit. Your profile is at `/community/u/<handle>`. You can change it once every 30 days; the old handle keeps leading to you for 90 days, and nobody else can take it in that time. A few names are reserved, such as `admin`, `support` and `sculptured`. |
+| **Bio** | Up to 280 characters of plain text. |
+| **Links** | Up to 3 `https://` links of at most 200 characters, shown as their site names. |
+| **Picture** | A PNG, JPEG or WebP. It is cropped to a square and must come to 256 KB or less. Without one, your initials show. |
+
+Your profile also shows when you joined, your published blocks, how many you published and how many times others saved them. Empty fields are not shown. **Compact block cards** makes the grids denser.
+
+Members who used the old Community site with Google get their old account, blocks and saves back the first time they sign in to Sculptured with the same Google account.
+
 ## Publish a group
 
 You publish one group from your Library.
 
 <Steps>
-  <Step title="Export the group">In **Library → Reusable groups**, choose **Export** on the group. You get a `.group.json` file.</Step>
-  <Step title="Open Publish">In Community, sign in and choose **Publish a block**.</Step>
-  <Step title="Upload and describe it">Choose the file under **Group export**. Add a **Title** (up to 150 characters), a **Description** (up to 3000), up to 8 **Tags** separated by commas, and a **License**.</Step>
-  <Step title="Review exactly what will be published">The full definition is shown as it will be stored. Read every Job.</Step>
+  <Step title="Choose a handle">If you have none yet, **Choose your handle** comes first: your blocks and profile appear under it.</Step>
+  <Step title="Choose the group">In **Yours**, choose **Publish a group**, then pick a group from your Library. An empty Library links to it.</Step>
+  <Step title="Review exactly what will be published">The board and the full definition are shown as they will be stored. Read every Job.</Step>
+  <Step title="Describe it">Add a **Title** (up to 150 characters), a **Description** (up to 3000), **Tags** separated by commas, and a **License**: **MIT**, **Apache-2.0** or **CC0-1.0**.</Step>
   <Step title="Confirm and publish">Tick the box confirming that you reviewed every prompt for private information, own the rights to share the group, and choose this license. Then choose **Publish publicly**.</Step>
 </Steps>
 
-Licenses you can choose: **MIT**, **Apache-2.0** or **CC0-1.0**.
-
-To take a block down, open it from **My publications** and choose **Unpublish**. People who already downloaded or added it keep their copy.
+A new account can publish 5 blocks in its first day. To take a block down, choose **Unpublish** on it in **Yours**. People who already added or saved it keep their copy.
 
 ### What publishing removes
 
@@ -114,19 +119,9 @@ It also sets every agent to **Restricted** and to start a fresh session. Your Li
 
 ## Report a concern
 
-When you are signed in, open a block and use **Report a concern** to describe a problem in 5 to 1000 characters, then choose **Send report**. Moderators review reports and can hide a block.
+When you are signed in, open a block or a profile and use **Report this block** or **Report this profile**: describe the problem in 5 to 1000 characters, then choose **Send report**. Moderators can hide a block, reset a profile's bio, picture or handle, or disable an account.
 
-## Your account
-
-Open **Identity & access** in Community to manage your account:
-
-- **Public display name:** shown on your publications.
-- **Compact community cards:** a denser card layout.
-- **Sessions:** **Sign out** of this browser, or **Sign out all devices**.
-
-Sign-in goes through an outside identity provider. Community does not store your password. Set up two-factor sign-in or passkeys with that provider.
-
-Community never receives your projects, your agents' transcripts, your files, your Git history, or your Claude Code or Codex sign-in. Only what you publish leaves your computer. See [Security boundaries](/security) and [Privacy](/privacy).
+Community never receives your projects, your agents' transcripts, your files, your Git history, or your Claude Code or Codex sign-in. Only what you publish and put on your profile is shared. See [Security boundaries](/security) and [Privacy](/privacy).
 
 ## Next steps
 

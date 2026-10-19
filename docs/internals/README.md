@@ -17,6 +17,7 @@ Read these pages to understand how a design becomes a running team and how its a
 
 | Area | Page | What it covers |
 | --- | --- | --- |
+| Community | [Community](community.md) | Community in the hosted app: the gateway's asserted user, accounts, the web section and Library sources |
 | Agent execution | [Drivers](drivers.md) | CLI protocols, normalized output, sessions, interruption and process shutdown |
 | Resource control | [Limits and usage](limits-and-usage.md) | Managed subagents, token limits, plan usage holds and cost estimates |
 | Agent efficiency | [Protections and contracts](protections.md) | The tool-call guard, shell output cap, context ceiling, and what each agent reads, writes and decides |
