@@ -51,11 +51,12 @@ function BlockReport({ id, title, onDone }: { id: string; title: string; onDone:
 
 const RESETS: [ProfileReset, string][] = [['bio', 'Reset bio'], ['avatar', 'Reset picture'], ['handle', 'Reset handle']];
 
+/** Resets and, only when ticked, disabling: an unticked box never re-enables an account another moderator disabled. */
 function ProfileReport({ handle, onDone }: { handle: string; onDone: () => void }) {
   const [reset, setReset] = useState<ProfileReset[]>([]);
   const [disable, setDisable] = useState(false);
   const [problem, setProblem] = useState('');
-  const apply = async () => { try { await communityApi.moderateProfile(handle, { reset, disable }); onDone(); } catch (e) { setProblem(errorText(e)); } };
+  const apply = async () => { try { await communityApi.moderateProfile(handle, disable ? { reset, disable: true } : { reset }); onDone(); } catch (e) { setProblem(errorText(e)); } };
   return (
     <div className="cm-actions">
       <Link to={`/community/u/${encodeURIComponent(handle)}`}>@{handle}</Link>

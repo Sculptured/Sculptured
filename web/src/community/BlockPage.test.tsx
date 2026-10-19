@@ -11,6 +11,7 @@ beforeEach(() => { HTMLDialogElement.prototype.showModal = function () { this.op
 afterEach(() => vi.restoreAllMocks());
 
 const page = (state = {}) => renderCommunity(<BlockPage />, { path: '/community/blocks/b1', route: '/community/blocks/:id', state });
+const signedIn = { signedIn: true, me: meUser() };
 
 it('shows the block, who published it, and a note that publishing is not verification', async () => {
   fakeFetch({ 'GET /api/community/blocks/b1': () => [200, publication()] });
@@ -25,7 +26,7 @@ it('Add to project opens the review step with a copy that has no folders', async
   const pub = publication();
   pub.content.draft.folder = '/secret';
   fakeFetch({ 'GET /api/community/blocks/b1': () => [200, pub] });
-  page();
+  page(signedIn);
   await userEvent.click(await screen.findByRole('button', { name: 'Add to project' }));
   expect(await screen.findByRole('dialog', { name: 'Add Review pair to project' })).toBeVisible();
   expect(projectCopy(pub)?.draft.folder ?? null).toBeNull();
@@ -64,7 +65,7 @@ it('Save to Library saves a copy once, then says it is there; a newer version of
     'GET /api/group-blocks': () => [200, library],
     'PUT /api/group-blocks/community-b1': (init) => { const b = { ...JSON.parse(String(init!.body)).block, revision: 1 }; library = [b]; return [200, b]; },
   });
-  page();
+  page(signedIn);
   await userEvent.click(await screen.findByRole('button', { name: 'Save to Library' }));
   expect(await screen.findByRole('button', { name: 'In your Library' })).toBeDisabled();
   expect(screen.getByText('This version is already saved.')).toBeVisible();
@@ -74,6 +75,15 @@ it('Save to Library saves a copy once, then says it is there; a newer version of
 it('offers Update to v2 when the Library has v1', async () => {
   const v1 = { ...publication().content, id: 'community-b1', revision: 3, source: { community_block: 'b1', version: 1 } };
   fakeFetch({ 'GET /api/community/blocks/b1': () => [200, publication({ version: 2 })], 'GET /api/group-blocks': () => [200, [v1]] });
-  page();
+  page(signedIn);
   expect(await screen.findByRole('button', { name: 'Update to v2' })).toBeEnabled();
+});
+
+it('signed out, adding to a project or the Library says to sign in first', async () => {
+  const { calls } = fakeFetch({ 'GET /api/community/blocks/b1': () => [200, publication()] });
+  page();
+  expect(await screen.findByRole('button', { name: 'Add to project' })).toBeDisabled();
+  expect(screen.getByText('Sign in to add it to a project or your Library.')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Save to Library' })).toBeNull();
+  expect(calls).not.toContain('GET /api/group-blocks');
 });

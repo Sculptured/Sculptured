@@ -84,3 +84,29 @@ it('signed-out visitors get a light frame with Sign in, not the app', () => {
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
   expect(screen.getByText('inside')).toBeVisible();
 });
+
+it('opening Publish directly waits for your profile, then skips the handle step when you have one', async () => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => { release = r; });
+  fakeFetch({
+    'GET /api/community/me': () => new Response(null, { status: 599 }),
+    'GET /api/group-blocks': () => [200, []],
+  });
+  vi.mocked(globalThis.fetch).mockImplementation(async (url) => {
+    if (String(url) === '/api/community/me') { await gate; return new Response(JSON.stringify({ user: meUser({ handle: 'ana' }) }), { status: 200 }); }
+    return new Response(JSON.stringify([]), { status: 200 });
+  });
+  at('/community/publish');
+  expect(await screen.findByText('Loading your profile…')).toBeVisible();
+  expect(screen.queryByText(/Sign in to publish/)).toBeNull();
+  release();
+  expect(await screen.findByText(/Your Library has no groups yet/)).toBeVisible();
+  expect(screen.queryByRole('heading', { name: 'Choose your handle' })).toBeNull();
+});
+
+it('a profile that cannot be read says why instead of asking you to sign in', async () => {
+  fakeFetch({ 'GET /api/community/me': () => [403, { error: { code: 'account_disabled', message: 'x' } }] });
+  at('/community/me');
+  expect(await screen.findByRole('alert')).toHaveTextContent('This Community account is disabled.');
+  expect(screen.queryByText(/Sign in to edit/)).toBeNull();
+});

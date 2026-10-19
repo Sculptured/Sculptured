@@ -39,3 +39,13 @@ it('resets a reported profile’s picture and handle and can disable it', async 
   await vi.waitFor(() => expect(calls).toContain('POST /api/community/users/spam/moderate'));
   expect(JSON.parse(String(inits[calls.indexOf('POST /api/community/users/spam/moderate')]!.body))).toEqual({ reset: ['avatar', 'handle'], disable: true });
 });
+
+it('Apply never re-enables an account by itself', async () => {
+  const { calls, inits } = fakeFetch({ 'GET /api/community/reports': () => [200, { reports: [profileReport] }], 'POST /api/community/users/spam/moderate': () => [200, { ok: true }] });
+  renderCommunity(<ModerationPage />, { path: '/community/moderation', state: admin });
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('checkbox', { name: 'Reset bio' }));
+  await user.click(screen.getByRole('button', { name: 'Apply' }));
+  await vi.waitFor(() => expect(calls).toContain('POST /api/community/users/spam/moderate'));
+  expect(JSON.parse(String(inits[calls.indexOf('POST /api/community/users/spam/moderate')]!.body))).toEqual({ reset: ['bio'] });
+});

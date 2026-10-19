@@ -22,7 +22,7 @@ export function BlockPage() {
   const [pub, setPub] = useState<Publication | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
-  const library = useLibrary();
+  const library = useLibrary(useCommunity().signedIn);
   useEffect(() => { setError(null); communityApi.block(id).then(setPub, setError); }, [id, attempt]);
   if (error) return <LoadProblem error={error} onRetry={() => setAttempt((n) => n + 1)} />;
   if (!pub) return <p role="status" className="muted">Loading block…</p>;

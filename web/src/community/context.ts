@@ -2,7 +2,8 @@ import { createContext, useContext } from 'react';
 import type { MeUser } from '../generated/community/MeUser';
 
 /** Whether you are signed in, and your Community profile once loaded. */
-export type CommunityState = { signedIn: boolean; me: MeUser | null; reloadMe: () => Promise<void> };
+/** `meState`: whether your profile is still loading, loaded (`me` is null when signed out), or could not be read (`meError`). */
+export type CommunityState = { signedIn: boolean; me: MeUser | null; meState: 'loading' | 'ready' | 'failed'; meError: unknown; reloadMe: () => Promise<void> };
 
 export const CommunityContext = createContext<CommunityState | null>(null);
 
