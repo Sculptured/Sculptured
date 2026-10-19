@@ -165,13 +165,24 @@ Turn one off with `--disable <capability>` (or on with `--enable`) when you run 
 
 ## Sign in Claude Code and Codex
 
-Agents use the Claude Code and Codex sign-ins **on the computer that runs them**. Install them there first. Sculptured finds them on your PATH and in the usual install places, including when you install one after connecting.
+Agents use the Claude Code and Codex sign-ins **on the computer that runs them**. Install them there first. Sculptured finds them on your PATH and in the usual install places, including when you install one after connecting. When one is missing, Sculptured shows its official install command for each system:
 
-If one isn't signed in, sign it in once:
+| | Mac or Linux (Terminal) | Windows (PowerShell) |
+|---|---|---|
+| Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash` | `irm https://claude.ai/install.ps1 \| iex` |
+| Codex | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `irm https://chatgpt.com/codex/install.ps1 \| iex` |
 
-- On the **Computers** page, choose **Sign in** next to it and open the sign-in page; or
-- On an agent that stopped because it isn't signed in, choose **Sign in to Claude Code** (or Codex), then **Hand over again**; or
-- Run `claude` or `codex` in a terminal on that computer and sign in there.
+If one isn't signed in, sign it in once, from any browser (it doesn't have to be on that computer):
+
+- **Codex** shows a one-time code. Open its sign-in page on any phone or computer, sign in, and enter the code.
+- **Claude Code** opens its sign-in page. If the page ends on a code, paste it into the box under **Sign in** and choose **Send code**.
+
+You can start a sign-in from:
+
+- **Start team**: before a team starts, Sculptured checks that its computer has the Claude Code or Codex its agents use, signed in. If not, it says which and lets you sign in right there, then **Start team** again;
+- the **Computers** page (or **Account** when Sculptured runs on your own computer): **Sign in** next to it;
+- an agent that stopped because it isn't signed in: **Sign in to Claude Code** (or Codex), then **Hand over again**; or
+- a terminal on that computer: run `claude` or `codex login`.
 
 Every agent on that computer can then use it.
 
