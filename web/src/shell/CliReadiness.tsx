@@ -4,6 +4,7 @@ import { errorText } from '../errors';
 import type { CliStatus } from '../generated/CliStatus';
 import type { LoginStarted } from '../generated/LoginStarted';
 import type { TeamDraft } from '../generated/TeamDraft';
+import { CliInstall } from './CliInstall';
 import { CliSignInSteps } from './CliSignInSteps';
 import { Btn } from './ui';
 
@@ -70,7 +71,7 @@ function CliRow({ c, on }: { c: CliStatus; on: CliOn }) {
     setError('');
     try { setStarted(await api.cliLogin(c.name, on)); } catch (e) { setError(errorText(e)); }
   };
-  if (!c.installed) return <li><strong>{name}</strong>: not installed</li>;
+  if (!c.installed) return <li><strong>{name}</strong>: not installed<CliInstall cli={c.name} /></li>;
   if (!notReady(c)) return <li><strong>{name}</strong>: <span aria-hidden="true">✓ </span>signed in{c.account ? ` (${c.account})` : ''}</li>;
   return (
     <li>

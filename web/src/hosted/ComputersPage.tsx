@@ -6,6 +6,7 @@ import type { HostPolicyInfo } from '../generated/HostPolicyInfo';
 import type { CliStatus } from '../generated/CliStatus';
 import type { LoginStarted } from '../generated/LoginStarted';
 import { errorText } from '../errors';
+import { CliInstall } from '../shell/CliInstall';
 import { CliSignInSteps } from '../shell/CliSignInSteps';
 import { gw } from './session';
 import { ConnectComputer } from './ConnectComputer';
@@ -117,6 +118,7 @@ function ComputerDetails({ id, name, policy }: { id: string; name: string; polic
                 <button className="btn" aria-label={`Sign in to ${label(c.name)} on ${name}`} onClick={() => void signIn(c.name)}>Sign in</button>
               )}
               {started[c.name] && c.signed_in !== true && <CliSignInSteps cli={c.name} on={id} started={started[c.name]} />}
+              {!c.installed && <CliInstall cli={c.name} />}
             </li>
           ))}
         </ul>

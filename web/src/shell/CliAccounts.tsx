@@ -6,6 +6,7 @@ import type { CliStatus } from '../generated/CliStatus';
 import type { LoginStarted } from '../generated/LoginStarted';
 import type { PlanUsageView } from '../generated/PlanUsageView';
 import type { PlanWindow } from '../generated/PlanWindow';
+import { CliInstall } from './CliInstall';
 import { CliSignInSteps } from './CliSignInSteps';
 import { Btn } from './ui';
 
@@ -95,6 +96,7 @@ export function CliAccounts() {
                 </>
               )}
               {started[c.name] && c.signed_in !== true && <CliSignInSteps cli={c.name} started={started[c.name]} />}
+              {!c.installed && <CliInstall cli={c.name} />}
               <ul className="plan-windows" aria-label={`${LABEL[c.name] ?? c.name} plan usage`}>
                 {!u && <li className="muted">Plan usage unknown: no {LABEL[c.name] ?? c.name} session has reported it yet.</li>}
                 {ws.map((w) => (
