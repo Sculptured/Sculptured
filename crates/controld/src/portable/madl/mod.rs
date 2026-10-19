@@ -36,9 +36,21 @@ fn diagnostics(found: impl IntoIterator<Item = madl::Diagnostic>) -> Vec<Diagnos
 /// Parse (JSON or YAML), validate and convert MADL text. A file that refers to other files can't be
 /// read here: upload it as one file (`madl expand` joins them).
 pub fn read(text: &str) -> Result<Imported, ApiError> {
+    if let Some(file) = legacy(text)? {
+        return Ok(Imported { file, dropped: Vec::new() });
+    }
     let nowhere = std::env::temp_dir().join("sculptured-madl-upload-has-no-folder");
     let doc = madl::from_str(text, &nowhere, &madl::Options::default()).map_err(|e| invalid(diagnostics([e.0])))?;
     read_document(&doc)
+}
+
+/// A `sculptured.team/v1` file, exported before teams were MADL documents: still read, never written.
+fn legacy(text: &str) -> Result<Option<crate::portable::team::PortableTeam>, ApiError> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return Ok(None) };
+    if v.get("format").and_then(|f| f.as_str()) != Some("sculptured.team/v1") {
+        return Ok(None);
+    }
+    serde_json::from_value(v).map(Some).map_err(|e| ApiError::bad_request("team_file_invalid", format!("This team file could not be read: {e}")))
 }
 
 /// Validate and convert a document already parsed.

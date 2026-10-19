@@ -253,3 +253,12 @@ fn a_workflow_whose_batch_a_command_makes_round_trips_without_a_dispatcher() {
     assert_eq!(doc.workflows[0].dispatcher, None);
     assert_eq!(doc.workflows[0].dispatch.as_ref().map(|d| (d.command.as_str(), d.timeout_s)), Some(("./split-issues", Some(120))));
 }
+
+#[test]
+fn a_team_file_exported_before_madl_still_imports() {
+    let file = gstack();
+    let old = json!({ "format": "sculptured.team/v1", "team": file.team, "settings": { "own_copies": true, "question_timeout_min": 30 } });
+    let back = read(&old.to_string()).unwrap();
+    assert_eq!(back.file.team, file.team);
+    assert_eq!((back.file.settings.own_copies, back.file.settings.question_timeout_min), (true, Some(30)));
+}
