@@ -13,6 +13,7 @@ import { BlockActions, projectCopy, useLibrary } from './BlockActions';
 import { useCommunity } from './context';
 import { opensHere } from './kinds';
 import { LoadProblem } from './LoadProblem';
+import { ReportForm } from './ReportForm';
 import './community.css';
 
 /** `/community/blocks/:id`: one block, large, with what it does, who published it and what you can do with it. */
@@ -36,31 +37,10 @@ export function BlockPage() {
       <BlockActions pub={pub} library={library} />
       {copy && <p><Btn size="sm" onClick={() => downloadBlock(copy)}>Download group</Btn></p>}
       {copy && <details><summary>Inspect this block</summary><BlockDetails block={copy} /></details>}
-      <Report id={pub.id} />
+      <ReportForm what="block" send={(reason) => communityApi.reportBlock(pub.id, reason)} />
       <Unpublish pub={pub} />
       <p className="muted cm-note">{COMMUNITY_WORDS.supplied}</p>
     </article>
-  );
-}
-
-function Report({ id }: { id: string }) {
-  const { signedIn } = useCommunity();
-  const [state, setState] = useState({ sent: false, error: '' });
-  const send = async (reason: string) => {
-    try { await communityApi.reportBlock(id, reason); setState({ sent: true, error: '' }); } catch (e) { setState({ sent: false, error: errorText(e) }); }
-  };
-  if (!signedIn) return null;
-  return (
-    <details className="cm-report">
-      <summary>Report this block</summary>
-      {state.sent ? <p>Thanks. A moderator will look at it.</p> : (
-        <form onSubmit={(e) => { e.preventDefault(); void send(new FormData(e.currentTarget).get('reason')?.toString() ?? ''); }}>
-          <label>What is wrong with it?<textarea name="reason" required minLength={5} maxLength={1000} /></label>
-          <Btn type="submit">Send report</Btn>
-          {state.error && <p className="tone-red" role="alert">{state.error}</p>}
-        </form>
-      )}
-    </details>
   );
 }
 

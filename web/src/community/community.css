@@ -24,3 +24,12 @@
 .cm-problem p { margin: 0; }
 .cm-report form, .cm-report label { display: grid; gap: 6px; }
 .cm-note { font-size: var(--text-sm); }
+.cm-profile-head { display: flex; align-items: center; gap: 16px; }
+.cm-profile-head h1 { margin: 0; }
+.cm-profile-head p { margin: 2px 0 0; }
+.cm-bio { white-space: pre-line; margin: 0; }
+.cm-links { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.cm-people { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
+.cm-person { display: grid; gap: 2px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--raised); }
+.cm-person a { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: var(--weight-semibold); text-decoration: none; }
+.cm-bio-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
