@@ -1,6 +1,5 @@
 # Community in the App (sculptured repo) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Community a top-bar section of the app in every build. Locally it is opt-in: controld pairs a `community`-scope device key and proxies an allow-listed `/api/community/*` to the Sculptured server. The web app gets Explore, People, profiles, Saved, Yours, Publish and Moderation pages. "Add to project" and "Save to Library" work directly against the local Library.
 
@@ -24,8 +23,8 @@
 **Tech Stack:** Rust 2024 (axum 0.8, reqwest 0.13 + rustls/ring, ts-rs 12, tokio), React 19 + TypeScript, react-router 7, vitest 5, Playwright, Mintlify docs (`.mdx`).
 
 **Spec:**
-- `docs/superpowers/specs/2026-10-18-community-integration-design.md`
-- `docs/superpowers/specs/2026-10-18-community-contracts.md`
+- `docs/design/2026-10-18-community-integration-design.md`
+- `docs/design/2026-10-18-community-contracts.md`
 
 The contracts win where they refine the design.
 
