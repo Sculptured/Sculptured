@@ -5,6 +5,7 @@ pub mod gate;
 pub mod measure;
 pub mod record;
 pub mod pause;
+pub mod raise;
 
 use crate::state::AppState;
 use crate::store::Store;
@@ -215,7 +216,7 @@ pub async fn check(st: &AppState) -> rusqlite::Result<()> {
         if let Some(n) = &next {
             r.state = n.clone();
         }
-        if matches!(next, Some(BudgetState::WrapUp { .. } | BudgetState::Paused { .. })) {
+        if matches!(next, Some(BudgetState::WrapUp { .. } | BudgetState::Paused { .. } | BudgetState::Stopped { .. })) {
             pause::remember(&st.store.lock().unwrap(), &rig, &mut r)?;
         }
         st.store.lock().unwrap().put_run_budget(&rig, &r)?;

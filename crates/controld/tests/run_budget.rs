@@ -393,3 +393,39 @@ async fn a_computers_cap_holds_work_across_teams_until_a_slot_frees() {
     let (status, _) = call(&s.router, "PUT", "/api/hosts/local/limit", json!({ "max_working": null })).await;
     assert_eq!(status, StatusCode::OK, "no cap");
 }
+
+#[tokio::test]
+async fn raising_a_stopped_runs_token_limit_continues_it_for_this_run_only() {
+    let s = serve().await;
+    let _runner = claude_runner(&s).await;
+    let dir = tempfile::tempdir_in(s.home.path()).unwrap();
+    let id = team(&s, dir.path(), &[("a", "spend:400:1000:3".into())], json!({ "tokens": { "hard": 2000 } })).await;
+    start_team(&s, &id).await;
+    wait_long("the token budget stops the run", || matches!(state(&s, &id), BudgetState::Stopped { .. })).await;
+    let raise = |hard: u64| json!({ "request_id": rid(), "limit": "tokens", "hard": hard });
+    // Lowering is not a raise.
+    let (status, body) = call(&s.router, "POST", &format!("/api/teams/{id}/budget/raise"), raise(1000)).await;
+    assert_eq!((status, body["error"]["code"].as_str()), (StatusCode::BAD_REQUEST, Some("not_a_raise")), "{body}");
+    let turns_before = turns(&s, &seat(&id, "a")).len();
+    let (status, body) = call(&s.router, "POST", &format!("/api/teams/{id}/budget/raise"), raise(1_000_000)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(state(&s, &id), BudgetState::Normal, "the run continues");
+    let r = s.st.store.lock().unwrap().run_budget(&id).unwrap().unwrap();
+    assert_eq!(r.budget.tokens.unwrap().hard, 1_000_000);
+    wait_long("the stopped agent works again", || turns(&s, &seat(&id, "a")).len() > turns_before).await;
+    let (_, team) = call(&s.router, "GET", &format!("/api/teams/{id}"), Value::Null).await;
+    assert_eq!(team["draft"]["budget"]["tokens"]["hard"], 2000, "the saved budget is unchanged");
+    let changes = s.st.store.lock().unwrap().latest_of_types(&model::Subject::Rig(id.clone()), &["budget-state-changed"], 10).unwrap();
+    assert!(changes.iter().any(|e| matches!(&e.body, model::EventBody::BudgetStateChanged { state, .. } if state == "raised")), "the run's log says it was raised");
+}
+
+#[tokio::test]
+async fn a_limit_the_run_does_not_have_cannot_be_raised() {
+    let s = serve().await;
+    let _runner = claude_runner(&s).await;
+    let dir = tempfile::tempdir_in(s.home.path()).unwrap();
+    let id = team(&s, dir.path(), &[("a", "spend:10:10:1".into())], json!({ "tokens": { "hard": 100000 } })).await;
+    start_team(&s, &id).await;
+    let (status, body) = call(&s.router, "POST", &format!("/api/teams/{id}/budget/raise"), json!({ "request_id": rid(), "limit": "minutes", "hard": 60 })).await;
+    assert_eq!((status, body["error"]["code"].as_str()), (StatusCode::BAD_REQUEST, Some("no_such_limit")), "{body}");
+}

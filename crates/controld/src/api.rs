@@ -67,6 +67,7 @@ fn routes() -> Router<AppState> {
         .merge(crate::run_reports::routes())
         .merge(crate::recent::routes())
         .merge(crate::budget::pause::routes())
+        .merge(crate::budget::raise::routes())
         .merge(crate::account::routes())
         .merge(crate::copies::routes())
         .merge(crate::checks::routes())

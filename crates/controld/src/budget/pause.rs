@@ -31,12 +31,10 @@ pub fn working(store: &Store, rig: &str) -> rusqlite::Result<Vec<String>> {
     Ok(live.into_iter().filter(|s| snap.rig.seats.iter().any(|c| &c.id == s)).collect())
 }
 
-/// Adds the agents working now to the ones a pausing run continues with: at its wrap-up (after which
-/// they stop) and again at the pause.
+/// Adds the agents working now to the ones the run continues with: at its wrap-up (after which they
+/// stop), at a stop, and again at a pause. A run continues after its window resets, or when a person
+/// raises the limit it reached.
 pub fn remember(store: &Store, rig: &str, r: &mut Record) -> rusqlite::Result<()> {
-    if !r.budget.plan.iter().any(|p| p.pause.is_some()) {
-        return Ok(());
-    }
     for s in working(store, rig)? {
         if !r.paused_seats.contains(&s) {
             r.paused_seats.push(s);
@@ -128,7 +126,7 @@ fn continuation(seat: &str, mode: ContinueMode, window: u32, max: u32) -> String
 }
 
 /// Starts `seat` again (fresh, or resuming its conversation), then sends it `text`.
-async fn restart(st: &AppState, seat: &str, mode: ContinueMode, text: String) -> Result<(), ApiError> {
+pub(super) async fn restart(st: &AppState, seat: &str, mode: ContinueMode, text: String) -> Result<(), ApiError> {
     st.store.lock().unwrap().clear_control(seat)?;
     let session = st.store.lock().unwrap().seat(seat)?.and_then(|v| v.native_session_id);
     match (mode, session) {
