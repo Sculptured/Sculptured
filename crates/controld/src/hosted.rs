@@ -23,7 +23,7 @@ pub fn local_only(method: &str, path: &str) -> bool {
 }
 
 pub fn needs_computer() -> ApiError {
-    ApiError::conflict("needs_computer", "This needs a connected computer. Connecting computers is coming soon.")
+    ApiError::conflict("needs_computer", "This works only in Sculptured run on your own computer, not in the hosted app.")
 }
 
 /// Ok(user id) when the request carries a valid, fresh gateway signature.

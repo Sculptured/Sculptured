@@ -9,6 +9,7 @@ import { Btn, Icon } from '../shell/ui';
 import { TemplateGallery } from '../structure/TemplateGallery';
 import { hasProcess } from '../status';
 import { PROJECT_WORDS } from '../vocab';
+import { GettingStartedNow } from './GettingStarted';
 import { teamStatus } from './status';
 import { StatusBadge } from './StatusBadge';
 import { useProjectVisibility } from './useProjectVisibility';
@@ -31,7 +32,7 @@ export function ProjectsHome() {
   const created = useCreated();
   const loaded = shell.summaries !== null && shell.rigs !== null;
   const rows = shell.rows.filter((r) => v.statusOf(r.rig) === 'visible');
-  if (loaded && shell.rows.length === 0) return <main className="page page-wide projects-home"><TemplateGallery inline onCreated={created} /></main>;
+  if (loaded && shell.rows.length === 0) return <main className="page page-wide projects-home"><GettingStartedNow /><TemplateGallery inline onCreated={created} /></main>;
   return (
     <main className="page page-wide projects-home">
       <div className="list-head-row">
@@ -39,6 +40,7 @@ export function ProjectsHome() {
         <span className="tb-fill" />
         <Link to="/new" className="btn btn-primary" aria-keyshortcuts="n"><Icon name="plus" size={15} />{PROJECT_WORDS.newProject}</Link>
       </div>
+      <GettingStartedNow />
       {shell.listError && <DismissibleError className="tone-red">{PROJECT_WORDS.couldNotLoad}: {shell.listError}</DismissibleError>}
       {v.loadError && <p className="muted">{v.loadError}</p>}
       {v.error && <DismissibleError>{v.error}</DismissibleError>}
