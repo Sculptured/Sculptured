@@ -1,5 +1,6 @@
 mod group_blocks;
 pub mod collaboration;
+pub mod traces;
 pub mod auth;
 pub mod api;
 pub mod portable;
