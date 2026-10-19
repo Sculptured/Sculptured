@@ -71,6 +71,7 @@ impl Cx<'_> {
             authority: a.authority.as_ref().map(|x| model::Authority { domains: x.domains.clone(), scope: x.scope.clone(), rationale: x.rationale.clone() }),
             skills: self.skills(at, a),
             integrations: self.integrations(at, a),
+            briefing: care::briefing_in(&r.settings.preferences),
         }
     }
 

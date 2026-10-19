@@ -108,10 +108,11 @@ Path fields are resolved by the runner, as described in [Connected computers §4
 | `item-copy-prepare` | `project, team, task` | Workflow items with `copies: per-item` ([Workflows](workflows.md)) | `copies` | `project` (whole repository) | 120 s |
 | `item-merge` | `project, team, task, into?` | A workflow merge stage (`workflow/stage_merge.rs`) | `copies` | `project` (whole repository) | 120 s |
 | `run-check` | `cwd, item?, command, timeout_s` | Workflow check stages and guards (`workflow/stage_checks.rs`, `workflow/guard.rs`) | `checks` | `cwd` | the check's timeout + 30 s |
+| `run-dispatch` | `cwd, command, timeout_s` | A workflow's dispatch command (`workflow/dispatch.rs`); answers the whole stdout (up to 4 MB) and the end of stderr | `checks` | `cwd` | the command's timeout + 30 s |
 | `project-map` | `path` | Every team start (`knowledge::refresh`, [Knowledge](knowledge.md)) | – | `path` | 30 s (controld waits 20 s) |
 | `keep-lesson` | `path, text` | Confirming a lesson (`knowledge::keep_in_project`) | – | `path` | 15 s |
 
-Timeouts are set in `ops::timeout_for`. A runner from before `analyze-run` answers `unknown_op`; controld turns that into `runner_without_reports` (reinstall the runner). Copies get 120 s because creating or merging a worktree in a large repository can take that long.
+Timeouts are set in `ops::timeout_for`. A runner from before `analyze-run` answers `unknown_op`; controld turns that into `runner_without_reports` (reinstall the runner). A runner from before `run-dispatch` answers `unknown_op` too, and the workflow's dispatch record says to update Sculptured on that computer; it is never sent as a `run-check`, which would cut the output to its end. Copies get 120 s because creating or merging a worktree in a large repository can take that long.
 
 **Browsing a connected computer** (`Supervisor::run_op`):
 - `list-folder` with no path answers with the allowed folders as entries and `path: ""`. The folder picker shows this level as "Folders this computer allows" and disables *Choose* and *New folder* there.

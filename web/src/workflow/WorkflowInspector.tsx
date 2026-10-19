@@ -8,6 +8,7 @@ import { StageEditor } from './StageEditor';
 import { WorkflowRunView } from './WorkflowRunView';
 import type { WorkflowTarget } from './WorkflowGraph';
 import { addParallelWorker } from './workers';
+import { byCommand } from './DispatchCommand';
 
 export function WorkflowInspector({ draft, target, locked, edit, onOpen, onClose, closeLabel = 'Close workflow details', className = '' }: { draft: TeamDraft; target: WorkflowTarget | 'list'; locked: boolean; edit: (fn: (d: TeamDraft) => TeamDraft) => void; onOpen: (id: string) => void; onClose: () => void; closeLabel?: string; className?: string }) {
   const box = useRef<HTMLElement>(null), previous = useRef(document.activeElement as HTMLElement | null);
@@ -18,7 +19,7 @@ export function WorkflowInspector({ draft, target, locked, edit, onOpen, onClose
     <header><h2>{title}</h2><button className="btn" onClick={onClose}>{closeLabel}</button></header>
     <div className="workflow-inspector-body">
       {target === 'input' && <WorkflowInputEditor draft={draft} locked={locked} edit={edit} />}
-      {target === 'settings' && <><p>The dispatcher chooses 1–{w.max_tasks} items, each with up to {w.max_steps} steps. Shared agents handle one assignment at a time.</p><WorkflowSettings draft={draft} locked={locked} change={change} editTeam={edit} expanded /></>}
+      {target === 'settings' && <><p>{byCommand(w) ? 'The dispatch command' : 'The dispatcher'} chooses 1–{w.max_tasks} items, each with up to {w.max_steps} steps. Shared agents handle one assignment at a time.</p><WorkflowSettings draft={draft} locked={locked} change={change} editTeam={edit} expanded /></>}
       {typeof target === 'object' && <StageEditor key={target.stage} draft={draft} stageId={target.stage} locked={locked} change={change} onOpen={onOpen} onAddWorker={() => edit(d => addParallelWorker(d,target.stage))} />}
       {target === 'run' && <><p>Assembly waits for every item to complete its review route. Acceptance is agent-reported; inspect the evidence.</p><WorkflowRunView draft={draft} /></>}
       {target === 'list' && <WorkflowBoard draft={draft} locked={locked} edit={edit} onOpen={onOpen} />}

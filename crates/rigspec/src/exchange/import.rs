@@ -133,7 +133,7 @@ fn draft_agent(id: String, pod: &PodSpec, m: &MemberSpec, seat: &CompiledSeat, k
         folder: (seat.cwd.starts_with('/') && !am.is_some_and(|a| a.inherits_folder)).then(|| seat.cwd.clone()),
         x: am.map_or(0, |a| a.x),
         y: am.map_or(0, |a| a.y),
-        advanced: AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None,
+        advanced: AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None, briefing: None,
             model: seat.model.clone(),
             permission: if restricted { PermissionPosture::Restricted } else { PermissionPosture::Unrestricted },
             resume: resume_of(seat.restore_policy),

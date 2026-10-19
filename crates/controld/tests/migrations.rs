@@ -292,12 +292,13 @@ fn an_m1_store_gains_the_m2_tables_and_columns() {
     Connection::open(&path).unwrap().execute_batch(M1_SCHEMA).unwrap();
     drop(Store::open(&path).unwrap());
     assert_eq!(version(&path), SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 27);
+    assert_eq!(SCHEMA_VERSION, 28);
     for (table, column) in [("seats", "open_questions"), ("seats", "restore_offer"), ("seats", "cwd"), ("seats", "limit_hit"), ("questions", "deadline_ms"), ("actions", "turn_id"), ("questions", "unconfirmed_reason"), ("questions", "settled"), ("seats", "model_requested"), ("seats", "model_observed"), ("seats", "stalled"), ("seats", "last_check"), ("team_decisions", "confirmed_ms")] {
         assert!(has_column(&path, table, column), "{table}.{column}");
     }
     assert!(has_table(&path, "project_maps"));
     assert!(has_table(&path, "host_limits"));
+    assert!(has_table(&path, "workflow_dispatches"));
     assert!(has_table(&path, "settings"));
     assert!(has_table(&path, "plan_usage"));
     assert!(has_table(&path, "run_reports"));

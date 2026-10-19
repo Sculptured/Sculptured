@@ -107,21 +107,34 @@ pub(crate) fn briefing_lines(st: &AppState, team: &str, seat: &str, d: &TeamDraf
         }
     }
     let entries = st.store.lock().unwrap().decisions(team, None, 50, false).unwrap_or_default();
-    let line = |e: &DecisionEntry| format!("{}{} ({})", if e.confirmed_ms.is_some() { "[confirmed] " } else { "" }, e.text.trim(), e.author);
-    let constraints: Vec<String> = entries.iter().filter(|e| e.source == "constraint").take(BRIEFING_LESSONS).map(line).collect();
-    if !constraints.is_empty() {
-        out.push(format!("Constraints this team's agents found (follow them):\n- {}", constraints.join("\n- ")));
-    }
-    let lessons: Vec<String> = entries.iter().filter(|e| e.source == "lesson").take(BRIEFING_LESSONS).map(line).collect();
-    if !lessons.is_empty() {
-        out.push(format!("Lessons this team's agents recorded, newest first:\n- {}", lessons.join("\n- ")));
-    }
+    out.extend(recorded(&entries));
     // Kept with the project by earlier teams; this team's own entries are listed above already.
     let kept: Vec<&String> = map.as_ref().map(|(_, m, _)| m.kept.iter().filter(|k| !entries.iter().any(|e| k.ends_with(e.text.trim()))).collect()).unwrap_or_default();
     if !kept.is_empty() {
         out.push(format!("Kept with this project from earlier work (confirmed by a person; [constraint] ones are rules):\n- {}", kept.iter().map(|k| k.as_str()).collect::<Vec<_>>().join("\n- ")));
     }
     out.push("Before building something, check whether it already exists: the project map, then search_history (what the team's agents, including finished ones, wrote, ran and decided). When something cost you a wrong turn that others could avoid, record it with record_lesson.".into());
+    out
+}
+
+/// Only the constraints and lessons the team's agents recorded (a minimal briefing's share).
+pub(crate) fn lesson_lines(st: &AppState, team: &str) -> Vec<String> {
+    recorded(&st.store.lock().unwrap().decisions(team, None, 50, false).unwrap_or_default())
+}
+
+/// The newest recorded constraints, then lessons, each as one briefing paragraph.
+fn recorded(entries: &[DecisionEntry]) -> Vec<String> {
+    let line = |e: &DecisionEntry| format!("{}{} ({})", if e.confirmed_ms.is_some() { "[confirmed] " } else { "" }, e.text.trim(), e.author);
+    let of = |source: &str| entries.iter().filter(|e| e.source == source).take(BRIEFING_LESSONS).map(line).collect::<Vec<_>>();
+    let mut out = Vec::new();
+    let constraints = of("constraint");
+    if !constraints.is_empty() {
+        out.push(format!("Constraints this team's agents found (follow them):\n- {}", constraints.join("\n- ")));
+    }
+    let lessons = of("lesson");
+    if !lessons.is_empty() {
+        out.push(format!("Lessons this team's agents recorded, newest first:\n- {}", lessons.join("\n- ")));
+    }
     out
 }
 

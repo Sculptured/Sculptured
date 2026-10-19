@@ -13,7 +13,9 @@ pub fn input_of(doc: &m::Document) -> Option<&str> {
 pub fn out(team: &TeamDraft, w: &Workflow, doc: &mut m::Document) {
     let id = free_id(team, "workflow");
     let input = free_id(team, &format!("{id}-input"));
-    doc.inputs.push(m::Input { id: input.clone(), text: w.input.clone(), to: vec![w.dispatcher.clone()] });
+    // A dispatch command makes the batch itself; the input then goes to the entry stage's agent.
+    let to = if w.dispatcher.is_empty() { w.stages.iter().find(|s| s.id == w.entry).map(|s| s.agent.clone()).filter(|a| !a.is_empty()) } else { Some(w.dispatcher.clone()) };
+    doc.inputs.push(m::Input { id: input.clone(), text: w.input.clone(), to: to.into_iter().collect() });
     let layout = doc.layout.get_or_insert_with(Default::default);
     if let Some(p) = &w.input_position {
         layout.nodes.insert(input.clone(), point(p));
@@ -26,7 +28,8 @@ pub fn out(team: &TeamDraft, w: &Workflow, doc: &mut m::Document) {
         id,
         name: None,
         input: Some(input),
-        dispatcher: w.dispatcher.clone(),
+        dispatcher: Some(w.dispatcher.clone()).filter(|d| !d.is_empty()),
+        dispatch: w.dispatch.as_ref().map(|d| m::Dispatch { command: d.command.clone(), timeout_s: d.timeout_s }),
         entry: w.entry.clone(),
         collector: w.collector.clone(),
         max_items: Some(w.max_tasks),
@@ -86,7 +89,8 @@ pub fn workflow_in(doc: &m::Document) -> (Option<Workflow>, Vec<(String, String)
     let flow = Workflow {
         input_position: input.and_then(|i| at(&i.id)).map(position),
         input: input.map(|i| i.text.clone()).unwrap_or_default(),
-        dispatcher: w.dispatcher.clone(),
+        dispatcher: w.dispatcher.clone().unwrap_or_default(),
+        dispatch: w.dispatch.as_ref().map(|d| model::WorkflowDispatch { command: d.command.clone(), timeout_s: d.timeout_s }),
         entry: w.entry.clone(),
         collector: w.collector.clone(),
         max_tasks: w.max_items.unwrap_or(24),

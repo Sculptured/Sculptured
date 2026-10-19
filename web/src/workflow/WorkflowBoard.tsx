@@ -8,6 +8,7 @@ import { StageEditor } from './StageEditor';
 import { WorkflowRunView } from './WorkflowRunView';
 import './workflow.css';
 import { addParallelWorker } from './workers';
+import { byCommand, DispatchCommandFields } from './DispatchCommand';
 
 type Props = { draft: TeamDraft; locked: boolean; edit?: (fn: (d: TeamDraft) => TeamDraft) => void; onOpen: (id: string) => void };
 
@@ -22,7 +23,7 @@ export function WorkflowBoard({ draft, locked, edit, onOpen }: Props) {
       <small>{locked ? 'Stop the project before changing the input for a new batch.' : 'Saved with this project. No generation starts until you start the team.'}</small>
       <TextbookSetup draft={draft} locked={locked || !edit} edit={edit} />
     </section>
-    <section className="workflow-dispatch"><h3>↓ {name(w.dispatcher)} <button className="link-btn" onClick={() => onOpen(w.dispatcher)}>Open agent</button></h3>
+    <section className="workflow-dispatch">{byCommand(w) ? <h3>↓ Dispatch command <code>$ {w.dispatch!.command}</code></h3> : <h3>↓ {name(w.dispatcher)} <button className="link-btn" onClick={() => onOpen(w.dispatcher)}>Open agent</button></h3>}
       <p><strong>Dynamically dispatches N interactions</strong> · 1–{w.max_tasks} items · up to {w.max_steps} steps per item · shared agents, one assignment per agent at a time.</p></section>
     <ol className="workflow-stages" aria-label="Reusable interaction stages">{w.stages.map(s => <li key={s.id} className={selected === s.id ? 'selected' : ''}>
       <button className="workflow-node" aria-label={`${s.id === w.entry ? "Entry stage" : "Reusable stage"} ${s.name} · ${name(s.agent)}`} onClick={() => setSelected(s.id)} aria-pressed={selected === s.id}><small>{s.id === w.entry ? 'Entry stage' : 'Reusable stage'}</small><strong>{s.name}</strong><span>{name(s.agent)}</span></button>
@@ -37,15 +38,18 @@ export function WorkflowBoard({ draft, locked, edit, onOpen }: Props) {
 
 export function WorkflowSettings({ draft, locked, change, expanded, editTeam }: { draft: TeamDraft; locked: boolean; change: (w: Workflow) => void; expanded?: boolean; editTeam?: (fn: (d: TeamDraft) => TeamDraft) => void }) {
   const w = draft.workflow!;
-  const agent = (key: 'dispatcher' | 'collector') => <select aria-label={key === 'dispatcher' ? 'Dispatcher agent' : 'Assembly agent'} value={w[key]} disabled={locked} onChange={e => change({ ...w, [key]: e.target.value })}>{draft.agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>;
+  const none = (key: 'dispatcher' | 'collector') => key === 'dispatcher' && (!w.dispatcher || !!w.dispatch);
+  const agent = (key: 'dispatcher' | 'collector') => <select aria-label={key === 'dispatcher' ? 'Dispatcher agent' : 'Assembly agent'} value={w[key]} disabled={locked || (key === 'dispatcher' && !!w.dispatch)} onChange={e => change({ ...w, [key]: e.target.value })}>
+    {none(key) && <option value="">{w.dispatch ? 'None: the dispatch command makes the work' : 'Choose an agent'}</option>}{draft.agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>;
   const add = () => { let n = 1; while (w.stages.some(s => s.id === `stage-${n}`)) n++; const id = `stage-${n}`; change({ ...w, stages: [...w.stages, { id, name: 'New stage', agent: draft.agents.find(a => a.id !== w.dispatcher && a.id !== w.collector)?.id || '', routes: { done: null } }] }); };
   return <details className="workflow-settings" open={expanded}><summary>Workflow settings & composition</summary><div>
-    <label>Dispatcher {agent('dispatcher')}</label><label>Assembly {agent('collector')}</label>
+    <label>Dispatcher {agent('dispatcher')}</label>{w.dispatch && <span className="reason">The dispatch command (Advanced) makes the work, so no agent dispatches it.</span>}<label>Assembly {agent('collector')}</label>
     <label>First stage <select value={w.entry} disabled={locked} onChange={e => change({ ...w, entry: e.target.value })}>{w.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
     <label>Maximum items <input type="number" min={1} max={64} value={w.max_tasks} disabled={locked} onChange={e => change({ ...w, max_tasks: Number(e.target.value) })} /></label>
     <label>Maximum steps per item <input type="number" min={1} max={32} value={w.max_steps} disabled={locked} onChange={e => change({ ...w, max_steps: Number(e.target.value) })} /></label>
     <button className="btn" disabled={locked || w.stages.length >= 16} onClick={add}>Add reusable stage</button>
-    <details className="workflow-settings-advanced" data-advanced><summary>Advanced</summary>
+    <details className="workflow-settings-advanced" data-advanced open={!!w.dispatch || undefined}><summary>Advanced</summary>
+      <DispatchCommandFields w={w} locked={locked} change={change} />
       <label><input type="checkbox" disabled={locked} checked={w.copies === 'per-item'} onChange={e => change({ ...w, copies: e.target.checked ? 'per-item' : undefined })} />Give each item its own copy and branch</label>
       <p className="muted">Each item gets its own git branch and folder in the project's repository, used by its agents, checks and merge stage. Needs a project folder with git.</p>
       <label>Guard command <input value={w.guard?.command ?? ''} disabled={locked} placeholder="e.g. npm test" onChange={e => change({ ...w, guard: e.target.value ? { ...w.guard, command: e.target.value, every_minutes: w.guard?.every_minutes ?? 15 } : undefined })} /></label>

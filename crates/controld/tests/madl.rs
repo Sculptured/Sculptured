@@ -231,3 +231,25 @@ fn skills_travel_embedded_and_components_are_madl_tools() {
     assert_eq!(doc.tools.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["notes", "kindex"], "the team's component, then the built-in one it uses");
     assert_eq!(doc.tools[1].mcp.as_ref().and_then(|m| m.command.as_deref()), Some("kin-mcp"), "so other tools can set it up too");
 }
+
+#[test]
+fn a_minimal_briefing_round_trips_as_a_madl_preference() {
+    let mut file = gstack();
+    file.team.agents[0].advanced.briefing = Some(model::BriefingLevel::Minimal);
+    round_trip(&file);
+    let doc = serde_json::to_value(to_madl(&file)).unwrap();
+    assert_eq!(doc["agents"][0]["settings"]["preferences"]["briefing"], json!("minimal"));
+}
+
+#[test]
+fn a_workflow_whose_batch_a_command_makes_round_trips_without_a_dispatcher() {
+    let mut team = workflow_team();
+    let w = team.workflow.as_mut().unwrap();
+    w.dispatcher = String::new();
+    w.dispatch = Some(model::WorkflowDispatch { command: "./split-issues".into(), timeout_s: Some(120) });
+    let file = file_of(team, PortableSettings::default());
+    round_trip(&file);
+    let doc = to_madl(&file);
+    assert_eq!(doc.workflows[0].dispatcher, None);
+    assert_eq!(doc.workflows[0].dispatch.as_ref().map(|d| (d.command.as_str(), d.timeout_s)), Some(("./split-issues", Some(120))));
+}

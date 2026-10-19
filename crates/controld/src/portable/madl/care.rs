@@ -2,7 +2,7 @@
 //! permissions, protections, Claude Code setup and safety rules are MADL settings blocks.
 use crate::portable::team::PortableTeam;
 use madl::model as m;
-use model::{ClaudeSetup, DraftAgent, ModelDefaults, PermissionPosture, Protection, SafetyRule};
+use model::{BriefingLevel, ClaudeSetup, DraftAgent, ModelDefaults, PermissionPosture, Protection, SafetyRule};
 
 /// The approval Sculptured asks a person for: whatever the agent's runtime asks permission for.
 pub const RUNTIME_PERMISSIONS: &str = "runtime-permissions";
@@ -61,12 +61,25 @@ fn rule_out(r: &SafetyRule) -> m::CallRule {
     m::CallRule { name: r.name.clone(), tool: Some(r.tool_pattern.clone()).filter(|t| t != ".*"), conditions: r.conditions.clone(), reason: r.reason.clone() }
 }
 
-/// An agent's own limits and, when it is restricted, its approvals.
+/// An agent's own limits, its approvals when it is restricted, and its briefing.
 pub fn agent_settings_out(a: &DraftAgent) -> Option<m::Settings> {
     let budget = super::limits::agent_out(&a.advanced);
     let approvals = (a.advanced.permission == PermissionPosture::Restricted).then(|| approvals(PermissionPosture::Restricted));
-    let restrictions = m::Restrictions { budget, approvals, ..Default::default() };
-    (restrictions != m::Restrictions::default()).then(|| m::Settings { restrictions: Some(restrictions), ..Default::default() })
+    let restrictions = Some(m::Restrictions { budget, approvals, ..Default::default() }).filter(|r| *r != m::Restrictions::default());
+    let briefing = a.advanced.briefing.map(|b| match b {
+        BriefingLevel::Full => m::Briefing::Full,
+        BriefingLevel::Minimal => m::Briefing::Minimal,
+    });
+    let preferences = briefing.map(|b| m::Preferences { briefing: Some(b), ..Default::default() });
+    (restrictions.is_some() || preferences.is_some()).then_some(m::Settings { preferences, restrictions, applies_to: None })
+}
+
+/// An agent's briefing from its resolved preferences.
+pub fn briefing_in(p: &m::Preferences) -> Option<BriefingLevel> {
+    p.briefing.map(|b| match b {
+        m::Briefing::Full => BriefingLevel::Full,
+        m::Briefing::Minimal => BriefingLevel::Minimal,
+    })
 }
 
 /// The models a settings block gives Claude Code and Codex agents; other runtimes' entries are

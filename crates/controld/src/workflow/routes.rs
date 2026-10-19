@@ -11,6 +11,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/teams/{id}/workflow/topic", post(topic))
         .route("/api/teams/{id}/workflow/decide", post(decide))
         .route("/api/teams/{id}/workflow/guard/resume", post(resume))
+        .route("/api/teams/{id}/workflow/dispatch/retry", post(retry_dispatch))
 }
 
 async fn status(State(st): State<AppState>, Path(id): Path<String>) -> Response {
@@ -24,7 +25,11 @@ async fn status(State(st): State<AppState>, Path(id): Path<String>) -> Response 
             tracing::warn!(error = %e, team = %id, "cannot read workflow token usage");
             Default::default()
         })).unwrap_or_default();
-        Ok(json!({ "config": d.workflow, "run": run, "active": run.as_ref().is_some_and(|r| Some(r.start_seq) == start), "usage": usage }))
+        // The dispatch command's result for the running start (else the shown batch's start).
+        let at = start.or(run.as_ref().map(|r| r.start_seq));
+        let dispatch = at.map(|s| store.dispatch_record(&id, s)).transpose()?.flatten();
+        let dispatching = st.workflow_jobs.busy(&id, super::jobs::Kind::Dispatch);
+        Ok(json!({ "config": d.workflow, "run": run, "active": run.as_ref().is_some_and(|r| Some(r.start_seq) == start), "usage": usage, "dispatch": dispatch, "dispatching": dispatching, "start_seq": start }))
     })())
 }
 
@@ -113,6 +118,10 @@ pub(super) fn decide_task(st: &AppState, rig: &str, task: &str, outcome: &str, n
 
 #[derive(Deserialize)]
 struct Resume { start_seq: i64 }
+
+async fn retry_dispatch(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<Resume>) -> Response {
+    respond(super::dispatch::retry(&st, &id, req.start_seq))
+}
 
 async fn resume(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<Resume>) -> Response {
     respond(resume_guard(&st, &id, req.start_seq))

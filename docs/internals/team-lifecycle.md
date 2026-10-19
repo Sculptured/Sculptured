@@ -151,7 +151,7 @@ sequenceDiagram
 - **Missing driver or runner.** If a seat's driver is missing, or its runner cannot run it, the seat goes to `attention` with a reason. If an older runner cannot honour a restricted posture, the launch is refused; it is never run unrestricted. See [Drivers](drivers.md) and Security (in the private sculptured-cloud repo).
 - **Jobs.** `reconciler::deliver_jobs` sends each head agent's Job (an agent with a Job and nobody handing it work) once that agent runs. The sender is `system:team-start`. An agent that settles without running gets its Job recorded as a failed message that says why.
 - **Context.** Every message to an agent is wrapped by `team_context::with_context`. It adds:
-  - the team briefing (roles, folders, every agent's job, the rule that a reported result is not independently verified);
+  - the team briefing (roles, folders, every agent's job, the rule that a reported result is not independently verified). An agent with `advanced.briefing: minimal` gets `team_context/minimal.rs` instead: its role line, its own job (left out when the message already carries it), its own data contract, its own skills and one line on how to finish (`complete_work` for a workflow worker, else reply). Its managed children get a minimal line too;
   - the budget note;
   - the own-copy branch note;
   - the decision-log note.

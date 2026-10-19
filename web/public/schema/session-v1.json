@@ -549,6 +549,14 @@
         "domains"
       ]
     },
+    "Briefing": {
+      "description": "`full`: the system's shape, its neighbours' jobs and the working rules. `minimal`: only the agent's\nown instructions, contracts and how to finish, for agents that need nothing but their assignment.",
+      "type": "string",
+      "enum": [
+        "full",
+        "minimal"
+      ]
+    },
     "Budget": {
       "type": "object",
       "properties": {
@@ -1253,6 +1261,28 @@
           "type": "string",
           "const": "both"
         }
+      ]
+    },
+    "Dispatch": {
+      "description": "A workflow's dispatch command: run in the system's workspace, its standard output is the items.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "timeout_s": {
+          "description": "Seconds before the command is stopped. Absent: the runner's own limit.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "command"
       ]
     },
     "Document": {
@@ -3664,6 +3694,17 @@
       "description": "Overridable choices. The nearest value wins: a scalar or list replaces, `options` merges key\nby key.",
       "type": "object",
       "properties": {
+        "briefing": {
+          "description": "How much of the system an agent is told when it starts (MEP 0008). Absent: `full`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Briefing"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "config": {
           "description": "Which of its runtime's own configuration an agent loads (MEP 0006).",
           "anyOf": [
@@ -5256,9 +5297,23 @@
             }
           ]
         },
+        "dispatch": {
+          "description": "A command whose output is the items, run by the runner when the system starts, in place of a\ndispatcher agent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Dispatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "dispatcher": {
-          "description": "The agent that splits the input into items and hands each to the entry stage.",
-          "type": "string"
+          "description": "The agent that splits the input into items and hands each to the entry stage. A workflow names\neither a `dispatcher` or a `dispatch` command (`workflow-dispatch`).",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "entry": {
           "description": "The stage every item starts at.",
@@ -5312,7 +5367,6 @@
       "additionalProperties": false,
       "required": [
         "id",
-        "dispatcher",
         "entry",
         "collector",
         "stages"

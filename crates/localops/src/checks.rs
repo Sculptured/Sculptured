@@ -28,7 +28,7 @@ pub async fn execute_within(cmd: &str, cwd: &str, limit: Duration) -> CheckOutco
 }
 
 /// The check as a shell command line: `sh -c` on Unix, `cmd /C` on Windows (no console window).
-fn shell(cmd: &str) -> tokio::process::Command {
+pub(crate) fn shell(cmd: &str) -> tokio::process::Command {
     #[cfg(windows)]
     {
         let mut c = tokio::process::Command::new("cmd");

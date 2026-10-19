@@ -44,7 +44,29 @@ flowchart LR
 3. **Stages.** Each item enters the **First stage**. An idle agent gets one item at a time. It reports an outcome with Sculptured's `complete_work` tool; a plain chat reply never moves an item.
 4. **Assembly.** Once every item is complete, the **Assembly** agent gets one last assignment to put the results together.
 
-Open **Workflow settings & composition** on the board to choose the **Dispatcher**, the **Assembly**, the **First stage**, **Maximum items** and **Maximum steps per item**, and to **Add reusable stage** (up to 16). **Workflow list** in the board's bar lists everything as text.
+## Dispatch with a command instead of an agent
+
+When splitting the work is mechanical (one item per file, per chapter, per failing test), you don't need an agent for it. Under **Workflow settings & composition › Advanced**, set a **Dispatch command**. When the team starts, Sculptured runs it once in the project folder, on the computer that runs the team, and what it prints becomes the batch. The board then shows a **Dispatch command** box where the dispatcher agent would be, and no agent gets a start message.
+
+The command must print JSON, the same shape the dispatcher agent would send:
+
+```json
+{
+  "summary": "What every item shares: goals, sources, file layout",
+  "tasks": [
+    { "id": "ch-1", "title": "Chapter 1", "context": "Sections 1.1–1.4 of notes.pdf; write into chapters/ch-1/" },
+    { "id": "ch-2", "title": "Chapter 2", "context": "Sections 2.1–2.3", "mode": "dependent", "depends_on": ["ch-1"] }
+  ]
+}
+```
+
+`batch_id` is optional. The items get the same checks as an agent's batch: 1 to **Maximum items** tasks, simple unique ids, a title and context for each, and prerequisites without cycles. Set **Dispatch command time limit in seconds** if it needs more than 600 (at most 3600).
+
+If the command fails, runs past its limit, or prints something that is not a valid batch, **nothing is dispatched**. The Run view shows **Blocked: the dispatch command made no work** with the reason (the exit code, or what is wrong with the output) and the command's evidence. Fix the command, then press **Run the dispatch command again**, or start the team again. When it works, the Run view says **Work made by the dispatch command**: Sculptured ran it and the items are what it printed.
+
+<Note>A team running on a connected computer needs Sculptured updated on that computer to run a dispatch command. An older one is not able to, and the Run view says to update it.</Note>
+
+Open **Workflow settings & composition** on the board to choose the **Dispatcher** (or a dispatch command, below), the **Assembly**, the **First stage**, **Maximum items** and **Maximum steps per item**, and to **Add reusable stage** (up to 16). **Workflow list** in the board's bar lists everything as text.
 
 ## Stage types
 
@@ -88,6 +110,7 @@ Under **Advanced** in the workflow settings:
 
 | Setting | What it does |
 | --- | --- |
+| **Dispatch command** | Instead of a dispatcher agent, a command Sculptured runs at start; what it prints is the batch. See [Dispatch with a command](#dispatch-with-a-command-instead-of-an-agent). |
 | **Give each item its own copy and branch** | Each item gets its own git branch and folder in the project's repository, used by its agents, checks and merge stage. Needs a project folder with git. |
 | **Guard command** | A command (for example `npm test`) run in the project folder every 5–1440 minutes. While it fails, no new work goes out; work under way finishes. It resumes when the guard passes, or when a person presses **Resume anyway**. |
 | **Keep a decision log** | Precedents people write and agents read with `read_decisions`. Agents can't write to it. |

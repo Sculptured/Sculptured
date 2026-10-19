@@ -11,6 +11,7 @@ import type { WorkflowStage } from '../generated/WorkflowStage';
 import { stageOrder } from './itemBoardModel';
 import { InputCardFace } from '../structure/InputMaterial';
 import './workflow.css';
+import { byCommand, DispatchBox, DISPATCH_NODE } from './DispatchCommand';
 
 export type WorkflowTarget = 'input' | 'settings' | 'run' | { stage: string };
 export function inputBox(draft: TeamDraft): Box {
@@ -37,10 +38,11 @@ export function workflowLinks(draft: TeamDraft) {
   const w = draft.workflow;
   if (!w) return [];
   const nodeOf = (id: string) => { const s = w.stages.find(s => s.id === id); return s ? stageNode(s) : ''; };
-  const links: { id: string; from: string; to: string; label: string; target: WorkflowTarget; pool?: boolean }[] = [
-    { id: 'input', from: '$workflow-input', to: w.dispatcher, label: 'Input', target: 'input' },
-    { id: 'dispatch', from: w.dispatcher, to: nodeOf(w.entry), label: `Dispatch N · max ${w.max_tasks}`, target: 'settings' },
-  ];
+  // With a dispatch command, its box stands where the dispatcher agent would, and no agent reads the Input.
+  const links: { id: string; from: string; to: string; label: string; target: WorkflowTarget; pool?: boolean }[] = byCommand(w)
+    ? [{ id: 'dispatch', from: DISPATCH_NODE, to: nodeOf(w.entry), label: `Dispatch N · max ${w.max_tasks}`, target: 'settings' }]
+    : [{ id: 'input', from: '$workflow-input', to: w.dispatcher, label: 'Input', target: 'input' },
+      { id: 'dispatch', from: w.dispatcher, to: nodeOf(w.entry), label: `Dispatch N · max ${w.max_tasks}`, target: 'settings' }];
   for (const stage of w.stages) for (const worker of stage.workers ?? []) links.push({id:`${stage.id}:worker:${worker}`,from:stage.agent,to:worker,label:'Parallel worker pool',target:{stage:stage.id},pool:true});
   for (const stage of w.stages) for (const reviewer of stage.reviewers ?? []) links.push({id:`${stage.id}:reviewer:${reviewer}`,from:stageNode(stage),to:reviewer,label:'Reviewer',target:{stage:stage.id},pool:true});
   for (const stage of w.stages) if (stage.on_limit && stage.max_rounds) links.push({ id: `${stage.id}:on_limit`, from: stageNode(stage), to: nodeOf(stage.on_limit), label: `after ${stage.max_rounds} rounds`, target: { stage: stage.id }, pool: true });
@@ -67,7 +69,7 @@ function StageBox({ draft, stage, box, onOpen, onReveal, controls }: { draft: Te
 /** `agentBox`: where an agent's arrows end inside its card's slot (Logos style), else the slot itself. */
 function geometry(draft: TeamDraft, collapsed: ReadonlySet<string> = new Set(), cardHeight: (id: string) => number = () => CARD_H, agentBox: (b: Box) => Box = (b) => b) {
   const input = inputBox(draft), links = workflowLinks(draft);
-  const boxes = Object.fromEntries([...draft.agents.map(a => [a.id, agentBox({ x: a.x, y: a.y, w: CARD_W, h: cardHeight(a.id) })] as const), ['$workflow-input', input], ...Object.entries(stageBoxes(draft))]);
+  const boxes = Object.fromEntries([...draft.agents.map(a => [a.id, agentBox({ x: a.x, y: a.y, w: CARD_W, h: cardHeight(a.id) })] as const), [draft.workflow && byCommand(draft.workflow) ? DISPATCH_NODE : '$workflow-input', input], ...Object.entries(stageBoxes(draft))]);
   const edges: CompiledEdge[] = links.map(l => ({ from: l.from, to: l.to, kind: 'delegates_to', enforced: !l.pool }));
   const projection = projectGroups(boxes, Object.fromEntries(draft.agents.map(a => [a.id, groupOf(a)])), Object.fromEntries(drawnGroups(draft).map(g => [g.id, g])), collapsed);
   const routes = routeGroupEdges(edges, projection);
@@ -78,7 +80,7 @@ function geometry(draft: TeamDraft, collapsed: ReadonlySet<string> = new Set(), 
 /** Include curved feedback routes and labels when fitting the board. */
 export function workflowBounds(draft: TeamDraft): Box[] {
   const g = geometry(draft);
-  return [...(draft.workflow?.dispatcher ? [g.input] : []), ...Object.values(stageBoxes(draft)), ...[...g.routes.values()].flatMap(r => r.pts.map(p => ({ ...p, w:1, h:1 }))),
+  return [...(draft.workflow?.dispatcher || draft.workflow?.dispatch ? [g.input] : []), ...Object.values(stageBoxes(draft)), ...[...g.routes.values()].flatMap(r => r.pts.map(p => ({ ...p, w:1, h:1 }))),
     ...[...g.labels.values()].map(p => ({ x:p.x-p.w/2, y:p.y-p.h/2, w:p.w, h:p.h }))];
 }
 
@@ -98,6 +100,7 @@ export function WorkflowGraph({ draft, onOpen, onReveal, onReconnect, inputContr
     {onReconnect && selectedLink && selectedGeometry && !selectedLink.pool && selectedLink.id !== 'input' && <ArrowHandles geometry={selectedGeometry} label={selectedLink.label} ends={['to']} onDrag={(_end, event) => onReconnect(selectedLink.id, event)} onEdit={() => onOpen(selectedLink.target)} />}
     {links.map(l => { const p = labels.get(l.id); return p && <button key={l.id} className={`edge-label sb-edge-label ${l.pool ? 'intent' : 'enforced'}${p.wrap ? ' wrap' : ''}`} style={{ left: p.x, top: p.y, maxWidth: p.maxWidth }} aria-label={`${l.pool ? 'Worker capacity' : 'Workflow route'}: ${l.label}`} onFocus={() => onReveal({ x:p.x-80,y:p.y-20,w:160,h:40 })} onClick={() => { select(l.id); onOpen(l.target); }}>{l.label}</button>; })}
     {Object.entries(stageBoxes(draft)).map(([node, box]) => { const s = draft.workflow!.stages.find(x => stageNode(x) === node)!; return <StageBox key={node} draft={draft} stage={s} box={box} onOpen={onOpen} onReveal={onReveal} controls={stageControls?.(s.id)} />; })}
+    {byCommand(draft.workflow!) && <DispatchBox w={draft.workflow!} box={input} onOpen={() => onOpen('settings')} onReveal={onReveal} />}
     {draft.workflow!.dispatcher && <button {...inputControls} className={`workflow-input-node input-card${draft.workflow!.input.trim() ? '' : ' is-empty'}${inputControls ? ' movable' : ''}`} style={{ left: input.x, top: input.y, width: input.w, height: input.h }} onFocus={inputControls?.onFocus ?? (() => onReveal(input))} onClick={inputControls?.onClick ?? (() => onOpen('input'))} aria-label="Input: links, notes and ideas">
       <InputCardFace text={draft.workflow!.input} room={2} action={readOnly ? 'Open to read' : draft.workflow!.input.trim() ? 'Open to edit' : 'Open to add'} />
     </button>}
