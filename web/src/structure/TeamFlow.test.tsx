@@ -7,7 +7,7 @@ import type { RigSnapshot } from '../generated/RigSnapshot';
 import type { SeatView } from '../generated/SeatView';
 import { resetSeenCache } from '../seen';
 import { forgetViewports } from '../shell/viewport';
-import { compiledRig, ev, FakeEventSource, seatView, teamDraft, teamRecord } from '../test-fixtures';
+import { compiledRig, ev, FakeEventSource, seatView, teamDraft, draftAgent, teamRecord } from '../test-fixtures';
 import { openRigWords } from '../test-vocab';
 import { ALL_TEAMS_STREAM } from '../useTeams';
 import { saveTiming } from '../useTeamDraft';
@@ -427,6 +427,37 @@ describe('After Sculptured restarts', () => {
     expect(held).toHaveTextContent('Codex plan is at 100%');
     await user.click(within(held).getByRole('button', { name: 'Start anyway' }));
     await waitFor(() => expect(api.startTeam).toHaveBeenLastCalledWith('t', expect.any(Number), undefined, true, false));
+  });
+
+  it("Start checks the team's computer first: a signed-out Claude Code is signed in from the dialog, then the team starts", async () => {
+    const draft = teamDraft({ agents: [draftAgent('builder', { kind: 'claude' }), draftAgent('reviewer', { kind: 'practice', x: 300 })] });
+    started(teamRecord({ started_revision: 1, live: false, draft }));
+    const cli = (signed_in: boolean) => [{ name: 'claude', installed: true, version: '2.1', signed_in, account: null, detail: '' }, { name: 'codex', installed: false, version: null, signed_in: null, account: null, detail: '' }];
+    const clis = vi.spyOn(api, 'clis').mockResolvedValue(cli(false));
+    const login = vi.spyOn(api, 'cliLogin').mockResolvedValue({ url: 'https://claude.ai/oauth/authorize', code: null, takes_code: true, output: '' });
+    vi.mocked(api.startTeam).mockResolvedValue({ rig: 't', warnings: [] });
+    renderAt('/rig/t');
+    await waitFor(() => expect(streamFor('t')).toBeDefined());
+    act(() => streamFor('t').emit('snapshot', lost()));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Start team' }));
+    const d = await screen.findByRole('alertdialog', { name: 'Sign in before starting' });
+    expect(d).toHaveTextContent("Claude Code isn't signed in on the computer that runs this team.");
+    expect(d).not.toHaveTextContent('Codex');
+    expect(clis).toHaveBeenCalledWith({ team: 't' });
+    expect(api.startTeam).not.toHaveBeenCalled();
+    await user.click(within(d).getByRole('button', { name: 'Sign in to Claude Code' }));
+    expect(login).toHaveBeenCalledWith('claude', { team: 't' });
+    expect(await within(d).findByRole('link', { name: 'Open the sign-in page' })).toHaveAttribute('href', 'https://claude.ai/oauth/authorize');
+    clis.mockResolvedValue(cli(true));
+    await user.click(within(d).getByRole('button', { name: 'Check again' }));
+    await user.click(await within(d).findByRole('button', { name: 'Start team' }));
+    // Ready now: the usual start confirmation, then the start.
+    const confirm = await waitFor(() => document.querySelector<HTMLElement>('.start-confirm')!);
+    await user.click(within(confirm).getByRole('button', { name: 'Start team' }));
+    await waitFor(() => expect(api.startTeam).toHaveBeenCalledWith('t', expect.any(Number), expect.any(String), false, false));
+    clis.mockRestore();
+    login.mockRestore();
   });
 
   it('the Structure board is not locked and Start team is enabled', async () => {

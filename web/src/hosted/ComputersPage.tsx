@@ -116,7 +116,7 @@ function ComputerDetails({ id, name, policy }: { id: string; name: string; polic
               {c.installed && c.signed_in !== true && policy.capabilities.includes('cli_sign_in') && (
                 <button className="btn" aria-label={`Sign in to ${label(c.name)} on ${name}`} onClick={() => void signIn(c.name)}>Sign in</button>
               )}
-              {started[c.name] && c.signed_in !== true && <CliSignInSteps cli={c.name} host={id} started={started[c.name]} />}
+              {started[c.name] && c.signed_in !== true && <CliSignInSteps cli={c.name} on={id} started={started[c.name]} />}
             </li>
           ))}
         </ul>

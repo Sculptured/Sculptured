@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import type { DraftIssue } from '../generated/DraftIssue';
 import { agentsPath, boardPath, questionsPath, resultsPath, settingsPath } from '../paths';
 import { DismissibleError } from '../shell/DismissibleError';
+import { CliReadiness, cliNeeds } from '../shell/CliReadiness';
 import { StartRefused } from '../shell/StartRefused';
 import { useShell } from '../shell/ShellContext';
 import { Btn } from '../shell/ui';
@@ -109,7 +110,8 @@ function Notices({ p, start, stop }: { p: Project; start: StartApi; stop: StopAp
     <>
       {stop.asking && <StopConfirm p={p} stop={stop} />}
       <StartRefused refusal={start.refusal} onClose={start.close} onAnyway={start.anyway}>
-        {start.refusal && start.refusal.code !== 'plan_limit' && p.builtHere && <p>Fix it on the <Link to={boardPath(p.team, 'design')} onClick={start.close}>Design board</Link>.</p>}
+        {start.refusal?.code === 'cli_not_ready' && p.draft && <CliReadiness need={cliNeeds(p.draft)} on={{ team: p.team }} onReady={() => { start.close(); start.ask(); }} />}
+        {start.refusal && start.refusal.code !== 'plan_limit' && start.refusal.code !== 'cli_not_ready' && p.builtHere && <p>Fix it on the <Link to={boardPath(p.team, 'design')} onClick={start.close}>Design board</Link>.</p>}
       </StartRefused>
       {stop.error && <DismissibleError className="pb-note tone-red">{stop.error}</DismissibleError>}
       {stop.failures.length > 0 && (

@@ -42,6 +42,10 @@ export class ApiError extends Error {
 export const HISTORY_LIMIT = 500;
 
 /** One id per user action; reusing it makes a retry or a double-click execute once. */
+/** Whose Claude Code and Codex: a computer (by id), a team's computer, or the only connected one. */
+export type CliOn = string | { team: string } | undefined;
+const cliQuery = (on: CliOn) => (typeof on === 'string' ? `?host=${encodeURIComponent(on)}` : on ? `?team=${encodeURIComponent(on.team)}` : '');
+
 export function newRequestId(): string {
   const c = globalThis.crypto;
   if (c && typeof c.randomUUID === 'function') return c.randomUUID();
@@ -127,7 +131,7 @@ type Empty = Record<string, never>;
 
 export const api = {
   /** Hosted: `host` picks the computer (else the only connected one). */
-  clis: (host?: string) => get<import('./generated/CliStatus').CliStatus[]>(host ? `/api/clis?host=${encodeURIComponent(host)}` : '/api/clis'),
+  clis: (on?: CliOn) => get<import('./generated/CliStatus').CliStatus[]>(`/api/clis${cliQuery(on)}`),
   /** Connected computers (agent runners) with their drivers and, for connected computers, what they allow. */
   hosts: () => get<{ id: string; drivers: string[]; policy: import('./generated/HostPolicyInfo').HostPolicyInfo | null; max_working?: number | null }[]>('/api/hosts'),
   /** Most agents working at once on a computer, across its teams (null = no cap). */
@@ -138,8 +142,8 @@ export const api = {
   teamReport: (id: string, start?: number) => get<import('./generated/RunReport').RunReport>(`${teamUrl(id)}/report${start ? `?start=${start}` : ''}`),
   /** Your own use across every team: tokens, costs, by day, by CLI and by team. */
   accountUsage: () => get<import('./generated/AccountUsage').AccountUsage>('/api/account/usage'),
-  cliLogin: (name: string, host?: string) => post<import('./generated/LoginStarted').LoginStarted>(`/api/clis/${name}/login${host ? `?host=${encodeURIComponent(host)}` : ''}`, newRequestId()),
-  cliLoginCode: (name: string, code: string, host?: string) => post(`/api/clis/${name}/login/code${host ? `?host=${encodeURIComponent(host)}` : ''}`, newRequestId(), { code }),
+  cliLogin: (name: string, on?: CliOn) => post<import('./generated/LoginStarted').LoginStarted>(`/api/clis/${name}/login${cliQuery(on)}`, newRequestId()),
+  cliLoginCode: (name: string, code: string, on?: CliOn) => post(`/api/clis/${name}/login/code${cliQuery(on)}`, newRequestId(), { code }),
   deployments: (id:string,before?:number) => get<import('./generated/DeploymentRun').DeploymentRun[]>(`${teamUrl(id)}/deployments${before ? `?before=${before}` : ''}`),
   deployment: (id:string,seq:number) => get<import('./generated/DeploymentHistory').DeploymentHistory>(`${teamUrl(id)}/deployments/${seq}`),
   deploymentEvents: (id:string,seq:number,seat:string,before?:number) => get<import('./generated/DeploymentEvents').DeploymentEvents>(`${teamUrl(id)}/deployments/${seq}/events?seat=${encodeURIComponent(seat)}${before ? `&before=${before}` : ''}`),

@@ -42,7 +42,7 @@ export function SignInNeeded({ a, feed }: { a: AgentRow; feed: EventRecord[] }) 
       <p className="signin-actions">
         <button type="button" className="btn btn-primary" onClick={() => void start()} disabled={busy}>Sign in to {product}</button>
       </p>
-      {started && <CliSignInSteps cli={cli} host={seat.host ?? undefined} started={started} />}
+      {started && <CliSignInSteps cli={cli} on={seat.host ?? undefined} started={started} />}
       {started && <p className="muted">After signing in, press <strong>Hand over again</strong> (or Restart) so {a.name} tries again.</p>}
       {error && <p className="tone-red">{error}</p>}
     </div>

@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { cliGaps, cliNeeds, gapText } from '../shell/CliReadiness';
 import { api, ApiError } from '../api';
 import { errorsOf, startReason } from '../draft/issues';
 import { errorText, issuesOf, STARTING_REASON } from '../errors';
 import type { Refusal } from '../shell/StartRefused';
+import type { TeamDraft } from '../generated/TeamDraft';
 import type { StopFailure } from '../generated/StopFailure';
 import { useShell } from '../shell/ShellContext';
 import { startConfirmation, useStartConfirm } from '../structure/StartConfirm';
@@ -53,8 +55,18 @@ export function useStart(p: Project, onStarted: () => void) {
       setStarting(false);
     }
   };
-  const ask = () => { if (!reason && p.draft) confirm.ask(startConfirmation(p.draft, home), (c) => void go(false, c.resume)); };
+  const ask = () => { if (!reason) whenReady(p, setRefusal, (d) => confirm.ask(startConfirmation(d, home), (c) => void go(false, c.resume))); };
   return { reason, ask, starting, refusal, close: () => setRefusal(null), anyway: () => void go(true, refusal?.resume ?? false), dialog: confirm.dialog, live };
+}
+
+/** Start's first step: Claude Code / Codex ready on the team's computer, else the sign-in dialog. */
+function whenReady(p: Project, refuse: (r: Refusal & { resume: boolean }) => void, then: (d: TeamDraft) => void) {
+  const draft = p.draft;
+  if (!draft) return;
+  void cliGaps(cliNeeds(draft), { team: p.team }).then((gaps) => {
+    if (gaps.length > 0) refuse({ text: gapText(gaps), code: 'cli_not_ready', resume: false });
+    else then(draft);
+  });
 }
 
 function startFailed(e: unknown, p: Project) {

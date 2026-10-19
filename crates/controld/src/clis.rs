@@ -14,12 +14,18 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Deserialize)]
 struct On {
-    /// Hosted: which computer's CLIs (else the only connected one).
+    /// Hosted: which computer's CLIs (else the team's computer, else the only connected one).
     host: Option<String>,
+    /// The team whose computer it is (what Start checks before starting).
+    team: Option<String>,
 }
 
 fn target(on: &On) -> crate::ops::Target<'_> {
-    on.host.as_deref().map(crate::ops::Target::Host).unwrap_or(crate::ops::Target::Default)
+    match (on.host.as_deref(), on.team.as_deref()) {
+        (Some(h), _) => crate::ops::Target::Host(h),
+        (None, Some(t)) => crate::ops::Target::Team(t),
+        (None, None) => crate::ops::Target::Default,
+    }
 }
 
 async fn list(State(st): State<AppState>, axum::extract::Query(on): axum::extract::Query<On>) -> Result<Json<serde_json::Value>, ApiError> {

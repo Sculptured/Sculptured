@@ -26,7 +26,7 @@ it('Claude Code: the code its page shows is pasted here and sent to that compute
     return answer(200, {});
   });
   const user = userEvent.setup();
-  render(<CliSignInSteps cli="claude" host="pc-1" started={{ url: 'https://claude.ai/oauth/authorize?code=true', code: null, takes_code: true, output: '' }} />);
+  render(<CliSignInSteps cli="claude" on="pc-1" started={{ url: 'https://claude.ai/oauth/authorize?code=true', code: null, takes_code: true, output: '' }} />);
   expect(screen.getByRole('link', { name: 'Open the sign-in page' })).toHaveAttribute('href', 'https://claude.ai/oauth/authorize?code=true');
   await user.type(screen.getByRole('textbox', { name: 'Code from the sign-in page' }), ' abc#def ');
   await user.click(screen.getByRole('button', { name: 'Send code' }));
