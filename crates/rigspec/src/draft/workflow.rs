@@ -15,9 +15,7 @@ fn errors(d: &TeamDraft, w: &Workflow) -> Vec<String> {
     if !(1..=64).contains(&w.max_tasks) || !(1..=32).contains(&w.max_steps) {
         errors.push("Dynamic dispatch needs 1–64 tasks and 1–32 steps per task.".into());
     }
-    if d.agent(&w.dispatcher).is_none() || d.agent(&w.collector).is_none() || w.dispatcher == w.collector {
-        errors.push("Choose different, existing dispatcher and assembly agents.".into());
-    }
+    errors.extend(dispatch_errors(d, w));
     if !d.connections.is_empty() { errors.push("Dynamic workflows use stage routes instead of ordinary connections. Remove ordinary connections first.".into()); }
     if w.copies == CopiesMode::PerItem && !has_folder(d) { errors.push("A copy per item needs the team's project folder.".into()); }
     if let Some(g) = &w.guard {
@@ -49,6 +47,21 @@ fn errors(d: &TeamDraft, w: &Workflow) -> Vec<String> {
         if !can_finish(w, &s.id, &mut HashSet::new()) { errors.push(format!("{} has no route to completion.", s.name)); }
     }
     errors
+}
+
+/// Who makes the batch: a dispatcher agent, or a dispatch command (never both); and the assembly agent.
+fn dispatch_errors(d: &TeamDraft, w: &Workflow) -> Vec<String> {
+    let Some(c) = &w.dispatch else {
+        let ok = d.agent(&w.dispatcher).is_some() && d.agent(&w.collector).is_some() && w.dispatcher != w.collector;
+        return if ok { vec![] } else { vec!["Choose different, existing dispatcher and assembly agents.".into()] };
+    };
+    let mut e = Vec::new();
+    if !w.dispatcher.is_empty() { e.push("Choose a dispatcher agent or a dispatch command, not both.".into()); }
+    if d.agent(&w.collector).is_none() { e.push("Choose an existing assembly agent.".into()); }
+    if c.command.trim().is_empty() || c.command.len() > 2000 { e.push("The dispatch command needs 1–2000 bytes.".into()); }
+    if c.timeout_s.is_some_and(|t| !(1..=3600).contains(&t)) { e.push("The dispatch command needs a time limit of 1–3600 seconds.".into()); }
+    if !has_folder(d) { e.push("The dispatch command runs in the team's project folder; set one in team settings.".into()); }
+    e
 }
 
 /// The rules for one stage's kind: its own fields present, other kinds' fields absent.

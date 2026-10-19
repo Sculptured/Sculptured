@@ -273,7 +273,7 @@ fn connection_ends_models_and_resume_survive_a_round_trip() {
     d.groups = vec![group("build", "Build", 10), group("check", "Check", 300)];
     d.agents[0].group_id = Some("build".into());
     d.agents[1].group_id = Some("check".into());
-    let opus = AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None, model: Some("opus".into()), permission: PermissionPosture::Unrestricted, resume: ResumeBehaviour::RelaunchFresh, token_limit: None, check: None };
+    let opus = AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None, model: Some("opus".into()), permission: PermissionPosture::Unrestricted, resume: ResumeBehaviour::RelaunchFresh, token_limit: None, check: None, briefing: None };
     d.agents.push(helper(Some("build"), opus));
     d.agents[1].advanced.resume = ResumeBehaviour::CheckpointOnly;
     d.connections.push(DraftConnection { id: "c2".into(), from: "helper".into(), to: "builder".into(), kind: ConnectionKind::ReportsTo });

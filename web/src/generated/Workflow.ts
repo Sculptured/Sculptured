@@ -2,13 +2,18 @@
 import type { BoardPosition } from "./BoardPosition";
 import type { CopiesMode } from "./CopiesMode";
 import type { Guard } from "./Guard";
+import type { WorkflowDispatch } from "./WorkflowDispatch";
 import type { WorkflowStage } from "./WorkflowStage";
 
 export type Workflow = { 
 /**
  * Board placement only; changing it does not alter workflow execution.
  */
-input_position?: BoardPosition, input: string, dispatcher: string, entry: string, collector: string, max_tasks: number, max_steps: number, stages: Array<WorkflowStage>, 
+input_position?: BoardPosition, input: string, 
+/**
+ * The agent that calls dispatch_work; empty when `dispatch` makes the batch instead.
+ */
+dispatcher: string, entry: string, collector: string, max_tasks: number, max_steps: number, stages: Array<WorkflowStage>, 
 /**
  * Pauses new work while this project check fails (Advanced).
  */
@@ -16,4 +21,8 @@ guard?: Guard,
 /**
  * per-item: each item gets its own git branch and folder (Advanced).
  */
-copies?: CopiesMode, };
+copies?: CopiesMode, 
+/**
+ * Sculptured runs this command at start and its output is the batch (no dispatcher agent).
+ */
+dispatch?: WorkflowDispatch, };

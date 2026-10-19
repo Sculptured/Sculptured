@@ -25,7 +25,7 @@ fn reviewer() -> DraftAgent {
         folder: Some("/home/u/repo".into()),
         x: 300,
         y: 40,
-        advanced: AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None, model: Some("opus".into()), permission: PermissionPosture::Restricted, resume: ResumeBehaviour::RelaunchFresh, token_limit: None, check: None },
+        advanced: AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None, model: Some("opus".into()), permission: PermissionPosture::Restricted, resume: ResumeBehaviour::RelaunchFresh, token_limit: None, check: None, briefing: None },
     }
 }
 

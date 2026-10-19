@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Dispatch { batch_id: String, summary: String, tasks: Vec<DispatchTask> }
+pub(super) struct Dispatch { pub batch_id: String, pub summary: String, pub tasks: Vec<DispatchTask> }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Complete { assignment: String, outcome: String, result: String }
@@ -19,7 +19,9 @@ pub fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result<Value
     match tool {
         "dispatch_work" => {
             let req: Dispatch = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
-            if d.workflow.as_ref().unwrap().dispatcher != agent.id { return Err("Only the configured dispatcher can create a batch.".into()); }
+            let w = d.workflow.as_ref().unwrap();
+            if w.dispatch.is_some() { return Err("This workflow's batch comes from its dispatch command, which Sculptured runs; no agent dispatches it.".into()); }
+            if w.dispatcher != agent.id { return Err("Only the configured dispatcher can create a batch.".into()); }
             dispatch(&mut store, &d, start, req)?;
         }
         "complete_work" => {
@@ -36,9 +38,14 @@ pub fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result<Value
     Ok(json!({ "text": serde_json::to_string(&summary).map_err(|e| e.to_string())? }))
 }
 
-fn dispatch(store: &mut crate::store::Store, d: &model::TeamDraft, start: i64, req: Dispatch) -> Result<(), String> {
+/// A batch checked and made into its run: the one way in, for dispatch_work and the dispatch command alike.
+pub(super) fn batch(d: &model::TeamDraft, start: i64, req: Dispatch) -> Result<model::WorkflowRun, String> {
     if !model::valid_segment(&req.batch_id) || req.summary.trim().is_empty() || req.summary.len() > 12000 { return Err("Provide a simple batch_id and a summary of 1–12000 bytes.".into()); }
-    let run = engine::new_run(&d.id, start, req.batch_id, req.summary, d.workflow.clone().unwrap(), req.tasks)?;
+    engine::new_run(&d.id, start, req.batch_id, req.summary, d.workflow.clone().unwrap(), req.tasks)
+}
+
+fn dispatch(store: &mut crate::store::Store, d: &model::TeamDraft, start: i64, req: Dispatch) -> Result<(), String> {
+    let run = batch(d, start, req)?;
     if let Some(old) = store.workflow_run(&d.id, start).map_err(|e| e.to_string())? {
         let same = old.batch_id == run.batch_id && old.summary == run.summary && old.tasks.iter().map(|t| &t.input).eq(run.tasks.iter().map(|t| &t.input));
         return if same { Ok(()) } else { Err("This start already has a batch. Stop and start the project to dispatch a new batch.".into()) };

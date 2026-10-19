@@ -80,6 +80,10 @@ Sculptured's own tools, including questions, reports and workflow calls, do not 
 
 **Check** is a command Sculptured runs in the agent's folder after each turn the agent finishes, for example `npm test`. Exit code 0 shows "check passed"; anything else shows "check failed", with its output. A check result is verified by Sculptured; the agent's own "done" is only agent-reported. The command runs as you, with your permissions.
 
+### Briefing
+
+With its first message every agent gets a **briefing**: by default (**full**) the team, its neighbours' jobs, the workflow and the working rules. The agent keeps it for the whole conversation and reads it again at every step, so it costs tokens on every call. Choose **minimal** for agents that only need their own assignments, such as workflow workers: they get only their role, their own Job and contract, their own skills, and one line on how to finish. Helpers a minimal agent starts are briefed minimally too.
+
 ### Skills
 
 Instructions the agent loads only when it needs them, such as your house style or how to run a release. Until then only their names and descriptions are in its context. See [Skills and tools](/guides/skills).

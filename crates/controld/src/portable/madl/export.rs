@@ -135,6 +135,9 @@ fn agent_extension(a: &DraftAgent, hidden_group: bool) -> m::Extensions {
     if !a.advanced.integrations.is_empty() {
         ext.insert("integrations".into(), json!(a.advanced.integrations));
     }
+    if let Some(b) = a.advanced.briefing {
+        ext.insert("briefing".into(), json!(b));
+    }
     if let Some(shared) = a.advanced.data_access.as_ref().map(|d| &d.shared).filter(|s| !s.is_empty()) {
         ext.insert("shared_values".into(), json!(shared));
     }

@@ -238,6 +238,17 @@
             }
           ]
         },
+        "briefing": {
+          "description": "How much of the team the agent is told about (default full).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BriefingLevel"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "check": {
           "description": "A shell command Sculptured runs in the agent's folder after each turn it finishes (exit 0 =\npassed). None = no check.",
           "type": [
@@ -443,6 +454,14 @@
       "required": [
         "x",
         "y"
+      ]
+    },
+    "BriefingLevel": {
+      "description": "`full`: the team's architecture, neighbours' jobs and the working rules (the default).\n`minimal`: only the agent's own role, job, data contract and how to finish, for agents that need\nnothing but their assignment. Its managed children get the minimal briefing too.",
+      "type": "string",
+      "enum": [
+        "full",
+        "minimal"
       ]
     },
     "Caps": {
@@ -3551,8 +3570,21 @@
           "description": "per-item: each item gets its own git branch and folder (Advanced).",
           "$ref": "#/$defs/CopiesMode"
         },
+        "dispatch": {
+          "description": "Sculptured runs this command at start and its output is the batch (no dispatcher agent).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowDispatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "dispatcher": {
-          "type": "string"
+          "description": "The agent that calls dispatch_work; empty when `dispatch` makes the batch instead.",
+          "type": "string",
+          "default": ""
         },
         "entry": {
           "type": "string"
@@ -3601,12 +3633,33 @@
         }
       },
       "required": [
-        "dispatcher",
         "entry",
         "collector",
         "max_tasks",
         "max_steps",
         "stages"
+      ]
+    },
+    "WorkflowDispatch": {
+      "description": "The command whose standard output is the batch, in the `dispatch_work` shape:\n`{\"batch_id\"?, \"summary\", \"tasks\": [{id, title, context, mode?, depends_on?}]}`.",
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "The shell command, run on the team's computer in its project folder.",
+          "type": "string"
+        },
+        "timeout_s": {
+          "description": "Seconds before the command is stopped (default 600, at most 3600).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "command"
       ]
     },
     "WorkflowStage": {

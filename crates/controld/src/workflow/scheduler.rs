@@ -23,7 +23,8 @@ pub(super) async fn process(st: &AppState, rig: &str) -> Result<(), String> {
         let current = running(&store, rig).ok();
         st.workflow_jobs.stop_stale(&mut store, rig, current.as_ref().map(|(_, start)| *start));
         let Some((d, start)) = current else { return Ok(()) };
-        let Some(mut run) = store.workflow_run(rig, start).map_err(|e| e.to_string())? else { return Ok(()) };
+        // No batch yet: a dispatch command makes it (a dispatcher agent calls dispatch_work).
+        let Some(mut run) = store.workflow_run(rig, start).map_err(|e| e.to_string())? else { super::dispatch::start(st, &store, &d, start); return Ok(()) };
         let (sends, mut work) = schedule(&mut store, &st.workflow_jobs, &d, &mut run).map_err(|e| e.to_string())?;
         work.extend(super::guard::due(st, &run, d.folder.as_deref().unwrap_or_default()).map(Work::Guard));
         for out in &sends { st.publish(out.items.clone()); }
@@ -181,7 +182,7 @@ fn assign(store: &mut Store, d: &TeamDraft, run: &mut WorkflowRun, index: usize,
     let text = super::assignment::text(d, run, task_at(run, index), &id, agent);
     let text = match crate::team_context::decision_log_note(store, &run.rig, d.decision_log) { Some(note) => format!("{note}\n\n{text}"), None => text };
     let fresh = !crate::team_context::briefed(store, &seat).unwrap_or(false);
-    let text = match crate::team_context::briefing(d, &seat).filter(|_| fresh) { Some(brief) => format!("{brief}\n\n--- Current message ---\n{text}"), None => text };
+    let text = match crate::team_context::briefing_with(d, &seat, &text).filter(|_| fresh) { Some(brief) => format!("{brief}\n\n--- Current message ---\n{text}"), None => text };
     let t = task_at_mut(run, index);
     match review {
         Some(r) => t.reviews[r].assignment = Some(id.clone()),

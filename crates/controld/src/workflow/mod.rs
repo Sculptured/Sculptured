@@ -1,5 +1,6 @@
 //! Durable, bounded work-item workflows over a reusable pool of team agents.
 mod assignment;
+mod dispatch;
 mod engine;
 mod guard;
 mod scheduler;
@@ -13,6 +14,8 @@ mod tools;
 mod topics;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod dispatch_tests;
 
 pub use routes::routes;
 pub use tools::call;

@@ -104,6 +104,11 @@ fn ops_stay_inside_allowed_folders_and_respect_capabilities() {
     assert_eq!(pol.check_op(&LocalOp::RunCheck { cwd: p(&outside), item: None, command: "true".into(), timeout_s: 5 }).unwrap_err().code, "not_allowed_here");
     assert!(pol.check_op(&LocalOp::RunCheck { cwd: p(&proj), item: item.clone(), command: "true".into(), timeout_s: 5 }).is_ok());
     assert!(sandboxed.check_op(&LocalOp::RunCheck { cwd: p(&proj), item, command: "true".into(), timeout_s: 5 }).unwrap_err().message.contains("--enable checks"));
+    // A workflow's dispatch command is a command like a check: the same folders and the same switch.
+    let dispatch = |cwd: &std::path::Path| LocalOp::RunDispatch { cwd: p(cwd), command: "cat tasks.json".into(), timeout_s: 5 };
+    assert!(pol.check_op(&dispatch(&proj)).is_ok());
+    assert_eq!(pol.check_op(&dispatch(&outside)).unwrap_err().code, "not_allowed_here");
+    assert!(sandboxed.check_op(&dispatch(&proj)).unwrap_err().message.contains("--enable checks"));
     let mut no_copies = pol.clone(); no_copies.capabilities.copies = Some(false);
     assert!(no_copies.check_op(&LocalOp::ItemCopyPrepare { project: p(&proj), team: "t".into(), task: "x".into() }).unwrap_err().message.contains("--enable copies"));
 }

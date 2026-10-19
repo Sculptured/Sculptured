@@ -13,6 +13,7 @@ import { TopicExecution } from './TopicExecution';
 import { DecisionCard, provenance } from './DecisionCard';
 import { ItemBoard, costText, costTitle } from './ItemBoard';
 import { DecisionLog } from './DecisionLog';
+import { DispatchNotice } from './DispatchCommand';
 import type { CostSource } from '../generated/CostSource';
 import { usesPipeline } from './itemBoardModel';
 import type { TurnTokens } from '../generated/TurnTokens';
@@ -22,12 +23,14 @@ export function WorkflowRunView({ draft }: { draft: TeamDraft }) {
   const teamId = draft.id;
   const { data, error, reload } = usePolled(() => api.workflow(teamId), 2500, [teamId]);
   if (error) return <DismissibleError>Could not load workflow: {error}</DismissibleError>;
-  if (!data?.run) return <p className="muted">No batch dispatched yet. Input and stage design are configuration, not completed work.</p>;
+  const notice = <DispatchNotice team={teamId} start={data?.start_seq ?? null} record={data?.dispatch} running={!!data?.dispatching} active={data?.start_seq != null} onRetried={reload} />;
+  if (!data?.run) return <>{notice}<p className="muted">No batch dispatched yet. Input and stage design are configuration, not completed work.</p></>;
   const r = data.run, accepted = r.tasks.filter(t => t.status === 'complete').length;
   const waiting = r.tasks.filter(t => t.status === 'waiting');
   return <section className="workflow-run" aria-label="Dispatched work"><h2>{r.batch_id} · {accepted}/{r.tasks.length} items accepted</h2>
     <p>{data.active ? 'Current batch' : 'Previous or stopped batch · no automatic dispatch'} · {assemblyStatus(r, accepted, draft)}</p>
     <progress value={accepted} max={r.tasks.length} aria-label="Accepted interactions" />
+    {notice}
     {r.guard && !r.guard.passed && <GuardNotice run={r} active={data.active} onResumed={reload} />}
     {data.active && waiting.length > 0 && <section className="decision-queue" aria-label="Waiting for your decision"><h3>Waiting for you ({waiting.length})</h3>
       {waiting.map(t => <DecisionCard key={t.input.id} t={t} run={r} onDecided={reload} logOn={!!draft.decision_log} />)}</section>}
