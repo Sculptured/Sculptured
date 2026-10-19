@@ -155,6 +155,10 @@ export const api = {
   /** A run paused at its plan budget: `continue` now, `stop`, or set how it continues (`mode`). */
   budgetPaused: (id: string, action: 'continue' | 'stop' | 'mode', continue_with?: 'notes' | 'resume') => post(`${teamUrl(id)}/budget/paused`, newRequestId(), { action, continue_with }),
   setTeamBudget: (id: string, output_limit: number | null) => post(`${teamUrl(id)}/budget`, newRequestId(), {output_limit}),
+  /** Raises a run limit for this run only; a run stopped or wrapping up at it continues. */
+  raiseLimit: (id: string, r: { limit: string; hard: number; provider: string | null; window: string | null }) => post(`${teamUrl(id)}/budget/raise`, newRequestId(), r),
+  /** Raises one agent's own limit (tokens, turns or minutes) for this run only. */
+  raiseAgentLimit: (id: string, member: string, r: { limit: 'tokens' | 'turns' | 'minutes'; hard: number }) => post(`${teamUrl(id)}/agents/${encodeURIComponent(member)}/limits/raise`, newRequestId(), r),
   managedChildren: (id:string) => get<import('./generated/ManagedChild').ManagedChild[]>(`${teamUrl(id)}/children`),
   /** The team's latest message, handoff and start events; `usage` adds its model-usage reports. */
   communications: (id: string, usage = false) => get<EventRecord[]>(`${teamUrl(id)}/communications${usage ? '?usage=true' : ''}`),

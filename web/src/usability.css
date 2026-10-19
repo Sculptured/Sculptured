@@ -144,3 +144,5 @@ div.cli-signin-steps { padding-left: 0; }
 .getting-started li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .getting-started .gs-state { min-width: 5.5em; color: var(--muted); }
 .getting-started li.done .gs-title { color: var(--muted); }
+.raise-limit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.raise-limit input { width: 9rem; }

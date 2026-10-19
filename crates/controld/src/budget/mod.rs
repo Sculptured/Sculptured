@@ -308,7 +308,7 @@ mod tests {
     use super::*;
 
     fn meter(used: f64, reserve: f64) -> Meter {
-        Meter { what: "Claude 5-hour".into(), unit: "percent".into(), used: Some(used), soft: 25.5, hard: 30.0, reserve, estimated: false, observed_ms: None, pause: None }
+        Meter { what: "Claude 5-hour".into(), unit: "percent".into(), used: Some(used), soft: 25.5, hard: 30.0, reserve, estimated: false, observed_ms: None, pause: None, limit: "plan".into(), provider: None, window: None }
     }
 
     #[test]

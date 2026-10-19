@@ -29,4 +29,12 @@ estimated: boolean, observed_ms: number | null,
  * Set when reaching the hard value pauses the run (a plan budget with windows left) instead of
  * stopping it.
  */
-pause: PauseAt | null, };
+pause: PauseAt | null, 
+/**
+ * Which limit this is, for raising it: `plan`, `tokens` or `minutes`.
+ */
+limit: string, 
+/**
+ * For `plan`: the plan window it measures.
+ */
+provider: string | null, window: string | null, };

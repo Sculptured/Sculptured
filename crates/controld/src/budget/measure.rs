@@ -37,6 +37,14 @@ pub struct Meter {
     /// Set when reaching the hard value pauses the run (a plan budget with windows left) instead of
     /// stopping it.
     pub pause: Option<PauseAt>,
+    /// Which limit this is, for raising it: `plan`, `tokens` or `minutes`.
+    #[serde(default)]
+    pub limit: String,
+    /// For `plan`: the plan window it measures.
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub window: Option<String>,
 }
 
 /// Where a run would pause: until when, and which window of how many it is in.
@@ -169,20 +177,21 @@ pub fn meters(r: &Record, spend: &HashMap<&str, Spend>, working: &HashMap<&str, 
         let measured = share(t, s.tokens, rate);
         let reserve = rate.map_or(0.0, |r| working.get(t.provider.as_str()).copied().unwrap_or(0) as f64 * s.max_call as f64 * r);
         out.push(Meter { what: window_words(&t.provider, &t.window), unit: "percent".into(), used: measured.map(|m| m.0),
-            soft: b.soft_value(), hard: b.hard, reserve, estimated: measured.is_some_and(|m| m.1), observed_ms: t.last.map(|l| l.at_ms), pause: pause_at(r, t, b) });
+            soft: b.soft_value(), hard: b.hard, reserve, estimated: measured.is_some_and(|m| m.1), observed_ms: t.last.map(|l| l.at_ms), pause: pause_at(r, t, b),
+            limit: "plan".into(), provider: Some(t.provider.clone()), window: Some(t.window.clone()) });
     }
     if let Some(tb) = r.budget.tokens {
         let total: u64 = spend.values().map(|s| s.tokens).sum();
         let max_call = spend.values().map(|s| s.max_call).max().unwrap_or(0);
         let n: u32 = working.values().sum();
         out.push(Meter { what: "Tokens".into(), unit: "tokens".into(), used: Some(total as f64), soft: tb.soft_value() as f64,
-            hard: tb.hard as f64, reserve: (n as u64 * max_call) as f64, estimated: false, observed_ms: None, pause: None });
+            hard: tb.hard as f64, reserve: (n as u64 * max_call) as f64, estimated: false, observed_ms: None, pause: None, limit: "tokens".into(), provider: None, window: None });
     }
     if let Some(m) = r.budget.minutes {
         // Minutes the run worked: time paused at a plan budget does not count.
         let used = (now_ms - r.start_ms - r.paused_ms).max(0) as f64 / 60_000.0;
         out.push(Meter { what: "Time".into(), unit: "minutes".into(), used: Some(used), soft: m.soft_value() as f64, hard: m.hard as f64,
-            reserve: 0.0, estimated: false, observed_ms: None, pause: None });
+            reserve: 0.0, estimated: false, observed_ms: None, pause: None, limit: "minutes".into(), provider: None, window: None });
     }
     out
 }

@@ -182,7 +182,7 @@ mod tests {
     use super::super::{decide, BudgetState};
 
     fn meter(used: f64, pause: Option<PauseAt>) -> Meter {
-        Meter { what: "Claude 5-hour".into(), unit: "percent".into(), used: Some(used), soft: 25.5, hard: 30.0, reserve: 0.0, estimated: false, observed_ms: None, pause }
+        Meter { what: "Claude 5-hour".into(), unit: "percent".into(), used: Some(used), soft: 25.5, hard: 30.0, reserve: 0.0, estimated: false, observed_ms: None, pause, limit: "plan".into(), provider: None, window: None }
     }
 
     #[test]

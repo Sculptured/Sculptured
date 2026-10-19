@@ -8,12 +8,17 @@ use serde::{Deserialize, Serialize};
 #[ts(export)]
 pub struct AgentBudget {
     pub seat: String,
+    /// The agent's id in the team design (for raising its limits); empty for agents it spawned.
+    pub member: String,
     pub output_used: Option<u32>,
     pub exhausted: bool,
     /// The agent's own token limit, if set, and what counts against it in this run.
     pub token_limit: Option<model::TokenLimit>,
     #[ts(type = "number | null")]
     pub token_used: Option<u64>,
+    /// The agent's own turn and minute limits, as raised for this run.
+    pub turn_limit: Option<model::SoftHard<u32>>,
+    pub minute_limit: Option<model::SoftHard<u32>>,
 }
 #[derive(Serialize, Deserialize, ts_rs::TS)]
 #[ts(export)]
@@ -53,7 +58,10 @@ pub fn status(st: &AppState, rig: &str) -> Result<TeamBudget, ApiError> {
             let token_used = match &token_limit { Some(l) => super::token_limits::counted(&store, &seat, l)?, None => None };
             let reached = token_limit.zip(token_used).is_some_and(|(l, u)| u >= l.tokens);
             let exhausted = reached || output_limit.zip(used).is_some_and(|(limit, used)| used >= limit);
-            agents.push(AgentBudget { seat: seat.id, output_used: used, exhausted, token_limit, token_used });
+            let adv = store.draft(rig)?.and_then(|d| d.agents.into_iter().find(|a| a.id == seat.member)).map(|a| a.advanced);
+            let adv = match adv { Some(a) => Some(super::token_limits::effective(&store, rig, &seat.member, &a)?), None => None };
+            let (turn_limit, minute_limit) = adv.map(|a| (a.turn_limit, a.minute_limit)).unwrap_or_default();
+            agents.push(AgentBudget { seat: seat.id, member: seat.member, output_used: used, exhausted, token_limit, token_used, turn_limit, minute_limit });
         }
     }
     Ok(TeamBudget { output_limit, agents, run, waiting })

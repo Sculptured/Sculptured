@@ -402,6 +402,8 @@ async fn raising_a_stopped_runs_token_limit_continues_it_for_this_run_only() {
     let id = team(&s, dir.path(), &[("a", "spend:400:1000:3".into())], json!({ "tokens": { "hard": 2000 } })).await;
     start_team(&s, &id).await;
     wait_long("the token budget stops the run", || matches!(state(&s, &id), BudgetState::Stopped { .. })).await;
+    let meters = controld::budget::status(&s.st, &id).unwrap().unwrap().meters;
+    assert_eq!(meters[0].limit, "tokens", "each meter says which limit it is, for Raise");
     let raise = |hard: u64| json!({ "request_id": rid(), "limit": "tokens", "hard": hard });
     // Lowering is not a raise.
     let (status, body) = call(&s.router, "POST", &format!("/api/teams/{id}/budget/raise"), raise(1000)).await;
@@ -451,6 +453,9 @@ async fn raising_an_agents_own_token_limit_lets_it_carry_on_for_this_run_only() 
     wait_long("the agent works again", || turns(&s, &a).len() > turns_before).await;
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert_ne!(s.st.store.lock().unwrap().control(&a).unwrap(), Some(controld::store::ControlMode::Hard), "the raised limit is not stopped again at the old value");
+    let (_, budget) = get(&s.router, &format!("/api/teams/{id}/budget")).await;
+    let row = budget["agents"].as_array().unwrap().iter().find(|x| x["seat"] == a).unwrap().clone();
+    assert_eq!((row["member"].as_str(), row["token_limit"]["tokens"].as_u64()), (Some("a"), Some(1_000_000)), "the board shows the raised limit: {row}");
     let (_, team) = get(&s.router, &format!("/api/teams/{id}")).await;
     let saved = team["draft"]["agents"].as_array().unwrap().iter().find(|x| x["id"] == "a").unwrap()["advanced"]["token_limit"]["tokens"].clone();
     assert_eq!(saved, 2000, "the saved limit is unchanged");
