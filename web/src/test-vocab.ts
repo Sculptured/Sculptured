@@ -5,7 +5,8 @@ const PRODUCT = /Sculptured/g;
  * OpenRig words a user would see outside an Advanced disclosure. Raw events
  * ([data-raw-evidence]) are evidence and are shown verbatim, so they are skipped too.
  */
-export function openRigWords(root: HTMLElement): string[] {
+/** Words of the underlying runtime in `root`'s visible text; `allow` lists ones a page may use in plain sense. */
+export function openRigWords(root: HTMLElement, allow: readonly string[] = []): string[] {
   const clone = root.cloneNode(true) as HTMLElement;
   clone.querySelectorAll('[data-advanced], [data-raw-evidence]').forEach((n) => n.remove());
   const texts: string[] = [];
@@ -18,5 +19,5 @@ export function openRigWords(root: HTMLElement): string[] {
         texts.push(el.getAttribute(a) ?? '');
       }
   });
-  return texts.flatMap((t) => t.replace(PRODUCT, '').match(OPENRIG) ?? []).map((w) => w.toLowerCase());
+  return texts.flatMap((t) => t.replace(PRODUCT, '').match(OPENRIG) ?? []).map((w) => w.toLowerCase()).filter((w) => !allow.includes(w));
 }

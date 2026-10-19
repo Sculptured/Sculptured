@@ -31,7 +31,30 @@ export const FOLDER_WORDS: Record<string, string> = {
   home_unknown: 'Your home folder is unknown, so folders cannot be browsed.',
 };
 
+/** Community's own answers (codes from its API and the gateway), in plain words. */
+export const COMMUNITY_ERROR_WORDS: Record<string, string> = {
+  handle_taken: 'Someone already has that handle. Choose another.',
+  handle_invalid: 'A handle is 3 to 30 lowercase letters, digits or dashes, and starts and ends with a letter or digit.',
+  handle_reserved: 'That handle is reserved. Choose another.',
+  handle_too_soon: 'You can change your handle once every 30 days.',
+  bio_too_long: 'Keep your bio to 280 characters.',
+  link_invalid: 'Each link must start with https:// and be at most 200 characters. You can add up to 3.',
+  avatar_too_large: 'That picture is too large. Use one under 256 KB.',
+  avatar_type: 'Use a PNG, JPEG or WebP picture.',
+  handle_required: 'Choose a handle before you publish.',
+  publish_limit: 'A new account can publish 5 blocks in its first day. Try again tomorrow.',
+  signed_out: 'Sign in to Sculptured to do this.',
+  csrf: `Your sign-in could not be checked. ${RELOAD}`,
+  community_bad_answer: 'Community answered in a way Sculptured does not accept. Try again later.',
+  account_disabled: 'This Community account is disabled. Contact Sculptured support if you think this is a mistake.',
+  rate_limited: 'Too many requests to Community just now. Wait a minute, then try again.',
+  invalid: 'Community did not accept that. Check what you entered, then try again.',
+  device_unknown: 'Your Community sign-in was removed. Sign in again.',
+  community_unavailable: 'Community is not available on this Sculptured server right now.',
+};
+
 export const ERROR_WORDS: Record<string, string> = {
+  ...COMMUNITY_ERROR_WORDS,
   no_sign_in: 'That sign-in has ended. Press Sign in to start again.',
   bad_code: 'Paste the code exactly as the sign-in page shows it, on one line.',
   unknown_op: 'That computer runs an older Sculptured. Update it (run its connect command again), then try again.',

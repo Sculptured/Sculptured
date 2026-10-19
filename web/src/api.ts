@@ -41,11 +41,11 @@ export class ApiError extends Error {
 /** Rows per history page; a full page means older events exist that were not loaded. */
 export const HISTORY_LIMIT = 500;
 
-/** One id per user action; reusing it makes a retry or a double-click execute once. */
 /** Whose Claude Code and Codex: a computer (by id), a team's computer, or the only connected one. */
 export type CliOn = string | { team: string } | undefined;
 const cliQuery = (on: CliOn) => (typeof on === 'string' ? `?host=${encodeURIComponent(on)}` : on ? `?team=${encodeURIComponent(on.team)}` : '');
 
+/** One id per user action; reusing it makes a retry or a double-click execute once. */
 export function newRequestId(): string {
   const c = globalThis.crypto;
   if (c && typeof c.randomUUID === 'function') return c.randomUUID();
@@ -53,16 +53,17 @@ export function newRequestId(): string {
 }
 
 /** `keepalive` lets a request outlive the page (a save sent as the page goes away). */
-/** `text`: send this body as-is with its content type (a file), not as JSON. */
-type RequestOptions = { keepalive?: boolean; text?: { body: string; type: string }; signal?: AbortSignal };
+/** `text`: send this body as-is with its content type (a file), not as JSON. `bytes`: the same for a picture. */
+type RequestOptions = { keepalive?: boolean; text?: { body: string; type: string }; bytes?: { body: Blob; type: string }; signal?: AbortSignal };
 
 let csrfToken: string | null = null;
 /** Hosted beta: the gateway's per-session CSRF token, sent with every write. */
 export function setCsrf(token: string | null) { csrfToken = token; }
 
-async function request<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
+export async function apiRequest<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
-  if (opts.text) headers['content-type'] = opts.text.type;
+  const raw = opts.text ?? opts.bytes;
+  if (raw) headers['content-type'] = raw.type;
   else if (body !== undefined) headers['content-type'] = 'application/json';
   if (method !== 'GET' && csrfToken) headers['x-csrf-token'] = csrfToken;
   const res = await fetch(url, {
@@ -70,7 +71,7 @@ async function request<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string
     ...(opts.keepalive ? { keepalive: true } : {}),
     ...(opts.signal ? { signal: opts.signal } : {}),
     headers: Object.keys(headers).length ? headers : undefined,
-    body: opts.text ? opts.text.body : body === undefined ? undefined : JSON.stringify(body),
+    body: raw ? raw.body : body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
   let json;
@@ -85,12 +86,15 @@ async function request<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string
     throw new ApiError(res.status, 'http_error', text.slice(0, 200));
   }
   if (!res.ok) {
+    // An answer in another shape (an older Community's `{"error":"text"}`) is never shown as is.
+    if (typeof json.error === 'string') throw new ApiError(res.status, 'community_bad_answer', '');
     const e = json.error ?? {};
     throw new ApiError(res.status, e.code ?? 'http_error', e.message ?? `HTTP ${res.status}`, e.diagnostics, e.issues, e.raw);
   }
   return json as T;
 }
 
+const request = apiRequest;
 const get = <T>(url: string) => request<T>('GET', url);
 
 /** A POST that carries the action's request id first, then its fields. */

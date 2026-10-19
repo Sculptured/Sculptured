@@ -143,3 +143,17 @@ export const CONNECTION_WORDS: Record<ConnectionKind, string> = {
   'reports-to': 'reports to',
   watches: 'watches',
 };
+
+/** Community pages' words. */
+export const COMMUNITY_WORDS = {
+  tabs: { explore: 'Explore', people: 'People', saved: 'Saved', yours: 'Yours', moderation: 'Moderation' },
+  laterVersion: 'Opens in a later version.',
+  addToProject: 'Add to project',
+  saveToLibrary: 'Save to Library',
+  inLibrary: 'In your Library',
+  updateTo: (n: number) => `Update to v${n}`,
+  save: 'Save',
+  unsave: 'Remove save',
+  signInToSave: 'Sign in to save',
+  supplied: 'Community supplied instructions. Publishing is not verification. Review them before starting agents.',
+};

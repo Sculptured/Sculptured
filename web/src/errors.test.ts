@@ -92,3 +92,12 @@ describe('errorText: server errors in plain words', () => {
     expect(words).not.toContain('server text');
   });
 });
+
+describe('Community errors', () => {
+  it('says every Community code in plain words and never the server text', () => {
+    for (const code of ['handle_taken', 'handle_invalid', 'handle_reserved', 'handle_too_soon', 'bio_too_long', 'link_invalid', 'avatar_too_large', 'avatar_type', 'handle_required', 'publish_limit',
+      'signed_out', 'csrf', 'community_bad_answer', 'account_disabled', 'rate_limited', 'invalid', 'device_unknown', 'community_unavailable'])
+      expect(errorText(new ApiError(400, code, 'SERVER TEXT'))).not.toMatch(/SERVER TEXT|could not do that/);
+    expect(errorText(new ApiError(409, 'handle_taken', 'x'))).toBe('Someone already has that handle. Choose another.');
+  });
+});
