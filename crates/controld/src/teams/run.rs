@@ -126,6 +126,11 @@ pub(super) async fn start_team(State(st): State<AppState>, Path(id): Path<String
         if hosted && chosen.is_none() && st2.hosts.connected().len() > 1 {
             return Err(ApiError::conflict("needs_computer", "Choose which computer runs this team: Design → Run on."));
         }
+        // An agent on its own computer needs that computer; the start names it and the agent.
+        let own = st2.store.lock().unwrap().team_settings(&id)?.agent_hosts;
+        if let Some((agent, h)) = draft.agents.iter().find_map(|a| own.get(&a.id).filter(|h| !h.is_empty() && !st2.hosts.is_connected(h)).map(|h| (a, h))) {
+            return Err(ApiError::conflict("needs_computer", format!("{h} is not connected, and {} runs there. Open Computers to connect it, or choose another computer for {}.", agent.name, agent.name)));
+        }
         if (hosted || chosen.is_some()) && !st2.hosts.is_connected(&host) {
             return Err(match chosen {
                 Some(h) => ApiError::conflict("needs_computer", format!("{h} is not connected. Open Computers to connect it.")),

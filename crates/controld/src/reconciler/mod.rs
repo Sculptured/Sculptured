@@ -233,7 +233,7 @@ async fn stop_abandoned(st: &AppState, launched: &[String]) {
             continue;
         }
         tracing::info!(seat = %seat_id, "stopping seat launched by an abandoned boot");
-        let host = crate::launch::team_host(st, rig_of(seat_id).unwrap_or_default());
+        let host = crate::launch::agent_host(st, seat_id);
         if let Err(e) = stop_on_host(st, &host, seat_id).await {
             tracing::warn!(seat = %seat_id, error = %e, "stop of abandoned-boot seat failed");
         }
@@ -279,12 +279,13 @@ fn start_command(st: &AppState, host: &str, seat: &str, driver: &str, mut params
 pub(crate) async fn launch_one(st: &AppState, seat: &rigspec::CompiledSeat, spec_dir: &Path) -> bool {
     let seat_id = &seat.id;
     let rig = rig_of(seat_id).unwrap_or_default();
-    // A spawned subagent runs where its parent runs (its folder is there); others on the team's computer.
+    // A spawned subagent runs where its parent runs (its folder is there); others on their own computer
+    // or the team's.
     let parent_host = {
         let store = st.store.lock().unwrap();
         store.parent(seat_id).ok().flatten().and_then(|p| store.seat(&p).ok().flatten()).and_then(|v| v.host)
     };
-    let host = parent_host.unwrap_or_else(|| crate::launch::team_host(st, rig));
+    let host = parent_host.unwrap_or_else(|| crate::launch::agent_host(st, seat_id));
     // A computer whose link just dropped gets a moment to come back before the agent needs attention.
     st.hosts.wait_connected(&host).await;
     let Some(driver) = local_driver(st, seat, &host) else { return false };

@@ -75,6 +75,6 @@ pub(crate) fn create(st: &AppState, team: PortableTeam) -> Result<TeamDraft, Api
     draft.revision = 0;
     store.insert_draft(&draft)?;
     let s = team.settings;
-    store.save_team_settings(&draft.id, &TeamSettings { posture: s.posture, question_timeout_min: s.question_timeout_min, own_copies: s.own_copies, host: None })?;
+    store.save_team_settings(&draft.id, &TeamSettings { posture: s.posture, question_timeout_min: s.question_timeout_min, own_copies: s.own_copies, host: None, agent_hosts: Default::default() })?;
     Ok(draft)
 }

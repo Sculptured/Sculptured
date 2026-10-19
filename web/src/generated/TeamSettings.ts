@@ -13,4 +13,9 @@ own_copies: boolean,
 /**
  * The computer (host id) this team runs on; None: automatic (hosted: the only connected computer).
  */
-host: string | null, };
+host: string | null, 
+/**
+ * Agents that run on another computer than the team's: agent id → host id. Like `host`, it says
+ * where this team runs, so it is never part of a team file.
+ */
+agent_hosts?: { [key in string]: string }, };

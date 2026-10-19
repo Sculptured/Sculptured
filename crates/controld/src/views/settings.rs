@@ -37,4 +37,9 @@ pub struct TeamSettings {
     /// The computer (host id) this team runs on; None: automatic (hosted: the only connected computer).
     #[serde(default)]
     pub host: Option<String>,
+    /// Agents that run on another computer than the team's: agent id → host id. Like `host`, it says
+    /// where this team runs, so it is never part of a team file.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    #[ts(as = "Option<std::collections::BTreeMap<String, String>>", optional)]
+    pub agent_hosts: std::collections::BTreeMap<String, String>,
 }

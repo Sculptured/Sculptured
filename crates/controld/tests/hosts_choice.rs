@@ -65,3 +65,37 @@ async fn each_computer_reports_its_folders_access_and_capabilities() {
     assert_eq!(p["access"], "full");
     assert!(p["capabilities"].as_array().unwrap().iter().any(|c| c == "git"));
 }
+
+fn settings_with(agent_hosts: serde_json::Value) -> serde_json::Value {
+    json!({"request_id": rid(), "settings": {"posture": null, "question_timeout_min": null, "own_copies": false, "host": null, "agent_hosts": agent_hosts}})
+}
+
+#[tokio::test]
+async fn an_agent_runs_on_its_own_computer_and_the_rest_on_the_teams() {
+    let s = serve().await;
+    let _local = connect_stub(&s).await;
+    let _cluster = connect_as(&s, "hpc-login", vec![Arc::new(drivers::stub::StubDriver)]).await;
+    let id = practice_chain(&s, "split", &[("a", "A", "Plan"), ("b", "B", "Run the jobs")], &[]).await;
+    let (status, body) = call(&s.router, "PUT", &format!("/api/teams/{id}/settings"), settings_with(json!({"b": "hpc-login"}))).await;
+    assert_eq!(status.as_u16(), 200, "{body}");
+    assert_eq!(get(&s.router, &format!("/api/teams/{id}/settings")).await.1["agent_hosts"], json!({"b": "hpc-login"}));
+    start_team(&s, &id).await;
+    let (a, b) = (seat(&id, "a"), seat(&id, "b"));
+    wait_for("both running", || lifecycle(&s.st, &a) == Some(SeatLifecycle::Running) && lifecycle(&s.st, &b) == Some(SeatLifecycle::Running)).await;
+    let host = |seat: &str| s.st.store.lock().unwrap().seat(seat).unwrap().unwrap().host;
+    assert_eq!((host(&a).as_deref(), host(&b).as_deref()), (Some("local"), Some("hpc-login")));
+    assert_eq!(controld::launch::seat_host(&s.st, &b).unwrap(), "hpc-login", "messages and stops for b go to its computer");
+}
+
+#[tokio::test]
+async fn an_agent_whose_computer_is_offline_stops_the_start_and_is_named() {
+    let s = serve().await;
+    let _local = connect_stub(&s).await;
+    let id = practice_chain(&s, "split", &[("a", "A", "Plan"), ("b", "Cluster runner", "Run the jobs")], &[]).await;
+    call(&s.router, "PUT", &format!("/api/teams/{id}/settings"), settings_with(json!({"b": "hpc-gone"}))).await;
+    let (status, body) = call(&s.router, "POST", &format!("/api/teams/{id}/start"), json!({"request_id": rid()})).await;
+    assert_eq!(status.as_u16(), 409, "{body}");
+    assert_eq!(body["error"]["code"], "needs_computer");
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(message.contains("hpc-gone") && message.contains("Cluster runner"), "{message}");
+}

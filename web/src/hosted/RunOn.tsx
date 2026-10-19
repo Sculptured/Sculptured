@@ -24,3 +24,28 @@ export function RunOn({ team }: { team: string }) {
     </div>
   );
 }
+
+/** Hosted: run one agent on another of your computers than the team's (a cluster's login node, say). */
+export function AgentRunOn({ team, agent, name }: { team: string; agent: string; name: string }) {
+  const [computers, setComputers] = useState<Computer[]>([]);
+  const [settings, setSettings] = useState<TeamSettings | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => { gw<Computer[]>('GET', '/devices').then(setComputers, () => {}); api.teamSettings(team).then(setSettings, () => {}); }, [team]);
+  if (!settings) return null;
+  const save = async (host: string) => {
+    setError('');
+    const { [agent]: _old, ...others } = settings.agent_hosts ?? {};
+    try { setSettings(await api.saveTeamSettings(team, { ...settings, agent_hosts: host ? { ...others, [agent]: host } : others })); } catch (e) { setError((e as Error).message); }
+  };
+  return (
+    <div className="fld">
+      <label className="fld-label" htmlFor={`run-on-${team}-${agent}`}>{name} runs on</label>
+      <select id={`run-on-${team}-${agent}`} className="fld-input" value={settings.agent_hosts?.[agent] ?? ''} onChange={(e) => void save(e.target.value)}>
+        <option value="">The team's computer</option>
+        {computers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.connected ? '' : ' (not connected)'}</option>)}
+      </select>
+      <p className="fld-hint">Messages and handoffs reach it there. Files stay on the computer where they were made; results arrive as text and file paths.</p>
+      {error && <p className="tone-red" role="alert">{error}</p>}
+    </div>
+  );
+}

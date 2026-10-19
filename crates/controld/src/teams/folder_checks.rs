@@ -3,12 +3,33 @@ use crate::folders::{self, Home};
 use crate::state::AppState;
 use model::{AgentKind, DraftAgent, DraftIssue, ElementKind, ElementRef, IssueSeverity, TeamDraft};
 
-/// Hosted: a team's folders and agents are on the user's computer, so without that computer connected
-/// it can't start. Local `serve` runs everything on this machine and never asks.
-pub(crate) fn computer_issue(st: &AppState, d: &TeamDraft) -> Option<DraftIssue> {
+/// Hosted: a team's folders and agents are on the user's computers, so without those connected it
+/// can't start: the team's computer, and each agent's own. Local `serve` runs everything on this
+/// machine and never asks.
+pub(crate) fn computer_issues(st: &AppState, d: &TeamDraft) -> Vec<DraftIssue> {
     if !matches!(st.auth, crate::auth::AuthPolicy::Gateway { .. }) {
-        return None;
+        return Vec::new();
     }
+    let own = st.store.lock().unwrap().team_settings(&d.id).map(|t| t.agent_hosts).unwrap_or_default();
+    let mine = |a: &DraftAgent| own.get(&a.id).filter(|h| !h.is_empty());
+    let mut issues: Vec<DraftIssue> = d.agents.iter().filter_map(|a| {
+        let h = mine(a).filter(|h| !st.hosts.is_connected(h))?;
+        Some(DraftIssue {
+            element: ElementRef { kind: ElementKind::Agent, id: a.id.clone() },
+            severity: IssueSeverity::Error,
+            code: "computer-not-connected".to_string(),
+            message: format!("{h} is not connected, and {} runs there. Open Computers to reconnect it, or choose another computer for this agent.", a.name),
+            detail: None,
+            spec_path: None,
+        })
+    }).collect();
+    if d.agents.iter().any(|a| mine(a).is_none()) {
+        issues.extend(team_computer_issue(st, d));
+    }
+    issues
+}
+
+fn team_computer_issue(st: &AppState, d: &TeamDraft) -> Option<DraftIssue> {
     let host = crate::launch::team_host(st, &d.id);
     if st.hosts.is_connected(&host) {
         return None;
@@ -82,3 +103,26 @@ fn folder_issue(home: Option<&Home>, a: &DraftAgent, folder: Option<&str>) -> Op
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{auth::AuthPolicy, store::Store, views::TeamSettings};
+    use std::sync::Arc;
+
+    #[test]
+    fn hosted_an_agent_on_an_offline_computer_is_flagged_on_the_agent() {
+        let st = AppState::new(Store::open_in_memory().unwrap(), "t".into(), vec![]).with_auth(AuthPolicy::Gateway { secret: Arc::new(b"s".to_vec()) });
+        st.hosts.test_mark_connected("laptop");
+        let d = rigspec::textbook::template("book", "Book", true);
+        let (agent, name) = (d.agents[0].id.clone(), d.agents[0].name.clone());
+        let settings = TeamSettings { host: Some("laptop".into()), agent_hosts: [(agent.clone(), "hpc-login".to_string())].into(), ..Default::default() };
+        st.store.lock().unwrap().save_team_settings(&d.id, &settings).unwrap();
+        let issues = computer_issues(&st, &d);
+        assert_eq!(issues.len(), 1, "{issues:?}");
+        assert_eq!((issues[0].element.kind, issues[0].element.id.as_str()), (ElementKind::Agent, agent.as_str()));
+        assert!(issues[0].message.contains("hpc-login") && issues[0].message.contains(&name), "{}", issues[0].message);
+        st.hosts.test_mark_connected("hpc-login");
+        assert!(computer_issues(&st, &d).is_empty());
+    }
+}

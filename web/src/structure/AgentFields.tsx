@@ -22,6 +22,8 @@ import { LOCK_REASON, nameOf, type Edit } from './Panels';
 import { PickMenu } from './PickMenu';
 import { IntegrationFields, SkillFields } from './SkillFields';
 import { TokenLimitField } from './TokenLimitField';
+import { useHosted } from '../hosted/HostedGate';
+import { AgentRunOn } from '../hosted/RunOn';
 
 type Common = { draft: TeamDraft; a: DraftAgent; edit: Edit; locked: boolean };
 
@@ -218,6 +220,7 @@ export function RawConfig({ draft, a, edit, locked }: Common) {
   return (
     <details className="fld-advanced" data-advanced>
       <summary>{WORDS.advanced}</summary>
+      <HostedRunOn draft={draft} a={a} />
       <Field label="When it restarts" htmlFor={`${ids}-resume`}>
         <select id={`${ids}-resume`} className="fld-input" value={a.advanced.resume} disabled={locked} onChange={(e) => edit((d) => setAdvanced(d, a.id, { resume: e.target.value as ResumeBehaviour }))}>
           {(Object.keys(RESUME_WORDS) as ResumeBehaviour[]).map((r) => <option key={r} value={r}>{RESUME_WORDS[r]}</option>)}
@@ -234,6 +237,12 @@ export function RawConfig({ draft, a, edit, locked }: Common) {
       <p className="fld-meta">{WORDS.internalId}: <code>{a.id}</code> · address <code>{seatIdFor(draft, a.id)}</code></p>
     </details>
   );
+}
+
+/** Hosted: which of your computers this agent runs on (the team's unless chosen). */
+function HostedRunOn({ draft, a }: { draft: TeamDraft; a: DraftAgent }) {
+  if (useHosted().kind !== 'signed-in') return null;
+  return <AgentRunOn team={draft.id} agent={a.id} name={a.name || 'This agent'} />;
 }
 
 /** Group, limits, check, briefing, skills and the raw configuration. */

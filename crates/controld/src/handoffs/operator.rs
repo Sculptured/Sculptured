@@ -174,7 +174,7 @@ pub(super) async fn resend_one(
             }
         }
     };
-    let host = host.unwrap_or_else(|| crate::launch::team_host(st, crate::seat_ids::rig_or_empty(seat)));
+    let host = host.unwrap_or_else(|| crate::launch::agent_host(st, seat));
     send(st, seat, &new_id, text, &host, &names.name(seat), names).await;
     true
 }

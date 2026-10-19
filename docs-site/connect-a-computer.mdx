@@ -186,6 +186,17 @@ You can start a sign-in from:
 
 Every agent on that computer can then use it.
 
+## Run agents on more than one computer
+
+A team runs on the computer chosen under **Run on** in its Design panel. One agent can run somewhere else: open the agent, then **Advanced** → **Runs on**, and choose another connected computer, such as a desktop with a GPU or a cluster's login node. The rest of the team stays where it was.
+
+- **Messages and handoffs** reach the agent on its computer, and its questions come to you as usual.
+- **Files stay where they were made.** An agent on another computer works in folders on that computer, and what it hands on is its reply: text and file paths. Put shared work in a git remote both computers can reach.
+- **Start needs every computer it uses.** If one is not connected, Start says which, and which agent runs there.
+- **Agents an agent starts** run on the same computer as the agent that started them.
+
+<Note>Run Sculptured only where the computer's owner allows long-running programs. Many clusters forbid them on login nodes: ask your cluster's support first.</Note>
+
 ## Use one computer with several accounts
 
 A computer can run agents for more than one account, for example your own and a test account. Copy the connect command from the other account's **Computers** page and run it on the same computer. Sculptured sees that the computer is already connected to a different account and adds this one beside it: each account gets its own runner, its own folder (`~/.sculptured/runners/<id>`) and its own background service, so both run at once. Running an account's command again reconnects its existing runner instead of adding the computer twice.

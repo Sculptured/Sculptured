@@ -48,7 +48,7 @@ async fn settings_and_timeouts_resolve_in_order() {
     assert_eq!(store.question_timeout_ms("t").unwrap(), 600_000, "D8: 10 minutes by default");
     store.save_settings(&Settings { question_timeout_min: 5, ..Settings::default() }).unwrap();
     assert_eq!(store.question_timeout_ms("t").unwrap(), 300_000);
-    store.save_team_settings("t", &TeamSettings { posture: None, question_timeout_min: Some(3), own_copies: false, host: None }).unwrap();
+    store.save_team_settings("t", &TeamSettings { posture: None, question_timeout_min: Some(3), own_copies: false, host: None, ..Default::default() }).unwrap();
     assert_eq!(store.question_timeout_ms("t").unwrap(), 180_000);
     assert_eq!(store.question_timeout_ms("other").unwrap(), 300_000);
     store.set_question_timeout_override(Some(4000)).unwrap();

@@ -93,6 +93,13 @@ pub fn team_host(st: &AppState, rig: &str) -> String {
     LOCAL_HOST.to_string()
 }
 
+/// The computer an agent runs on: its own (`TeamSettings.agent_hosts`), else the team's.
+pub fn agent_host(st: &AppState, seat: &str) -> String {
+    let rig = crate::seat_ids::rig_or_empty(seat);
+    let own = st.store.lock().unwrap().team_settings(rig).ok().and_then(|t| t.agent_hosts.get(crate::seat_ids::member_of(seat)).cloned());
+    own.filter(|h| !h.is_empty()).unwrap_or_else(|| team_host(st, rig))
+}
+
 fn hosted(st: &AppState) -> bool {
     matches!(st.auth, crate::auth::AuthPolicy::Gateway { .. })
 }
@@ -131,7 +138,7 @@ pub fn compiled_seat(st: &AppState, seat: &str) -> Result<(CompiledRig, Compiled
 
 pub fn seat_host(st: &AppState, seat: &str) -> Result<String, ApiError> {
     let view = st.store.lock().unwrap().seat(seat)?.ok_or_else(|| ApiError::not_found(format!("no agent {seat:?}")))?;
-    Ok(view.host.unwrap_or_else(|| team_host(st, crate::seat_ids::rig_or_empty(seat))))
+    Ok(view.host.unwrap_or_else(|| agent_host(st, seat)))
 }
 
 /// A new tenure for a seat that has no live process (new session, restore), then waits for it to settle.
