@@ -32,6 +32,7 @@ pub fn timeout_for(op: &LocalOp) -> Duration {
         LocalOp::ProjectMap { .. } => 30,
         LocalOp::KeepLesson { .. } => 15,
         LocalOp::CliLogin { .. } => 20,
+        LocalOp::CliLoginCode { .. } => 15,
         LocalOp::CopyPrepare { .. } | LocalOp::CopiesRead { .. } | LocalOp::CopyMerge { .. } | LocalOp::CopyRemove { .. } => 120,
         LocalOp::ItemCopyPrepare { .. } | LocalOp::ItemMerge { .. } => 120,
         LocalOp::RunCheck { timeout_s, .. } => u64::from(*timeout_s) + 30,

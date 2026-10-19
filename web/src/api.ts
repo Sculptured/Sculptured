@@ -139,6 +139,7 @@ export const api = {
   /** Your own use across every team: tokens, costs, by day, by CLI and by team. */
   accountUsage: () => get<import('./generated/AccountUsage').AccountUsage>('/api/account/usage'),
   cliLogin: (name: string, host?: string) => post<import('./generated/LoginStarted').LoginStarted>(`/api/clis/${name}/login${host ? `?host=${encodeURIComponent(host)}` : ''}`, newRequestId()),
+  cliLoginCode: (name: string, code: string, host?: string) => post(`/api/clis/${name}/login/code${host ? `?host=${encodeURIComponent(host)}` : ''}`, newRequestId(), { code }),
   deployments: (id:string,before?:number) => get<import('./generated/DeploymentRun').DeploymentRun[]>(`${teamUrl(id)}/deployments${before ? `?before=${before}` : ''}`),
   deployment: (id:string,seq:number) => get<import('./generated/DeploymentHistory').DeploymentHistory>(`${teamUrl(id)}/deployments/${seq}`),
   deploymentEvents: (id:string,seq:number,seat:string,before?:number) => get<import('./generated/DeploymentEvents').DeploymentEvents>(`${teamUrl(id)}/deployments/${seq}/events?seat=${encodeURIComponent(seat)}${before ? `&before=${before}` : ''}`),

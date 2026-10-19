@@ -61,7 +61,7 @@ it('shows what each connected computer allows and its CLIs, with sign-in on that
   expect(screen.getByText(/Full access/)).toBeInTheDocument();
   expect(await screen.findByText(/Claude: signed in/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Sign in to Codex on Laptop' }));
-  expect(await screen.findByRole('link', { name: /open the sign-in page/ })).toHaveAttribute('href', 'https://auth.example/x');
+  expect(await screen.findByRole('link', { name: /Open the sign-in page/ })).toHaveAttribute('href', 'https://auth.example/x');
   expect(calls.some((c) => c.startsWith('POST') && c.includes('/api/clis/codex/login?host=d1'))).toBe(true);
 });
 

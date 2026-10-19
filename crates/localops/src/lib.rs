@@ -64,6 +64,8 @@ pub enum LocalOp {
     RunCheck { cwd: String, item: Option<ItemRef>, command: String, timeout_s: u32 },
     Clis,
     CliLogin { name: String },
+    /// The code from the sign-in page, for the sign-in under way (`clis::login_code`).
+    CliLoginCode { name: String, code: String },
     PlanUsage,
     /// One structured, tool-less call to the user's Claude Code or Codex (`generate`).
     Generate { cli: String, model: Option<String>, prompt: String, schema: serde_json::Value },
@@ -155,6 +157,7 @@ pub async fn execute(cx: &Context, op: LocalOp) -> Result<serde_json::Value, Loc
             let program = match name.as_str() { "claude" => cx.claude.clone(), "codex" => cx.codex.clone(), _ => return Err(LocalError::not_found("not_found", format!("no CLI {name:?}"))) };
             Ok(json(clis::login(&name, &program).await?))
         }
+        LocalOp::CliLoginCode { name, code } => clis::login_code(&name, &code).await.map(|()| serde_json::json!({})),
         LocalOp::PlanUsage => blocking(move || Ok(json(plan::codex_files(&cx.codex_home)))).await,
         LocalOp::Generate { cli, model, prompt, schema } => generate::run(&cx, &cli, model.as_deref(), &prompt, &schema).await,
         LocalOp::AnalyzeRun { sessions, export } => blocking(move || analyze::run(&cx, &sessions, &export)).await,

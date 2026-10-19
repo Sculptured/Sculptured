@@ -4,6 +4,9 @@ import { usePolling } from '../usePolling';
 import { api } from '../api';
 import type { HostPolicyInfo } from '../generated/HostPolicyInfo';
 import type { CliStatus } from '../generated/CliStatus';
+import type { LoginStarted } from '../generated/LoginStarted';
+import { errorText } from '../errors';
+import { CliSignInSteps } from '../shell/CliSignInSteps';
 import { gw } from './session';
 import { ConnectComputer } from './ConnectComputer';
 import './hosted.css';
@@ -76,15 +79,27 @@ function WorkingCap({ id, name, cap }: { id: string; name: string; cap: number |
   );
 }
 
+/** A computer's Claude Code and Codex, read again every few seconds while a sign-in is under way. */
+function useComputerClis(id: string, signingIn: boolean, onError: (e: string) => void) {
+  const [clis, setClis] = useState<CliStatus[] | null>(null);
+  useEffect(() => {
+    const read = () => api.clis(id).then(setClis, (e) => onError(errorText(e)));
+    void read();
+    if (!signingIn) return;
+    const t = setInterval(() => void read(), 3000);
+    return () => clearInterval(t);
+  }, [id, signingIn, onError]);
+  return clis;
+}
+
 /** What a connected computer allows, and its Claude Code / Codex sign-in, signed in from here. */
 function ComputerDetails({ id, name, policy }: { id: string; name: string; policy: HostPolicyInfo }) {
-  const [clis, setClis] = useState<CliStatus[] | null>(null);
-  const [started, setStarted] = useState<Record<string, string | null>>({});
+  const [started, setStarted] = useState<Record<string, LoginStarted>>({});
   const [error, setError] = useState('');
-  useEffect(() => { api.clis(id).then(setClis, (e) => setError(e.message)); }, [id]);
+  const clis = useComputerClis(id, Object.keys(started).length > 0, setError);
   const signIn = async (cli: string) => {
     setError('');
-    try { const s = await api.cliLogin(cli, id); setStarted((m) => ({ ...m, [cli]: s.url })); } catch (e) { setError((e as Error).message); }
+    try { const s = await api.cliLogin(cli, id); setStarted((m) => ({ ...m, [cli]: s })); } catch (e) { setError(errorText(e)); }
   };
   const label = (n: string) => (n === 'claude' ? 'Claude' : 'Codex');
   return (
@@ -101,7 +116,7 @@ function ComputerDetails({ id, name, policy }: { id: string; name: string; polic
               {c.installed && c.signed_in !== true && policy.capabilities.includes('cli_sign_in') && (
                 <button className="btn" aria-label={`Sign in to ${label(c.name)} on ${name}`} onClick={() => void signIn(c.name)}>Sign in</button>
               )}
-              {started[c.name] && <a href={started[c.name]!} target="_blank" rel="noreferrer"> open the sign-in page</a>}
+              {started[c.name] && c.signed_in !== true && <CliSignInSteps cli={c.name} host={id} started={started[c.name]} />}
             </li>
           ))}
         </ul>

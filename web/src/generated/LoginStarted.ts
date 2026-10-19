@@ -6,6 +6,15 @@ export type LoginStarted = {
  */
 url: string | null, 
 /**
- * What the CLI printed so far, verbatim (it may hold a device code).
+ * A one-time code to enter on the sign-in page (Codex's sign-in from another device).
+ */
+code: string | null, 
+/**
+ * The CLI takes a code pasted back from its sign-in page (`login_code`): Claude Code shows one
+ * when the page cannot reach this computer.
+ */
+takes_code: boolean, 
+/**
+ * What the CLI printed so far, without colours (evidence).
  */
 output: string, };

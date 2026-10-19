@@ -9,7 +9,7 @@ pub use localops::clis::{CliStatus, LoginStarted};
 use serde::Deserialize;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/clis", get(list)).route("/api/clis/{name}/login", post(login))
+    Router::new().route("/api/clis", get(list)).route("/api/clis/{name}/login", post(login)).route("/api/clis/{name}/login/code", post(login_code))
 }
 
 #[derive(Deserialize)]
@@ -38,4 +38,19 @@ async fn login(State(st): State<AppState>, Path(name): Path<String>, axum::extra
         return Err(ApiError::not_found(format!("no CLI {name:?}")));
     }
     Ok(Json(crate::ops::run(&st, target(&on), localops::LocalOp::CliLogin { name }).await?))
+}
+
+#[derive(Deserialize)]
+struct CodeReq {
+    #[allow(dead_code)]
+    request_id: String,
+    code: String,
+}
+
+/// Passes the code the sign-in page shows to the sign-in under way on that computer.
+async fn login_code(State(st): State<AppState>, Path(name): Path<String>, axum::extract::Query(on): axum::extract::Query<On>, Json(req): Json<CodeReq>) -> Result<Json<serde_json::Value>, ApiError> {
+    if name != "claude" && name != "codex" {
+        return Err(ApiError::not_found(format!("no CLI {name:?}")));
+    }
+    Ok(Json(crate::ops::run(&st, target(&on), localops::LocalOp::CliLoginCode { name, code: req.code }).await?))
 }

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api';
 import type { EventRecord } from '../generated/EventRecord';
+import type { LoginStarted } from '../generated/LoginStarted';
+import { CliSignInSteps } from './CliSignInSteps';
 import type { AgentRow } from './model';
 
 /** What Claude Code and Codex say when they are not signed in on the computer that runs them. */
@@ -16,7 +18,7 @@ export function signedOut(a: AgentRow, feed: EventRecord[]): boolean {
 }
 
 export function SignInNeeded({ a, feed }: { a: AgentRow; feed: EventRecord[] }) {
-  const [link, setLink] = useState<string | null>(null);
+  const [started, setStarted] = useState<LoginStarted | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const seat = a.seat;
@@ -27,7 +29,7 @@ export function SignInNeeded({ a, feed }: { a: AgentRow; feed: EventRecord[] }) 
     setBusy(true); setError('');
     try {
       const s = await api.cliLogin(cli, seat.host ?? undefined);
-      if (s.url) { setLink(s.url); window.open(s.url, '_blank', 'noopener'); } else setError(s.output || `${product} did not print a sign-in link.`);
+      if (s.url) { setStarted(s); window.open(s.url, '_blank', 'noopener'); } else setError(s.output || `${product} did not print a sign-in link.`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -39,9 +41,9 @@ export function SignInNeeded({ a, feed }: { a: AgentRow; feed: EventRecord[] }) 
       <p><strong>{product} isn't signed in on the computer that runs {a.name}.</strong> Sign it in once; every agent on that computer can then use it.</p>
       <p className="signin-actions">
         <button type="button" className="btn btn-primary" onClick={() => void start()} disabled={busy}>Sign in to {product}</button>
-        {link && <a href={link} target="_blank" rel="noreferrer">Open the sign-in page</a>}
       </p>
-      {link && <p className="muted">After signing in, press <strong>Hand over again</strong> (or Restart) so {a.name} tries again.</p>}
+      {started && <CliSignInSteps cli={cli} host={seat.host ?? undefined} started={started} />}
+      {started && <p className="muted">After signing in, press <strong>Hand over again</strong> (or Restart) so {a.name} tries again.</p>}
       {error && <p className="tone-red">{error}</p>}
     </div>
   );

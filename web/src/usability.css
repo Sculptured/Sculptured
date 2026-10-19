@@ -122,3 +122,11 @@ button, input, textarea, select { font-family:var(--font-ui); }
 .project-storage>.trash-item>span { flex:1; }
 .trash-confirm { flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--bg); }
 .trash-confirm p { flex-basis:100%; margin:0; }
+/* A Claude Code / Codex sign-in under way: the link, Codex's one-time code, or the pasted-back code. */
+.cli-signin-steps { margin: 6px 0; padding-left: 1.25em; display: grid; gap: 6px; }
+div.cli-signin-steps { padding-left: 0; }
+.cli-signin-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-lg); letter-spacing: 0.08em; padding: 2px 8px; border-radius: var(--radius-md); background: var(--well); }
+.cli-signin-paste { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cli-signin-paste label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cli-signin-paste input { min-width: 0; width: min(22rem, 100%); }
+.cli-signin-paste p { flex-basis: 100%; margin: 0; }

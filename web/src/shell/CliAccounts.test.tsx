@@ -29,6 +29,6 @@ describe('CliAccounts', () => {
     expect(screen.getByRole('list', { name: 'Claude plan usage' })).toHaveTextContent('Plan usage unknown');
     await userEvent.setup().click(screen.getByRole('button', { name: 'Sign in' }));
     expect(api.cliLogin).toHaveBeenCalledWith('codex');
-    expect(await screen.findByRole('link', { name: 'open the sign-in page' })).toHaveAttribute('href', 'https://auth.example/x');
+    expect(await screen.findByRole('link', { name: 'Open the sign-in page' })).toHaveAttribute('href', 'https://auth.example/x');
   });
 });

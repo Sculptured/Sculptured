@@ -6,6 +6,7 @@ import type { CliStatus } from '../generated/CliStatus';
 import type { LoginStarted } from '../generated/LoginStarted';
 import type { PlanUsageView } from '../generated/PlanUsageView';
 import type { PlanWindow } from '../generated/PlanWindow';
+import { CliSignInSteps } from './CliSignInSteps';
 import { Btn } from './ui';
 
 const LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex' };
@@ -93,12 +94,7 @@ export function CliAccounts() {
                   <Btn size="sm" onClick={() => signIn(c.name)}>Sign in</Btn>
                 </>
               )}
-              {started[c.name] && c.signed_in !== true && (
-                <p>
-                  Finish signing in in the browser window that opened.{' '}
-                  {started[c.name].url ? <>If none opened, <a href={started[c.name].url!} target="_blank" rel="noreferrer">open the sign-in page</a>.</> : <span data-raw-evidence>{started[c.name].output}</span>}
-                </p>
-              )}
+              {started[c.name] && c.signed_in !== true && <CliSignInSteps cli={c.name} started={started[c.name]} />}
               <ul className="plan-windows" aria-label={`${LABEL[c.name] ?? c.name} plan usage`}>
                 {!u && <li className="muted">Plan usage unknown: no {LABEL[c.name] ?? c.name} session has reported it yet.</li>}
                 {ws.map((w) => (

@@ -32,6 +32,9 @@ export const FOLDER_WORDS: Record<string, string> = {
 };
 
 export const ERROR_WORDS: Record<string, string> = {
+  no_sign_in: 'That sign-in has ended. Press Sign in to start again.',
+  bad_code: 'Paste the code exactly as the sign-in page shows it, on one line.',
+  unknown_op: 'That computer runs an older Sculptured. Update it (run its connect command again), then try again.',
   ...FOLDER_WORDS,
   group_block_invalid: 'This group contains invalid or external references. Keep its agents and internal connections together before saving.',
   group_block_conflict: 'This saved group changed elsewhere. Reload it before saving your edits.',
