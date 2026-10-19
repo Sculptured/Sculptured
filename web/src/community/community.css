@@ -1,0 +1,26 @@
+/* Community pages inside the app: Explore, blocks, People and profiles. */
+.cm-page { display: grid; gap: var(--space-3, 12px); }
+.cm-search { display: flex; gap: 8px; flex-wrap: wrap; }
+.cm-search input { flex: 1 1 16rem; min-width: 0; }
+.cm-grid { display: grid; gap: var(--space-3, 12px); grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
+.cm-grid.community-compact { grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); }
+.cm-card { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--raised); }
+.cm-card h3 { margin: 0; font-size: var(--text-md, 1rem); }
+.cm-card h3 a { color: var(--text); text-decoration: none; }
+.cm-card h3 a:hover { text-decoration: underline; }
+.community-compact .cm-preview { max-height: 7rem; overflow: hidden; }
+.cm-preview svg { width: 100%; height: auto; }
+.cm-preview-large { max-width: 48rem; }
+.cm-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.cm-tags li { padding: 0 6px; border-radius: var(--radius-pill); background: var(--well); font-size: var(--text-xs); }
+.cm-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.cm-author { display: inline-flex; align-items: center; gap: 6px; color: var(--text); text-decoration: none; }
+.cm-author:hover span { text-decoration: underline; }
+.cm-avatar { display: inline-grid; place-items: center; flex: none; border-radius: var(--radius-pill); object-fit: cover; }
+.cm-initials { color: #fff; font-weight: var(--weight-semibold); }
+.cm-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cm-pager { display: flex; gap: 8px; }
+.cm-problem { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cm-problem p { margin: 0; }
+.cm-report form, .cm-report label { display: grid; gap: 6px; }
+.cm-note { font-size: var(--text-sm); }

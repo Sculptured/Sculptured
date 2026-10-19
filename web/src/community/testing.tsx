@@ -41,7 +41,14 @@ export function publication(o: Partial<Publication> = {}): Publication {
   return {
     kind: 'group', id: 'b1', author: { handle: 'ana', name: 'Ana Lee', avatar_url: avatar }, version: 1, title: 'Review pair',
     description: 'A writer and a reviewer.', license: 'MIT', tags: ['review'], digest: 'd',
-    content: { id: 'review-pair', name: 'Review pair', revision: 0, draft: { id: 'review-pair', name: 'Review pair', groups: [], agents: [], connections: [], revision: 0 }, boundary_notes: [] },
+    content: {
+      id: 'review-pair', name: 'Review pair', revision: 0, boundary_notes: [],
+      draft: {
+        id: 'review-pair', name: 'Review pair', revision: 0, connections: [],
+        groups: [{ id: 'g', label: 'Review pair', x: 0, y: 0, w: 300, h: 200 }],
+        agents: [{ id: 'writer', group_id: 'g', name: 'Writer', kind: 'claude', job: 'Write it.', folder: null, x: 20, y: 20, advanced: { model: null, permission: 'restricted', resume: 'relaunch-fresh' } }],
+      },
+    },
     published: true, ...o,
   } as Publication;
 }
