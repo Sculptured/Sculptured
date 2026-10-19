@@ -37,6 +37,15 @@ describe('things moved out of view stay one Ctrl K away', () => {
     expect(cmds.find((x) => x.id === 'app.account')!.title).toBe('Account and usage');
   });
 
+  it('Docs opens the guides in a new tab, and typing help finds it', () => {
+    const opened: unknown[][] = [];
+    const real = window.open;
+    window.open = ((...a: unknown[]) => { opened.push(a); return null; }) as typeof window.open;
+    try { find('app.docs').run(); } finally { window.open = real; }
+    expect(opened).toEqual([['https://docs.usesculptured.com', '_blank', 'noopener']]);
+    expect(find('app.docs').words).toMatch(/help/);
+  });
+
   it('the workflow list, only on a Design board whose team has a workflow', () => {
     let opened = 0;
     const board = (workflow: boolean) => ({ status: () => ({ canUndo: false, canRedo: false, startReason: null, lockReason: null, workflow }), workflowList: () => opened++ }) as unknown as CommandContext['board'];

@@ -1,6 +1,6 @@
 import { LOOKS, MODES, readAppearance, updateAppearance, type ColorMode, type Look } from '../appearance';
 import type { View } from '../keys';
-import { agentPagePath, agentsPath, boardPath, resultsPath, settingsPath, type AgentTab } from '../paths';
+import { agentPagePath, agentsPath, boardPath, DOCS_URL, resultsPath, settingsPath, type AgentTab } from '../paths';
 import type { BoardHandle, BoardStatus } from '../structure/StructureBoard';
 import type { RunHandle } from './ShellContext';
 import { BOARD_STYLES, readBoardStyle, setBoardStyle, type BoardStyle } from './boardStyle';
@@ -173,6 +173,7 @@ function appCommands(c: CommandContext): Command[] {
   return [
     { id: 'app.library', section: 'Go to', title: 'Library', words: 'saved groups templates', run: () => c.go('/library/groups') },
     { id: 'app.community', section: 'Go to', title: 'Community', words: 'share profile', run: () => c.go('/community') },
+    { id: 'app.docs', section: 'Go to', title: 'Docs', words: 'help guides manual documentation how to', run: () => window.open(DOCS_URL, '_blank', 'noopener') },
     { id: 'app.account', section: 'Go to', title: 'Account and usage', words: 'tokens plan sign in settings', run: () => c.go('/account') },
     { id: 'app.appearance', section: 'App', title: 'Appearance…', words: 'font text size theme settings', run: c.act.appearance },
     ...lookCommands(),

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import '@fontsource/roboto/latin-500.css';
+import { DOCS_URL } from '../paths';
 import { BrandMark } from '../shell/BrandMark';
 import { providerHref } from './session';
 
@@ -17,7 +18,7 @@ export function AuthCard({ title, lead, children }: { title: string; lead?: Reac
           {children}
         </section>
         <footer className="auth-footer">
-          <a href="https://docs.usesculptured.com" target="_blank" rel="noreferrer">Docs</a>
+          <a href={DOCS_URL} target="_blank" rel="noreferrer">Docs</a>
           <a href="/what-we-record" target="_blank" rel="noreferrer">Everything we record</a>
         </footer>
       </div>

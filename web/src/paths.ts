@@ -5,6 +5,9 @@
 
 const enc = encodeURIComponent;
 
+/** The user guides and reference, on their own site. */
+export const DOCS_URL = 'https://docs.usesculptured.com';
+
 export type BoardMode = 'design' | 'run';
 export type AgentTab = 'conversation' | 'setup' | 'activity' | 'questions';
 export type ResultsSection = 'summary' | 'conversation' | 'usage' | 'communications' | 'knowledge' | 'history';
