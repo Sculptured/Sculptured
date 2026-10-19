@@ -6,27 +6,24 @@ import { GenerateTeam } from './GenerateTeam';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
-  const names = ['clis', 'hosts', 'generateQuestions', 'generateTeams', 'checkTeamFile', 'importTeamFile'];
+  const names = ['clis', 'hosts', 'generateQuestions', 'generateTeams', 'checkDraft', 'createDraft'];
   return { ...m, api: { ...m.api, ...Object.fromEntries(names.map((n) => [n, vi.fn()])) } };
 });
 
 const cli = (name: string, signed_in: boolean) => ({ name, installed: true, version: '1', signed_in, account: null, detail: '' });
 const agent = (id: string, name: string, x: number) => ({ id, group_id: null, name, kind: 'claude' as const, job: `${name}'s job`, folder: null, x, y: 72, advanced: { model: null, permission: 'unrestricted' as const, resume: 'resume-if-possible' as const } });
-const file = (agents: ReturnType<typeof agent>[], connections: { id: string; from: string; to: string; kind: 'hands-work-to' }[]) => ({
-  format: 'sculptured.team/v1',
-  team: { id: 'docs', name: 'Docs', groups: [], agents, connections, revision: 0 },
-  settings: { own_copies: false },
-});
-const alt = (label: string, f: ReturnType<typeof file>) => ({ label, rationale: `${label} because`, file: f, dropped: [], issues: [] });
+const file = (agents: ReturnType<typeof agent>[], connections: { id: string; from: string; to: string; kind: 'hands-work-to' }[]) =>
+  ({ id: 'docs', name: 'Docs', groups: [], agents, connections, revision: 0 });
+const alt = (label: string, d: ReturnType<typeof file>) => ({ label, rationale: `${label} because`, draft: d, dropped: [], issues: [] });
 const balanced = file([agent('writer', 'Writer', 40), agent('reviewer', 'Reviewer', 300)], [{ id: 'c-writer-reviewer', from: 'writer', to: 'reviewer', kind: 'hands-work-to' }]);
 
 beforeEach(() => {
   vi.mocked(api.clis).mockReset().mockResolvedValue([cli('claude', true), cli('codex', false)]);
   vi.mocked(api.hosts).mockReset().mockResolvedValue([]);
-  vi.mocked(api.checkTeamFile).mockReset().mockResolvedValue({ issues: [] });
+  vi.mocked(api.checkDraft).mockReset().mockResolvedValue({ issues: [] });
   vi.mocked(api.generateQuestions).mockReset();
   vi.mocked(api.generateTeams).mockReset();
-  vi.mocked(api.importTeamFile).mockReset();
+  vi.mocked(api.createDraft).mockReset();
 });
 
 it('asks questions, offers three teams, and creates the one picked with an agent dropped', async () => {
@@ -53,12 +50,12 @@ it('asks questions, offers three teams, and creates the one picked with an agent
   await user.click(reviewer);
   expect(arrow).not.toBeChecked();
   expect(arrow).toBeDisabled();
-  vi.mocked(api.importTeamFile).mockResolvedValue({ team: { draft: { id: 'gen-1' } }, warnings: [] } as never);
+  vi.mocked(api.createDraft).mockResolvedValue({ team: { draft: { id: 'gen-1' } }, warnings: [] } as never);
   await user.click(screen.getByRole('button', { name: 'Create team' }));
   await waitFor(() => expect(onCreated).toHaveBeenCalledWith('gen-1'));
-  const [created, , origin] = vi.mocked(api.importTeamFile).mock.calls[0] as unknown as [ReturnType<typeof file>, string, { cli: string; prompt: string }];
-  expect(created.team.agents.map((a) => a.name)).toEqual(['Writer']);
-  expect(created.team.connections).toEqual([]);
+  const [created, , origin] = vi.mocked(api.createDraft).mock.calls[0] as unknown as [ReturnType<typeof file>, string, { cli: string; prompt: string }];
+  expect(created.agents.map((a) => a.name)).toEqual(['Writer']);
+  expect(created.connections).toEqual([]);
   expect(origin).toMatchObject({ kind: 'generated', cli: 'claude', prompt: 'Rebuild our docs site' });
 });
 

@@ -74,23 +74,6 @@ export function TeamExport({ teamId, draft, flush }: Props) {
     setExported(file);
   };
 
-  const exportFile = async () => {
-    setBusy(true);
-    setError(null);
-    setExported(null);
-    try {
-      await flush();
-      const f = await api.teamFile(teamId, withFolders);
-      const name = `${teamId}.sculptured-team.json`;
-      downloadText(name, JSON.stringify(f, null, 2), 'application/json');
-      setExported(name);
-    } catch (e) {
-      setError(`Could not export the team: ${errorText(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const exportMadl = async () => {
     setBusy(true);
     setError(null);
@@ -131,8 +114,7 @@ export function TeamExport({ teamId, draft, flush }: Props) {
   return (
     <div className="team-export">
       <div className="ta-actions">
-        <Btn onClick={() => void exportFile()} disabled={busy}>Export team file</Btn>
-        <Btn onClick={() => void exportMadl()} disabled={busy} title="A Multi-Agent Descriptor Language file other tools can read">Export as MADL</Btn>
+        <Btn onClick={() => void exportMadl()} disabled={busy} title="A MADL (Multi-Agent Descriptor Language) file, which other tools can read too">Export team file</Btn>
         <label className="ta-check"><input type="checkbox" checked={withFolders} onChange={(e) => setWithFolders(e.target.checked)} /> Include folders (paths on this computer)</label>
       </div>
       {status}

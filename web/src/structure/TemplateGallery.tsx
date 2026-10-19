@@ -137,18 +137,15 @@ function ImportFromFile({ onCreated }: { onCreated: (id: string) => void }) {
     setDone(null);
     try {
       // A MADL file (YAML or JSON), a Sculptured team file (JSON), or else an OpenRig YAML spec.
-      const madl = isMadl(yaml);
-      if (!madl && yaml.trim().startsWith('{')) {
-        let file: unknown;
+      // JSON is a MADL document or an older Sculptured team file; the server reads both.
+      const madl = isMadl(yaml) || yaml.trim().startsWith('{');
+      if (madl && yaml.trim().startsWith('{')) {
         try {
-          file = JSON.parse(yaml);
+          JSON.parse(yaml);
         } catch (e) {
           setError({ message: `This is not valid JSON: ${(e as Error).message}`, diagnostics: [] });
           return;
         }
-        const r = await importOnce((id) => api.importTeamFile(file, id));
-        onCreated(r.team.draft.id);
-        return;
       }
       const r = await importOnce((id) => (madl ? api.importMadl(yaml, id) : api.importTeam(yaml, id)));
       if (r.dropped.length === 0) onCreated(r.team.draft.id);
@@ -161,7 +158,7 @@ function ImportFromFile({ onCreated }: { onCreated: (id: string) => void }) {
   };
   return (
     <form className="import-form" onSubmit={run} aria-label="Import a team from a file">
-      <p className="muted">Import a MADL file (.madl.yaml), a Sculptured team file (.sculptured-team.json) or an OpenRig YAML file. Anything that can't be kept is listed.</p>
+      <p className="muted">Import a team file (.madl.yaml or .madl.json, or an older .sculptured-team.json) or an OpenRig YAML file. Anything that can't be kept is listed.</p>
       <div className="import-line">
         <label htmlFor={`${ids}-file`} className="prompt">
           file

@@ -71,8 +71,8 @@ it('a team drafted with Describe it is not counted as a file import', async () =
     if (body.events) posts.push(body);
     return new Response(JSON.stringify({ team: { draft: { id: 't' } }, warnings: [] }), { status: 200 });
   });
-  await api.importTeamFile({}, 'r1', { kind: 'generated', cli: 'claude', model: null, at_ms: 1, prompt: 'p' });
-  await api.importTeamFile({}, 'r2');
+  await api.createDraft({} as never, 'r1', { kind: 'generated', cli: 'claude', model: null, at_ms: 1, prompt: 'p' });
+  await api.importMadl('madl: draft', 'r2');
   await vi.advanceTimersByTimeAsync(15_000);
   expect(sent().filter((e) => e.name === 'ui.action' && e.props?.name === 'import-team-file')).toHaveLength(1);
 });

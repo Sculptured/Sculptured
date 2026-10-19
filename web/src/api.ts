@@ -119,9 +119,8 @@ export type GenerateOptions = {
   host?: string | null;
   team?: string | null;
 };
-/** One drafted team: a `sculptured.team/v1` file, what was left out, and its issues. */
-export type GeneratedTeam = { label: string; rationale: string; file: TeamFileV1; dropped: string[]; issues: DraftIssue[] };
-export type TeamFileV1 = { format: string; team: import('./generated/TeamDraft').TeamDraft; settings: { posture?: string | null; own_copies: boolean; question_timeout_min?: number | null } };
+/** One drafted team: the team, what was left out, and its issues. */
+export type GeneratedTeam = { label: string; rationale: string; draft: import('./generated/TeamDraft').TeamDraft; dropped: string[]; issues: DraftIssue[] };
 
 /** A team's trace export, as the server shows it (never the key). */
 export type TraceExportView = { enabled: boolean; endpoint: string; key_saved: boolean; content: 'metadata' | 'full'; last_error: string | null; last_sent_ms: number | null };
@@ -240,11 +239,6 @@ export const api = {
     post<{ stopped: number }>(`${teamUrl(id)}/stop-now`, requestId),
   importTeam: (yaml: string, requestId = newRequestId()) =>
     post<TeamImport>('/api/teams/import', requestId, { yaml }),
-  /** A `sculptured.team/v1` file; `folders` keeps this computer's folder paths. */
-  teamFile: (id: string, folders = false) => {
-    track('export-team-file');
-    return get<unknown>(`${teamUrl(id)}/file${folders ? '?folders=true' : ''}`);
-  },
   /** The team as a MADL (Multi-Agent Descriptor Language) file; `folders` keeps this computer's folder paths. */
   teamMadl: (id: string, folders = false) => {
     track('export-team-file');
@@ -253,7 +247,8 @@ export const api = {
   /** Your own Claude Code / Codex proposes a change to the design; `proposal` continues from an earlier one. Nothing is saved. */
   designAssistant: (id: string, body: { options: { cli: 'claude' | 'codex'; model: string | null }; messages: AssistantTurn[]; proposal: string | null }) =>
     request<DesignProposal>('POST', `${teamUrl(id)}/assistant`, body),
-  /** A MADL file (YAML or JSON) as a new team, with what Sculptured could not keep. */
+  /** A MADL file (YAML or JSON) as a new team, with what Sculptured could not keep. An older
+   * `sculptured.team/v1` file is read too. */
   importMadl: (text: string, requestId = newRequestId()) => {
     track('import-team-file');
     return post<TeamImport>('/api/teams/import-madl', requestId, { text });
@@ -271,13 +266,11 @@ export const api = {
     track('import-run');
     return request<{ team: TeamRecord; run: import('./generated/DeploymentRun').DeploymentRun; warnings: DraftIssue[] }>('POST', '/api/runs/import', undefined, { text: { body: text, type: 'application/x-ndjson' } });
   },
-  importTeamFile: (file: unknown, requestId = newRequestId(), origin?: import('./generated/TeamOrigin').TeamOrigin) => {
-    // A team drafted with Describe it (it has an origin) is not a file import.
-    if (!origin) track('import-team-file');
-    return post<{ team: TeamRecord; warnings: DraftIssue[] }>('/api/teams/import-file', requestId, origin ? { file, origin } : { file });
-  },
-  /** The import's checks for a team file, without creating anything. */
-  checkTeamFile: (file: unknown) => request<{ issues: DraftIssue[] }>('POST', '/api/teams/check-file', { file }),
+  /** A team drafted with Describe it, as the person trimmed it, made into a team with where it came from. */
+  createDraft: (draft: import('./generated/TeamDraft').TeamDraft, requestId: string, origin: import('./generated/TeamOrigin').TeamOrigin) =>
+    post<{ team: TeamRecord; warnings: DraftIssue[] }>('/api/generate/create', requestId, { draft, origin }),
+  /** What Design would show on a drafted team, without creating anything. */
+  checkDraft: (draft: import('./generated/TeamDraft').TeamDraft) => request<{ issues: DraftIssue[] }>('POST', '/api/generate/check', { draft }),
   /** Your own Claude Code / Codex asks 2–4 questions about the described team. */
   generateQuestions: (body: { options: GenerateOptions; prompt: string }, signal?: AbortSignal) =>
     request<{ questions: { question: string; suggestions: string[] }[] }>('POST', '/api/generate/questions', body, { signal }),

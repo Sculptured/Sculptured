@@ -24,7 +24,7 @@ function serve(runs: { start_seq: number; source: string | null }[]) {
     if (init?.method === 'POST') posts.push({ url: u, body: JSON.parse(String(init.body)) });
     if (u.endsWith('/deployments')) return reply(runs.map((r) => ({ ...r, started_ms: 0, initial_agents: 2 })));
     if (u.endsWith('/api/clis')) return reply([{ cli: 'claude', installed: true, signed_in: true }]);
-    if (u.endsWith('/improve-from-run')) return reply({ label: 'team', rationale: 'A lead and a researcher.', file: { format: 'sculptured.team/v1', team: proposed, settings: { own_copies: false } }, dropped: [], issues: [] });
+    if (u.endsWith('/improve-from-run')) return reply({ label: 'team', rationale: 'A lead and a researcher.', draft: proposed, dropped: [], issues: [] });
     return reply({});
   });
   return posts;

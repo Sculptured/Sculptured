@@ -10,7 +10,7 @@ import { fakeTeam, renderAt, resetApi } from './harness';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
-  const names = ['getTeam', 'saveTeam', 'listTeams', 'templates', 'createTeam', 'startTeam', 'stopTeam', 'importTeam', 'listFolders', 'createFolder', 'listRigs', 'latestSeatEvents', 'stopRig', 'teamSpec', 'teamFile', 'teamMadl'];
+  const names = ['getTeam', 'saveTeam', 'listTeams', 'templates', 'createTeam', 'startTeam', 'stopTeam', 'importTeam', 'listFolders', 'createFolder', 'listRigs', 'latestSeatEvents', 'stopRig', 'teamSpec', 'teamMadl'];
   return { ...m, api: { ...m.api, ...Object.fromEntries(names.map((n) => [n, vi.fn()])) } };
 });
 
@@ -87,27 +87,19 @@ describe('team Settings: export, the spec and more settings', () => {
     expect(within(advanced).getByRole('status')).toHaveTextContent('Exported t.rig.yaml');
   });
 
-  it('exports a team file without folders unless asked', async () => {
-    vi.mocked(api.teamFile).mockResolvedValue({ format: 'sculptured.team/v1', team: {}, settings: {} });
-    const { advanced, user } = await openAdvanced();
-    await user.click(within(advanced).getByRole('button', { name: 'Export team file' }));
-    await waitFor(() => expect(clicked).toHaveLength(1));
-    expect(api.teamFile).toHaveBeenLastCalledWith('t', false);
-    expect(clicked[0].download).toBe('t.sculptured-team.json');
-    await user.click(within(advanced).getByRole('checkbox', { name: /Include folders/ }));
-    await user.click(within(advanced).getByRole('button', { name: 'Export team file' }));
-    await waitFor(() => expect(clicked).toHaveLength(2));
-    expect(api.teamFile).toHaveBeenLastCalledWith('t', true);
-  });
-
-  it('exports the team as a MADL file', async () => {
+  it('exports the team file as MADL, without folders unless asked', async () => {
     vi.mocked(api.teamMadl).mockResolvedValue({ yaml: 'madl: draft\n' });
     const { advanced, user } = await openAdvanced();
-    await user.click(within(advanced).getByRole('button', { name: 'Export as MADL' }));
+    await user.click(within(advanced).getByRole('button', { name: 'Export team file' }));
     await waitFor(() => expect(clicked).toHaveLength(1));
     expect(api.teamMadl).toHaveBeenLastCalledWith('t', false);
     expect(clicked[0].download).toBe('t.madl.yaml');
     expect(within(advanced).getByRole('status')).toHaveTextContent('Exported t.madl.yaml');
+    await user.click(within(advanced).getByRole('checkbox', { name: /Include folders/ }));
+    await user.click(within(advanced).getByRole('button', { name: 'Export team file' }));
+    await waitFor(() => expect(clicked).toHaveLength(2));
+    expect(api.teamMadl).toHaveBeenLastCalledWith('t', true);
+    expect(within(advanced).queryByRole('button', { name: 'Export as MADL' })).toBeNull();
   });
 
   it('sets the team\'s own limits on spawned agents; blank means no limit', async () => {

@@ -63,7 +63,7 @@ export function ImproveFromRun({ teamId, draft, edit, locked = false }: { teamId
     <div className="improve-from-run">
       {!open && <Btn disabled={locked} onClick={() => setOpen(true)}>Improve this team with AI</Btn>}
       {open && !offer && <Ask teamId={teamId} startSeq={startSeq} first={draft.agents[0]?.kind === 'codex' ? 'codex' : 'claude'} onOffer={setOffer} onCancel={() => setOpen(false)} />}
-      {offer && <Offer current={draft} offer={offer} onApply={() => apply(offer.file.team)} onDiscard={() => { setOffer(null); setOpen(false); }} />}
+      {offer && <Offer current={draft} offer={offer} onApply={() => apply(offer.draft)} onDiscard={() => { setOffer(null); setOpen(false); }} />}
     </div>
   );
 }
@@ -92,7 +92,7 @@ function Ask({ teamId, startSeq, first, onOffer, onCancel }: { teamId: string; s
 }
 
 function Offer({ current, offer, onApply, onDiscard }: { current: TeamDraft; offer: GeneratedTeam; onApply: () => void; onDiscard: () => void }) {
-  const rows = diffTeams(current, offer.file.team);
+  const rows = diffTeams(current, offer.draft);
   return (
     <div className="improve-offer" role="group" aria-label="What the AI proposes">
       <p>{offer.rationale}</p>

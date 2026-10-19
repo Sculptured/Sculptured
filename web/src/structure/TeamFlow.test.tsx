@@ -15,7 +15,7 @@ import { card, fakeTeam, renderAt, resetApi, where } from './harness';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
-  const names = ['getTeam', 'saveTeam', 'listTeams', 'templates', 'createTeam', 'startTeam', 'stopTeam', 'importTeam', 'listFolders', 'createFolder', 'listRigs', 'latestSeatEvents', 'stopRig', 'importTeamFile', 'importMadl', 'importRun', 'deployments', 'deployment', 'deploymentEvents'];
+  const names = ['getTeam', 'saveTeam', 'listTeams', 'templates', 'createTeam', 'startTeam', 'stopTeam', 'importTeam', 'listFolders', 'createFolder', 'listRigs', 'latestSeatEvents', 'stopRig', 'importMadl', 'importRun', 'deployments', 'deployment', 'deploymentEvents'];
   return { ...m, api: { ...m.api, ...Object.fromEntries(names.map((n) => [n, vi.fn()])) } };
 });
 
@@ -144,7 +144,7 @@ describe('New team: Start from…', () => {
     const user = userEvent.setup();
     await user.click(within(advanced).getByText(/^Advanced/));
     const box = within(advanced).getByRole('textbox', { name: 'Team file contents' });
-    vi.mocked(api.importTeamFile).mockRejectedValueOnce(
+    vi.mocked(api.importMadl).mockRejectedValueOnce(
       new ApiError(422, 'team_invalid', '2 things to fix', undefined, [
         { element: { kind: 'connection', id: 'c1' }, severity: 'error', code: 'connection-dangling', message: 'An arrow points at an agent that is not there', detail: null, spec_path: null },
         { element: { kind: 'agent', id: 'a' }, severity: 'error', code: 'agent-id-invalid', message: 'Two agents share one id', detail: null, spec_path: null },
@@ -157,7 +157,8 @@ describe('New team: Start from…', () => {
     expect(alert).toHaveTextContent('An arrow points at an agent that is not there');
     expect(alert).toHaveTextContent('Two agents share one id');
     expect(api.importTeam).not.toHaveBeenCalled();
-    vi.mocked(api.importTeamFile).mockResolvedValueOnce({ team: teamRecord({ draft: teamDraft({ id: 'imp', name: 'Imported' }) }), warnings: [] });
+    expect(vi.mocked(api.importMadl).mock.calls[0][0]).toBe('{"format":"sculptured.team/v1","team":{}}');
+    vi.mocked(api.importMadl).mockResolvedValueOnce({ team: teamRecord({ draft: teamDraft({ id: 'imp', name: 'Imported' }) }), dropped: [] });
     await user.click(within(advanced).getByRole('button', { name: 'Import' }));
     await waitFor(() => expect(where()).toBe('/p/imp/board?mode=design'));
   });
@@ -187,7 +188,7 @@ describe('New team: Start from…', () => {
     await user.paste('{"madl":"draft","system":{"id":"cad","name":"CAD review"}}');
     await user.click(within(advanced).getByRole('button', { name: 'Import' }));
     await waitFor(() => expect(api.importMadl).toHaveBeenCalledTimes(2));
-    expect(api.importTeamFile).not.toHaveBeenCalled();
+    expect(api.importTeam).not.toHaveBeenCalled();
   });
 
   it('imports a past run and opens its history', async () => {

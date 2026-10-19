@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { api, ApiError, newRequestId, type GenerateOptions, type GeneratedTeam, type TeamFileV1 } from '../api';
+import { api, ApiError, newRequestId, type GenerateOptions, type GeneratedTeam } from '../api';
+import type { TeamDraft } from '../generated/TeamDraft';
 import { errorText } from '../errors';
 import type { DraftIssue } from '../generated/DraftIssue';
 import { Btn } from '../shell/ui';
@@ -15,13 +16,12 @@ type Question = { question: string; suggestions: string[] };
 const CLI_NAME: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
 const LABELS: Record<string, string> = { lean: 'Lean', balanced: 'Balanced', thorough: 'Thorough', team: 'Team' };
 
-/** The file with only the kept agents and arrows (an arrow goes when either end does). */
-function trimmed(file: TeamFileV1, agents: Set<string>, arrows: Set<string>): TeamFileV1 {
-  const t = file.team;
+/** The team with only the kept agents and arrows (an arrow goes when either end does). */
+function trimmed(t: TeamDraft, agents: Set<string>, arrows: Set<string>): TeamDraft {
   const kept = t.agents.filter((a) => agents.has(a.id));
   const groups = t.groups.filter((g) => kept.some((a) => a.group_id === g.id));
   const connections = t.connections.filter((c) => arrows.has(c.id) && agents.has(c.from) && agents.has(c.to));
-  return { ...file, team: { ...t, agents: kept, groups, connections } };
+  return { ...t, agents: kept, groups, connections };
 }
 
 /**
@@ -101,8 +101,8 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
 
   const choose = (t: GeneratedTeam) => {
     setChosen(t);
-    setKeepAgents(new Set(t.file.team.agents.map((a) => a.id)));
-    setKeepArrows(new Set(t.file.team.connections.map((c) => c.id)));
+    setKeepAgents(new Set(t.draft.agents.map((a) => a.id)));
+    setKeepArrows(new Set(t.draft.connections.map((c) => c.id)));
     setIssues(t.issues);
     setStep('refine');
   };
@@ -143,14 +143,14 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
     }
   };
 
-  const current = useMemo(() => (chosen ? trimmed(chosen.file, keepAgents, keepArrows) : null), [chosen, keepAgents, keepArrows]);
+  const current = useMemo(() => (chosen ? trimmed(chosen.draft, keepAgents, keepArrows) : null), [chosen, keepAgents, keepArrows]);
 
   // Live issues for what would be created.
   useEffect(() => {
     if (!current) return;
     let live = true;
     const t = window.setTimeout(() => {
-      api.checkTeamFile(current).then((r) => live && setIssues(r.issues), (e) => live && setIssues(e instanceof ApiError ? (e.issues ?? []) : []));
+      api.checkDraft(current).then((r) => live && setIssues(r.issues), (e) => live && setIssues(e instanceof ApiError ? (e.issues ?? []) : []));
     }, 300);
     return () => {
       live = false;
@@ -164,7 +164,7 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
     setBusy(true);
     try {
       const origin = { kind: 'generated', cli: opts.cli, model: opts.model, at_ms: Date.now(), prompt };
-      const r = await api.importTeamFile(current, newRequestId(), origin);
+      const r = await api.createDraft(current, newRequestId(), origin);
       onCreated(r.team.draft.id);
     } catch (e) {
       fail(e);
@@ -324,9 +324,9 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
           {offer.map((t) => (
             <article key={t.label} className="gen-card">
               <h3>{LABELS[t.label] ?? t.label}</h3>
-              <TemplatePreview draft={t.file.team} practice={t.file.team.agents.every((a) => a.kind === 'practice')} />
+              <TemplatePreview draft={t.draft} practice={t.draft.agents.every((a) => a.kind === 'practice')} />
               <p className="muted">
-                {plural(t.file.team.agents.length, 'agent')} · {plural(t.file.team.connections.length, 'arrow')}
+                {plural(t.draft.agents.length, 'agent')} · {plural(t.draft.connections.length, 'arrow')}
                 {t.issues.length > 0 ? ` · ${plural(t.issues.length, 'issue')}` : ''}
               </p>
               <p>{t.rationale}</p>
@@ -343,10 +343,10 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
 
       {step === 'refine' && chosen && current && (
         <div className="gen-refine">
-          <TemplatePreview draft={current.team} practice={current.team.agents.every((a) => a.kind === 'practice')} />
+          <TemplatePreview draft={current} practice={current.agents.every((a) => a.kind === 'practice')} />
           <fieldset>
             <legend>Agents</legend>
-            {chosen.file.team.agents.map((a) => (
+            {chosen.draft.agents.map((a) => (
               <label key={a.id} className="gen-check gen-item">
                 <input
                   type="checkbox"
@@ -367,12 +367,12 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
               </label>
             ))}
           </fieldset>
-          {chosen.file.team.connections.length > 0 && (
+          {chosen.draft.connections.length > 0 && (
             <fieldset>
               <legend>Arrows</legend>
-              {chosen.file.team.connections.map((c) => {
+              {chosen.draft.connections.map((c) => {
                 const ends = keepAgents.has(c.from) && keepAgents.has(c.to);
-                const name = (id: string) => chosen.file.team.agents.find((a) => a.id === id)?.name ?? id;
+                const name = (id: string) => chosen.draft.agents.find((a) => a.id === id)?.name ?? id;
                 const verb = c.kind === 'hands-work-to' ? 'hands work to' : c.kind === 'reports-to' ? 'reports to' : 'watches';
                 return (
                   <label key={c.id} className="gen-check gen-item">
