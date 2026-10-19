@@ -56,3 +56,24 @@ it('reporting needs a reason and sends it', async () => {
   expect(await screen.findByText('Thanks. A moderator will look at it.')).toBeVisible();
   expect(calls).toContain('POST /api/community/blocks/b1/report');
 });
+
+it('Save to Library saves a copy once, then says it is there; a newer version offers an update', async () => {
+  let library: unknown[] = [];
+  const { calls } = fakeFetch({
+    'GET /api/community/blocks/b1': () => [200, publication({ version: 2 })],
+    'GET /api/group-blocks': () => [200, library],
+    'PUT /api/group-blocks/community-b1': (init) => { const b = { ...JSON.parse(String(init!.body)).block, revision: 1 }; library = [b]; return [200, b]; },
+  });
+  page();
+  await userEvent.click(await screen.findByRole('button', { name: 'Save to Library' }));
+  expect(await screen.findByRole('button', { name: 'In your Library' })).toBeDisabled();
+  expect(screen.getByText('This version is already saved.')).toBeVisible();
+  expect(calls.filter((c) => c.startsWith('PUT'))).toEqual(['PUT /api/group-blocks/community-b1']);
+});
+
+it('offers Update to v2 when the Library has v1', async () => {
+  const v1 = { ...publication().content, id: 'community-b1', revision: 3, source: { community_block: 'b1', version: 1 } };
+  fakeFetch({ 'GET /api/community/blocks/b1': () => [200, publication({ version: 2 })], 'GET /api/group-blocks': () => [200, [v1]] });
+  page();
+  expect(await screen.findByRole('button', { name: 'Update to v2' })).toBeEnabled();
+});

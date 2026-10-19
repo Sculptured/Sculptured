@@ -580,7 +580,7 @@ async fn reusable_groups_are_versioned_library_records_not_projects() {
     let mut draft=rigspec::templates::template("builder-reviewer","fragment","Pair",true).unwrap();
     draft.groups.push(model::DraftGroup{id:"group".into(),label:"Pair".into(),x:0,y:0,w:600,h:300,models:model::ModelDefaults::default()});
     for a in &mut draft.agents {a.group_id=Some("group".into());}
-    let block=model::GroupBlock{id:"pair".into(),name:"Pair".into(),revision:0,draft,boundary_notes:vec![]};
+    let block=model::GroupBlock{id:"pair".into(),name:"Pair".into(),revision:0,draft,boundary_notes:vec![],source:None};
     let req=json!({"request_id":"group-save","block":block});
     let (status,saved)=call(&router,"PUT","/api/group-blocks/pair",Some(req.clone())).await;
     assert_eq!(status,StatusCode::OK,"{saved}"); assert_eq!(saved["revision"],1);
@@ -593,6 +593,35 @@ async fn reusable_groups_are_versioned_library_records_not_projects() {
     let mut bad=saved;bad["draft"]["connections"][0]["to"]=json!("outside");
     let (status,_)=call(&router,"PUT","/api/group-blocks/pair",Some(json!({"request_id":"external","block":bad}))).await;
     assert_eq!(status,StatusCode::BAD_REQUEST);
+}
+
+/// A Library copy of a Community block, as "Save to Library" makes it.
+fn community_copy(source: serde_json::Value) -> serde_json::Value {
+    let mut draft=rigspec::templates::template("builder-reviewer","fragment","Pair",true).unwrap();
+    draft.groups.push(model::DraftGroup{id:"group".into(),label:"Pair".into(),x:0,y:0,w:600,h:300,models:model::ModelDefaults::default()});
+    for a in &mut draft.agents {a.group_id=Some("group".into());}
+    let mut block=json!({"id":"community-b1","name":"Pair","revision":0,"draft":draft,"boundary_notes":[]});
+    block["source"]=source;
+    block
+}
+
+#[tokio::test]
+async fn a_library_copy_remembers_its_community_block_and_version() {
+    let (_st, router, _home) = setup();
+    let block=community_copy(json!({"community_block":"b1","version":2}));
+    let (status,saved)=call(&router,"PUT","/api/group-blocks/community-b1",Some(json!({"request_id":"c1","block":block}))).await;
+    assert_eq!(status,StatusCode::OK,"{saved}");
+    assert_eq!(saved["source"],json!({"community_block":"b1","version":2}));
+    assert_eq!(call(&router,"GET","/api/group-blocks/community-b1",None).await.1["source"],json!({"community_block":"b1","version":2}));
+}
+
+#[tokio::test]
+async fn a_bad_community_source_is_refused() {
+    let (_st, router, _home) = setup();
+    for (n,source) in [json!({"community_block":"../x","version":1}),json!({"community_block":"b1","version":0})].into_iter().enumerate() {
+        let (status,body)=call(&router,"PUT","/api/group-blocks/community-b1",Some(json!({"request_id":format!("bad{n}"),"block":community_copy(source)}))).await;
+        assert_eq!((status,body["error"]["code"].as_str()),(StatusCode::BAD_REQUEST,Some("group_block_invalid")),"{body}");
+    }
 }
 
 #[tokio::test]

@@ -34,3 +34,9 @@ it('keeps a failed save in the editor instead of claiming it was saved',async()=
  await userEvent.click(await screen.findByRole('button',{name:'Create group'}));await userEvent.click(screen.getByRole('button',{name:'Save group'}));
  await waitFor(()=>expect(screen.getByRole('alert')).toBeInTheDocument());expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
 });
+it('a group saved from Community links back to its block there', async () => {
+  const b = { ...captureGroup(teamDraft({ groups: [{ id: 'g', label: 'Pair', x: 0, y: 0, w: 600, h: 300 }], agents: [draftAgent('builder', { group_id: 'g' })], connections: [] }), 'g'), id: 'community-b1', revision: 1, source: { community_block: 'b1', version: 1 } };
+  vi.mocked(api.groupBlocks).mockResolvedValue([b]);
+  render(<MemoryRouter><GroupLibrary /></MemoryRouter>);
+  expect(await screen.findByRole('link', { name: 'From Community · v1' })).toHaveAttribute('href', '/community/blocks/b1');
+});

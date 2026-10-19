@@ -66,6 +66,7 @@ fn validate(b: &GroupBlock) -> Result<(), ApiError> {
         || d.agents.len() > 100
         || d.connections.len() > 500
         || b.boundary_notes.len() > 500
+        || b.source.as_ref().is_some_and(|s| !valid_id(&s.community_block) || s.version < 1)
     {
         return Err(invalid());
     }

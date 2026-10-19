@@ -18,7 +18,7 @@ it('searches blocks and shows each author with a link to their profile', async (
   expect(screen.getByRole('link', { name: 'Review pair' })).toHaveAttribute('href', '/community/blocks/b1');
   await userEvent.type(screen.getByRole('searchbox', { name: 'Search blocks' }), 'review{Enter}');
   await screen.findByText('No blocks match that search.');
-  expect(calls.at(-1)).toBe('GET /api/community/blocks?q=review&offset=0');
+  expect(calls.filter((c) => c.startsWith('GET /api/community/blocks')).at(-1)).toBe('GET /api/community/blocks?q=review&offset=0');
   expect(openRigWords(document.body, ['profile', 'profiles'])).toEqual([]);
 });
 
@@ -50,7 +50,8 @@ it('pages through 24 blocks at a time', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Next' }));
   expect(await screen.findByRole('link', { name: 'Last one' })).toBeVisible();
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
-  expect(calls.at(-1)).toBe('GET /api/community/blocks?q=&offset=24');
+  expect(calls.filter((c) => c.startsWith('GET /api/community/blocks')).at(-1)).toBe('GET /api/community/blocks?q=&offset=24');
+  expect(calls.filter((c) => c === 'GET /api/group-blocks').length).toBeLessThanOrEqual(2);
 });
 
 it('a picture from anywhere else falls back to initials', () => {

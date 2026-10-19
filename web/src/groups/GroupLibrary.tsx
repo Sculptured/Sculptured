@@ -1,6 +1,6 @@
 import {DismissibleError} from '../shell/DismissibleError';
 import { useEffect, useState, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { InspectBlock } from './InspectBlock';
 import { AddToProject } from './AddToProject';
 import { transferredBlock } from './blockTransfer';
@@ -33,7 +33,8 @@ export function GroupLibrary() {
     <div className="group-library-grid">{blocks?.map(b=><article className="group-library-card" key={b.id}>
       <button className="library-card-preview" aria-label={`Inspect ${b.name}`} onClick={()=>setInspecting(b)}><TemplatePreview draft={b.draft} practice={false}/></button>
       <div className="library-card-body"><h3>{b.name}</h3><p>{b.draft.agents.length} {b.draft.agents.length===1?'agent':'agents'} · {b.draft.workflow?`${b.draft.workflow.stages.length} workflow stages`:`${b.draft.connections.length} connections`}</p>
-      {b.boundary_notes.length>0&&<small>{b.boundary_notes.length} external connections to reconnect</small>}</div>
+      {b.boundary_notes.length>0&&<small>{b.boundary_notes.length} external connections to reconnect</small>}
+      {b.source&&<small><Link to={`/community/blocks/${encodeURIComponent(b.source.community_block)}`}>From Community · v{b.source.version}</Link></small>}</div>
       <div className="block-card-actions"><button className="btn btn-primary" onClick={()=>setAdding(b)}>Add to project <span aria-hidden="true">↗</span></button><div className="block-secondary-actions"><button onClick={()=>setInspecting(b)}>Inspect</button><button aria-label={`Edit ${b.name}`} onClick={()=>setEditing(b)}>Edit</button><button aria-label={`Export ${b.name}`} onClick={()=>downloadBlock(b)}>Export</button></div></div>
     </article>)}</div>
     {inspecting&&<InspectBlock key={inspecting.id} block={inspecting} onClose={()=>setInspecting(null)} onAdd={()=>{setAdding(inspecting);setInspecting(null);}}/>}

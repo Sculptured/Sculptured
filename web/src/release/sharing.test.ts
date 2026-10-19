@@ -35,3 +35,10 @@ describe("Community export boundary", () => {
     ).toThrow("group export");
   });
 });
+
+describe('a Library copy from Community', () => {
+  it('drops where it came from when exported or published', () => {
+    const b = { ...emptyBlock(), source: { community_block: 'b1', version: 1 } };
+    expect(sanitizeExport(b).source).toBeUndefined();
+  });
+});

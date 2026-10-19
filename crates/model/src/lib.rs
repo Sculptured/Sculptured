@@ -1,5 +1,5 @@
 mod group_block;
-pub use group_block::GroupBlock;
+pub use group_block::{BlockSource, GroupBlock};
 mod action;
 pub mod cap;
 mod caps;

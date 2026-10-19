@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Publication } from '../generated/community/Publication';
 import { Btn } from '../shell/ui';
 import { communityApi } from './api';
-import { BlockActions } from './BlockActions';
+import { BlockActions, useLibrary } from './BlockActions';
 import { BlockCard } from './BlockCard';
 import { useCommunity } from './context';
 import { LoadProblem } from './LoadProblem';
@@ -46,11 +46,12 @@ function useBlocks(q: string, offset: number) {
 /** Cards in a grid (compact unless the member turned that off), each with its actions. */
 export function BlockGrid({ blocks, empty }: { blocks: Publication[] | null; empty: string }) {
   const { me } = useCommunity();
+  const library = useLibrary();
   if (!blocks) return <p role="status" className="muted">Loading blocks…</p>;
   if (blocks.length === 0) return <p className="muted">{empty}</p>;
   return (
     <div className={`cm-grid${me?.settings.compact === false ? '' : ' community-compact'}`}>
-      {blocks.map((b) => <BlockCard key={b.id} pub={b} actions={<BlockActions pub={b} />} />)}
+      {blocks.map((b) => <BlockCard key={b.id} pub={b} actions={<BlockActions pub={b} library={library} />} />)}
     </div>
   );
 }

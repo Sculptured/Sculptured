@@ -9,7 +9,7 @@ import { TemplatePreview } from '../structure/TemplateGallery';
 import { COMMUNITY_WORDS } from '../vocab';
 import { communityApi } from './api';
 import { AuthorChip } from './AuthorChip';
-import { BlockActions, projectCopy } from './BlockActions';
+import { BlockActions, projectCopy, useLibrary } from './BlockActions';
 import { useCommunity } from './context';
 import { opensHere } from './kinds';
 import { LoadProblem } from './LoadProblem';
@@ -21,6 +21,7 @@ export function BlockPage() {
   const [pub, setPub] = useState<Publication | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
+  const library = useLibrary();
   useEffect(() => { setError(null); communityApi.block(id).then(setPub, setError); }, [id, attempt]);
   if (error) return <LoadProblem error={error} onRetry={() => setAttempt((n) => n + 1)} />;
   if (!pub) return <p role="status" className="muted">Loading block…</p>;
@@ -32,7 +33,7 @@ export function BlockPage() {
       <p className="cm-meta"><AuthorChip author={pub.author} /> <span className="muted">v{pub.version} · {pub.license}</span></p>
       <BlockDescription text={pub.description} />
       {copy && <BlockFeatures block={copy} />}
-      <BlockActions pub={pub} />
+      <BlockActions pub={pub} library={library} />
       {copy && <p><Btn size="sm" onClick={() => downloadBlock(copy)}>Download group</Btn></p>}
       {copy && <details><summary>Inspect this block</summary><BlockDetails block={copy} /></details>}
       <Report id={pub.id} />

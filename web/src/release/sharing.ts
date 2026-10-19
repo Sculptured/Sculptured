@@ -22,8 +22,8 @@ export function sanitizeExport(input: GroupBlock): GroupBlock {
     const stages=new Set(w.stages.map(s=>s?.id));
     if(stages.size!==w.stages.length||w.stages.some(s=>!s||!validString(s.id)||!validString(s.name)||!ids.has(s.agent)||!s.routes||typeof s.routes!=='object'||Array.isArray(s.routes)||Object.values(s.routes).some(to=>to!==null&&!stages.has(to))||s.workers!==undefined&&(!Array.isArray(s.workers)||s.workers.some(id=>!ids.has(id)))))throw Error('Invalid group workflow references');
   }
-  b.revision = 0;
-  b.boundary_notes = [];
+  b.revision = 0; b.boundary_notes = [];
+  delete b.source; // where a Library copy came from stays on this computer
   b.draft.revision = 0;
   delete b.draft.folder;
   delete b.draft.models;
