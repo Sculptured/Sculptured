@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/teams/{id}/budget/raise", post(raise_action))
+    Router::new()
+        .route("/api/teams/{id}/budget/raise", post(raise_action))
+        .route("/api/teams/{id}/agents/{agent}/limits/raise", post(raise_agent_action))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -78,6 +80,60 @@ fn apply(r: &mut Record, req: &RaiseRequest) -> Result<String, ApiError> {
         }
         _ => Err(ApiError::bad_request("invalid_limit", "Choose tokens, minutes or plan.")),
     }
+}
+
+async fn raise_agent_action(State(st): State<AppState>, Path((id, agent)): Path<(String, String)>, Json(req): Json<RaiseRequest>) -> Response {
+    let fp = fingerprint(&format!("agent-raise:{id}:{agent}"), &req);
+    let (st2, request_id) = (st.clone(), req.request_id.clone());
+    idempotent(&st, &request_id, fp, move || async move { raise_agent(&st2, &id, &agent, &req).await.map(|said| json!({ "said": said })) }).await
+}
+
+/// Raises one agent's own token, turn or minute limit for this run, and lets it carry on if it was stopped or wrapping up.
+async fn raise_agent(st: &AppState, rig: &str, agent: &str, req: &RaiseRequest) -> Result<String, ApiError> {
+    let none = || ApiError::bad_request("no_such_limit", "This agent has no limit of that kind to raise.");
+    let (mut r, adv) = {
+        let store = st.store.lock().unwrap();
+        let r = store.run_budget(rig)?.ok_or_else(|| ApiError::conflict("not_running", "This team has no run to raise a limit for."))?;
+        let a = store.draft(rig)?.and_then(|d| d.agents.into_iter().find(|a| a.id == agent)).ok_or_else(|| ApiError::not_found(format!("no agent {agent:?}")))?;
+        let adv = crate::collaboration::token_limits::effective(&store, rig, agent, &a.advanced)?;
+        (r, adv)
+    };
+    let entry = r.agent_limits.entry(agent.to_string()).or_default();
+    let said = match req.limit.as_str() {
+        "tokens" => {
+            let mut t = adv.token_limit.ok_or_else(none)?;
+            let new = req.hard.round() as u64;
+            if new <= t.tokens { return Err(not_a_raise()) }
+            t.soft = scaled(t.soft.map(|s| s as f64), t.tokens as f64, new as f64).map(|s| s.round() as u64);
+            t.tokens = new;
+            entry.token_limit = Some(t);
+            format!("{agent}: tokens raised to {new} for this run")
+        }
+        "turns" | "minutes" => {
+            let turns = req.limit == "turns";
+            let mut l = (if turns { adv.turn_limit } else { adv.minute_limit }).ok_or_else(none)?;
+            let new = req.hard.round() as u32;
+            if new <= l.hard { return Err(not_a_raise()) }
+            l.soft = scaled(l.soft.map(f64::from), f64::from(l.hard), f64::from(new)).map(|s| s.round() as u32);
+            l.hard = new;
+            if turns { entry.turn_limit = Some(l) } else { entry.minute_limit = Some(l) }
+            format!("{agent}: {} raised to {new} for this run", req.limit)
+        }
+        _ => return Err(ApiError::bad_request("invalid_limit", "Choose tokens, turns or minutes.")),
+    };
+    st.store.lock().unwrap().put_run_budget(rig, &r)?;
+    let body = EventBody::BudgetStateChanged { state: "raised".into(), reason: said.clone() };
+    st.local_event(crate::hosts::controld(), Subject::Rig(rig.to_string()), Provenance::ProtocolObserved, body)?;
+    let seat = st.store.lock().unwrap().rig_snapshot(rig)?.and_then(|s| s.seats.into_iter().find(|v| v.member == agent)).map(|v| v.id);
+    if let Some(seat) = seat.filter(|s| st.store.lock().unwrap().control(s).ok().flatten().is_some()) {
+        let st = st.clone();
+        tokio::spawn(async move {
+            if let Err(e) = carry_on(&st, &seat).await {
+                tracing::warn!(%seat, error = %e.message, "agent did not continue after the raise");
+            }
+        });
+    }
+    Ok(said)
 }
 
 async fn raise(st: &AppState, rig: &str, req: &RaiseRequest) -> Result<String, ApiError> {

@@ -429,3 +429,29 @@ async fn a_limit_the_run_does_not_have_cannot_be_raised() {
     let (status, body) = call(&s.router, "POST", &format!("/api/teams/{id}/budget/raise"), json!({ "request_id": rid(), "limit": "minutes", "hard": 60 })).await;
     assert_eq!((status, body["error"]["code"].as_str()), (StatusCode::BAD_REQUEST, Some("no_such_limit")), "{body}");
 }
+
+#[tokio::test]
+async fn raising_an_agents_own_token_limit_lets_it_carry_on_for_this_run_only() {
+    let s = serve().await;
+    let _runner = claude_runner(&s).await;
+    let dir = tempfile::tempdir_in(s.home.path()).unwrap();
+    let id = team(&s, dir.path(), &[("a", "spend:400:1000:6".into())], json!({})).await;
+    with_advanced(&s, &id, "a", json!({ "token_limit": { "tokens": 2000 } })).await;
+    start_team(&s, &id).await;
+    let a = seat(&id, "a");
+    wait_long("the agent is stopped by its limit", || lifecycle(&s.st, &a) == Some(SeatLifecycle::Stopped)).await;
+    let url = format!("/api/teams/{id}/agents/a/limits/raise");
+    let (status, body) = call(&s.router, "POST", &url, json!({ "request_id": rid(), "limit": "tokens", "hard": 1000 })).await;
+    assert_eq!((status, body["error"]["code"].as_str()), (StatusCode::BAD_REQUEST, Some("not_a_raise")), "{body}");
+    let (status, body) = call(&s.router, "POST", &url, json!({ "request_id": rid(), "limit": "turns", "hard": 9 })).await;
+    assert_eq!((status, body["error"]["code"].as_str()), (StatusCode::BAD_REQUEST, Some("no_such_limit")), "{body}");
+    let turns_before = turns(&s, &a).len();
+    let (status, body) = call(&s.router, "POST", &url, json!({ "request_id": rid(), "limit": "tokens", "hard": 1_000_000 })).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    wait_long("the agent works again", || turns(&s, &a).len() > turns_before).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_ne!(s.st.store.lock().unwrap().control(&a).unwrap(), Some(controld::store::ControlMode::Hard), "the raised limit is not stopped again at the old value");
+    let (_, team) = get(&s.router, &format!("/api/teams/{id}")).await;
+    let saved = team["draft"]["agents"].as_array().unwrap().iter().find(|x| x["id"] == "a").unwrap()["advanced"]["token_limit"]["tokens"].clone();
+    assert_eq!(saved, 2000, "the saved limit is unchanged");
+}

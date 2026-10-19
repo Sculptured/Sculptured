@@ -68,6 +68,21 @@ pub struct Record {
     /// How they continue, when the person changed it while paused (else the budget's choice).
     #[serde(default)]
     pub continue_with: Option<model::ContinueMode>,
+    /// Agents' own limits a person raised for this run, by the agent's id in the design (the design
+    /// keeps the planned values).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub agent_limits: std::collections::BTreeMap<String, AgentLimits>,
+}
+
+/// An agent's raised limits for one run; absent ones are the design's.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AgentLimits {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_limit: Option<model::TokenLimit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_limit: Option<model::SoftHard<u32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minute_limit: Option<model::SoftHard<u32>>,
 }
 
 impl Store {

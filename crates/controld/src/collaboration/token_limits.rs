@@ -32,10 +32,22 @@ pub(crate) fn with_descendants(store: &Store, seat: &str) -> rusqlite::Result<Ve
     Ok(all)
 }
 
-/// The agent's limit from its team design; None for agents without one (spawned children included).
+/// The agent's limit from its team design, as raised for this run; None for agents without one
+/// (spawned children included).
 pub fn limit_of(store: &Store, view: &SeatView) -> rusqlite::Result<Option<TokenLimit>> {
-    let draft = store.draft(&view.rig)?;
-    Ok(draft.and_then(|d| d.agents.into_iter().find(|a| a.id == view.member)).and_then(|a| a.advanced.token_limit))
+    let Some(a) = store.draft(&view.rig)?.and_then(|d| d.agents.into_iter().find(|a| a.id == view.member)) else { return Ok(None) };
+    Ok(effective(store, &view.rig, &view.member, &a.advanced)?.token_limit)
+}
+
+/// `adv` with the limits a person raised for `member` in this run (`budget::raise`).
+pub fn effective(store: &Store, rig: &str, member: &str, adv: &model::AgentAdvanced) -> rusqlite::Result<model::AgentAdvanced> {
+    let mut a = adv.clone();
+    if let Some(o) = store.run_budget(rig)?.and_then(|r| r.agent_limits.get(member).cloned()) {
+        a.token_limit = o.token_limit.or(a.token_limit);
+        a.turn_limit = o.turn_limit.or(a.turn_limit);
+        a.minute_limit = o.minute_limit.or(a.minute_limit);
+    }
+    Ok(a)
 }
 
 /// Tokens counted against `limit` in the team's current run; None when the team has not started.
@@ -169,7 +181,8 @@ fn due(store: &Store) -> rusqlite::Result<(Vec<(String, String)>, Vec<(String, S
         let Some(snap) = store.rig_snapshot(&rig.name)? else { continue };
         for view in snap.seats.iter().filter(|v| matches!(v.lifecycle, SeatLifecycle::Running | SeatLifecycle::Launching)) {
             let Some(adv) = draft.agents.iter().find(|a| a.id == view.member).map(|a| &a.advanced).filter(|a| limited(a)) else { continue };
-            match standing(store, view, adv, start)? {
+            let adv = effective(store, &rig.name, &view.member, adv)?;
+            match standing(store, view, &adv, start)? {
                 (_, Some(why)) if store.control(&view.id)? != Some(crate::store::ControlMode::Hard) => hard.push((view.rig.clone(), view.id.clone(), why)),
                 (Some(why), None) if store.control(&view.id)?.is_none() => soft.push((view.id.clone(), why)),
                 _ => {}
