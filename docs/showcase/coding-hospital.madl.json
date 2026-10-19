@@ -1,0 +1,394 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Alexander-Aghili/Multi-Agent-Descriptor-Language/main/schema/draft/schema.json",
+  "madl": "draft",
+  "system": {
+    "id": "coding-hospital",
+    "name": "Coding hospital"
+  },
+  "defaults": {
+    "preferences": {
+      "models": {
+        "claude-code": "anthropic/sonnet"
+      },
+      "workspace": {
+        "folder": "/home/alexsky2/sculptured-hospital"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "workflow-input",
+      "text": "Project: corner-shop, a small Node library in the team's project folder (set it up with docs/showcase/hospital-target/setup.sh). The issues are in ISSUES.md there: HOSP-1 to HOSP-8, one item each. npm test passes on main; each open bug has a test marked todo.",
+      "to": [
+        "triage-nurse"
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "front-desk",
+      "name": "Front desk"
+    },
+    {
+      "id": "ward",
+      "name": "Ward"
+    },
+    {
+      "id": "attendings",
+      "name": "Attendings"
+    },
+    {
+      "id": "discharge",
+      "name": "Discharge"
+    }
+  ],
+  "agents": [
+    {
+      "id": "triage-nurse",
+      "name": "Triage Nurse",
+      "instructions": "You are the Triage Nurse and the team's dispatcher. Read ISSUES.md in the project folder and dispatch one item per issue with dispatch_work (id = the issue id in lower case, e.g. hosp-1; title = the issue title). In each item's context write a short triage note: what the user sees, the suspected file and function, the test that exposes it, severity (low/medium/high, security issues high), and your recommendation: admit, not-a-bug or wont-fix with one sentence why. Dispatch every issue, including ones you think are not bugs: the Chief decides at Admit. Do not fix anything yourself.",
+      "runtime": "claude-code",
+      "model": "anthropic/sonnet",
+      "groups": [
+        "front-desk"
+      ],
+      "settings": {
+        "restrictions": {
+          "budget": {
+            "tokens": 300000,
+            "scope": "shared",
+            "counts": "new"
+          }
+        }
+      }
+    },
+    {
+      "id": "charge-nurse",
+      "name": "Charge Nurse",
+      "instructions": "You are the Charge Nurse. You fix nothing and change no files. When a board round message arrives, call workflow_status and write a short summary for the Chief: items waiting on a person (and for how long), items blocked and why, items over two Treatment rounds or escalated, and whether the guard (npm test on main) is passing. At most 12 lines. If nothing changed since your last round, say so in one line.",
+      "runtime": "claude-code",
+      "model": "anthropic/haiku",
+      "groups": [
+        "front-desk"
+      ],
+      "settings": {
+        "restrictions": {
+          "budget": {
+            "tokens": 300000,
+            "scope": "shared",
+            "counts": "new"
+          }
+        }
+      }
+    },
+    {
+      "id": "fellow",
+      "name": "Fellow",
+      "instructions": "You are the Fellow. At Workup: reproduce the issue (run the item's test with its todo removed), find the cause, and report a treatment plan: the files and functions you will change, the tests you will add or un-todo, and the risks; outcome plan. Change no code at Workup. At Treatment: carry out the approved plan in the item's folder, remove the issue's `todo` marker, add tests for edge cases, run npm test, and commit on the item's branch with a message naming the issue; outcome done. When an item comes back from Tests, Code review, Sign-off or a merge conflict, read the newest step's evidence and fix exactly that. Keep changes small; touch nothing outside the issue.\n\nAlways: read the team's decision log (read_decisions) first and follow the Chief's earlier rulings. Work only in the item's own folder named in your assignment (its own branch); never edit the project's main checkout. Say which checks you actually ran; a check you didn't run stays unknown. If the user has configured GitHub, you may use the gh CLI (for example to read a linked issue), but never push, open or merge pull requests: Sculptured merges locally after the Chief signs off.",
+      "runtime": "claude-code",
+      "model": "anthropic/sonnet",
+      "groups": [
+        "ward"
+      ],
+      "settings": {
+        "restrictions": {
+          "budget": {
+            "tokens": 2000000,
+            "scope": "shared",
+            "counts": "new"
+          }
+        }
+      }
+    },
+    {
+      "id": "senior-fellow",
+      "name": "Senior Fellow",
+      "instructions": "You are the Senior Fellow. You take over a Treatment item after it has failed two rounds. Read every prior step, including the verified test output and the reviewers' findings, work out why the earlier attempts failed, then fix it in the item's folder, run npm test, and commit on the item's branch; outcome done. If the plan itself is wrong, say so plainly in your result.\n\nAlways: read the team's decision log (read_decisions) first and follow the Chief's earlier rulings. Work only in the item's own folder named in your assignment (its own branch); never edit the project's main checkout. Say which checks you actually ran; a check you didn't run stays unknown. If the user has configured GitHub, you may use the gh CLI (for example to read a linked issue), but never push, open or merge pull requests: Sculptured merges locally after the Chief signs off.",
+      "runtime": "claude-code",
+      "model": "anthropic/opus",
+      "groups": [
+        "ward"
+      ],
+      "settings": {
+        "restrictions": {
+          "budget": {
+            "tokens": 1000000,
+            "scope": "shared",
+            "counts": "new"
+          }
+        }
+      }
+    },
+    {
+      "id": "review-attending",
+      "name": "Review Attending",
+      "instructions": "You are the Review Attending. At Plan review, read the Fellow's plan and the triage note. Approve (outcome approved) only if the plan fixes the cause rather than the symptom, names the test that proves it, and stays inside the issue. Otherwise outcome changes, with numbered, concrete requests. Change no code.\n\nAlways: read the team's decision log (read_decisions) first and follow the Chief's earlier rulings. Work only in the item's own folder named in your assignment (its own branch); never edit the project's main checkout. Say which checks you actually ran; a check you didn't run stays unknown. If the user has configured GitHub, you may use the gh CLI (for example to read a linked issue), but never push, open or merge pull requests: Sculptured merges locally after the Chief signs off.",
+      "runtime": "claude-code",
+      "model": "anthropic/opus",
+      "groups": [
+        "attendings"
+      ],
+      "settings": {
+        "restrictions": {
+          "budget": {
+            "tokens": 800000,
+            "scope": "shared",
+            "counts": "new"
+          }
+        }
+      }
+    },
+    {
+      "id": "correctness-reviewer",
+      "name": "Correctness Reviewer",
+      "instructions": "You are the Correctness Reviewer on the code-review panel. Read the item branch's diff against main and run npm test yourself. Approve (outcome approved) only if the fix is correct for every input the issue describes, the issue's test no longer has `todo`, and edge cases are tested. Otherwise outcome changes, citing file and line. Change no code.\n\nAlways: read the team's decision log (read_decisions) first and follow the Chief's earlier rulings. Work only in the item's own folder named in your assignment (its own branch); never edit the project's main checkout. Say which checks you actually ran; a check you didn't run stays unknown. If the user has configured GitHub, you may use the gh CLI (for example to read a linked issue), but never push, open or merge pull requests: Sculptured merges locally after the Chief signs off.",
+      "runtime": "claude-code",
+      "model": "anthropic/sonnet",
+      "groups": [
+        "attendings"
+      ],
+      "settings": {
+        "restrictions": {
+          "budget": {
+            "tokens": 800000,
+            "scope": "shared",
+            "counts": "new"
+          }
+        }
+      }
+    },
+    {
+      "id": "safety-reviewer",
+      "name": "Safety Reviewer",
+      "instructions": "You are the Safety Reviewer on the code-review panel. Read the item branch's diff against main. Look for security and data-safety problems: path traversal, unsafe input parsing, changed public behaviour, deleted or weakened tests, and edits outside the issue's files. Approve (outcome approved) or outcome changes citing file and line. Change no code.\n\nAlways: read the team's decision log (read_decisions) first and follow the Chief's earlier rulings. Work only in the item's own folder named in your assignment (its own branch); never edit the project's main checkout. Say which checks you actually ran; a check you didn't run stays unknown. If the user has configured GitHub, you may use the gh CLI (for example to read a linked issue), but never push, open or merge pull requests: Sculptured merges locally after the Chief signs off.",
+      "runtime": "claude-code",
+      "model": "anthropic/sonnet",
+      "groups": [
+        "attendings"
+      ],
+      "settings": {
+        "restrictions": {
+          "budget": {
+            "tokens": 800000,
+            "scope": "shared",
+            "counts": "new"
+          }
+        }
+      }
+    },
+    {
+      "id": "discharge-nurse",
+      "name": "Discharge Nurse",
+      "instructions": "You are the Discharge Nurse and assemble the batch once every item has finished. For each item, from its steps: whether it was merged, closed (not-a-bug or won't fix) or blocked; rounds at Treatment; whether it was escalated; and the verified test result. Write one changelog line per merged item to CHANGELOG.md in the project folder (leave it uncommitted for the Chief to review) and report a short discharge summary; outcome done. Report only what the steps show: an agent's claim is not verification. Read the decision log (read_decisions) first. If the user has configured GitHub you may use gh to read issues, but never push or open pull requests.",
+      "runtime": "claude-code",
+      "model": "anthropic/haiku",
+      "groups": [
+        "discharge"
+      ],
+      "settings": {
+        "restrictions": {
+          "budget": {
+            "tokens": 200000,
+            "scope": "shared",
+            "counts": "new"
+          }
+        }
+      }
+    }
+  ],
+  "workflows": [
+    {
+      "id": "workflow",
+      "input": "workflow-input",
+      "dispatcher": "triage-nurse",
+      "entry": "admit",
+      "collector": "discharge-nurse",
+      "max_items": 10,
+      "max_steps": 32,
+      "copies": "per-item",
+      "stages": [
+        {
+          "id": "admit",
+          "name": "Admit?",
+          "kind": "human",
+          "routes": {
+            "admit": "workup",
+            "not-a-bug": null,
+            "wont-fix": null
+          },
+          "prompt": "Admit this item? The Triage Nurse's note is in the item's context. admit: the Fellow works it up. not-a-bug: close it as working as intended. wont-fix: close it without a fix. Add a note if this should become a precedent."
+        },
+        {
+          "id": "workup",
+          "name": "Workup",
+          "agent": "fellow",
+          "routes": {
+            "plan": "plan-review"
+          }
+        },
+        {
+          "id": "plan-review",
+          "name": "Plan review",
+          "agent": "review-attending",
+          "routes": {
+            "approved": "treatment",
+            "changes": "workup"
+          }
+        },
+        {
+          "id": "treatment",
+          "name": "Treatment",
+          "agent": "fellow",
+          "routes": {
+            "done": "tests"
+          },
+          "max_rounds": 4,
+          "on_limit": "escalation",
+          "escalate": {
+            "after_rounds": 2,
+            "to": "senior-fellow"
+          }
+        },
+        {
+          "id": "tests",
+          "name": "Tests",
+          "kind": "check",
+          "routes": {
+            "failed": "treatment",
+            "passed": "code-review"
+          },
+          "command": "npm test",
+          "timeout_s": 300
+        },
+        {
+          "id": "code-review",
+          "name": "Code review",
+          "reviewers": [
+            "correctness-reviewer",
+            "safety-reviewer"
+          ],
+          "routes": {
+            "approved": "sign-off",
+            "changes": "treatment"
+          }
+        },
+        {
+          "id": "sign-off",
+          "name": "Sign-off",
+          "kind": "human",
+          "routes": {
+            "rework": "treatment",
+            "ship": "merge"
+          },
+          "prompt": "Ship this fix? Tests passed (verified) and both reviewers approved. ship: Sculptured merges the item's branch into main. rework: back to Treatment with your note."
+        },
+        {
+          "id": "merge",
+          "name": "Merge",
+          "kind": "merge",
+          "routes": {
+            "conflict": "treatment",
+            "merged": null
+          },
+          "into": "main"
+        },
+        {
+          "id": "escalation",
+          "name": "Escalation",
+          "kind": "human",
+          "routes": {
+            "retry": "treatment",
+            "wont-fix": null
+          },
+          "prompt": "This item reached the Treatment round limit (4 rounds; the Senior Fellow took rounds 3 and 4). retry: the item stops at Treatment as blocked; press Retry on it to grant one more round, once per round. wont-fix: close it without a fix. Add a note to make your ruling a precedent.",
+          "max_rounds": 1
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "id": "decisions",
+      "medium": "decision-log"
+    }
+  ],
+  "policies": {
+    "schedules": [
+      {
+        "id": "board-round",
+        "agent": "charge-nurse",
+        "every": "30m",
+        "message": "Board round: call workflow_status and summarise the board for the Chief (waiting on a person, blocked, escalated or past two Treatment rounds, guard status)."
+      }
+    ],
+    "guards": [
+      {
+        "command": "npm test",
+        "every": "15m"
+      }
+    ]
+  },
+  "layout": {
+    "units": "px",
+    "nodes": {
+      "charge-nurse": {
+        "x": 80.0,
+        "y": 350.0
+      },
+      "correctness-reviewer": {
+        "x": 720.0,
+        "y": 350.0
+      },
+      "discharge-nurse": {
+        "x": 1040.0,
+        "y": 120.0
+      },
+      "fellow": {
+        "x": 400.0,
+        "y": 120.0
+      },
+      "review-attending": {
+        "x": 720.0,
+        "y": 120.0
+      },
+      "safety-reviewer": {
+        "x": 720.0,
+        "y": 580.0
+      },
+      "senior-fellow": {
+        "x": 400.0,
+        "y": 350.0
+      },
+      "triage-nurse": {
+        "x": 80.0,
+        "y": 120.0
+      }
+    },
+    "groups": {
+      "attendings": {
+        "x": 680.0,
+        "y": 60.0,
+        "w": 280.0,
+        "h": 760.0
+      },
+      "discharge": {
+        "x": 1000.0,
+        "y": 60.0,
+        "w": 280.0,
+        "h": 300.0
+      },
+      "front-desk": {
+        "x": 40.0,
+        "y": 60.0,
+        "w": 280.0,
+        "h": 530.0
+      },
+      "ward": {
+        "x": 360.0,
+        "y": 60.0,
+        "w": 280.0,
+        "h": 530.0
+      }
+    }
+  }
+}

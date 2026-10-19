@@ -55,8 +55,8 @@ pub struct SessionHeader {
     #[schemars(regex(pattern = r"^sculptured\.session/v1$"))]
     pub format: String,
     pub source: Source,
-    /// The team as of the run's start; null when it was not recorded (runs from before this format).
-    pub team: Option<super::team::TeamFile>,
+    /// The team as of the run's start, as a MADL document; null when it was not recorded.
+    pub team: Option<madl::model::Document>,
     pub team_id: String,
     pub started_ms: i64,
     pub ended_ms: Option<i64>,
@@ -94,7 +94,7 @@ pub(crate) fn export_events(st: &AppState, team: &str, seq: i64, keep: Option<&[
         let header = SessionHeader {
             format: SESSION_FORMAT.into(),
             source: Source::Sculptured,
-            team: snapshot.and_then(|j| serde_json::from_str(&j).ok()),
+            team: snapshot.and_then(|j| serde_json::from_str::<super::team::PortableTeam>(&j).ok()).map(|t| super::madl::to_madl(&t)),
             team_id: team.to_string(),
             started_ms: run.started_ms,
             ended_ms: detail.stopped_ms.or(next_start),
@@ -188,7 +188,8 @@ pub fn parse_session(text: &str) -> Result<(SessionHeader, Vec<(String, SessionL
 pub fn import_run(st: &AppState, text: &str) -> Result<(model::TeamDraft, history::DeploymentRun, Vec<model::DraftIssue>), ApiError> {
     let (mut header, lines) = parse_session(text)?;
     let mut warnings = Vec::new();
-    let team = header.team.clone().and_then(|t| match super::team::import_team_file(st, serde_json::to_value(t).expect("team file serializes")) {
+    let read = |doc: &madl::model::Document| super::madl::read_document(doc).and_then(|i| super::team::check(st, i.file));
+    let team = header.team.as_ref().and_then(|t| match read(t) {
         Ok((file, issues)) => {
             warnings = issues;
             Some(file)
@@ -198,9 +199,7 @@ pub fn import_run(st: &AppState, text: &str) -> Result<(model::TeamDraft, histor
             None
         }
     });
-    let file = team.unwrap_or_else(|| super::team::TeamFile {
-            schema: None,
-            format: super::team::TEAM_FORMAT.into(),
+    let file = team.unwrap_or_else(|| super::team::PortableTeam {
             team: model::TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(),
                 workflow: None,
                 folder: None,

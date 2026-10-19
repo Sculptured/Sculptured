@@ -55,3 +55,7 @@ too_many_lines = "warn"
 # Line tables keep backtraces readable; full debug info made test builds ~15 GB on a nearly full disk.
 [profile.dev]
 debug = "line-tables-only"
+
+# Local MADL while MEPs 0006–0008 are unpublished; remove once the `madl` rev above includes them.
+[patch."https://github.com/Sculptured/Multi-Agent-Descriptor-Language"]
+madl = { path = "../../MADL/crates/madl" }

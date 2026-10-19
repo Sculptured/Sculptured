@@ -121,6 +121,7 @@ fn sessions(export: &str) -> Vec<localops::analyze::RunSession> {
 /// Makes and keeps a new report of the run.
 pub async fn refresh(st: &AppState, team: &str, seq: i64) -> Result<RunReport, ApiError> {
     let (export, ended) = crate::portable::session::export_events(st, team, seq, Some(LINKS))?;
+    let export = with_team_for_mais(&st.store.lock().unwrap(), team, seq, export)?;
     let sessions = sessions(&export);
     if sessions.is_empty() {
         return Err(ApiError::conflict("no_sessions", "No agent of this run has started a Claude Code or Codex session yet."));
@@ -183,4 +184,15 @@ mod tests {
         assert_eq!(older_runner(e).code, "runner_without_reports");
         assert_eq!(older_runner(ApiError::not_found("x")).code, "not_found");
     }
+}
+
+/// MAIS names a run's agents from the header's team in Sculptured's own shape (`team.team`), not
+/// from MADL, so the export the runner analyses carries that shape. Only this message to the runner
+/// does; a run file people download carries the team as MADL.
+fn with_team_for_mais(store: &Store, team: &str, seq: i64, export: String) -> Result<String, ApiError> {
+    let Some((first, rest)) = export.split_once('\n') else { return Ok(export) };
+    let mut header: serde_json::Value = serde_json::from_str(first).map_err(|e| ApiError::internal(e.to_string()))?;
+    let snapshot = store.run_team_snapshot(team, seq)?.and_then(|j| serde_json::from_str::<serde_json::Value>(&j).ok());
+    header["team"] = snapshot.unwrap_or(serde_json::Value::Null);
+    Ok(format!("{header}\n{rest}"))
 }

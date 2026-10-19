@@ -1,6 +1,8 @@
 //! Generating a team with the user's own Claude Code or Codex: optional clarifying questions, then
-//! 1 or 3 team sketches, each turned into a laid-out `sculptured.team/v1` file with its issues.
+//! 1 or 3 team sketches, each turned into a laid-out team draft with its issues, which the person
+//! trims and creates (`/api/generate/check`, `/api/generate/create`).
 //! The CLI runs on the user's computer (`LocalOp::Generate`), with no tools.
+mod accept;
 mod assistant;
 mod assistant_layout;
 mod improve;
@@ -23,6 +25,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/generate/questions", post(questions))
         .route("/api/generate/teams", post(teams))
+        .route("/api/generate/check", post(accept::check_draft))
+        .route("/api/generate/create", post(accept::create_draft))
         .route("/api/teams/{id}/improve-from-run", post(improve::improve))
         .route("/api/teams/{id}/assistant", post(assistant::assistant))
 }
@@ -232,18 +236,18 @@ fn alternatives_parser(count: usize) -> impl Fn(&Value) -> Result<Alternatives, 
     }
 }
 
-/// One sketch as a laid-out team file, with what was dropped and the team's issues.
+/// One sketch as a laid-out team draft, with what was dropped and the team's issues.
 fn offered(st: &AppState, x: Alternative, kinds: Kinds, folder: Option<&str>) -> Offered {
-    let c = sketch::to_team_file(&x.team, kinds, folder);
-    let issues = crate::teams::issues_for(st, &c.file.team);
-    Offered { label: x.label, rationale: x.rationale, file: c.file, dropped: c.dropped, issues }
+    let c = sketch::to_draft(&x.team, kinds, folder);
+    let issues = crate::teams::issues_for(st, &c.team);
+    Offered { label: x.label, rationale: x.rationale, draft: c.team, dropped: c.dropped, issues }
 }
 
 #[derive(Serialize)]
 pub(super) struct Offered {
     label: String,
     rationale: String,
-    file: crate::portable::team::TeamFile,
+    pub(super) draft: model::TeamDraft,
     dropped: Vec<String>,
     issues: Vec<model::DraftIssue>,
 }

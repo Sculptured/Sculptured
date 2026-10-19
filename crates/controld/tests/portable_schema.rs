@@ -20,19 +20,14 @@ fn errors(v: &jsonschema::Validator, x: &serde_json::Value) -> Vec<String> {
 }
 
 #[test]
-fn a_team_file_and_session_lines_validate_against_their_schemas() {
+fn session_lines_with_their_madl_team_validate_against_the_schema() {
     let schemas: std::collections::HashMap<_, _> = portable::schemas().into_iter().collect();
-    let team = serde_json::to_value(portable::team::TeamFile {
-        schema: Some(portable::team::TEAM_SCHEMA_URL.into()),
-        format: portable::team::TEAM_FORMAT.into(),
+    assert!(!schemas.contains_key("team-v1.json"), "a team's file is MADL, with MADL's own schema");
+    let team = serde_json::to_value(portable::madl::to_madl(&portable::team::PortableTeam {
         team: serde_json::from_value(serde_json::json!({"id":"t","name":"T","groups":[],"agents":[{"id":"a","group_id":null,"name":"A","kind":"practice","folder":null,"x":0,"y":0}],"connections":[],"revision":0})).unwrap(),
         settings: Default::default(),
-    })
+    }))
     .unwrap();
-    let v = jsonschema::validator_for(&serde_json::to_value(&schemas["team-v1.json"]).unwrap()).unwrap();
-    assert!(v.is_valid(&team), "{:?}", errors(&v, &team));
-    let bad = serde_json::json!({"format": "sculptured.team/v2", "team": team["team"]});
-    assert!(!v.is_valid(&bad), "another format version is refused by the schema");
     let s = jsonschema::validator_for(&serde_json::to_value(&schemas["session-v1.json"]).unwrap()).unwrap();
     let header = serde_json::json!({"format":"sculptured.session/v1","source":"sculptured","team":team,"team_id":"t","started_ms":1,"ended_ms":null,"agents":[{"id":"team.a@t","name":"A","parent":null,"runtime":"stub"}],"tokens":{"input":0,"output":0,"cache_read":0,"cache_write":0}});
     assert!(s.is_valid(&header), "{:?}", errors(&s, &header));

@@ -1,5 +1,5 @@
-//! The gstack-style example team (`examples/teams/gstack-roles.sculptured-team.json`) is a valid
-//! team file: it matches the published schema, carries no machine folder, passes every draft check and imports
+//! The gstack-style example team (`examples/teams/gstack-roles.madl.json`) is a valid MADL
+//! document that Sculptured reads with nothing dropped: it carries no machine folder, passes every draft check and imports
 //! with no issue once a folder is set. Every job credits gstack and none requires it. Nothing here
 //! starts the team or calls a model.
 mod common;
@@ -9,20 +9,15 @@ use controld::portable;
 use serde_json::{json, Value};
 
 fn file() -> Value {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/teams/gstack-roles.sculptured-team.json");
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/teams/gstack-roles.madl.json");
     serde_json::from_str(&std::fs::read_to_string(path).expect("the team file")).expect("JSON")
 }
 
 #[test]
-fn the_gstack_team_file_matches_the_schema_and_passes_the_draft_checks() {
-    let raw = file();
-    let schemas: std::collections::HashMap<_, _> = portable::schemas().into_iter().collect();
-    let v = jsonschema::validator_for(&serde_json::to_value(&schemas["team-v1.json"]).unwrap()).unwrap();
-    let errors: Vec<String> = v.iter_errors(&raw).map(|e| e.to_string()).collect();
-    assert!(errors.is_empty(), "{errors:?}");
-
-    let parsed: portable::team::TeamFile = serde_json::from_value(raw).expect("a sculptured.team/v1 file");
-    assert_eq!(parsed.format, portable::team::TEAM_FORMAT);
+fn the_gstack_team_file_is_valid_madl_and_passes_the_draft_checks() {
+    let parsed = portable::madl::read(&file().to_string()).expect("a valid MADL document");
+    assert!(parsed.dropped.is_empty(), "{:?}", parsed.dropped);
+    let parsed = parsed.file;
     // The file carries no folder, so it is portable: without one, "needs a folder" is the only issue.
     let d = &parsed.team;
     assert!(d.folder.is_none() && d.agents.iter().all(|a| a.folder.is_none()));
@@ -50,8 +45,8 @@ async fn importing_the_gstack_team_file_finds_no_issue_once_it_has_a_folder() {
     let mut f = file();
     let folder = s.home.path().join("my-project");
     std::fs::create_dir_all(&folder).unwrap();
-    f["team"]["folder"] = json!(folder.display().to_string());
-    let (status, v) = call(&s.router, "POST", "/api/teams/check-file", json!({ "file": f })).await;
+    f["defaults"]["preferences"]["workspace"] = json!({ "folder": folder.display().to_string() });
+    let (status, v) = call(&s.router, "POST", "/api/teams/check-madl", json!({ "text": f.to_string() })).await;
     assert_eq!(status, StatusCode::OK, "{v}");
     assert_eq!(v["issues"], json!([]), "{v}");
 }

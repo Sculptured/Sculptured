@@ -13,7 +13,7 @@ const IN_RUN: &str = "seq >= ?1 AND seq < ?2 AND (subject = ?3 OR (substr(subjec
 pub(super) fn snapshot_team(conn: &Connection, rig: &str, start_seq: i64) -> rusqlite::Result<()> {
     let Some(json) = conn.query_row("SELECT json FROM drafts WHERE id = ?1", [rig], |r| r.get::<_, String>(0)).optional()? else { return Ok(()) };
     let Ok(draft) = serde_json::from_str::<model::TeamDraft>(&json) else { return Ok(()) };
-    let file = crate::portable::team::to_file(draft, &crate::settings::team_settings_in(conn, rig)?, true);
+    let file = crate::portable::team::portable(draft, &crate::settings::team_settings_in(conn, rig)?, true);
     conn.execute(
         "INSERT OR REPLACE INTO deployment_drafts (rig, start_seq, json) VALUES (?1, ?2, ?3)",
         params![rig, start_seq, serde_json::to_string(&file).expect("team file serializes")],
@@ -26,7 +26,7 @@ fn keys(team: &str) -> (String, String) {
 }
 
 impl Store {
-    /// The team file kept when `team`'s run at `start_seq` started (JSON), if any.
+    /// The team (a [`crate::portable::team::PortableTeam`], JSON) as `team`'s run at `start_seq` started, if kept.
     pub fn run_team_snapshot(&self, team: &str, start_seq: i64) -> rusqlite::Result<Option<String>> {
         self.conn.query_row("SELECT json FROM deployment_drafts WHERE rig = ?1 AND start_seq = ?2", params![team, start_seq], |r| r.get(0)).optional()
     }

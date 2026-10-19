@@ -61,7 +61,7 @@ async fn a_run_downloads_with_the_team_as_it_started_and_every_event() {
     assert!(headers["content-disposition"].to_str().unwrap().contains(".sculptured-session.jsonl"));
     let (header, lines) = parse(&file);
     assert_eq!((header.format.as_str(), header.source), ("sculptured.session/v1", Source::Sculptured));
-    assert_eq!(header.team.as_ref().unwrap().team.agents[0].name, "Alpha", "the team as the run started");
+    assert_eq!(header.team.as_ref().unwrap().agents[0].name.as_deref(), Some("Alpha"), "the team as the run started, as MADL");
     assert!(header.agents.iter().any(|a| a.id == agent), "{:?}", header.agents);
     assert!(header.ended_ms.is_some(), "stopped runs have an end");
     assert!(lines.iter().all(|l| l.origin == Origin::Observed));
@@ -190,12 +190,12 @@ async fn a_run_whose_team_cannot_be_imported_says_why() {
     let (id, seq, _, _host) = ran(&s).await;
     let (_, original, _) = text(&s.router, &format!("/api/teams/{id}/deployments/{seq}/session")).await;
     let mut header: serde_json::Value = serde_json::from_str(original.lines().next().unwrap()).unwrap();
-    header["team"]["team"]["connections"] = json!([{ "id": "c-x", "from": "a", "to": "ghost", "kind": "hands-work-to" }]);
+    header["team"]["connections"] = json!([{ "id": "c-x", "from": "a", "to": "ghost", "kind": "handoff" }]);
     let file = std::iter::once(header.to_string()).chain(original.lines().skip(1).map(str::to_string)).collect::<Vec<_>>().join("\n");
     let (status, imported) = post_text(&s.router, "/api/runs/import", &file).await;
     assert_eq!(status, StatusCode::OK, "{imported}");
     let codes: Vec<&str> = imported["warnings"].as_array().unwrap().iter().filter_map(|w| w["code"].as_str()).collect();
-    assert!(codes.contains(&"connection-dangling"), "the reason the team was left out: {imported}");
+    assert!(codes.contains(&"run-team-left-out") && imported.to_string().contains("ghost"), "the reason the team was left out: {imported}");
 }
 
 fn claude_fixture(path: &str) -> controld::portable::convert::Upload {

@@ -1,15 +1,11 @@
 //! Connections, the Input, and the MADL parts Sculptured has no place for, for
 //! [`super::import::from_madl`].
 use super::import::Cx;
-use super::workflow::is_tagged;
 use madl::model as m;
 use model::*;
 
 impl Cx<'_> {
     pub(super) fn connection(&mut self, i: usize, c: &m::Connection, team: &TeamDraft) -> Vec<DraftConnection> {
-        if is_tagged(&c.extensions) && team.workflow.is_some() {
-            return Vec::new();
-        }
         let at = format!("/connections/{i}");
         let known = |id: &str| team.agents.iter().any(|a| a.id == id) || team.groups.iter().any(|g| g.id == id);
         if !known(&c.from) || !known(&c.to) {
@@ -44,10 +40,11 @@ impl Cx<'_> {
         }
     }
 
-    /// The first input becomes the board's Input; it goes to the starting agents unless it names others.
+    /// The first input that is not the workflow's becomes the board's Input; it goes to the
+    /// starting agents unless it names others.
     pub(super) fn input(&mut self, team: &TeamDraft) -> Option<TeamInput> {
-        let workflow_input = |i: &m::Input| team.workflow.is_some() && i.id == "workflow-input";
-        let inputs: Vec<(usize, &m::Input)> = self.doc.inputs.iter().enumerate().filter(|(_, i)| !workflow_input(i)).collect();
+        let workflow_input = super::workflow::input_of(self.doc).filter(|_| team.workflow.is_some());
+        let inputs: Vec<(usize, &m::Input)> = self.doc.inputs.iter().enumerate().filter(|(_, i)| Some(i.id.as_str()) != workflow_input).collect();
         for (i, extra) in inputs.iter().skip(1) {
             self.drop(format!("/inputs/{i}"), format!("Sculptured has one Input; `{}` was not kept", extra.id));
         }
@@ -62,17 +59,18 @@ impl Cx<'_> {
     /// Parts of the system Sculptured has no place for yet.
     pub(super) fn unkept(&mut self) {
         let doc = self.doc;
-        for (i, c) in doc.channels.iter().enumerate() {
+        for (i, c) in doc.channels.iter().enumerate().filter(|(_, c)| c.medium != "decision-log") {
             self.drop(format!("/channels/{i}"), format!("Sculptured does not use channels yet; `{}` was not kept", c.id));
         }
         if doc.communication.as_ref().is_some_and(|c| c.mode.is_some() || !c.deny.is_empty()) {
             self.drop("/communication", "Sculptured does not enforce communication rules yet; they were not kept");
         }
-        for (i, s) in doc.steps.iter().enumerate().filter(|(_, s)| !is_tagged(&s.extensions)) {
-            self.drop(format!("/steps/{i}"), format!("Step `{}` belongs to a workflow; outside one Sculptured has no place for it", s.id));
+        for (i, s) in doc.steps.iter().enumerate() {
+            self.drop(format!("/steps/{i}"), format!("Step `{}` stands outside a workflow; Sculptured has no place for it", s.id));
         }
         let Some(p) = &doc.policies else { return };
-        let parts = [("on_failure", p.on_failure.is_some()), ("escalation", !p.escalation.is_empty()), ("guards", !p.guards.is_empty())];
+        let guards = !p.guards.is_empty() && doc.workflows.is_empty();
+        let parts = [("on_failure", p.on_failure.is_some()), ("escalation", !p.escalation.is_empty()), ("guards", guards)];
         for (field, set) in parts {
             if set {
                 self.drop(format!("/policies/{field}"), format!("Sculptured does not use `policies.{field}` outside a workflow; it was not kept"));

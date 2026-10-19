@@ -78,12 +78,12 @@ async fn three_alternatives_become_team_files_laid_out_with_issues() {
     assert_eq!(status, StatusCode::OK, "{v}");
     let alts = v["alternatives"].as_array().unwrap();
     assert_eq!(alts.len(), 3);
-    assert!(alts.iter().all(|a| a["file"]["format"] == "sculptured.team/v1" && a["issues"].is_array()));
+    assert!(alts.iter().all(|a| a["draft"]["agents"].is_array() && a["issues"].is_array()));
     let balanced = &alts[1];
-    let x = |name: &str| balanced["file"]["team"]["agents"].as_array().unwrap().iter().find(|a| a["name"] == name).unwrap()["x"].as_i64().unwrap();
+    let x = |name: &str| balanced["draft"]["agents"].as_array().unwrap().iter().find(|a| a["name"] == name).unwrap()["x"].as_i64().unwrap();
     assert!(x("Planner") < x("Writer") && x("Writer") < x("Editor"), "laid out along the chain");
     assert!(balanced["dropped"].to_string().contains("Ghost"), "{}", balanced["dropped"]);
-    assert_eq!(balanced["file"]["team"]["connections"].as_array().unwrap().len(), 2);
+    assert_eq!(balanced["draft"]["connections"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]
@@ -97,7 +97,7 @@ async fn practice_option_makes_every_agent_practice_and_the_folder_is_set() {
     std::fs::create_dir_all(&folder).unwrap();
     let (status, v) = call(&s.router, "POST", "/api/generate/teams", json!({ "options": opts(json!({ "kinds": "practice", "folder": folder.display().to_string() })), "prompt": "docs", "answers": [], "count": 1 })).await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    let team = &v["alternatives"][0]["file"]["team"];
+    let team = &v["alternatives"][0]["draft"];
     assert!(team["agents"].as_array().unwrap().iter().all(|a| a["kind"] == "practice"));
     assert_eq!(team["folder"], json!(folder.display().to_string()));
 }
@@ -130,7 +130,7 @@ async fn duplicate_agent_names_get_unique_ids() {
     let s = served_with(fake_claude(d.path(), BY_SCHEMA)).await;
     let (status, v) = call(&s.router, "POST", "/api/generate/teams", json!({ "options": opts(json!({})), "prompt": "docs", "answers": [], "count": 1 })).await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    let agents = v["alternatives"][0]["file"]["team"]["agents"].as_array().unwrap();
+    let agents = v["alternatives"][0]["draft"]["agents"].as_array().unwrap();
     assert_ne!(agents[0]["id"], agents[1]["id"]);
 }
 
@@ -151,7 +151,7 @@ async fn two_arrows_between_the_same_agents_keep_distinct_ids() {
     one_team(d.path(), t);
     let s = served_with(fake_claude(d.path(), BY_SCHEMA)).await;
     let (_, v) = call(&s.router, "POST", "/api/generate/teams", json!({ "options": opts(json!({})), "prompt": "docs", "answers": [], "count": 1 })).await;
-    let ids: Vec<String> = v["alternatives"][0]["file"]["team"]["connections"].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap().to_string()).collect();
+    let ids: Vec<String> = v["alternatives"][0]["draft"]["connections"].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap().to_string()).collect();
     assert_eq!(ids.len(), 4, "{ids:?}");
     assert_eq!(ids.iter().collect::<std::collections::HashSet<_>>().len(), 4, "every arrow has its own id: {ids:?}");
 }
@@ -165,10 +165,10 @@ async fn agents_sharing_a_name_are_renamed_and_names_match_regardless_of_case() 
     let s = served_with(fake_claude(d.path(), BY_SCHEMA)).await;
     let (_, v) = call(&s.router, "POST", "/api/generate/teams", json!({ "options": opts(json!({})), "prompt": "docs", "answers": [], "count": 1 })).await;
     let alt = &v["alternatives"][0];
-    let names: Vec<&str> = alt["file"]["team"]["agents"].as_array().unwrap().iter().map(|a| a["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = alt["draft"]["agents"].as_array().unwrap().iter().map(|a| a["name"].as_str().unwrap()).collect();
     assert_eq!(names, ["Writer", "Writer 2", "Editor"], "the second is renamed so arrows and people can tell them apart");
     assert!(alt["dropped"].to_string().contains("Writer 2"), "and that is said: {}", alt["dropped"]);
-    assert_eq!(alt["file"]["team"]["connections"].as_array().unwrap().len(), 1, "\"writer\" and \" Editor \" still match");
+    assert_eq!(alt["draft"]["connections"].as_array().unwrap().len(), 1, "\"writer\" and \" Editor \" still match");
 }
 
 #[tokio::test]
@@ -215,7 +215,7 @@ async fn a_team_rebuilt_from_a_session_is_improved_from_a_summary_without_tool_o
     let (team, seq) = imported(&s).await;
     let (status, v) = call(&s.router, "POST", &format!("/api/teams/{team}/improve-from-run"), json!({ "options": opts(json!({})), "start_seq": seq })).await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    let names: Vec<&str> = v["file"]["team"]["agents"].as_array().unwrap().iter().map(|a| a["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = v["draft"]["agents"].as_array().unwrap().iter().map(|a| a["name"].as_str().unwrap()).collect();
     assert_eq!(names, ["Lead", "Researcher"]);
     assert_eq!(v["rationale"], "A lead and a researcher.");
     let prompt = std::fs::read_to_string(d.path().join("prompts")).unwrap();

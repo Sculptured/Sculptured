@@ -1,15 +1,17 @@
-//! MADL (the Multi-Agent Descriptor Language): a team as a vendor-neutral `.madl.yaml` file, and
-//! MADL files imported as teams.
+//! MADL (the Multi-Agent Descriptor Language) is Sculptured's team file: a team exports as a
+//! `.madl.json` document, and MADL documents in JSON or YAML import as teams. What changes while a
+//! team runs stays in Sculptured's store; everything that describes the team is in MADL's core.
 mod agents;
+mod care;
 mod export;
 mod import;
 mod limits;
 mod links;
+mod tools;
 mod workflow;
 
-pub use export::to_madl;
+pub use export::{to_madl, MADL_SCHEMA_URL};
 pub use import::{from_madl, Imported};
-pub use workflow::is_tagged as is_drawn_from_workflow;
 
 use crate::api::{fingerprint, idempotent};
 use crate::error::{respond, to_value, ApiError};
@@ -21,13 +23,9 @@ use axum::response::Response;
 use rigspec::{Diagnostic, Severity};
 use serde::{Deserialize, Serialize};
 
-/// Sculptured's extension namespace in MADL documents.
-pub const NS: &str = "com.usesculptured";
-
-/// The team as MADL YAML.
-pub fn export_yaml(st: &AppState, id: &str, include_folders: bool) -> Result<String, ApiError> {
-    let file = crate::portable::team::export_team(st, id, include_folders)?;
-    serde_yaml_ng::to_string(&to_madl(&file)).map_err(|e| ApiError::internal(format!("could not write MADL: {e}")))
+/// The team as a MADL document.
+pub fn export(st: &AppState, id: &str, include_folders: bool) -> Result<madl::model::Document, ApiError> {
+    Ok(to_madl(&crate::portable::team::export_team(st, id, include_folders)?))
 }
 
 fn diagnostics(found: impl IntoIterator<Item = madl::Diagnostic>) -> Vec<Diagnostic> {
@@ -35,17 +33,25 @@ fn diagnostics(found: impl IntoIterator<Item = madl::Diagnostic>) -> Vec<Diagnos
     found.into_iter().map(|d| Diagnostic { path: d.path, severity: severity(d.severity), message: format!("{} ({})", d.message, d.code) }).collect()
 }
 
-/// Parse, validate and convert MADL text. A file that refers to other files can't be read here:
-/// upload it as one file (`madl expand` joins them).
+/// Parse (JSON or YAML), validate and convert MADL text. A file that refers to other files can't be
+/// read here: upload it as one file (`madl expand` joins them).
 pub fn read(text: &str) -> Result<Imported, ApiError> {
-    let invalid = |d| ApiError::unprocessable("madl_invalid", "This MADL file has errors", d);
     let nowhere = std::env::temp_dir().join("sculptured-madl-upload-has-no-folder");
     let doc = madl::from_str(text, &nowhere, &madl::Options::default()).map_err(|e| invalid(diagnostics([e.0])))?;
-    let report = madl::validate(&doc);
+    read_document(&doc)
+}
+
+/// Validate and convert a document already parsed.
+pub fn read_document(doc: &madl::model::Document) -> Result<Imported, ApiError> {
+    let report = madl::validate(doc);
     if !report.is_ok() {
         return Err(invalid(diagnostics(report.diagnostics)));
     }
-    Ok(from_madl(&madl::expand(&doc)))
+    Ok(from_madl(&madl::expand(doc)))
+}
+
+fn invalid(d: Vec<Diagnostic>) -> ApiError {
+    ApiError::unprocessable("madl_invalid", "This MADL file has errors", d)
 }
 
 #[derive(Deserialize)]
@@ -54,19 +60,15 @@ pub(super) struct FileQuery {
     folders: bool,
 }
 
-#[derive(Serialize)]
-struct Exported {
-    yaml: String,
-}
-
 pub(super) async fn get_madl(State(st): State<AppState>, Path(id): Path<String>, Query(q): Query<FileQuery>) -> Response {
-    respond(export_yaml(&st, &id, q.folders).map(|yaml| Exported { yaml }))
+    respond(export(&st, &id, q.folders))
 }
 
 #[derive(Deserialize, Serialize)]
 pub(super) struct ImportReq {
     #[serde(default)]
     request_id: String,
+    /// A MADL document in JSON or YAML.
     text: String,
 }
 
@@ -76,10 +78,33 @@ pub(super) async fn import_madl(State(st): State<AppState>, Json(req): Json<Impo
     let st2 = st.clone();
     idempotent(&st, &request_id, fp, move || async move {
         let Imported { file, dropped } = read(&req.text)?;
-        let (file, _warnings) = crate::portable::team::import_team_file(&st2, serde_json::to_value(&file).map_err(|e| ApiError::internal(e.to_string()))?)?;
+        let (file, warnings) = crate::portable::team::check(&st2, file)?;
         let draft = crate::portable::team::create(&st2, file)?;
         crate::analytics::emit(&st2, "team.created", serde_json::json!({ "template": "file" }));
-        to_value(&TeamImport { team: crate::teams::record(&st2, draft)?, dropped })
+        to_value(&TeamImport { team: crate::teams::record(&st2, draft)?, dropped, warnings })
     })
     .await
+}
+
+#[derive(Deserialize)]
+pub(super) struct CheckReq {
+    /// A MADL document in JSON or YAML.
+    text: String,
+}
+
+#[derive(Serialize)]
+struct Checked {
+    /// What Design would show on the team.
+    issues: Vec<model::DraftIssue>,
+    /// What the document says that Sculptured could not keep.
+    dropped: Vec<Diagnostic>,
+}
+
+/// The import's checks, without creating anything.
+pub(super) async fn check_madl(State(st): State<AppState>, Json(req): Json<CheckReq>) -> Response {
+    let checked = read(&req.text).and_then(|Imported { file, dropped }| {
+        let (_, issues) = crate::portable::team::check(&st, file)?;
+        Ok(Checked { issues, dropped })
+    });
+    respond(checked)
 }

@@ -214,6 +214,10 @@ pub struct TeamImport {
     pub team: TeamRecord,
     /// Parts of the spec the builder could not keep, with their spec paths.
     pub dropped: Vec<Diagnostic>,
+    /// What Design shows on the new team, such as a missing folder.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<DraftIssue>>", optional)]
+    pub warnings: Vec<DraftIssue>,
 }
 
 pub use localops::folders::{FolderEntry, FolderListing};

@@ -3,7 +3,7 @@
 //! own task as its job, the session's folder and the model each used most.
 use super::{Ev, Thread};
 use crate::portable::session::Source;
-use crate::portable::team::{TeamFile, TEAM_FORMAT};
+use crate::portable::team::PortableTeam;
 use model::{AgentAdvanced, AgentKind, ConnectionKind, DraftAgent, DraftConnection, TeamDraft};
 use std::collections::HashMap;
 
@@ -14,7 +14,7 @@ struct Role<'a> {
     threads: Vec<&'a Thread>,
 }
 
-pub(super) fn rebuild(threads: &[Thread], source: Source) -> TeamFile {
+pub(super) fn rebuild(threads: &[Thread], source: Source) -> PortableTeam {
     let roles = roles(threads);
     let names: HashMap<&str, String> = roles.iter().map(|r| (r.id.as_str(), name_of(r))).collect();
     let at = layout(&roles);
@@ -26,7 +26,7 @@ pub(super) fn rebuild(threads: &[Thread], source: Source) -> TeamFile {
     let fallback = if source == Source::Codex { "Imported Codex session" } else { "Imported Claude Code session" };
     let name = threads.iter().find(|t| t.parent.is_none()).and_then(|t| t.name.clone()).unwrap_or_else(|| fallback.into());
     let team = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, id: "imported-session".into(), name, revision: 0, folder: None, models: Default::default(), workflow: None, schedules: vec![], decision_log: false, limits: Default::default(), groups: vec![], agents, connections };
-    TeamFile { schema: None, format: TEAM_FORMAT.into(), team, settings: Default::default() }
+    PortableTeam { team, settings: Default::default() }
 }
 
 /// Parents before their children, whatever order the files came in.

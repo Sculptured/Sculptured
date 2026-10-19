@@ -276,7 +276,7 @@ async fn import_team(State(st): State<AppState>, Json(req): Json<ImportReq>) -> 
             store.insert_draft(&imported.draft)?;
         }
         crate::analytics::emit(&st2, "team.created", json!({ "template": "import" }));
-        to_value(&TeamImport { team: record(&st2, imported.draft)?, dropped: imported.dropped })
+        to_value(&TeamImport { team: record(&st2, imported.draft)?, dropped: imported.dropped, warnings: Vec::new() })
     })
     .await
 }

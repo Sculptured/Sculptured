@@ -413,7 +413,7 @@ dependencies = [
  "interpreter",
  "jsonschema",
  "localops",
- "madl 0.1.0 (git+https://github.com/Sculptured/Multi-Agent-Descriptor-Language?rev=69bae1ce770933b19bf41955dd86ee3a7e01a408)",
+ "madl 0.1.0",
  "model",
  "regex",
  "reqwest",
@@ -1435,7 +1435,6 @@ dependencies = [
 [[package]]
 name = "madl"
 version = "0.1.0"
-source = "git+https://github.com/Sculptured/Multi-Agent-Descriptor-Language?rev=69bae1ce770933b19bf41955dd86ee3a7e01a408#69bae1ce770933b19bf41955dd86ee3a7e01a408"
 dependencies = [
  "schemars",
  "serde",

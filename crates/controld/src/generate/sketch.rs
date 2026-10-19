@@ -1,6 +1,5 @@
-//! What the AI fills in (a strict, small "sketch"), and how a sketch becomes a laid-out team file.
+//! What the AI fills in (a strict, small "sketch"), and how a sketch becomes a laid-out team draft.
 //! The AI never writes ids or coordinates.
-use crate::portable::team::{PortableSettings, TeamFile, TEAM_FORMAT};
 use model::{AgentAdvanced, AgentKind, ConnectionKind, DraftAgent, DraftConnection, DraftGroup, ModelDefaults, TeamDraft};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -96,7 +95,7 @@ impl Kinds {
 }
 
 pub struct Converted {
-    pub file: TeamFile,
+    pub team: TeamDraft,
     /// What could not be kept, in plain words.
     pub dropped: Vec<String>,
 }
@@ -116,7 +115,7 @@ fn kind_of(s: &str) -> AgentKind {
     }
 }
 
-pub fn to_team_file(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
+pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
     let mut dropped = Vec::new();
     // Groups: unique ids from their names.
     let mut taken = HashSet::new();
@@ -203,7 +202,7 @@ pub fn to_team_file(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted
         models: ModelDefaults::default(),
         revision: 0,
     };
-    Converted { file: TeamFile { schema: None, format: TEAM_FORMAT.into(), team, settings: PortableSettings::default() }, dropped }
+    Converted { team, dropped }
 }
 
 /// Columns follow "hands work to": an agent sits one column right of the furthest agent that hands

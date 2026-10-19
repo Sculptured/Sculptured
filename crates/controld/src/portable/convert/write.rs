@@ -20,7 +20,7 @@ struct Item {
 }
 
 /// The run's text and its preview. `missing` lists subagents whose files were not uploaded.
-pub(super) fn write(threads: &[Thread], source: Source, missing: Vec<String>, team: Option<crate::portable::team::TeamFile>) -> (String, Preview) {
+pub(super) fn write(threads: &[Thread], source: Source, missing: Vec<String>, team: Option<crate::portable::team::PortableTeam>) -> (String, Preview) {
     let seats: HashMap<&str, String> = threads.iter().map(|t| (t.key.as_str(), seat_of(&t.key))).collect();
     let mut items: Vec<Item> = Vec::new();
     let mut n = 0;
@@ -83,7 +83,7 @@ fn step_item(at_ms: i64, ev: &Ev, seat: &str, seats: &HashMap<&str, String>, n: 
     }
 }
 
-fn header(threads: &[Thread], seats: &HashMap<&str, String>, source: Source, events: &[EventRecord], team: Option<crate::portable::team::TeamFile>) -> SessionHeader {
+fn header(threads: &[Thread], seats: &HashMap<&str, String>, source: Source, events: &[EventRecord], team: Option<crate::portable::team::PortableTeam>) -> SessionHeader {
     let agents = threads
         .iter()
         .map(|t| SessionAgent { id: seats[t.key.as_str()].clone(), name: t.name.clone(), parent: t.parent.as_deref().and_then(|p| seats.get(p)).cloned(), runtime: Some(t.runtime.into()) })
@@ -97,6 +97,7 @@ fn header(threads: &[Thread], seats: &HashMap<&str, String>, source: Source, eve
     }
     let started_ms = events.first().map_or(0, |e| e.at_ms);
     let ended_ms = events.last().map(|e| e.at_ms);
+    let team = team.as_ref().map(crate::portable::madl::to_madl);
     SessionHeader { format: SESSION_FORMAT.into(), source, team, team_id: "imported".into(), started_ms, ended_ms, agents, tokens }
 }
 

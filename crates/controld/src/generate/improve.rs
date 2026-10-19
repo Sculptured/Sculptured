@@ -38,7 +38,7 @@ async fn improve_team(st: &AppState, team: &str, req: &ImproveReq) -> Result<Off
     let x = a.alternatives.into_iter().next().expect("the parser keeps one team");
     let folder = current.team.agents.first().and_then(|a| a.folder.clone());
     let mut o = offered(st, x, Kinds::from_option(None), folder.as_deref());
-    keep_models(&mut o.file.team, &current.team);
+    keep_models(&mut o.draft, &current.team);
     Ok(o)
 }
 

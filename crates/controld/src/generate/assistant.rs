@@ -2,12 +2,13 @@
 //! and the change comes back as a proposal. Nothing is saved here: the person inspects the
 //! proposal on the board and approves it (the web app saves it as the design) or rejects it.
 //!
-//! The CLI sees the design without board positions or Sculptured's own extension data; those are
-//! put back by id afterwards, so cards stay where they were and new ones land beside their group.
+//! The CLI sees the design without board positions, tools, workflows or the decision log, and
+//! without the person's budgets and runner settings; those are put back afterwards (positions by
+//! id), so cards stay where they were and new ones land beside their group.
 use super::{call, Options};
 use crate::error::{respond, ApiError};
 use crate::extract::{Json, Path};
-use crate::portable::madl::{from_madl, is_drawn_from_workflow, to_madl, Imported};
+use crate::portable::madl::{from_madl, to_madl, Imported};
 use crate::state::AppState;
 use axum::extract::State;
 use axum::response::Response;
@@ -56,7 +57,7 @@ one input (the brief the starting agents receive); each agent's `instructions` (
 `data_access` (`reads`, `writes`, `side_effects`, `rationale`: what the agent reads and writes, relative to its folder; writes outside it are refused) and \
 `authority` (`domains`: the decisions it owns; `scope`: a group id or `system` when its decisions reach across that group or the whole team). \
 Keep the id of everything that still exists; give new things short, new ids (lowercase letters, digits and hyphens). \
-Do not add channels, communication rules, people (`runtime: human`), steps or tools: Sculptured does not use them yet.\n\n", super::design_rules!());
+Do not add channels, communication rules, people (`runtime: human`), steps, tools or workflows: the person sets those up on the board.\n\n", super::design_rules!());
 
 /// The CLI takes at most 32 KB of prompt.
 const PROMPT_LIMIT: usize = 31 * 1024;
@@ -125,15 +126,25 @@ fn parse_valid(text: &str) -> Result<m::Document, String> {
     Err(report.errors().map(ToString::to_string).collect::<Vec<_>>().join("; "))
 }
 
-/// The design as the CLI sees it: no positions, no Sculptured data, nothing drawn from a workflow.
+/// The design as the CLI sees it: no positions, tools, workflows, decision log or runner settings.
 fn for_prompt(doc: &m::Document) -> m::Document {
     let mut d = doc.clone();
+    d.schema = None;
     d.layout = None;
-    d.extensions.clear();
-    d.groups.iter_mut().for_each(|g| g.extensions.clear());
-    d.agents.iter_mut().for_each(|a| a.extensions.clear());
-    d.connections.retain(|c| !is_drawn_from_workflow(&c.extensions));
-    d.steps.retain(|s| !is_drawn_from_workflow(&s.extensions));
+    d.tools.clear();
+    d.workflows.clear();
+    d.channels.clear();
+    let workflow_inputs: Vec<String> = doc.workflows.iter().filter_map(|w| w.input.clone()).collect();
+    d.inputs.retain(|i| !workflow_inputs.contains(&i.id));
+    d.agents.iter_mut().for_each(|a| a.tools.clear());
+    if let Some(s) = d.defaults.as_mut() {
+        if let Some(p) = s.preferences.as_mut() {
+            (p.context, p.config) = (None, None);
+        }
+        if let Some(r) = s.restrictions.as_mut() {
+            (r.tools, r.approvals) = (None, None);
+        }
+    }
     d
 }
 
@@ -150,6 +161,26 @@ fn keep_budgets(before: &m::Document, doc: &mut m::Document) {
     }
 }
 
+/// The person's tools, workflows, decision log and runner settings, as saved; an agent keeps the
+/// tools it had.
+fn keep_setup(before: &m::Document, doc: &mut m::Document) {
+    doc.schema.clone_from(&before.schema);
+    (doc.tools, doc.workflows, doc.channels) = (before.tools.clone(), before.workflows.clone(), before.channels.clone());
+    let workflow_inputs = before.inputs.iter().filter(|i| before.workflows.iter().any(|w| w.input.as_ref() == Some(&i.id)));
+    doc.inputs.extend(workflow_inputs.cloned());
+    for a in &mut doc.agents {
+        a.tools = before.agents.iter().find(|b| b.id == a.id).map(|b| b.tools.clone()).unwrap_or_default();
+    }
+    let saved = before.defaults.clone().unwrap_or_default();
+    let s = doc.defaults.get_or_insert_with(Default::default);
+    let p = s.preferences.get_or_insert_with(Default::default);
+    let was = saved.preferences.unwrap_or_default();
+    (p.context, p.config) = (was.context, was.config);
+    let r = s.restrictions.get_or_insert_with(Default::default);
+    let was = saved.restrictions.unwrap_or_default();
+    (r.tools, r.approvals) = (was.tools, was.approvals);
+}
+
 /// Put back what [`for_prompt`] left out, by id, and place what is new.
 fn restore(before: &m::Document, doc: &mut m::Document) {
     doc.extensions = before.extensions.clone();
@@ -160,7 +191,6 @@ fn restore(before: &m::Document, doc: &mut m::Document) {
         a.extensions = before.agents.iter().find(|b| b.id == a.id).map(|b| b.extensions.clone()).unwrap_or_default();
     }
     keep_budgets(before, doc);
-    doc.connections.extend(before.connections.iter().filter(|c| is_drawn_from_workflow(&c.extensions)).cloned());
-    doc.steps.extend(before.steps.iter().filter(|s| is_drawn_from_workflow(&s.extensions)).cloned());
+    keep_setup(before, doc);
     doc.layout = Some(super::assistant_layout::place(before.layout.clone().unwrap_or_default(), doc));
 }

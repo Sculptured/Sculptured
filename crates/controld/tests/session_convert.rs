@@ -184,7 +184,8 @@ fn claude_and_codex_files_together_are_refused() {
 }
 
 fn team_of(files: &[Upload]) -> model::TeamDraft {
-    parse_session(&convert(files).unwrap().session).unwrap().0.team.unwrap().team
+    let doc = parse_session(&convert(files).unwrap().session).unwrap().0.team.unwrap();
+    controld::portable::madl::read_document(&doc).unwrap().file.team
 }
 
 #[test]

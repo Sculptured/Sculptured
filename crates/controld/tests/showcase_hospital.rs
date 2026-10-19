@@ -1,5 +1,5 @@
-//! The coding-hospital showcase team (`docs/showcase/coding-hospital.team.json`) is a valid team
-//! file: it matches the published schema, passes every draft check, and the import check finds no
+//! The coding-hospital showcase team (`docs/showcase/coding-hospital.madl.json`) is a valid MADL
+//! document that Sculptured reads with nothing dropped: it passes every draft check, and the import check finds no
 //! issue once its project folder exists. Nothing here starts the team or calls a model.
 mod common;
 use axum::http::StatusCode;
@@ -9,20 +9,15 @@ use model::{CopiesMode, StageKind};
 use serde_json::{json, Value};
 
 fn file() -> Value {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/showcase/coding-hospital.team.json");
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/showcase/coding-hospital.madl.json");
     serde_json::from_str(&std::fs::read_to_string(path).expect("the team file")).expect("JSON")
 }
 
 #[test]
-fn the_hospital_team_file_matches_the_schema_and_passes_the_draft_checks() {
-    let raw = file();
-    let schemas: std::collections::HashMap<_, _> = portable::schemas().into_iter().collect();
-    let v = jsonschema::validator_for(&serde_json::to_value(&schemas["team-v1.json"]).unwrap()).unwrap();
-    let errors: Vec<String> = v.iter_errors(&raw).map(|e| e.to_string()).collect();
-    assert!(errors.is_empty(), "{errors:?}");
-
-    let parsed: portable::team::TeamFile = serde_json::from_value(raw).expect("a sculptured.team/v1 file");
-    assert_eq!(parsed.format, portable::team::TEAM_FORMAT);
+fn the_hospital_team_file_is_valid_madl_and_passes_the_draft_checks() {
+    let parsed = portable::madl::read(&file().to_string()).expect("a valid MADL document");
+    assert!(parsed.dropped.is_empty(), "{:?}", parsed.dropped);
+    let parsed = parsed.file;
     let build = rigspec::from_draft(&parsed.team).unwrap_or_else(|issues| panic!("draft errors: {issues:#?}"));
     assert!(build.warnings.is_empty(), "{:#?}", build.warnings);
 
@@ -48,8 +43,8 @@ async fn importing_the_hospital_team_file_finds_no_issue_once_its_folder_exists(
     let mut f = file();
     let folder = s.home.path().join("sculptured-hospital");
     std::fs::create_dir_all(&folder).unwrap();
-    f["team"]["folder"] = json!(folder.display().to_string());
-    let (status, v) = call(&s.router, "POST", "/api/teams/check-file", json!({ "file": f })).await;
+    f["defaults"]["preferences"]["workspace"] = json!({ "folder": folder.display().to_string() });
+    let (status, v) = call(&s.router, "POST", "/api/teams/check-madl", json!({ "text": f.to_string() })).await;
     assert_eq!(status, StatusCode::OK, "{v}");
     assert_eq!(v["issues"], json!([]), "{v}");
 }
