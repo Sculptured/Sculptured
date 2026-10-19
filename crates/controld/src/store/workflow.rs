@@ -1,6 +1,6 @@
 use super::{project::append_local_in, rows::json_parse, Store};
 use crate::views::StreamItem;
-use model::{Actor, EventBody, MessageIntent, Provenance, Subject, WorkflowRun};
+use model::{Actor, DispatchRecord, EventBody, MessageIntent, Provenance, Subject, WorkflowRun};
 use rusqlite::{params, OptionalExtension};
 use std::collections::BTreeMap;
 
@@ -27,6 +27,28 @@ impl Store {
         }
         tx.commit()?;
         Ok(items)
+    }
+
+    /// What came of the dispatch command for this start, once it finished.
+    pub fn dispatch_record(&self, rig: &str, start: i64) -> rusqlite::Result<Option<DispatchRecord>> {
+        let json: Option<String> = self.conn.query_row("SELECT json FROM workflow_dispatches WHERE rig=?1 AND start_seq=?2", params![rig, start], |r| r.get(0)).optional()?;
+        json.map(|j| json_parse(&j)).transpose()
+    }
+
+    /// Records the dispatch command's result; with `run`, the batch it made, in the same transaction.
+    pub fn save_dispatch(&mut self, rig: &str, start: i64, record: &DispatchRecord, run: Option<&WorkflowRun>) -> rusqlite::Result<()> {
+        let tx = self.conn.transaction()?;
+        tx.execute("INSERT INTO workflow_dispatches(rig,start_seq,json) VALUES(?1,?2,?3) ON CONFLICT(rig,start_seq) DO UPDATE SET json=excluded.json",
+            params![rig, start, serde_json::to_string(record).expect("record serializes")])?;
+        if let Some(run) = run {
+            tx.execute("INSERT INTO workflow_runs(rig,start_seq,json) VALUES(?1,?2,?3)", params![run.rig, run.start_seq, serde_json::to_string(run).expect("workflow serializes")])?;
+        }
+        tx.commit()
+    }
+
+    /// Forgets a failed dispatch command's result, so it runs again.
+    pub fn clear_dispatch(&mut self, rig: &str, start: i64) -> rusqlite::Result<bool> {
+        Ok(self.conn.execute("DELETE FROM workflow_dispatches WHERE rig=?1 AND start_seq=?2", params![rig, start])? > 0)
     }
 
     /// Tokens of the turns that took these assignments. An assignment's message id is the assignment id,

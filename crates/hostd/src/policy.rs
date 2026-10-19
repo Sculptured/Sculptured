@@ -147,6 +147,8 @@ impl RunnerPolicy {
             // An item's copy is found by the runner itself (`item`), so only the project folder is a path here.
             Op::RunCheck { .. } if !caps.checks => return off("Checks", "checks"),
             Op::RunCheck { cwd, item, command, timeout_s } => Op::RunCheck { cwd: p(&cwd)?, item, command, timeout_s },
+            Op::RunDispatch { .. } if !caps.checks => return off("Checks (and workflow dispatch commands)", "checks"),
+            Op::RunDispatch { cwd, command, timeout_s } => Op::RunDispatch { cwd: p(&cwd)?, command, timeout_s },
             Op::CliLogin { .. } | Op::CliLoginCode { .. } if !caps.cli_sign_in => return off("Signing in to Claude or Codex from the browser", "cli-sign-in"),
             Op::CliLogin { name } => Op::CliLogin { name },
             Op::CliLoginCode { name, code } => Op::CliLoginCode { name, code },

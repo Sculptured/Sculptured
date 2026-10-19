@@ -27,6 +27,7 @@ erDiagram
   DraftAgent ||--|| AgentAdvanced : advanced
   Workflow ||--|{ WorkflowStage : stages
   Workflow ||--o| Guard : guard
+  Workflow ||--o| WorkflowDispatch : dispatch
 ```
 
 ## A minimal file
@@ -109,6 +110,7 @@ erDiagram
 | `data_access` | [DataAccess](#dataaccess) | | What it reads, writes and changes beyond its files. |
 | `authority` | [Authority](#authority) | | The decisions it owns. |
 | `skills` | list of `{ name, description, body }` | | Its [skills](/guides/skills). `name`: lowercase letters, digits and hyphens, at most 64; `description`: when to use it, at most 1,024 characters. |
+| `briefing` | `full` or `minimal` | `full` | What the agent is told with its first message. `full`: the team, its neighbours' jobs and the working rules. `minimal`: only its role, its own job and data contract, its own skills and how to finish (`complete_work` for a workflow worker). Helpers it spawns are briefed minimally too. |
 | `integrations` | list of component ids | | The [components](/guides/skills#components-tools-on-the-agents-computer) it is given: built in (`kindex`, `signet`) or the team's own (MCP servers on the computer or remote, skill packs, Claude plugins, tool hooks). |
 
 ### TokenLimit
@@ -228,13 +230,14 @@ The team settings that are part of its design. Which computer runs the team is n
 
 ## Workflow
 
-A workflow moves a batch of items through stages. The dispatcher agent creates the batch, each stage settles an item with an outcome, and the collector assembles the result once every item is complete. See [Workflows](/guides/workflows).
+A workflow moves a batch of items through stages. The dispatcher agent creates the batch (or Sculptured runs the dispatch command and what it prints is the batch), each stage settles an item with an outcome, and the collector assembles the result once every item is complete. See [Workflows](/guides/workflows).
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `dispatcher` | agent id | yes | The only agent that may call `dispatch_work`. When the team starts, only it gets a start message. |
+| `dispatcher` | agent id, or `""` | yes, unless `dispatch` | The only agent that may call `dispatch_work`. When the team starts, only it gets a start message. Empty (or left out) when `dispatch` is set: a workflow has a dispatcher or a dispatch command, never both. |
+| `dispatch` | [WorkflowDispatch](#workflowdispatch) or null | no | A command Sculptured runs at start instead of a dispatcher agent; what it prints is the batch. Needs the team's project folder. |
 | `entry` | stage id | yes | The first stage of every item. |
-| `collector` | agent id | yes | The assembly agent. It must differ from the dispatcher. |
+| `collector` | agent id | yes | The assembly agent. It must differ from the dispatcher. Required with a dispatch command too. |
 | `max_tasks` | integer | yes | Items per batch, 1 to 64. |
 | `max_steps` | integer | yes | Stage entries per item, 1 to 32: a backstop on every loop. |
 | `stages` | [WorkflowStage](#workflowstage)[] | yes | 1 to 16 stages with unique ids. |
@@ -242,6 +245,24 @@ A workflow moves a batch of items through stages. The dispatcher agent creates t
 | `input_position` | `{x, y}` or null | no | Where the Input block sits on the board. |
 | `guard` | [Guard](#guard) or null | no | A project check that pauses new work while it fails. |
 | `copies` | `shared` or `per-item` | no | `per-item` gives each item its own Git branch and folder. Default `shared`. |
+
+### WorkflowDispatch
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `command` | string | yes | Run once per start in the team's project folder, on the computer that runs the team, 1 to 2000 bytes. It must print JSON in `dispatch_work`'s shape: `{"batch_id"?: string, "summary": string, "tasks": [{"id", "title", "context", "mode"?, "depends_on"?}]}`. |
+| `timeout_s` | integer or null | no | Seconds before the command is stopped. Default 600, at most 3600. |
+
+The output goes through the same checks as `dispatch_work`. If the command exits non-zero, runs out of time, prints more than 4 MB or prints anything else, nothing is dispatched and the workflow shows why. `batch_id` defaults to `batch-<start>`.
+
+```json
+"workflow": {
+  "dispatcher": "",
+  "dispatch": { "command": "python3 tools/split_work.py", "timeout_s": 120 },
+  "collector": "assembler", "entry": "write", "max_tasks": 40, "max_steps": 8,
+  "stages": [{ "id": "write", "name": "Write", "agent": "writer", "routes": { "done": null } }]
+}
+```
 
 ### WorkflowStage
 

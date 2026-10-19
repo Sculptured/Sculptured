@@ -12,6 +12,8 @@ pub struct Workflow {
     pub input_position: Option<BoardPosition>,
     #[serde(default)]
     pub input: String,
+    /// The agent that calls dispatch_work; empty when `dispatch` makes the batch instead.
+    #[serde(default)]
     pub dispatcher: String,
     pub entry: String,
     pub collector: String,
@@ -26,6 +28,10 @@ pub struct Workflow {
     #[serde(default, skip_serializing_if = "CopiesMode::is_shared")]
     #[ts(as = "Option<CopiesMode>", optional)]
     pub copies: CopiesMode,
+    /// Sculptured runs this command at start and its output is the batch (no dispatcher agent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub dispatch: Option<crate::WorkflowDispatch>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]

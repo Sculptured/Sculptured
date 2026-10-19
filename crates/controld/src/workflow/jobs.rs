@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Kind { Check, Merge, Copy, Guard }
+pub enum Kind { Check, Merge, Copy, Guard, Dispatch }
 
 struct Running { rig: String, start: i64, kind: Kind, abort: Option<tokio::task::AbortHandle> }
 
@@ -46,7 +46,7 @@ impl Jobs {
         let stale: Vec<(String, i64)> = {
             let mut j = self.0.lock().unwrap();
             let ids: Vec<String> = j.iter().filter(|(_, r)| r.rig == rig && Some(r.start) != current).map(|(id, _)| id.clone()).collect();
-            // Only checks and merges hold an item's assignment; a stopped copy or guard has nothing to record.
+            // Only checks and merges hold an item's assignment; a stopped copy, guard or dispatch has nothing to record.
             ids.into_iter().filter_map(|id| j.remove(&id).and_then(|r| { if let Some(a) = r.abort { a.abort(); } matches!(r.kind, Kind::Check | Kind::Merge).then_some((id, r.start)) })).collect()
         };
         for (id, start) in stale { record(store, rig, start, &id, "blocked", "This was stopped with the team before it finished.", StepBy::Sculptured, None); }

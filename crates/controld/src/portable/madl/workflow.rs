@@ -40,7 +40,8 @@ pub fn is_tagged(ext: &m::Extensions) -> bool {
 pub fn render(team: &TeamDraft, w: &Workflow, doc: &mut m::Document) {
     let nodes: Vec<Vec<String>> = w.stages.iter().map(|s| stage_nodes(team, s, doc)).collect();
     let at = |id: &str| w.stages.iter().position(|s| s.id == id);
-    if let Some(entry) = at(&w.entry) {
+    // A dispatch command has no agent to draw it from; its batch still enters at the entry stage.
+    if let Some(entry) = at(&w.entry).filter(|_| !w.dispatcher.is_empty()) {
         for n in &nodes[entry] {
             push(doc, &w.dispatcher, n, m::ConnectionKind::Delegate, None, None);
         }
@@ -56,7 +57,7 @@ pub fn render(team: &TeamDraft, w: &Workflow, doc: &mut m::Document) {
             }
         }
     }
-    if team.input.is_none() && !w.input.trim().is_empty() {
+    if team.input.is_none() && !w.input.trim().is_empty() && !w.dispatcher.is_empty() {
         doc.inputs.push(m::Input { id: free_id(doc, "workflow-input"), text: w.input.clone(), to: vec![w.dispatcher.clone()] });
     }
 }

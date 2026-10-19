@@ -77,6 +77,10 @@ pub struct AgentAdvanced {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<String>>", optional)]
     pub integrations: Vec<String>,
+    /// How much of the team the agent is told about (default full).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub briefing: Option<crate::BriefingLevel>,
 }
 
 /// Limits a person set on a team's spawned agents. None = no limit; Sculptured sets none of its own.

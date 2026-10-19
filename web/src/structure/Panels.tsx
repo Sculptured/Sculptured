@@ -78,6 +78,7 @@ export function moreSummary(a: TeamDraft['agents'][number], group: string | unde
   if (group) set.push(`group ${group.trim() || 'unnamed'}`);
   if (a.advanced.token_limit || a.advanced.turn_limit || a.advanced.minute_limit) set.push('limits set');
   if (a.advanced.check) set.push('check set');
+  if (a.advanced.briefing === 'minimal') set.push('minimal briefing');
   return set.length ? set.join(' · ') : 'group, limits, check';
 }
 

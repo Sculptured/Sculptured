@@ -28,7 +28,8 @@ const list = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1
 
 type Starter = { id: string; name: string; kind: 'claude' | 'codex' | 'other'; folder: string | null };
 
-function describe(agents: Starter[], handsTo: { from: string; to: string }[], home: string | null): StartConfirmation | null {
+/** `first`: who starts, when it is not an agent (a workflow's dispatch command). */
+function describe(agents: Starter[], handsTo: { from: string; to: string }[], home: string | null, first?: string): StartConfirmation | null {
   const claude = agents.filter((a) => a.kind === 'claude');
   const codex = agents.filter((a) => a.kind === 'codex');
   if (claude.length === 0 && codex.length === 0) return null;
@@ -45,7 +46,7 @@ function describe(agents: Starter[], handsTo: { from: string; to: string }[], ho
   const heads = agents.filter((a) => !handsTo.some((c) => c.to === a.id && c.from !== a.id && ids.has(c.from)));
   return {
     title: `Start ${list(who)}?`,
-    body: `They run in ${where} and use your ${list(accounts)} account${accounts.length > 1 ? 's' : ''}. First to start: ${heads.length ? list(heads.map((a) => a.name)) : 'unknown'}.`,
+    body: `They run in ${where} and use your ${list(accounts)} account${accounts.length > 1 ? 's' : ''}. First to start: ${first ?? (heads.length ? list(heads.map((a) => a.name)) : 'unknown')}.`,
     efficiency: [],
     broad,
   };
@@ -74,6 +75,7 @@ export function startConfirmation(d: TeamDraft | undefined, home: string | null)
     d.agents.map((a) => ({ id: a.id, name: a.name.trim() || 'Unnamed agent', kind: a.kind === 'practice' ? 'other' : a.kind, folder: effectiveFolder(d, a) })),
     handsTo,
     home,
+    d.workflow?.dispatch && !d.workflow.dispatcher ? 'the dispatch command, which Sculptured runs to make the work' : undefined,
   );
   return c && { ...c, efficiency: efficiencyNotes(d, handsTo), limits: limitNotes(d), team: d.id };
 }

@@ -2,6 +2,7 @@
 //! CLI sign-in and plan usage. controld calls it in-process (local mode); a connected computer's
 //! runner calls it for its owner's hosted Sculptured (after its own policy check).
 pub mod checks;
+pub mod command;
 pub mod clis;
 pub mod copies;
 pub mod folders;
@@ -62,6 +63,9 @@ pub enum LocalOp {
     ItemMerge { project: String, team: String, task: String, into: Option<String> },
     /// A workflow check stage: the command in the item's copy (when `item`), else in `cwd`.
     RunCheck { cwd: String, item: Option<ItemRef>, command: String, timeout_s: u32 },
+    /// A workflow's dispatch command in `cwd`; answers its whole stdout (`command::CommandOutput`). An
+    /// older runner refuses it as unknown, so its output is never silently cut to a check's tail.
+    RunDispatch { cwd: String, command: String, timeout_s: u32 },
     Clis,
     CliLogin { name: String },
     /// The code from the sign-in page, for the sign-in under way (`clis::login_code`).
@@ -148,6 +152,12 @@ pub async fn execute(cx: &Context, op: LocalOp) -> Result<serde_json::Value, Loc
                 return Err(LocalError::conflict("no_folder", format!("Could not run the check: the folder {cwd} does not exist on this computer.")));
             }
             Ok(json(checks::execute_within(&command, &cwd, std::time::Duration::from_secs(timeout_s.into())).await))
+        }
+        LocalOp::RunDispatch { cwd, command, timeout_s } => {
+            if !Path::new(&cwd).is_dir() {
+                return Err(LocalError::conflict("no_folder", format!("The folder {cwd} does not exist on this computer.")));
+            }
+            Ok(json(command::capture(&command, &cwd, std::time::Duration::from_secs(timeout_s.into())).await))
         }
         LocalOp::Clis => {
             let (a, b) = tokio::join!(clis::status("claude", &cx.claude), clis::status("codex", &cx.codex));

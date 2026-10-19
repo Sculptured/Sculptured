@@ -1,6 +1,8 @@
 //! Operator-authored architecture, delivered with work to every team member.
 use crate::state::AppState;
-use model::{ConnectionKind, DraftAgent, TeamDraft};
+use model::{ConnectionKind, DraftAgent, TeamDraft, Workflow};
+
+mod minimal;
 
 /// `text` with what the agent needs around it; the team briefing goes with a conversation's first
 /// message only, since the agent keeps it for the whole conversation.
@@ -23,8 +25,11 @@ pub(crate) fn with_context(st: &AppState, seat: &str, text: String) -> String {
     let draft = team.filter(|_| !briefed);
     let log = draft.as_ref().and_then(|d| decision_log_note(&st.store.lock().unwrap(), id, d.decision_log));
     let text = match log { Some(note) => format!("{note}\n\n{text}"), None => text };
-    let known = draft.as_ref().map(|d| crate::knowledge::briefing_lines(st, id, seat, d)).unwrap_or_default();
-    match draft.and_then(|d| briefing(&d, seat)) {
+    let known = draft.as_ref().map(|d| match minimal::is_minimal(d, seat) {
+        true => crate::knowledge::lesson_lines(st, id),
+        false => crate::knowledge::briefing_lines(st, id, seat, d),
+    }).unwrap_or_default();
+    match draft.and_then(|d| briefing_with(&d, seat, &text)) {
         Some(context) => format!("{context}\n\n{}--- Current message ---\n{text}", known.iter().map(|l| format!("{l}\n\n")).collect::<String>()),
         None if briefed => text,
         None => ancestor_briefing(st, id, seat, text),
@@ -38,6 +43,10 @@ fn ancestor_briefing(st: &AppState, id: &str, seat: &str, text: String) -> Strin
     let mut ancestor = seat.to_string();
     for _ in 0..4 {
         let Some(parent) = store.parent(&ancestor).ok().flatten() else { break };
+        // A minimal agent's helpers are briefed minimally too.
+        if let Some(context) = draft.as_ref().and_then(|d| minimal::child(d, &parent, seat)) {
+            return format!("{context}\n\n--- Current message ---\n{text}");
+        }
         if let Some(context) = draft.as_ref().and_then(|d| briefing(d, &parent)) {
             return format!("{context}\n\nYour active role is managed child agent {seat}; the ancestor role above is architecture context only. Use team_status for current teammates.\n\n--- Current message ---\n{text}");
         }
@@ -55,14 +64,18 @@ pub(crate) fn decision_log_note(store: &crate::store::Store, team: &str, on: boo
 /// Every agent's usage counts against the person's own plan; tell agents what is expensive.
 const EFFICIENCY: &str = "Work efficiently: everything you read stays in your context and is re-read at every later step, and every agent you spawn is a full agent with usage of its own. Read a PDF with read_pdf first: it gives each page's text and names pages with no text, so you look at a page as an image only when it has no text and you need what is on it. Read only the parts of large files you need. Spawn a helper only for large, independent work; never spawn helpers to split up reading.";
 
-pub(crate) fn briefing(d: &TeamDraft, seat: &str) -> Option<String> {
+pub(crate) fn briefing(d: &TeamDraft, seat: &str) -> Option<String> { briefing_with(d, seat, "") }
+
+/// The briefing that goes with `message`; a minimal one leaves out the job when the message carries it.
+pub(crate) fn briefing_with(d: &TeamDraft, seat: &str, message: &str) -> Option<String> {
     let me = d.agent_for_seat(seat)?;
     // Practice messages are executable fixture commands, not model prompts.
     if me.kind == model::AgentKind::Practice { return None; }
+    if minimal::is_minimal(d, seat) { return Some(minimal::briefing(d, me, message)); }
     let mut lines = vec![format!("Team architecture (operator configuration): {}\nYour role: {} [{}]{}", d.name, me.name, me.id, in_group(d, me))];
     lines.extend(group_notes(d, me));
     if let Some(w) = &d.workflow {
-        lines.push(format!("This project uses a dynamic workflow, not ordinary turn-end handoffs. Only agent {} calls dispatch_work(batch_id, summary, tasks:[{{id,title,context,mode,depends_on}}]) once per project start. It chooses N within 1–{}. Each task runs stage {} first; stages branch by complete_work outcomes and can loop for at most {} steps. Assembly agent {} waits for every task to complete. Workers receive assignment IDs and must call complete_work(assignment,outcome,result); plain completion replies do not advance the workflow. workflow_status reads the batch. Reserved outcome blocked stops an item. Each topic chooses mode independent with empty depends_on for unrelated work, or dependent with prerequisite topic IDs. Independent topics can run simultaneously on available configured workers; dependent topics wait for accepted results from all prerequisites. Topic dependencies must be acyclic. Reading-order prerequisites alone do not require build dependencies. Use separate module paths; coordinate shared file changes. Use spawn_agent for tracked, bounded helpers when useful. Configured stages: {}", w.dispatcher, w.max_tasks, w.entry, w.max_steps, w.collector, serde_json::to_string(&w.stages).unwrap()));
+        lines.push(workflow_line(w));
     }
     lines.push("Work only on your assigned job. A leader plans and coordinates the configured team; it does not replace the other agents or implement their jobs unless explicitly assigned. Sculptured automatically delivers completed replies along 'hands work to' connections. Use spawn_agent to create helpers; all child agents must be managed through this tool so their lifecycle and communication appear on the board. Do not create untracked agents through native CLI delegation, shell processes or external tools. Do not replace configured teammates. Use team_status and send_agent_message to ask teammates for help, request features, report results and coordinate shared interfaces. Include exact artifact revisions and task context. 'Reports to' and 'watches' are descriptive only, not automatic routing. Report missing instructions or blocked dependencies rather than guessing. A reported result is not independently verified.".into());
     lines.push(EFFICIENCY.into());
@@ -71,6 +84,15 @@ pub(crate) fn briefing(d: &TeamDraft, seat: &str) -> Option<String> {
     lines.extend(team_lines(d, me));
     lines.extend(contract_lines(d, me));
     Some(lines.join("\n\n"))
+}
+
+/// How the dynamic workflow works, for every agent of a team with one.
+fn workflow_line(w: &Workflow) -> String {
+    let who = match &w.dispatch {
+        Some(_) => "Sculptured makes the batch by running the workflow's dispatch command once per project start; no agent calls dispatch_work.".to_string(),
+        None => format!("Only agent {} calls dispatch_work(batch_id, summary, tasks:[{{id,title,context,mode,depends_on}}]) once per project start. It chooses N within 1–{}.", w.dispatcher, w.max_tasks),
+    };
+    format!("This project uses a dynamic workflow, not ordinary turn-end handoffs. {who} Each task runs stage {} first; stages branch by complete_work outcomes and can loop for at most {} steps. Assembly agent {} waits for every task to complete. Workers receive assignment IDs and must call complete_work(assignment,outcome,result); plain completion replies do not advance the workflow. workflow_status reads the batch. Reserved outcome blocked stops an item. Each topic chooses mode independent with empty depends_on for unrelated work, or dependent with prerequisite topic IDs. Independent topics can run simultaneously on available configured workers; dependent topics wait for accepted results from all prerequisites. Topic dependencies must be acyclic. Reading-order prerequisites alone do not require build dependencies. Use separate module paths; coordinate shared file changes. Use spawn_agent for tracked, bounded helpers when useful. Configured stages: {}", w.entry, w.max_steps, w.collector, serde_json::to_string(&w.stages).unwrap())
 }
 
 /// Who decides what in the team (MADL `authority`), and `me`'s own data contract (`data_access`).
@@ -91,15 +113,19 @@ fn contract_lines(d: &TeamDraft, me: &DraftAgent) -> Vec<String> {
     if !scoped.is_empty() {
         out.push(format!("{}. Settle what stays inside your own work directly with the agents involved; when a decision's consequences cross into another group's work, take it to that owner instead of agreeing it between yourselves.", scoped.join("; ")));
     }
-    if let Some(c) = me.advanced.data_access.as_ref().filter(|c| !(c.reads.is_empty() && c.writes.is_empty() && c.side_effects.is_empty())) {
-        let mut parts = Vec::new();
-        if !c.reads.is_empty() { parts.push(format!("you read {}", c.reads.join(", "))); }
-        if !c.writes.is_empty() { parts.push(format!("you write {}", c.writes.join(", "))); }
-        if !c.side_effects.is_empty() { parts.push(format!("other effects: {}", c.side_effects.join(", "))); }
-        let why = c.rationale.as_deref().map(|r| format!(" Why: {}", r.trim())).unwrap_or_default();
-        out.push(format!("Your data contract: {}.{why} Stay within it: Sculptured refuses file reads and writes outside it where it can tell.", parts.join("; ")));
-    }
+    out.extend(own_contract(me));
     out
+}
+
+/// `me`'s own data contract (`data_access`), if it has one.
+fn own_contract(me: &DraftAgent) -> Option<String> {
+    let c = me.advanced.data_access.as_ref().filter(|c| !(c.reads.is_empty() && c.writes.is_empty() && c.side_effects.is_empty()))?;
+    let mut parts = Vec::new();
+    if !c.reads.is_empty() { parts.push(format!("you read {}", c.reads.join(", "))); }
+    if !c.writes.is_empty() { parts.push(format!("you write {}", c.writes.join(", "))); }
+    if !c.side_effects.is_empty() { parts.push(format!("other effects: {}", c.side_effects.join(", "))); }
+    let why = c.rationale.as_deref().map(|r| format!(" Why: {}", r.trim())).unwrap_or_default();
+    Some(format!("Your data contract: {}.{why} Stay within it: Sculptured refuses file reads and writes outside it where it can tell.", parts.join("; ")))
 }
 
 /// Whether the seat's current conversation already holds the briefing: a message went to it since the

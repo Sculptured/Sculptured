@@ -143,7 +143,7 @@ These tools run a team that has a [workflow](/guides/workflows): a dispatcher sp
 
 ### `dispatch_work`
 
-Only the workflow's dispatcher may call it. It creates one batch of work items for this run. It does not create agents; the stages' agents take the items.
+Only the workflow's dispatcher may call it. It creates one batch of work items for this run. A workflow with a [dispatch command](/guides/workflows#dispatch-with-a-command-instead-of-an-agent) refuses it: the command's output, in this same shape, is the batch. It does not create agents; the stages' agents take the items.
 
 | Parameter | Type | Required | Meaning |
 | --- | --- | --- | --- |

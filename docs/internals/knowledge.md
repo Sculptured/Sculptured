@@ -41,6 +41,7 @@ At a start, `teams/run.rs` runs `knowledge::refresh` before sending the agents t
 | Message | Gets |
 |---|---|
 | First message of a conversation (`briefing_lines`) | The map outline for the agent's folder (at most 25 areas, those someone worked on first, then by size, each with "worked on by …"), the 8 newest lessons (`[confirmed]` marks those a person confirmed), and a line saying to check the map, then `search_history`, before building, and to `record_lesson` after a wrong turn |
+| First message of an agent with the minimal briefing (`lesson_lines`) | Only the constraints and the 8 newest lessons; no map outline and no "check the map" line |
 | Later messages (`new_lessons`) | Lessons and constraints teammates recorded since the agent's previous message, if any. Its own are not repeated back to it |
 
 **Who worked where** (`workers`) comes from the team's recorded `Write`, `Edit`, `MultiEdit` and `NotebookEdit` calls (last 5,000), mapped to areas. It is observed tool input, not a claim by the agent.

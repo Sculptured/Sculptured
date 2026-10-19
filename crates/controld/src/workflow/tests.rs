@@ -4,7 +4,7 @@ use model::*;
 use serde_json::json;
 
 // Keep scheduler mechanics independent of additions to the production template.
-fn review_fixture()->TeamDraft {
+pub(super) fn review_fixture()->TeamDraft {
  let mut d=rigspec::textbook::template("book","Book",true);
  d.agents.retain(|a|a.group_id.as_deref()!=Some("webgpu-engine"));
  d.groups.retain(|g|g.id!="webgpu-engine");
@@ -18,7 +18,7 @@ pub(super) fn setup(store: Store) -> AppState {
     setup_draft(store, review_fixture())
 }
 
-fn setup_draft(store: Store, mut d: TeamDraft) -> AppState {
+pub(super) fn setup_draft(store: Store, mut d: TeamDraft) -> AppState {
     d.groups.clear(); for a in &mut d.agents { a.group_id = None; }
     let mut store = store;
     let rig = rigspec::from_draft(&d).unwrap().rig;

@@ -71,6 +71,7 @@ impl Cx<'_> {
             authority: a.authority.as_ref().map(|x| model::Authority { domains: x.domains.clone(), scope: x.scope.clone(), rationale: x.rationale.clone() }),
             skills: self.skills(at, a),
             integrations: ext.get("integrations").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default(),
+            briefing: ext.get("briefing").and_then(|v| serde_json::from_value(v.clone()).ok()),
         }
     }
 
