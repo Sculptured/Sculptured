@@ -109,16 +109,23 @@ pub fn is_public(ip: std::net::IpAddr) -> bool {
         std::net::IpAddr::V4(v4) => {
             let [a, b, ..] = v4.octets();
             !(v4.is_private() || v4.is_loopback() || v4.is_link_local() || v4.is_broadcast() || v4.is_documentation() || v4.is_unspecified() || v4.is_multicast()
-                || a == 0 || a >= 240 || (a == 100 && (64..128).contains(&b)) || (a == 192 && b == 0))
+                || a == 0 || a >= 240 || (a == 100 && (64..128).contains(&b)) || (a == 192 && b == 0) || (a == 198 && (b == 18 || b == 19)))
         }
         std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
             Some(v4) => is_public(v4.into()),
             None => {
-                let first = v6.segments()[0];
-                !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80 || first == 0x2001 && v6.segments()[1] == 0x0db8)
+                let seg = v6.segments();
+                // Forms that carry an IPv4 address inside: IPv4-compatible (::a.b.c.d), NAT64 (64:ff9b::/96,
+                // 64:ff9b:1::/48), 6to4 (2002::/16) and Teredo (2001::/32); refused rather than unpacked.
+                let embeds_v4 = seg[..6] == [0; 6] || (seg[0] == 0x64 && seg[1] == 0xff9b) || seg[0] == 0x2002 || (seg[0] == 0x2001 && seg[1] == 0);
+                !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || embeds_v4 || (seg[0] & 0xfe00) == 0xfc00 || (seg[0] & 0xffc0) == 0xfe80 || (seg[0] == 0x2001 && seg[1] == 0x0db8))
             }
         },
     }
+}
+
+fn host_of(endpoint: &str) -> Option<String> {
+    reqwest::Url::parse(endpoint).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)).map(|h| h.to_string())
 }
 
 pub fn routes() -> Router<AppState> {
@@ -167,6 +174,10 @@ async fn put_traces(
     if t.endpoint != endpoint {
         t.last_error = None;
     }
+    // A key saved for one collector never goes to another: a new address needs its key again.
+    if host_of(&t.endpoint) != host_of(&endpoint) {
+        t.key = None;
+    }
     t.enabled = req.enabled;
     t.endpoint = endpoint;
     t.content = req.content;
@@ -199,7 +210,8 @@ mod tests {
         for bad in [
             "http://127.0.0.1:4318/v1/traces", "https://localhost/v1/traces", "https://127.0.0.1/v1/traces", "https://10.0.0.5/v1/traces",
             "https://169.254.169.254/latest", "https://[::1]/v1/traces", "https://[fd00::1]/v1/traces", "https://gateway:8443/v1/traces",
-            "https://100.64.0.1/v1/traces", "https://[::ffff:10.0.0.1]/v1/traces",
+            "https://100.64.0.1/v1/traces", "https://[::ffff:10.0.0.1]/v1/traces", "https://[64:ff9b::a00:1]/v1/traces", "https://[2002:a00:1::1]/v1/traces",
+            "https://[::10.0.0.1]/v1/traces", "https://198.18.0.1/v1/traces",
         ] {
             assert!(!endpoint_ok(bad, true), "{bad}");
         }

@@ -96,7 +96,7 @@ function KeyField({ saved, value, onChange, onRemove, busy }: { saved: boolean; 
       <label className="fld-label" htmlFor={id}>API key</label>
       <input id={id} className="fld-input" type="password" autoComplete="off" value={value} placeholder={saved ? 'Type a new key to replace the saved one' : ''} onChange={(e) => onChange(e.target.value)} />
       <p className="fld-hint">
-        {saved ? 'A key is saved. ' : ''}Kept by Sculptured’s server and sent only to this address; it is never shown again.
+        {saved ? 'A key is saved. ' : ''}Kept by Sculptured’s server and sent only to this address; it is never shown again. A new address needs its key again.
         {saved && <> <Btn onClick={onRemove} disabled={busy}>Remove key</Btn></>}
       </p>
     </div>

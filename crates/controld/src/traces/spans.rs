@@ -64,13 +64,15 @@ pub struct Builder {
     run_id: String,
     run_start: Option<i64>,
     run_events: Vec<SpanEvent>,
-    /// By key: `agent:<seat>`, `turn:<seat>:<turn>`, `tool:<seat>:<call>`.
+    /// By key: `agent:<seat>#<session>`, `turn:<seat>#<session>:<turn>`, `tool:<seat>#<session>:<call>`
+    /// (turn ids start again in each session).
     open: HashMap<String, Open>,
     /// A seat's current turn, its driver and its observed model.
     turn_of: HashMap<String, String>,
     driver_of: HashMap<String, String>,
     model_of: HashMap<String, String>,
     queued: HashMap<String, String>,
+    session_of: HashMap<String, u32>,
 }
 
 fn id(seed: &str, bytes: usize) -> String {
@@ -96,7 +98,7 @@ impl Builder {
     pub fn new(ctx: Ctx) -> Builder {
         let trace_id = id(&format!("run:{}:{}", ctx.team, ctx.start_seq), 16);
         let run_id = id(&format!("run-span:{}:{}", ctx.team, ctx.start_seq), 8);
-        Builder { ctx, trace_id, run_id, run_start: None, run_events: vec![], open: HashMap::new(), turn_of: HashMap::new(), driver_of: HashMap::new(), model_of: HashMap::new(), queued: HashMap::new() }
+        Builder { ctx, trace_id, run_id, run_start: None, run_events: vec![], open: HashMap::new(), turn_of: HashMap::new(), driver_of: HashMap::new(), model_of: HashMap::new(), queued: HashMap::new(), session_of: HashMap::new() }
     }
 
     fn begin(&mut self, key: String, seat: &str, name: String, parent: Option<String>, at_ms: i64, attributes: Vec<(String, Attr)>) {
@@ -124,23 +126,35 @@ impl Builder {
     fn rig_event(&mut self, e: &EventRecord) {
         let (name, attrs) = match &e.body {
             EventBody::BudgetStateChanged { state, reason } => (format!("budget {state}"), vec![("reason".to_string(), Attr::Str(reason.clone()))]),
-            EventBody::CheckRan { .. } => ("check ran".to_string(), vec![]),
+            EventBody::CheckRan { .. } => return self.check(e, None),
             _ => return,
         };
         self.run_events.push(SpanEvent { name, at_ms: e.at_ms, attributes: attrs });
     }
 
+    /// A check on the run (the team's or an agent's).
+    fn check(&mut self, e: &EventRecord, seat: Option<&str>) {
+        let EventBody::CheckRan { command, passed, .. } = &e.body else { return };
+        let mut attributes = vec![("command".to_string(), Attr::Str(command.clone()))];
+        attributes.extend(seat.map(|s| ("sculptured.seat".to_string(), Attr::Str(s.into()))));
+        self.run_events.push(SpanEvent { name: if *passed { "check passed" } else { "check failed" }.into(), at_ms: e.at_ms, attributes });
+    }
+
     fn seat_event(&mut self, seat: &str, e: &EventRecord) -> Vec<Span> {
+        if let EventBody::TenureStarted { tenure, .. } = &e.body {
+            self.session_of.insert(seat.to_string(), *tenure);
+        }
+        let sk = format!("{seat}#{}", self.session_of.get(seat).copied().unwrap_or(0));
         match &e.body {
             EventBody::TenureStarted { tenure, driver, .. } => {
                 self.driver_of.insert(seat.to_string(), driver.clone());
                 let name = self.ctx.names.get(seat).or_else(|| self.ctx.names.get(crate::seat_ids::member_of(seat))).cloned().unwrap_or_else(|| seat.to_string());
                 let attrs = vec![("sculptured.agent".into(), Attr::Str(name.clone())), ("sculptured.seat".into(), Attr::Str(seat.into())),
                     ("sculptured.driver".into(), Attr::Str(driver.clone())), ("sculptured.session".into(), Attr::Int(i64::from(*tenure))), ("sculptured.computer".into(), Attr::Str(e.host.clone()))];
-                self.begin(format!("agent:{seat}"), seat, format!("agent {name}"), Some(self.run_id.clone()), e.at_ms, attrs);
+                self.begin(format!("agent:{sk}"), seat, format!("agent {name}"), Some(self.run_id.clone()), e.at_ms, attrs);
                 vec![]
             }
-            EventBody::TenureEnded { exit_code, .. } => self.end(&format!("agent:{seat}"), e.at_ms, exit_code.is_some_and(|c| c != 0)).into_iter().collect(),
+            EventBody::TenureEnded { exit_code, .. } => self.end(&format!("agent:{sk}"), e.at_ms, exit_code.is_some_and(|c| c != 0)).into_iter().collect(),
             EventBody::ModelObserved { observed: Some(m), .. } => {
                 self.model_of.insert(seat.to_string(), m.clone());
                 vec![]
@@ -151,32 +165,32 @@ impl Builder {
             }
             EventBody::TurnStarted { turn_id } => {
                 self.turn_of.insert(seat.to_string(), turn_id.clone());
-                let parent = self.span_id_of(&format!("agent:{seat}")).or_else(|| Some(self.run_id.clone()));
+                let parent = self.span_id_of(&format!("agent:{sk}")).or_else(|| Some(self.run_id.clone()));
                 let driver = self.driver_of.get(seat).cloned().unwrap_or_default();
                 let mut attrs = vec![("lmnr.span.type".into(), Attr::Str("LLM".into())), ("gen_ai.system".into(), Attr::Str(system(&driver).into()))];
                 if let Some(m) = self.model_of.get(seat) {
                     attrs.push(("gen_ai.request.model".into(), Attr::Str(m.clone())));
                     attrs.push(("gen_ai.response.model".into(), Attr::Str(m.clone())));
                 }
-                self.begin(format!("turn:{seat}:{turn_id}"), seat, "turn".into(), parent, e.at_ms, attrs);
+                self.begin(format!("turn:{sk}:{turn_id}"), seat, "turn".into(), parent, e.at_ms, attrs);
                 vec![]
             }
             EventBody::MessageConsumed { message_id, turn_id } => {
                 let text = self.queued.remove(message_id).unwrap_or_default();
-                if let Some(o) = self.open.get_mut(&format!("turn:{seat}:{turn_id}")) {
+                if let Some(o) = self.open.get_mut(&format!("turn:{sk}:{turn_id}")) {
                     o.input.push_str(&text);
                 }
                 vec![]
             }
             EventBody::AgentText { turn_id, text } => {
-                let key = self.turn_key(seat, turn_id.as_deref());
+                let key = self.turn_key(seat, &sk, turn_id.as_deref());
                 if let Some(o) = key.and_then(|k| self.open.get_mut(&k)) {
                     o.output.push_str(text);
                 }
                 vec![]
             }
             EventBody::UsageReported { turn_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost, .. } => {
-                let key = self.turn_key(seat, turn_id.as_deref());
+                let key = self.turn_key(seat, &sk, turn_id.as_deref());
                 if let Some(o) = key.and_then(|k| self.open.get_mut(&k)) {
                     for (t, n) in o.tokens.iter_mut().zip([input_tokens, output_tokens, cache_read_tokens, cache_write_tokens]) {
                         *t += n;
@@ -189,24 +203,24 @@ impl Builder {
             }
             EventBody::TurnEnded { turn_id, status } => {
                 self.turn_of.remove(seat);
-                self.end(&format!("turn:{seat}:{turn_id}"), e.at_ms, *status != TurnStatus::Completed).into_iter().collect()
+                self.end(&format!("turn:{sk}:{turn_id}"), e.at_ms, *status != TurnStatus::Completed).into_iter().collect()
             }
             EventBody::ToolCalled { turn_id, call_id, name, input, parent_call_id } => {
-                let parent = parent_call_id.as_ref().and_then(|p| self.span_id_of(&format!("tool:{seat}:{p}")))
-                    .or_else(|| self.turn_key(seat, turn_id.as_deref()).and_then(|k| self.span_id_of(&k)))
-                    .or_else(|| self.span_id_of(&format!("agent:{seat}")));
+                let parent = parent_call_id.as_ref().and_then(|p| self.span_id_of(&format!("tool:{sk}:{p}")))
+                    .or_else(|| self.turn_key(seat, &sk, turn_id.as_deref()).and_then(|k| self.span_id_of(&k)))
+                    .or_else(|| self.span_id_of(&format!("agent:{sk}")));
                 let attrs = vec![("lmnr.span.type".into(), Attr::Str("TOOL".into())), ("gen_ai.tool.name".into(), Attr::Str(name.clone()))];
-                self.begin(format!("tool:{seat}:{call_id}"), seat, format!("tool {name}"), parent, e.at_ms, attrs);
-                if let Some(o) = self.open.get_mut(&format!("tool:{seat}:{call_id}")) {
+                self.begin(format!("tool:{sk}:{call_id}"), seat, format!("tool {name}"), parent, e.at_ms, attrs);
+                if let Some(o) = self.open.get_mut(&format!("tool:{sk}:{call_id}")) {
                     o.input = input.to_string();
                 }
                 vec![]
             }
             EventBody::ToolResulted { call_id, output, is_error, .. } => {
-                if let Some(o) = self.open.get_mut(&format!("tool:{seat}:{call_id}")) {
+                if let Some(o) = self.open.get_mut(&format!("tool:{sk}:{call_id}")) {
                     o.output = output.clone();
                 }
-                self.end(&format!("tool:{seat}:{call_id}"), e.at_ms, *is_error).into_iter().collect()
+                self.end(&format!("tool:{sk}:{call_id}"), e.at_ms, *is_error).into_iter().collect()
             }
             EventBody::QuestionRaised { question_id, .. } => {
                 self.run_events.push(SpanEvent { name: "question asked".into(), at_ms: e.at_ms, attributes: vec![("question".into(), Attr::Str(question_id.clone())), ("sculptured.seat".into(), Attr::Str(seat.into()))] });
@@ -220,6 +234,10 @@ impl Builder {
                 self.run_events.push(SpanEvent { name: "stall suspected".into(), at_ms: e.at_ms, attributes: vec![("reason".into(), Attr::Str(reason.clone())), ("sculptured.seat".into(), Attr::Str(seat.into()))] });
                 vec![]
             }
+            EventBody::CheckRan { .. } => {
+                self.check(e, Some(seat));
+                vec![]
+            }
             EventBody::HandedOver { .. } => {
                 self.run_events.push(SpanEvent { name: "handed over".into(), at_ms: e.at_ms, attributes: vec![("sculptured.seat".into(), Attr::Str(seat.into()))] });
                 vec![]
@@ -228,8 +246,8 @@ impl Builder {
         }
     }
 
-    fn turn_key(&self, seat: &str, turn_id: Option<&str>) -> Option<String> {
-        turn_id.map(str::to_string).or_else(|| self.turn_of.get(seat).cloned()).map(|t| format!("turn:{seat}:{t}"))
+    fn turn_key(&self, seat: &str, sk: &str, turn_id: Option<&str>) -> Option<String> {
+        turn_id.map(str::to_string).or_else(|| self.turn_of.get(seat).cloned()).map(|t| format!("turn:{sk}:{t}"))
     }
 
     fn end(&mut self, key: &str, at_ms: i64, error: bool) -> Option<Span> {
@@ -258,12 +276,22 @@ impl Builder {
         Some(s)
     }
 
-    /// The run's own span, once the run has ended: from its first event to `end_ms`, with what happened.
     /// Agent, turn and tool spans begun and not yet ended.
     pub fn open_spans(&self) -> usize {
         self.open.len()
     }
 
+    /// Ends every open span at `end_ms`, marked as an error and `sculptured.incomplete` (an agent that
+    /// never reported its end), so nothing begun is left out of the trace.
+    pub fn close_open(&mut self, end_ms: i64) -> Vec<Span> {
+        let keys: Vec<String> = self.open.keys().cloned().collect();
+        keys.iter().filter_map(|k| self.end(k, end_ms, true)).map(|mut s| {
+            s.attributes.push(("sculptured.incomplete".into(), Attr::Bool(true)));
+            s
+        }).collect()
+    }
+
+    /// The run's own span, once the run has ended: from its first event to `end_ms`, with what happened.
     pub fn finish_run(&mut self, end_ms: i64) -> Span {
         let attrs = vec![("sculptured.team".into(), Attr::Str(self.ctx.team_name.clone())), ("sculptured.team_id".into(), Attr::Str(self.ctx.team.clone())), ("lmnr.span.type".into(), Attr::Str("DEFAULT".into()))];
         Span { trace_id: self.trace_id.clone(), span_id: self.run_id.clone(), parent: None, name: format!("run {}", self.ctx.team_name), start_ms: self.run_start.unwrap_or(end_ms),
@@ -283,6 +311,14 @@ fn attr_json(k: &str, v: &Attr) -> Value {
 
 fn ns(ms: i64) -> String {
     (i128::from(ms) * 1_000_000).to_string()
+}
+
+/// The spans without prompts, outputs and tool inputs and outputs (when only timings are sent).
+pub fn without_texts(mut spans: Vec<Span>) -> Vec<Span> {
+    for s in &mut spans {
+        s.attributes.retain(|(k, _)| k != "lmnr.span.input" && k != "lmnr.span.output");
+    }
+    spans
 }
 
 /// OTLP/HTTP JSON for these spans (`POST …/v1/traces`).
@@ -416,4 +452,56 @@ mod tests {
         assert!(s["attributes"].as_array().unwrap().contains(&serde_json::json!({"key":"gen_ai.usage.input_tokens","value":{"intValue":"110"}})));
         assert_eq!(s["status"]["code"], 1);
     }
+
+    fn session(tenure: u32) -> EventBody {
+        EventBody::TenureStarted { tenure, cause: model::TenureCause::Fresh, driver: "claude-code".into(), native_session_id: None, caps: Default::default() }
+    }
+    fn session_end(tenure: u32) -> EventBody {
+        EventBody::TenureEnded { tenure, exit_code: Some(0), signal: None, stderr_tail: String::new() }
+    }
+
+    #[test]
+    fn each_session_of_an_agent_gets_its_own_spans() {
+        let a = "team.a@t";
+        let mut b = Builder::new(ctx(false));
+        let mut spans = vec![];
+        for (n, t) in [(0, 1), (10, 2)] {
+            for e in [ev(n + 1, a, session(t)), ev(n + 2, a, EventBody::TurnStarted { turn_id: "turn-1".into() }),
+                ev(n + 3, a, EventBody::TurnEnded { turn_id: "turn-1".into(), status: TurnStatus::Completed }), ev(n + 4, a, session_end(t))] {
+                spans.extend(b.feed(&e));
+            }
+        }
+        let ids: std::collections::HashSet<&str> = spans.iter().map(|s| s.span_id.as_str()).collect();
+        assert_eq!((spans.len(), ids.len()), (4, 4), "two agent and two turn spans, none sharing an id");
+    }
+
+    #[test]
+    fn a_check_on_an_agent_shows_on_the_run() {
+        let mut b = Builder::new(ctx(false));
+        b.feed(&ev(1, "team.a@t", EventBody::CheckRan { command: "npm test".into(), passed: false, exit_code: Some(1), timed_out: false, output: "1 failed".into(), duration_ms: 5 }));
+        let run = b.finish_run(9_000);
+        assert_eq!(run.events.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["check failed"]);
+    }
+
+    #[test]
+    fn spans_still_open_when_the_run_ends_are_sent_as_incomplete() {
+        let a = "team.a@t";
+        let mut b = Builder::new(ctx(false));
+        b.feed(&ev(1, a, session(1)));
+        b.feed(&ev(2, a, EventBody::TurnStarted { turn_id: "turn-1".into() }));
+        let mut closed = b.close_open(5_000);
+        closed.sort_by_key(|s| s.name.clone());
+        assert_eq!(closed.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["agent Writer", "turn"]);
+        assert!(closed.iter().all(|s| s.error && s.end_ms == 5_000 && attr(s, "sculptured.incomplete") == Some(&Attr::Bool(true))));
+        assert_eq!(b.open_spans(), 0);
+    }
+
+    #[test]
+    fn texts_can_be_left_out_when_sending() {
+        let (spans, _) = one_turn(true);
+        assert!(spans.iter().any(|s| attr(s, "lmnr.span.input").is_some()));
+        let bare = without_texts(spans);
+        assert!(bare.iter().all(|s| attr(s, "lmnr.span.input").is_none() && attr(s, "lmnr.span.output").is_none()));
+    }
+
 }

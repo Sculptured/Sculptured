@@ -123,11 +123,11 @@ export type GenerateOptions = {
 export type GeneratedTeam = { label: string; rationale: string; file: TeamFileV1; dropped: string[]; issues: DraftIssue[] };
 export type TeamFileV1 = { format: string; team: import('./generated/TeamDraft').TeamDraft; settings: { posture?: string | null; own_copies: boolean; question_timeout_min?: number | null } };
 
-/** One turn of a design-assistant conversation. */
 /** A team's trace export, as the server shows it (never the key). */
 export type TraceExportView = { enabled: boolean; endpoint: string; key_saved: boolean; content: 'metadata' | 'full'; last_error: string | null; last_sent_ms: number | null };
 /** Saving it: no `key` keeps the saved one, '' removes it. */
 export type SaveTraces = { enabled: boolean; endpoint: string; content: 'metadata' | 'full'; key?: string };
+/** One turn of a design-assistant conversation. */
 export type AssistantTurn = { role: 'person' | 'assistant'; text: string };
 /** The assistant's proposed design: nothing is saved until the person approves it. */
 export type DesignProposal = { summary: string; madl: string; draft: TeamDraft; dropped: Diagnostic[]; issues: DraftIssue[] };

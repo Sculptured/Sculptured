@@ -2,7 +2,7 @@
 //! spans, posted as OTLP/HTTP JSON. A failed send keeps its spans for the next try and shows the error
 //! in the team's setting. What was sent is remembered, so a restart rebuilds the run without resending.
 use super::settings::{Content, TraceExport};
-use super::spans::{Builder, Ctx, Span, otlp};
+use super::spans::{Builder, Ctx, Span, otlp, without_texts};
 use crate::state::AppState;
 use model::EventRecord;
 use std::collections::HashMap;
@@ -31,8 +31,9 @@ struct Run {
     done: bool,
 }
 
-/// One tick at a time (the loop and a test may both call it).
-static RUNS: LazyLock<tokio::sync::Mutex<HashMap<String, Run>>> = LazyLock::new(Default::default);
+/// One tick at a time (the loop and a test may both call it). Keyed by the server's store as well as
+/// the team, so servers sharing a process (tests) never mix their runs.
+static RUNS: LazyLock<tokio::sync::Mutex<HashMap<(usize, String), Run>>> = LazyLock::new(Default::default);
 
 pub async fn run(st: AppState) {
     let mut every = tokio::time::interval(EVERY);
@@ -44,10 +45,14 @@ pub async fn run(st: AppState) {
 
 /// Sends what is new for every team with export on.
 pub async fn tick(st: &AppState) {
-    let mut runs = RUNS.lock().await;
+    let mut all = RUNS.lock().await;
     let Ok(teams) = st.store.lock().unwrap().trace_export_teams() else { return };
+    let server = std::sync::Arc::as_ptr(&st.store) as usize;
     for team in teams {
-        if let Err(e) = team_tick(st, &mut runs, &team).await {
+        let mut runs: HashMap<String, Run> = all.remove(&(server, team.clone())).map(|r| (team.clone(), r)).into_iter().collect();
+        let result = team_tick(st, &mut runs, &team).await;
+        all.extend(runs.into_iter().map(|(t, r)| ((server, t), r)));
+        if let Err(e) = result {
             tracing::debug!(%team, error = %e, "traces: cannot read the run");
         }
     }
@@ -60,12 +65,27 @@ async fn team_tick(st: &AppState, runs: &mut HashMap<String, Run>, team: &str) -
     };
     let (Some((seq, stop)), Some(draft)) = (start, draft) else { return Ok(()) };
     if runs.get(team).is_none_or(|r| r.start != seq) {
+        // The run before (stopped or started again since the last tick) goes whole: its last events,
+        // its open spans closed, and its own span, ahead of the new run's.
+        let carried = match runs.remove(team) {
+            Some(mut old) if !old.done => {
+                read(st, team, &mut old, seq)?;
+                let end = old.last_ms;
+                old.pending.extend(old.builder.close_open(end));
+                if !old.finished {
+                    old.pending.push(old.builder.finish_run(end));
+                }
+                old.pending
+            }
+            _ => vec![],
+        };
         let ctx = Ctx {
             team: team.to_string(),
             team_name: draft.name.clone(),
             start_seq: seq,
             names: draft.agents.iter().map(|a| (a.id.clone(), a.name.clone())).collect(),
-            full: cfg.content == Content::Full,
+            // Texts are always kept; whether they go is decided at each send (`content` can change).
+            full: true,
         };
         let sent_before = cfg.sent_run == Some(seq);
         runs.insert(team.to_string(), Run {
@@ -74,36 +94,26 @@ async fn team_tick(st: &AppState, runs: &mut HashMap<String, Run>, team: &str) -
             from: seq,
             replay_through: if sent_before { cfg.sent_through.unwrap_or(0) } else { 0 },
             last_ms: 0,
-            pending: vec![],
+            pending: carried,
             dropped: 0,
             finished: sent_before && cfg.run_sent,
-            done: sent_before && cfg.run_sent,
+            done: false,
         });
     }
     let run = runs.get_mut(team).expect("inserted above");
-    if run.done {
+    if run.done && run.pending.is_empty() {
         return Ok(());
     }
     let read_from = run.from;
-    loop {
-        let rows = st.store.lock().unwrap().run_events(team, run.from, i64::MAX, CHUNK)?;
-        for (s, raw) in &rows {
-            run.from = s + 1;
-            let Ok(e) = serde_json::from_str::<EventRecord>(raw) else { continue };
-            run.last_ms = run.last_ms.max(e.at_ms);
-            let spans = run.builder.feed(&e);
-            if *s > run.replay_through {
-                run.pending.extend(spans);
-            }
-        }
-        if (rows.len() as i64) < CHUNK {
-            break;
-        }
+    if !run.finished {
+        read(st, team, run, i64::MAX)?;
     }
     if !run.finished && let Some(stop) = stop {
         let end_ms = st.store.lock().unwrap().event_at_ms(stop)?.unwrap_or_else(model::now_ms);
         if run.builder.open_spans() == 0 || model::now_ms() - end_ms > GRACE_MS {
-            run.pending.push(run.builder.finish_run(run.last_ms.max(end_ms)));
+            let end = run.last_ms.max(end_ms);
+            run.pending.extend(run.builder.close_open(end));
+            run.pending.push(run.builder.finish_run(end));
             run.finished = true;
         }
     }
@@ -144,6 +154,25 @@ async fn team_tick(st: &AppState, runs: &mut HashMap<String, Run>, team: &str) -
     Ok(())
 }
 
+/// Feeds the run's events from `run.from` up to (not including) `end`, keeping the spans they end.
+fn read(st: &AppState, team: &str, run: &mut Run, end: i64) -> rusqlite::Result<()> {
+    loop {
+        let rows = st.store.lock().unwrap().run_events(team, run.from, end, CHUNK)?;
+        for (s, raw) in &rows {
+            run.from = s + 1;
+            let Ok(e) = serde_json::from_str::<EventRecord>(raw) else { continue };
+            run.last_ms = run.last_ms.max(e.at_ms);
+            let spans = run.builder.feed(&e);
+            if *s > run.replay_through {
+                run.pending.extend(spans);
+            }
+        }
+        if (rows.len() as i64) < CHUNK {
+            return Ok(());
+        }
+    }
+}
+
 /// Changes the saved setting as it is now (a save made during the send stays).
 fn note(st: &AppState, team: &str, change: impl FnOnce(&mut TraceExport)) {
     let mut store = st.store.lock().unwrap();
@@ -163,7 +192,8 @@ fn client(hosted: bool) -> &'static reqwest::Client {
         let _ = rustls::crypto::ring::default_provider().install_default();
         // No redirects: the key goes only to the address the team chose.
         let b = reqwest::Client::builder().timeout(Duration::from_secs(15)).redirect(reqwest::redirect::Policy::none());
-        if hosted { b.dns_resolver(PublicOnly) } else { b }.build().expect("http client")
+        // On the hosted server no proxy either: it would resolve the name itself, past `PublicOnly`.
+        if hosted { b.dns_resolver(PublicOnly).no_proxy() } else { b }.build().expect("http client")
     };
     if hosted { HOSTED.get_or_init(build) } else { LOCAL.get_or_init(build) }
 }
@@ -189,7 +219,8 @@ async fn send(cfg: &TraceExport, hosted: bool, spans: &[Span]) -> Result<(), Str
     if !super::settings::endpoint_ok(&cfg.endpoint, hosted) {
         return Err("This address cannot be used here; choose a public https:// address".into());
     }
-    let mut req = client(hosted).post(&cfg.endpoint).header("content-type", "application/json").body(otlp(spans).to_string());
+    let body = if cfg.content == Content::Full { otlp(spans) } else { otlp(&without_texts(spans.to_vec())) };
+    let mut req = client(hosted).post(&cfg.endpoint).header("content-type", "application/json").body(body.to_string());
     if let Some(key) = &cfg.key {
         req = req.header("authorization", format!("Bearer {key}"));
     }

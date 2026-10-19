@@ -14,7 +14,7 @@ Sending is off until you turn it on, team by team.
   <Step title="Choose where">Leave **Send to** on **Laminar**, or choose **Another OTLP/HTTP collector** and give its address (it usually ends in `/v1/traces`).</Step>
   <Step title="Add the key">Paste the project API key from your tool. Sculptured's server keeps it and sends it only to that address, as `authorization: Bearer <key>`. It is never shown again; the page only says **A key is saved**.</Step>
   <Step title="Choose what to send">**Timings, tokens and costs** (the default), or **Also prompts and outputs**.</Step>
-  <Step title="Save">Tick **Send this team's runs as traces** and choose **Save**. The next run is sent as it goes; a run already going is sent from its start.</Step>
+  <Step title="Save">Tick **Send this team's runs as traces** and choose **Save**. The team's latest run (one going now, or the last one if it has finished) is sent from its start, then each new run as it goes.</Step>
 </Steps>
 
 ## What a trace holds
@@ -26,9 +26,11 @@ Sending is off until you turn it on, team by team.
 | **turn** | The model as observed, tokens in and out (with cache reads and writes), the cost when it is priced, and how the turn ended. Marked as an LLM span. |
 | **tool** | The tool's name and whether it failed, under its turn (or the call that started it). |
 
-A turn or tool goes when it ends, an agent span when its session ends, and the run span once the run has stopped and its agents' sessions have ended (or a minute after the stop).
+A turn or tool goes when it ends, an agent span when its session ends, and the run span once the run has stopped and its agents' sessions have ended (or a minute after the stop). If you start the team again before that, the earlier run is still sent whole. A session that never reported its end is closed at the end of the run and marked incomplete.
 
-**Also prompts and outputs** adds each turn's input message and the agent's reply, each cut to 4 KB. Choose it only if the tool you send to may hold your prompts and your agents' outputs.
+**Timings, tokens and costs** sends no text from your work, but it does name things: the team's name and id, each agent's name and id, the computer's id, the models, the tools used, and the reasons given for budget changes and suspected stalls.
+
+**Also prompts and outputs** adds, each cut to 4 KB: every turn's input message and the agent's reply, and every tool call's input and output. Tool inputs and outputs include file contents, commands and what they printed. Choose it only if the tool you send to may hold all of that. Switching back to timings applies at once, also to a run that is going.
 
 ## When a send fails
 
@@ -39,4 +41,4 @@ A failed send is tried again every few seconds with the same spans, so nothing i
 - On your own computer: any `https://` address, or `http://` to this computer (`localhost`, `127.0.0.1`) for a collector you run locally.
 - In the hosted app: a public `https://` address only. The server will not send to itself or its own network.
 
-Redirects are not followed, so the key reaches only the address you entered.
+Redirects are not followed, so the key reaches only the address you entered. If you change the address, enter the key again: a saved key is never sent to a different address.
