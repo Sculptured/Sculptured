@@ -14,12 +14,12 @@ Use it to share a team with tools other than Sculptured, to keep a readable copy
 
 | | |
 | --- | --- |
-| **Export** | Team **Advanced** → **Export as MADL**. The file goes to your downloads as `<team>.madl.yaml`. **Include folders** works as it does for team files. |
+| **Export** | The team's **Settings** → **Export** → **Export team file**. The file goes to your downloads as `<team>.madl.yaml`. Leave **Include folders** off to share it. |
 | **Import** | **New project** → **Advanced: import a team file or a past run** → choose a `.madl.yaml` (or `.json`) file, or paste it, then **Import**. |
 
 ## What is kept
 
-A team exported from Sculptured and imported again comes back unchanged.
+A team exported from Sculptured and imported again comes back unchanged. Everything is in MADL's own fields, with nothing in a Sculptured-only extension, so another MADL tool sees the whole team.
 
 | Sculptured | MADL |
 | --- | --- |
@@ -35,9 +35,17 @@ A team exported from Sculptured and imported again comes back unchanged.
 | Checks | `checks` |
 | Schedules | `policies.schedules` |
 | Positions on the board | `layout` |
-| Workflows, permissions, own copies, the decision log, protections, your Claude Code setup, plan pauses | Sculptured's own extension, `com.usesculptured` |
-
-A workflow is also drawn in MADL's own terms, so other tools see its shape: check, person and merge stages become steps, and routes become handoffs labelled with their outcome.
+| Workflows: stages, routes, limits, and a dispatch command | `workflows` |
+| Components, and the ones each agent uses | `tools`, given to agents by id |
+| **Restricted** permissions | `settings.restrictions.approvals`, as `runtime-permissions` |
+| The project folder and own copies | `defaults.preferences.workspace` |
+| Question timeout | `defaults.preferences.questions` |
+| Protections | `preferences.context` |
+| Your Claude Code setup | `preferences.config` |
+| An agent's briefing (full or minimal) | `preferences.briefing` |
+| Safety rules | `restrictions.tools.refuse` |
+| Plan pauses | `system.budget.plan[].pause` |
+| The decision log | a channel with medium `decision-log` |
 
 ## Importing a MADL file from elsewhere
 
@@ -46,7 +54,7 @@ MADL can describe more than Sculptured runs today. Importing keeps what Sculptur
 - **People** (`runtime: human`) are not board agents; people answer agents' questions from the app.
 - **Other runtimes**, such as CAMEL or CrewAI, are imported as Claude Code agents.
 - **Delegate** and **review** connections become **hands work to**; **ask** and **approve** connections are not kept.
-- **Channels**, communication rules, steps outside a workflow, tools and placement are not kept yet. Skills named only by a path or name are listed under **Not imported**, because the file does not carry them; embedded skills are kept.
+- **Tools** become components. **Channels** (other than a decision log), communication rules, steps outside a workflow and placement are not kept yet. Skills named only by a path or name are listed under **Not imported**, because the file does not carry them; embedded skills are kept.
 
 A file that is not valid MADL is refused with each error and where it is. A MADL file that refers to other files (`$ref`) can't be uploaded as it is. Join it into one file first with `madl expand`:
 

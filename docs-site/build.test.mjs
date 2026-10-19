@@ -37,7 +37,7 @@ try {
     const html = fs.readFileSync(path.join(out, `${page}.html`), 'utf8');
     if (html.includes('class="tabs"')) assert.match(html, /<section class="tab" data-title="[^"]+">/, `${page}'s tabs have titles`);
   }
-  for (const f of ['team-v1.json', 'session-v1.json']) {
+  for (const f of ['session-v1.json']) {
     assert.ok(JSON.parse(fs.readFileSync(path.join(out, 'schema', f), 'utf8')).$schema, `the ${f} schema is published`);
   }
   // Screenshots: every image a page uses exists, is small, and says what it shows.

@@ -7,6 +7,11 @@ Changes you can see or use, by date. The open-source core's full history is on [
 
 ## 19 October 2026
 
+### Team files are MADL
+
+- **Export team file saves a MADL document** (`<team>.madl.yaml`), the open format other tools can read, with the whole team in MADL's own fields: the workflow, components, permissions, protections, budgets and settings. The separate **Export as MADL** button is gone. Import still reads older `.sculptured-team.json` files. See [Team files](/guides/team-files) and [MADL files](/guides/madl).
+- **A workflow's batch can come from a command** instead of a dispatcher agent, and an agent can be given a **minimal briefing** (only its own role and job). Both travel in team files. See [Dispatch with a command](/guides/workflows#dispatch-with-a-command-instead-of-an-agent).
+
 ### Send traces
 
 - **Send a team's runs to Laminar or another OpenTelemetry collector.** Under **Settings** → **More settings** → **Send traces**, a team can send each run as one trace: the run, each agent's session, its turns (model, tokens, cost) and tool calls. Off by default; the API key stays on the server. Prompts and outputs go only if you choose. See [Send traces](/guides/send-traces).
