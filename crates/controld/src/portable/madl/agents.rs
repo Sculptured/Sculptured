@@ -104,7 +104,7 @@ impl Cx<'_> {
         let mut out = Vec::new();
         for (i, s) in a.skills.iter().enumerate() {
             match s {
-                m::SkillRef::Embedded(e) => out.push(model::Skill { name: e.name.clone(), description: e.description.clone(), body: e.body.clone() }),
+                m::SkillRef::Embedded(e) => out.push(model::Skill { name: e.name.clone(), description: e.description.clone(), body: e.body.clone(), source: e.source.clone() }),
                 m::SkillRef::Ref(r) => self.drop(format!("{at}/skills/{i}"), format!("The skill {r:?} is named, not included in the file; add it to the agent with Load from file")),
             }
         }

@@ -247,8 +247,8 @@ mod tests {
     fn an_agents_skills_become_a_plugin_folder_and_an_unsafe_name_is_skipped() {
         let dir = tempfile::tempdir().unwrap();
         let plugin = dir.path().join("p");
-        let good = Skill { name: "money-rules".into(), description: "Use for money.".into(), body: "Decimal only.\n".into() };
-        let bad = Skill { name: "../escape".into(), description: "x".into(), body: "x".into() };
+        let good = Skill { name: "money-rules".into(), description: "Use for money.".into(), body: "Decimal only.\n".into(), ..Default::default() };
+        let bad = Skill { name: "../escape".into(), description: "x".into(), body: "x".into(), ..Default::default() };
         write_plugin(&plugin, &[good.clone(), bad]).unwrap();
         let md = std::fs::read_to_string(plugin.join("skills/money-rules/SKILL.md")).unwrap();
         assert_eq!(Skill::from_skill_md(&md).unwrap(), good);

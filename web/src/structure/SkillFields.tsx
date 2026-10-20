@@ -41,13 +41,19 @@ function SkillEditor({ initial, others, onSave, onClose }: { initial: Skill; oth
   );
 }
 
+/** Where a skill was copied from: a GitHub repository by name, any other address as it is. */
+function SourceLink({ url }: { url: string }) {
+  const repo = /^https:\/\/github\.com\/([^/]+\/[^/]+)\//.exec(url)?.[1];
+  return <span className="muted"> · from <a href={url} target="_blank" rel="noreferrer">{repo ?? url}</a></span>;
+}
+
 function SkillList({ skills, locked, onEdit, onRemove }: { skills: Skill[]; locked: boolean; onEdit: (at: number) => void; onRemove: (at: number) => void }) {
   if (skills.length === 0) return <p className="fld-hint muted">No skills. A skill is instructions the agent loads only when it needs them, so they cost nothing until then.</p>;
   return (
     <ul className="skill-list">
       {skills.map((s, i) => (
         <li key={s.name}>
-          <span><code>{s.name}</code> <span className="muted">{s.description}</span></span>
+          <span><code>{s.name}</code> <span className="muted">{s.description}</span>{s.source && <SourceLink url={s.source} />}</span>
           <span className="fld-actions">
             <Btn size="sm" disabled={locked} onClick={() => onEdit(i)}>Edit</Btn>
             <Btn size="sm" disabled={locked} aria-label={`Remove skill ${s.name}`} onClick={() => onRemove(i)}>Remove</Btn>

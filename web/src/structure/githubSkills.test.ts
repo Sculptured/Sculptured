@@ -27,6 +27,7 @@ it("lists a repository's skills at one commit and counts the ones it cannot read
   const c = await loadCatalog('google/skills');
   expect(c.commit).toBe('abc1234def');
   expect(c.skills.map((s) => [s.path, s.skill.name, s.skill.description])).toEqual([['skills/bigquery/SKILL.md', 'bigquery', 'Use when querying BigQuery.']]);
+  expect(c.skills[0].skill.source).toBe('https://github.com/google/skills/blob/abc1234def/skills/bigquery/SKILL.md');
   expect(c.unreadable).toBe(1);
   expect(urls.every((u) => u.startsWith('https://api.github.com/') || u.startsWith('https://raw.githubusercontent.com/'))).toBe(true);
 });

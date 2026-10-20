@@ -39,7 +39,7 @@ describe('An agent’s skills', () => {
   });
 
   it('come from a catalog, reviewed in the editor before they are saved', async () => {
-    vi.spyOn(github, 'loadCatalog').mockResolvedValue({ repo: 'anthropics/skills', commit: 'f00dfeed', skills: [{ path: 'pdf/SKILL.md', skill: { name: 'pdf', description: 'Use for PDF files.', body: 'Read PDFs.' } }], unreadable: 0 });
+    vi.spyOn(github, 'loadCatalog').mockResolvedValue({ repo: 'anthropics/skills', commit: 'f00dfeed', skills: [{ path: 'pdf/SKILL.md', skill: { name: 'pdf', description: 'Use for PDF files.', body: 'Read PDFs.', source: 'https://github.com/anthropics/skills/blob/f00dfeed/pdf/SKILL.md' } }], unreadable: 0 });
     render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: 'Add from a catalog' }));
     fireEvent.change(screen.getByLabelText('Catalog'), { target: { value: 'anthropics/skills' } });
@@ -47,7 +47,8 @@ describe('An agent’s skills', () => {
     expect((screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value).toBe('pdf');
     expect(saved().skills).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Save skill' }));
-    expect(saved().skills).toEqual([{ name: 'pdf', description: 'Use for PDF files.', body: 'Read PDFs.' }]);
+    expect(saved().skills).toEqual([{ name: 'pdf', description: 'Use for PDF files.', body: 'Read PDFs.', source: 'https://github.com/anthropics/skills/blob/f00dfeed/pdf/SKILL.md' }]);
+    expect(screen.getByRole('link', { name: 'anthropics/skills' })).toHaveAttribute('href', 'https://github.com/anthropics/skills/blob/f00dfeed/pdf/SKILL.md');
   });
 
   it('load from a SKILL.md, whose frontmatter names them', async () => {

@@ -37,7 +37,7 @@ fn tool_out(c: &Component) -> m::Tool {
         ComponentKind::McpRemote => t.mcp = Some(m::McpServer { url: c.url.clone(), headers: c.headers.clone(), args: args(&c.args), ..Default::default() }),
         ComponentKind::ToolHook => t.hook = Some(m::Hook { command: c.program.clone(), args: args(&c.args) }),
         ComponentKind::ClaudePlugin => t.plugin = c.plugin.clone(),
-        ComponentKind::Skills => t.skills = c.skills.iter().map(|s| m::EmbeddedSkill { name: s.name.clone(), description: s.description.clone(), body: s.body.clone() }).collect(),
+        ComponentKind::Skills => t.skills = c.skills.iter().map(|s| m::EmbeddedSkill { name: s.name.clone(), description: s.description.clone(), body: s.body.clone(), source: s.source.clone() }).collect(),
     }
     t
 }
@@ -71,7 +71,7 @@ pub fn tool_in(t: &m::Tool) -> Result<Component, String> {
         (_, _, Some(p), ..) => (c.kind, c.plugin) = (ComponentKind::ClaudePlugin, Some(p.clone())),
         (_, _, _, false, _) => {
             c.kind = ComponentKind::Skills;
-            c.skills = t.skills.iter().map(|s| model::Skill { name: s.name.clone(), description: s.description.clone(), body: s.body.clone() }).collect();
+            c.skills = t.skills.iter().map(|s| model::Skill { name: s.name.clone(), description: s.description.clone(), body: s.body.clone(), source: s.source.clone() }).collect();
         }
         (.., Some(b)) => return Err(format!("`{b}` is one of a runtime's own tools; Sculptured's agents already have their runtime's tools")),
         _ => return Err("names a tool the runner provides, and Sculptured provides none by that name".into()),

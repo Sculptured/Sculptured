@@ -33,10 +33,11 @@ export async function loadCatalog(repo: string): Promise<SkillCatalogRead> {
   const { sha } = await github<{ sha: string }>(repo, 'commits/HEAD');
   const { tree } = await github<{ tree: { path: string; type: string }[] }>(repo, `git/trees/${sha}?recursive=1`);
   const paths = tree.filter((t) => t.type === 'blob' && /(^|\/)SKILL\.md$/.test(t.path)).map((t) => t.path).slice(0, MAX_SKILLS);
-  const read = await Promise.all(paths.map(async (path) => {
+  const read = await Promise.all(paths.map(async (path): Promise<{ path: string; skill: Skill } | null> => {
     const res = await fetch(`https://raw.githubusercontent.com/${repo}/${sha}/${path}`);
     const parsed = res.ok ? parseSkillMd(await res.text()) : 'unreadable';
-    return typeof parsed === 'string' ? null : { path, skill: parsed };
+    // Where it came from, at this commit, so the copy says what it is a copy of.
+    return typeof parsed === 'string' ? null : { path, skill: { ...parsed, source: `https://github.com/${repo}/blob/${sha}/${path}` } };
   }));
   const skills = read.filter((s): s is { path: string; skill: Skill } => s !== null).sort((a, b) => a.skill.name.localeCompare(b.skill.name));
   return { repo, commit: sha, skills, unreadable: paths.length - skills.length };

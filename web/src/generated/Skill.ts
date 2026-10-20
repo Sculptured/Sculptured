@@ -12,4 +12,8 @@ description: string,
 /**
  * The instructions, in Markdown.
  */
-body: string, };
+body: string, 
+/**
+ * Where it was copied from (an `https://` address, such as a catalog's SKILL.md at a commit).
+ */
+source?: string, };

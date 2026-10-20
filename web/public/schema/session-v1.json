@@ -1453,6 +1453,13 @@
         },
         "name": {
           "type": "string"
+        },
+        "source": {
+          "description": "Where it was copied from (an `https://` address, such as a catalog file at a commit), so a\nreader can see where it came from and update it.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false,

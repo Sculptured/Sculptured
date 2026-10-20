@@ -18,6 +18,10 @@ pub struct Skill {
     pub description: String,
     /// The instructions, in Markdown.
     pub body: String,
+    /// Where it was copied from (an `https://` address, such as a catalog's SKILL.md at a commit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub source: Option<String>,
 }
 
 impl Skill {
@@ -51,6 +55,7 @@ impl Skill {
             name: field("name").ok_or("The SKILL.md frontmatter has no name.")?,
             description: field("description").ok_or("The SKILL.md frontmatter has no description.")?,
             body: body.trim_start_matches('\n').to_string(),
+            source: None,
         })
     }
 
@@ -83,7 +88,7 @@ mod tests {
         assert_eq!((s.name.as_str(), s.description.as_str(), s.body.as_str()), ("money-rules", "Use when handling amounts: Decimal only.", "# Money\n\nAlways use Decimal.\n"));
         assert!(s.problems().is_empty());
         assert_eq!(Skill::from_skill_md(&s.to_skill_md()).unwrap(), s);
-        let bad = Skill { name: "Money Rules".into(), description: String::new(), body: "x".into() };
+        let bad = Skill { name: "Money Rules".into(), description: String::new(), body: "x".into(), ..Default::default() };
         assert_eq!(bad.problems().len(), 2);
         assert_eq!(skills_problems(&[s.clone(), s]).last().unwrap(), "Two skills are named \"money-rules\".");
         assert!(Skill::from_skill_md("no frontmatter").is_err());

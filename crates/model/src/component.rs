@@ -322,7 +322,7 @@ mod tests {
         let mut s = base(ComponentKind::Skills);
         s.install = String::new();
         assert!(!s.problems().is_empty(), "a skills component needs skills");
-        s.skills = vec![crate::Skill { name: "mesh-check".into(), description: "Use before a run.".into(), body: "Check the mesh.\n".into() }];
+        s.skills = vec![crate::Skill { name: "mesh-check".into(), description: "Use before a run.".into(), body: "Check the mesh.\n".into(), ..Default::default() }];
         assert!(s.problems().is_empty(), "{:?}", s.problems());
         assert_eq!(s.command_line(), "adds skills mesh-check");
         s.program = "kin-mcp".into();

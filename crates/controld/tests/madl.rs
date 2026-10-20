@@ -221,7 +221,10 @@ fn contracts_and_protections_round_trip_through_madl() {
 fn skills_travel_embedded_and_components_are_madl_tools() {
     let mut file = gstack();
     let a = &mut file.team.agents[0].advanced;
-    a.skills = vec![model::Skill { name: "money-rules".into(), description: "Use when handling amounts of money.".into(), body: "Decimal only.\n".into() }];
+    a.skills = vec![
+        model::Skill { name: "money-rules".into(), description: "Use when handling amounts of money.".into(), body: "Decimal only.\n".into(), ..Default::default() },
+        model::Skill { name: "pdf".into(), description: "Use for PDF files.".into(), body: "Read PDFs.\n".into(), source: Some("https://github.com/anthropics/skills/blob/f00dfeed/pdf/SKILL.md".into()) },
+    ];
     a.integrations = vec!["kindex".into(), "notes".into()];
     let mut notes = model::component::builtins()[0].clone();
     (notes.id, notes.name, notes.program) = ("notes".into(), "Notes server".into(), "notes-mcp".into());

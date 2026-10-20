@@ -91,7 +91,7 @@ fn agent(a: &DraftAgent) -> m::Agent {
         }),
         authority: a.advanced.authority.as_ref().map(|x| m::Authority { domains: x.domains.clone(), scope: x.scope.clone(), rationale: x.rationale.clone() }),
         // Embedded, so the document carries the agent's skills wherever it goes.
-        skills: a.advanced.skills.iter().map(|s| m::SkillRef::Embedded(m::EmbeddedSkill { name: s.name.clone(), description: s.description.clone(), body: s.body.clone() })).collect(),
+        skills: a.advanced.skills.iter().map(|s| m::SkillRef::Embedded(m::EmbeddedSkill { name: s.name.clone(), description: s.description.clone(), body: s.body.clone(), source: s.source.clone() })).collect(),
         tools: a.advanced.integrations.iter().map(|id| m::ToolRef::Ref(id.clone())).collect(),
         ..Default::default()
     }
