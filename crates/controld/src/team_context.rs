@@ -171,16 +171,40 @@ fn neighbours<'a>(d: &'a TeamDraft, me: &DraftAgent) -> Vec<&'a DraftAgent> {
     d.agents.iter().filter(|a| a.id == me.id || linked(a) || grouped(a)).collect()
 }
 
+/// Most of a connected teammate's job a briefing carries, in characters.
+const LINKED_JOB_CHARS: usize = 1500;
+/// Most of a group member's job (its first line) a briefing carries, in characters.
+const GROUP_JOB_CHARS: usize = 300;
+
+/// A teammate's job as a briefing gives it: whole up to a cap for an agent connected to this one, the
+/// first line for one only in its group. Every agent's briefing is re-read at each of its steps.
+fn teammate_job(a: &DraftAgent, linked: bool) -> String {
+    let job = a.job.trim();
+    if linked {
+        return match cut(job, LINKED_JOB_CHARS) { Some(head) => format!("{head} …(cut; ask {} for more)", a.name), None => job.to_string() };
+    }
+    let first = job.lines().next().unwrap_or("").trim();
+    let first = cut(first, GROUP_JOB_CHARS).unwrap_or(first);
+    if first.len() < job.len() { format!("{first} (first line; ask {} for more)", a.name) } else { first.to_string() }
+}
+
+/// The first `max` characters of `text`, when it is longer.
+fn cut(text: &str, max: usize) -> Option<&str> {
+    text.char_indices().nth(max).map(|(i, _)| &text[..i])
+}
+
 /// `me`'s neighbours with their jobs and connections; the rest of the team by name (team_status has more).
 fn team_lines(d: &TeamDraft, me: &DraftAgent) -> Vec<String> {
     let near = neighbours(d, me);
+    let linked = |a: &DraftAgent| d.connections.iter().any(|c| (c.from == me.id && c.to == a.id) || (c.to == me.id && c.from == a.id));
     let mut lines: Vec<String> = near.iter().map(|a| {
         let group = group_label(d, a).map(|l| format!(" · Group: {l}")).unwrap_or_default();
-        format!("Agent: {} [{}]{group} · Folder: {}\nAssigned job: {}", a.name, a.id, d.effective_folder(a).unwrap_or("not configured"), a.job.trim())
+        let job = if a.id == me.id { a.job.trim().to_string() } else { teammate_job(a, linked(a)) };
+        format!("Agent: {} [{}]{group} · Folder: {}\nAssigned job: {job}", a.name, a.id, d.effective_folder(a).unwrap_or("not configured"))
     }).collect();
     let rest: Vec<String> = d.agents.iter().filter(|a| !near.iter().any(|n| n.id == a.id)).map(|a| format!("{} [{}]{}", a.name, a.id, in_group(d, a))).collect();
     if !rest.is_empty() {
-        lines.push(format!("The rest of the team (team_status gives their jobs and status): {}", rest.join(", ")));
+        lines.push(format!("The rest of the team (team_status gives their status): {}", rest.join(", ")));
     }
     for c in d.connections.iter().filter(|c| c.from == me.id || c.to == me.id) {
         let (Some(from), Some(to)) = (d.agent(&c.from), d.agent(&c.to)) else { continue };
@@ -274,6 +298,27 @@ mod tests {
         assert!(to_builder.contains("You are connected to the Quality checks group (Reviewer)"), "{to_builder}");
         assert!(to_builder.contains("Reviewer [reviewer] (group Quality checks)"), "{to_builder}");
         assert!(!to_builder.contains("Your group:"));
+    }
+
+    #[test]
+    fn teammates_jobs_are_shortened_and_the_agents_own_is_whole() {
+        let mut d = rigspec::templates::template("builder-reviewer", "project", "My project", false).unwrap();
+        d.groups.push(model::DraftGroup { id: "g".into(), label: "Desk".into(), x: 0, y: 0, w: 300, h: 300, models: Default::default() });
+        let mut third = d.agents[1].clone();
+        third.id = "editor".into();
+        third.name = "Editor".into();
+        third.job = format!("Edit every chapter for tone.\n{}", "Long style guide line. ".repeat(200));
+        d.agents.push(third);
+        d.agents[0].job = format!("Build the book.\n{}", "Detailed build step. ".repeat(200));
+        for a in &mut d.agents { a.group_id = Some("g".into()); }
+        let to_editor = briefing(&d, &d.seat_id("editor").unwrap()).unwrap();
+        assert!(to_editor.contains(d.agents[2].job.trim()), "its own job is whole");
+        let to_builder = briefing(&d, &d.seat_id(&d.agents[0].id).unwrap()).unwrap();
+        assert!(to_builder.contains("Assigned job: Edit every chapter for tone. (first line; ask Editor for more)"), "a group member's job is its first line");
+        assert!(!to_builder.contains("Long style guide line."));
+        let to_reviewer = briefing(&d, &d.seat_id(&d.agents[1].id).unwrap()).unwrap();
+        assert!(to_reviewer.contains("Detailed build step.") && to_reviewer.contains("(cut; ask Builder for more)"), "a linked agent's job is kept up to a cap");
+        assert!(to_reviewer.len() < 6000, "{} chars", to_reviewer.len());
     }
 
     #[test]

@@ -4,6 +4,18 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Changed
+- Fewer tokens for teams (measured on a Codex lead with two workers, 4 runs before and 5 after, all 12 tests passing each time: mean 795k → 639k tokens, tokens in turns with no tool call 148k → 32k, turns 7–9 → 4–5):
+  - A `send_agent_message` marked `fyi` to an idle agent is held (`held_notes`, migration 29) and prepended to its next message or workflow assignment instead of starting a turn.
+  - A message an agent sends the agent it hands work to during its work turn is recorded as that handoff (`HandedOver` on the agent's own message, `Store::record_adopted`); the result is not sent again, and the receiver's turn on the message is its work.
+  - `team_status` is one line per agent; `complete_work` answers in one line instead of the whole batch.
+  - Briefings carry a connected teammate's job up to 1,500 characters and a group member's job as its first line; an agent's own job stays whole. They say AGENTS.md and CLAUDE.md are already loaded and ask for no acknowledgements.
+  - Codex agents get `model_auto_compact_token_limit` at twice the team's context ceiling (`LaunchParams.compact_tokens`), so a long turn compacts before it reaches the model's window.
+  - The protection guard refuses a shell step that sleeps longer than 30 seconds and says to end the turn instead.
+
+### Fixed
+- `sculptured run` with a long `--data-dir` failed to bind the agent tool socket (path longer than a Unix socket allows); the socket now goes in a private folder under the runtime directory when the path would be too long.
+
 ### Added
 - Questions pages: `GET /api/teams/{id}/questions` (every question of a team, newest first, at most 500; the agent list now returns up to 200); the project's **Questions** tab (`/p/:team/questions`) and each agent's **Questions** tab (`questions/QuestionLog`): open questions answered in place (the existing question card), answers with the offered choices and the one picked, the agent's own decision on expiry, late answers, withdrawn ones; filters by outcome and agent.
 - Question urgency (agent-reported, an idea from Gas Town's escalation severity): `request_input` takes `urgency` (`low` | `normal` | `high`, `model::Urgency`, `QuestionPrompt.urgency`); the inbox sorts high first and low last, and the question card marks urgent ones. No re-escalation: an unanswered question still times out to the agent's own decision.
