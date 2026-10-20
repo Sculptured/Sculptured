@@ -180,6 +180,7 @@ fn assign(store: &mut Store, d: &TeamDraft, run: &mut WorkflowRun, index: usize,
     let id = uuid::Uuid::new_v4().to_string();
     let escalated = review.is_none() && super::engine::escalation_due(&run.config, task_at(run, index)).is_some_and(|e| e.agent == agent);
     let text = super::assignment::text(d, run, task_at(run, index), &id, agent);
+    let (text, mut notes) = crate::team_context::held_notes_in(store, &seat, text);
     let text = match crate::team_context::decision_log_note(store, &run.rig, d.decision_log) { Some(note) => format!("{note}\n\n{text}"), None => text };
     let fresh = !crate::team_context::briefed(store, &seat).unwrap_or(false);
     let text = match crate::team_context::briefing_with(d, &seat, &text).filter(|_| fresh) { Some(brief) => format!("{brief}\n\n--- Current message ---\n{text}"), None => text };
@@ -191,7 +192,8 @@ fn assign(store: &mut Store, d: &TeamDraft, run: &mut WorkflowRun, index: usize,
             t.status = TaskStatus::Assigned; t.assignment = Some(id.clone()); t.assigned_agent = Some(agent.to_string());
         }
     }
-    let items = store.save_workflow(run, Some((&seat, &id, &text)))?;
+    let mut items = store.save_workflow(run, Some((&seat, &id, &text)))?;
+    items.append(&mut notes);
     Ok(Some(Outbound { host: view.host.unwrap_or_else(|| "local".into()), seat, id, text, items }))
 }
 

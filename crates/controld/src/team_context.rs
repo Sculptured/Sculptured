@@ -133,15 +133,27 @@ fn own_contract(me: &DraftAgent) -> Option<String> {
 /// conversation began. A resumed conversation is the earlier one continued.
 /// Notes held while the agent was idle, ahead of the message that wakes it; they count as delivered now.
 fn with_held_notes(st: &AppState, seat: &str, text: String) -> String {
-    let Ok(notes) = st.store.lock().unwrap().take_held_notes(seat) else { return text };
+    let (text, items) = held_notes_in(&mut st.store.lock().unwrap(), seat, text);
+    st.publish(items);
+    text
+}
+
+/// `text` with the status notes held for `seat` put before it, each recorded as delivered; the
+/// events are returned for the caller to publish.
+pub(crate) fn held_notes_in(store: &mut crate::store::Store, seat: &str, text: String) -> (String, Vec<crate::views::StreamItem>) {
+    let Ok(notes) = store.take_held_notes(seat) else { return (text, Vec::new()) };
     if notes.is_empty() {
-        return text;
+        return (text, Vec::new());
     }
     let lines: Vec<String> = notes.iter().map(|(_, from, note)| format!("- from {}: {note}", crate::seat_ids::member_of(from))).collect();
+    let mut items = Vec::new();
     for (message_id, _, _) in notes {
-        let _ = st.local_event(model::Actor::System("collaboration".into()), model::Subject::Seat(seat.to_string()), model::Provenance::ProtocolObserved, model::EventBody::MessageDelivered { message_id });
+        let delivered = model::EventBody::MessageDelivered { message_id };
+        if let Ok(item) = store.append_local(model::Actor::System("collaboration".into()), model::Subject::Seat(seat.to_string()), model::Provenance::ProtocolObserved, delivered) {
+            items.push(item);
+        }
     }
-    format!("Notes that arrived while you were idle:\n{}\n\n{text}", lines.join("\n"))
+    (format!("Notes that arrived while you were idle:\n{}\n\n{text}", lines.join("\n")), items)
 }
 
 pub(crate) fn briefed(store: &crate::store::Store, seat: &str) -> rusqlite::Result<bool> {

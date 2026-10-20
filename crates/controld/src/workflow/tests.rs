@@ -1166,3 +1166,17 @@ async fn complete_work_answers_in_one_line_not_the_whole_batch() {
     assert!(text.len() < 400, "{} chars: {}", text.len(), &text[..200.min(text.len())]);
     assert!(!current(&st).tasks[i].history.is_empty(), "the result is recorded");
 }
+
+#[tokio::test]
+async fn a_held_note_rides_along_with_the_next_assignment() {
+    let st = setup(Store::open_in_memory().unwrap());
+    st.store.lock().unwrap().hold_note("n1", "team.reference@book", "team.dispatcher@book", "Status: the glossary is drafted.").unwrap();
+    call(&st,"team.dispatcher@book","dispatch_work",&json!({"batch_id":"notes","summary":"source","tasks":[
+        {"id":"a","title":"Chapter A","context":"a","mode":"independent","depends_on":[]}
+    ]})).unwrap();
+    scheduler::process(&st,"book").await.unwrap();
+    let id = current(&st).tasks[0].assignment.clone().expect("assigned to reference");
+    let text: String = st.store.lock().unwrap().connection().query_row("SELECT text FROM messages WHERE id = ?1", [&id], |r| r.get(0)).unwrap();
+    assert!(text.contains("the glossary is drafted"), "{text}");
+    assert!(st.store.lock().unwrap().take_held_notes("team.reference@book").unwrap().is_empty(), "delivered once");
+}
