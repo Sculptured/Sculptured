@@ -42,10 +42,27 @@ pub async fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result
             .rig_snapshot(&rig.name)
             .map_err(err)?
             .ok_or("Unknown project")?;
-        let agents=snap.seats.iter().map(|a| json!({"id":a.id,"name":a.label,"lifecycle":a.lifecycle,"activity":a.activity,"parent":store.parent(&a.id).ok().flatten(),"control":store.control(&a.id).ok().flatten()})).collect::<Vec<_>>();
-        return Ok(
-            json!({"text":json!({"project":rig.name,"desired":snap.desired,"agents":agents}).to_string()}),
-        );
+        // Read into the caller's context on every call: one short line per agent, not JSON.
+        let word = |v: serde_json::Result<Value>| v.ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+        let unique = |m: &str| snap.seats.iter().filter(|o| o.member == m).count() == 1;
+        let address = |id: &str, member: &str| if unique(member) { member.to_string() } else { id.to_string() };
+        let mut lines = vec![format!("Project {} ({}). Agents (send_agent_message takes the first word):", rig.name, word(serde_json::to_value(snap.desired)))];
+        for a in &snap.seats {
+            let state = match a.lifecycle {
+                SeatLifecycle::Running => word(serde_json::to_value(a.activity)),
+                other => word(serde_json::to_value(other)),
+            };
+            let mut line = format!("- {} · {} · {state}", address(&a.id, &a.member), a.label.as_deref().unwrap_or(&a.member));
+            if let Some(parent) = store.parent(&a.id).ok().flatten() {
+                let member = snap.seats.iter().find(|o| o.id == parent).map_or(parent.clone(), |o| address(&o.id, &o.member));
+                line.push_str(&format!(" · child of {member}"));
+            }
+            if let Some(control) = store.control(&a.id).ok().flatten() {
+                line.push_str(&format!(" · {}", word(serde_json::to_value(control))));
+            }
+            lines.push(line);
+        }
+        return Ok(json!({"text": lines.join("\n")}));
     }
     let request = arg(args, "request_id", 128)?;
     let key = format!("agent-tool:{seat}:{tool}:{request}");
