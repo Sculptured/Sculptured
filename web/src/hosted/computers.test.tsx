@@ -82,3 +82,28 @@ it('sets how many agents work at once on a computer, across its teams', async ()
   await waitFor(() => expect(puts).toEqual([{ max_working: 3 }]));
   expect(await screen.findByText(/Saved/)).toBeInTheDocument();
 });
+
+it('a Community sign-in says what it can and cannot do, and Don’t allow turns it down', async () => {
+  const f = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+    const u = String(url);
+    if (u.includes('/gw/api/device/code/WXYZ-2345')) return reply(200, { name: 'Laptop', platform: 'linux', user_code: 'WXYZ-2345', scope: 'community', label: 'Community access from ‘Laptop’' });
+    if (u.endsWith('/gw/api/device/deny') && init?.method === 'POST') return reply(200, { ok: true });
+    return reply(404, {});
+  });
+  render(<MemoryRouter initialEntries={['/connect?code=WXYZ-2345']}><ConnectPage /></MemoryRouter>);
+  expect(await screen.findByText('Allow Community access from ‘Laptop’?')).toBeInTheDocument();
+  expect(screen.getByText(/It cannot run agents/)).toBeInTheDocument();
+  expect(screen.queryByText(/to run agents for you/)).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Don’t allow' }));
+  expect(await screen.findByText(/Turned down/)).toBeInTheDocument();
+  expect(f.mock.calls.some(([u, i]) => String(u).endsWith('/gw/api/device/deny') && JSON.parse(String((i as RequestInit).body)).user_code === 'WXYZ-2345')).toBe(true);
+});
+
+it('lists Community access by its label', async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url) => String(url).endsWith('/gw/api/devices')
+    ? reply(200, [{ id: 'd2', name: 'Laptop', platform: 'linux', created_at: '2026-10-11T00:00:00Z', last_seen: null, connected: false, scope: 'community', label: 'Community access from ‘Laptop’' }])
+    : reply(404, {}));
+  render(<MemoryRouter><ComputersPage /></MemoryRouter>);
+  expect(await screen.findByText('Community access from ‘Laptop’')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Disconnect Community access from ‘Laptop’' })).toBeInTheDocument();
+});

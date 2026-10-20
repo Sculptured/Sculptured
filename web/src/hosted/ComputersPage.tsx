@@ -12,7 +12,8 @@ import { gw } from './session';
 import { ConnectComputer } from './ConnectComputer';
 import './hosted.css';
 
-export type Computer = { id: string; name: string; platform: string; created_at: string; last_seen: string | null; connected: boolean };
+/** `scope` and `label` come from gateways that know Community access keys; older ones send neither. */
+export type Computer = { id: string; name: string; platform: string; created_at: string; last_seen: string | null; connected: boolean; scope?: 'computer' | 'community'; label?: string };
 
 export function ComputersPage() {
   const [list, setList] = useState<Computer[] | null>(null);
@@ -47,11 +48,13 @@ const CAPS: Record<string, string> = { git: 'Git', copies: "Agents' own copies",
 
 /** One computer: its state, Disconnect, and when connected what it allows and its cap. */
 function ComputerRow({ c, policy, cap, onChange, onError }: { c: Computer; policy: HostPolicyInfo | null; cap: number | null; onChange: () => void; onError: (m: string) => void }) {
+  const name = c.label ?? c.name;
   return (
     <li>
-      <strong>{c.name}</strong> <span className="muted">{c.platform}</span>{' '}
-      <span className={c.connected ? 'tone-green' : 'muted'}>{c.connected ? 'Connected' : c.last_seen ? `Last seen ${new Date(c.last_seen).toLocaleString()}` : 'Never connected'}</span>
-      <button className="btn" aria-label={`Disconnect ${c.name}`} onClick={() => void gw('POST', `/devices/${c.id}/revoke`).then(onChange, (e) => onError(e.message))}>Disconnect</button>
+      <strong>{name}</strong> <span className="muted">{c.platform}</span>{' '}
+      {c.scope === 'community' ? <span className="muted">Uses Community only; runs no agents</span>
+        : <span className={c.connected ? 'tone-green' : 'muted'}>{c.connected ? 'Connected' : c.last_seen ? `Last seen ${new Date(c.last_seen).toLocaleString()}` : 'Never connected'}</span>}
+      <button className="btn" aria-label={`Disconnect ${name}`} onClick={() => void gw('POST', `/devices/${c.id}/revoke`).then(onChange, (e) => onError(e.message))}>Disconnect</button>
       {c.connected && policy && <ComputerDetails id={c.id} name={c.name} policy={policy} />}
       {c.connected && policy && <WorkingCap id={c.id} name={c.name} cap={cap} />}
     </li>
