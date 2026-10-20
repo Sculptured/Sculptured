@@ -8,6 +8,8 @@ use std::collections::{HashMap, HashSet};
 #[derive(Clone, Debug)]
 pub(super) struct Turn {
     pub(super) seq: i64,
+    /// Seq of its `TurnStarted`.
+    pub(super) started: i64,
     pub(super) turn_id: String,
     pub(super) text: Option<String>,
     /// It finished the agent's work: its result is passed along.
@@ -65,6 +67,8 @@ pub(super) struct SeatWork {
     pub(super) read: HashSet<String>,
     /// Messages delivered to an earlier process of it that never read them.
     pub(super) lost: HashSet<String>,
+    /// Messages other agents sent it themselves: `(seq, message id, sender seat)`, oldest first.
+    pub(super) from_agents: Vec<(i64, String, String)>,
 }
 
 /// Work read and not finished yet: the message, its wave, and why it did not finish (None while
@@ -86,14 +90,14 @@ struct Scan<'a> {
     first_human_seen: bool,
     /// The latest work read and not yet finished.
     reading: Option<Reading>,
-    /// The running turn and its last reply so far.
-    current: Option<(String, Option<String>)>,
+    /// The running turn, the seq it started at, and its last reply so far.
+    current: Option<(String, i64, Option<String>)>,
 }
 
 impl Scan<'_> {
     fn event(&mut self, e: EventRecord) {
         match e.body {
-            EventBody::MessageQueued { message_id, .. } => self.queued(&e.actor, message_id),
+            EventBody::MessageQueued { message_id, .. } => self.queued(e.seq, &e.actor, message_id),
             EventBody::MessageDelivered { message_id } => {
                 self.out.delivered.insert(message_id);
             }
@@ -103,9 +107,9 @@ impl Scan<'_> {
                 self.current = None;
             }
             EventBody::TenureStarted { .. } => self.new_process(),
-            EventBody::TurnStarted { turn_id } => self.current = Some((turn_id, None)),
+            EventBody::TurnStarted { turn_id } => self.current = Some((turn_id, e.seq, None)),
             EventBody::AgentText { turn_id, text } => {
-                if let Some((id, last)) = self.current.as_mut()
+                if let Some((id, _, last)) = self.current.as_mut()
                     && turn_id.as_ref().is_none_or(|t| t == id)
                 {
                     *last = Some(text);
@@ -117,11 +121,17 @@ impl Scan<'_> {
         }
     }
 
-    /// Its work messages are its Jobs, its handoffs and, for a first agent with no Job, the
-    /// first message you sent it.
-    fn queued(&mut self, actor: &Actor, message_id: String) {
+    /// Its work messages are its Jobs, its handoffs (including an agent's own message recorded
+    /// as one) and, for a first agent with no Job, the first message you sent it.
+    fn queued(&mut self, seq: i64, actor: &Actor, message_id: String) {
         self.out.queued.push(message_id.clone());
         match actor {
+            Actor::Seat(sender) => {
+                self.out.from_agents.push((seq, message_id.clone(), sender.clone()));
+                if let Some(wave) = self.waves.get(message_id.as_str()) {
+                    self.work_messages.insert(message_id, (*wave).clone());
+                }
+            }
             Actor::System(id) if id == TEAM_START_ACTOR => {
                 self.out.jobs.push(message_id.clone());
                 self.work_messages.insert(message_id, None);
@@ -167,15 +177,15 @@ impl Scan<'_> {
     }
 
     fn turn_ended(&mut self, seq: i64, turn_id: String, status: TurnStatus) {
-        let text = match self.current.take() {
-            Some((id, last)) if id == turn_id => last,
-            _ => None,
+        let (started, text) = match self.current.take() {
+            Some((id, started, last)) if id == turn_id => (started, last),
+            _ => (seq, None),
         };
         match status {
             TurnStatus::Completed => {
                 let finished = self.reading.take();
                 let work = finished.is_some();
-                self.out.turns.push(Turn { seq, turn_id, text, work, wave: finished.and_then(|r| r.wave) });
+                self.out.turns.push(Turn { seq, started, turn_id, text, work, wave: finished.and_then(|r| r.wave) });
             }
             TurnStatus::Interrupted => self.mark_unfinished("interrupted"),
             TurnStatus::Failed => self.mark_unfinished("failed"),

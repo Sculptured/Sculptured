@@ -191,6 +191,11 @@ impl<'a> StartPlan<'a> {
         let from = covered_items.iter().map(|(u, i)| i.source(u)).collect();
         // A first handoff that carries a wave's work continues that wave.
         let wave = covered_items.iter().filter_map(|(_, i)| i.wave.clone()).max_by_key(|w| w.id);
+        let latest: Vec<(&String, &Item)> = ups.iter().filter_map(|u| self.items[u].last().map(|i| (u, i))).collect();
+        if let Some(message_id) = failed.is_none().then(|| self.sent_directly(b, &latest)).flatten() {
+            actions.push(Action::Adopt { seat: b.to_string(), start_seq: self.start.seq, first: true, message_id, from, wave });
+            return;
+        }
         let text = super::first_text(&names, self.team.job(b).as_deref(), &results);
         actions.push(self.hand(b, true, text, from, wave, failed));
     }
@@ -276,7 +281,31 @@ impl<'a> StartPlan<'a> {
             .map(|u| (self.team.name(u), fresh.iter().rfind(|(s, _)| s == *u).and_then(|(_, i)| i.turn.text.clone())))
             .collect();
         let from = fresh.iter().map(|(u, i)| i.source(u)).collect();
+        let latest: Vec<(&String, &Item)> = from_seats.iter().filter_map(|u| fresh.iter().rfind(|(s, _)| s == *u).map(|(s, i)| (s, i))).collect();
+        if let Some(message_id) = failed.is_none().then(|| self.sent_directly(b, &latest)).flatten() {
+            return Action::Adopt { seat: b.to_string(), start_seq: self.start.seq, first: false, message_id, from, wave: Some(wave) };
+        }
         self.hand(b, false, super::more_text(&names, &results), from, Some(wave), failed)
+    }
+
+    /// The message each upstream's agent sent `b` itself during the turn whose result would be
+    /// passed along, when every one of them sent one: those messages already handed the work over,
+    /// and the result again would only wake `b` to re-read its conversation. The latest of them
+    /// stands in for the handoff (a "Hand over again" press always sends).
+    fn sent_directly(&self, b: &str, latest: &[(&String, &Item)]) -> Option<String> {
+        let adopted: HashSet<&str> = self.records[b].iter().map(|r| r.message_id.as_str()).collect();
+        let mut newest: Option<&(i64, String, String)> = None;
+        for (u, i) in latest {
+            if i.requested_seq.is_some() {
+                return None;
+            }
+            let during = |(seq, id, from): &&(i64, String, String)| from == *u && *seq > i.turn.started && *seq < i.turn.seq && !adopted.contains(id.as_str());
+            let m = self.work[b].from_agents.iter().rfind(during)?;
+            if newest.is_none_or(|n| m.0 > n.0) {
+                newest = Some(m);
+            }
+        }
+        newest.map(|(_, id, _)| id.clone())
     }
 
     fn hand(&self, b: &str, first: bool, text: String, from: Vec<HandoffSource>, wave: Option<Wave>, failed: Option<String>) -> Action {

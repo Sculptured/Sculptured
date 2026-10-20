@@ -46,7 +46,7 @@ use crate::seat_ids::rig_of;
 use crate::state::AppState;
 use crate::store::{HandoffWrite, Store};
 use host_proto::HostCommand;
-use model::{Actor, EventBody, EventRecord, HandoffStuck, MessageIntent, Provenance, Subject};
+use model::{Actor, EventBody, EventRecord, HandoffSource, HandoffStuck, MessageIntent, Provenance, Subject, Wave};
 use owed::restart_key;
 use team::TeamNames;
 use std::sync::atomic::Ordering;
@@ -143,10 +143,19 @@ fn relevant(e: &EventRecord) -> Option<(String, bool)> {
 pub(super) enum Action {
     Status { seat: String, waiting_for: Vec<String>, stuck: Option<HandoffStuck> },
     Hand { write: HandoffWrite, host: String, name: String, team: TeamNames },
+    /// A message the upstream agent sent itself stands in for the handoff: recorded, not sent.
+    Adopt { seat: String, start_seq: i64, first: bool, message_id: String, from: Vec<HandoffSource>, wave: Option<Wave> },
 }
 
-/// Plans under the store lock, then records and sends each action.
+/// Plans under the store lock, then records and sends each action. A direct message recorded as
+/// a handoff makes its receiver's turn on it a work turn, so the team is planned again.
 pub async fn process_rig(st: &AppState, rig: &str, with_previous: bool) {
+    while plan_once(st, rig, with_previous).await {}
+}
+
+/// One plan and its actions; true when a direct message was recorded as a handoff.
+async fn plan_once(st: &AppState, rig: &str, with_previous: bool) -> bool {
+    let mut adopted_any = false;
     let actions = {
         let store = st.store.lock().unwrap();
         let in_flight = st.handoffs_in_flight.lock().unwrap().clone();
@@ -154,7 +163,7 @@ pub async fn process_rig(st: &AppState, rig: &str, with_previous: bool) {
             Ok(a) => a,
             Err(e) => {
                 tracing::error!(%rig, error = %e, "handoffs: cannot read the team");
-                return;
+                return false;
             }
         }
     };
@@ -162,8 +171,20 @@ pub async fn process_rig(st: &AppState, rig: &str, with_previous: bool) {
         match action {
             Action::Status { seat, waiting_for, stuck } => set_status(st, &seat, waiting_for, stuck),
             Action::Hand { write, host, name, team } => hand(st, write, host, &name, &team).await,
+            Action::Adopt { seat, start_seq, first, message_id, from, wave } => {
+                let adopted = st.store.lock().unwrap().record_adopted(&seat, start_seq, first, &message_id, from, wave);
+                match adopted {
+                    Ok(Some(items)) => {
+                        st.publish(items);
+                        adopted_any = true;
+                    }
+                    Ok(None) => {}
+                    Err(e) => tracing::error!(%seat, error = %e, "handoffs: cannot record a direct message as the handoff"),
+                }
+            }
         }
     }
+    adopted_any
 }
 
 fn set_status(st: &AppState, seat: &str, waiting_for: Vec<String>, stuck: Option<HandoffStuck>) {

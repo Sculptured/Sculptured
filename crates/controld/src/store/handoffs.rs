@@ -149,6 +149,31 @@ impl Store {
         Ok(Some(items))
     }
 
+    /// Records `message_id`, a message another agent sent `seat` itself, as the handoff of `from`
+    /// (nothing is sent). Refused (None) like `record_handoff` when that work was handed already.
+    pub fn record_adopted(
+        &mut self,
+        seat: &str,
+        start_seq: i64,
+        first: bool,
+        message_id: &str,
+        from: Vec<model::HandoffSource>,
+        wave: Option<model::Wave>,
+    ) -> rusqlite::Result<Option<Vec<StreamItem>>> {
+        let tx = self.conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let earlier = handed_over_in(&tx, seat, start_seq)?;
+        let first_already = earlier.iter().any(|r| r.resend_of.is_none());
+        let covered: Vec<i64> = earlier.iter().flat_map(|r| r.from.iter().map(|f| f.key())).collect();
+        if first == first_already || from.iter().any(|f| covered.contains(&f.key())) || earlier.iter().any(|r| r.message_id == message_id) {
+            return Ok(None);
+        }
+        let handed = EventBody::HandedOver { start_seq, message_id: message_id.to_string(), from, resend_of: None, wave };
+        let actor = Actor::System(crate::handoffs::HANDOFF_ACTOR.into());
+        let item = append_local_in(&tx, actor, Subject::Seat(seat.to_string()), Provenance::Heuristic, handed)?;
+        tx.commit()?;
+        Ok(Some(vec![item]))
+    }
+
     /// The handoff records of `seat` in the start that began at `start_seq`, oldest first.
     pub fn handed_over(&self, seat: &str, start_seq: i64) -> rusqlite::Result<Vec<HandedOverRecord>> {
         handed_over_in(&self.conn, seat, start_seq)
