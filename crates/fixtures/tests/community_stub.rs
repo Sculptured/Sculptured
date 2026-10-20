@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
 fn client() -> reqwest::Client {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build().unwrap()
 }
 async fn token(origin: &str) -> (u16, Value) {

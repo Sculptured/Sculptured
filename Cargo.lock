@@ -690,6 +690,7 @@ dependencies = [
  "libc",
  "model",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tempfile",
