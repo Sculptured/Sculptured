@@ -29,6 +29,11 @@ pub struct CommunityLinkView {
     pub origin: Option<String>,
     pub signed_in: bool,
     pub account: Option<CommunityLinkAccount>,
+    /// While off: a server address from an older save, to pre-fill the Turn on page (absent otherwise,
+    /// so the C5 shape is unchanged).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub suggested_origin: Option<String>,
 }
 
 /// Who you are signed in to Community as.
@@ -68,7 +73,7 @@ pub struct CommunityPairStatus {
 
 impl CommunityLinkView {
     pub fn off() -> Self {
-        Self { enabled: false, origin: None, signed_in: false, account: None }
+        Self { enabled: false, origin: None, signed_in: false, account: None, suggested_origin: None }
     }
 }
 
@@ -185,7 +190,7 @@ impl CommunityLink {
     /// the server answered). Signed out and off make no request.
     pub(crate) async fn view(&self, origin: Option<String>) -> CommunityLinkView {
         let Some(origin) = origin else { return CommunityLinkView::off() };
-        let signed_out = CommunityLinkView { enabled: true, origin: Some(origin.clone()), signed_in: false, account: None };
+        let signed_out = CommunityLinkView { enabled: true, origin: Some(origin.clone()), signed_in: false, account: None, suggested_origin: None };
         let Some(c) = self.creds_for(&origin) else { return signed_out };
         match self.account(&c).await {
             Err(()) => {

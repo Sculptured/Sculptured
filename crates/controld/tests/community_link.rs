@@ -115,3 +115,17 @@ async fn turning_off_works_when_the_server_is_down() {
     assert!(t.elapsed() < std::time::Duration::from_secs(6));
     assert!(creds::load(s.home.path()).is_none());
 }
+
+#[tokio::test]
+async fn an_old_community_url_only_suggests_a_server_and_nothing_is_contacted() {
+    let (s, stub) = with_stub().await;
+    let row = format!(r#"{{"community_url":"{}","posture":"unrestricted","question_timeout_min":10}}"#, stub.origin);
+    s.st.store.lock().unwrap().connection().execute("INSERT INTO settings (k, json) VALUES ('global', ?1)", [row]).unwrap();
+    let (_, v) = get(&s.router, "/api/community-link").await;
+    assert_eq!((v["enabled"].as_bool(), v["origin"].as_str(), v["suggested_origin"].as_str()), (Some(false), None, Some(stub.origin.as_str())));
+    let (st, v) = get(&s.router, "/api/community/blocks").await;
+    assert_eq!((st.as_u16(), v["error"]["code"].as_str()), (409, Some("community_off")));
+    assert!(stub.requests().is_empty(), "nothing reached the server");
+    let (_, v) = call(&s.router, "POST", "/api/community-link/enable", json!({"origin": stub.origin})).await;
+    assert_eq!((v["enabled"].as_bool(), v["suggested_origin"].as_str()), (Some(true), None), "turning on uses it up");
+}

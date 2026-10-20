@@ -3,10 +3,14 @@ import type { PermissionPosture } from "./PermissionPosture";
 
 export type Settings = { 
 /**
- * The Sculptured server Community goes through (C5); None: Community is off. Older saves
- * called it `community_url` and pointed at `community.{domain}` (migrated on read).
+ * The Sculptured server Community goes through (C5); None: Community is off.
  */
 sculptured_origin?: string, 
+/**
+ * A server address from an older save (`community_url`), offered on the Turn on page. It
+ * turns nothing on; only `/api/community-link` changes either field.
+ */
+suggested_origin?: string, 
 /**
  * D7: unrestricted by default.
  */

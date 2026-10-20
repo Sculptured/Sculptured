@@ -8,9 +8,10 @@ import './community.css';
 
 const W = COMMUNITY_WORDS.optIn;
 
-/** Community is off on this computer: what turning it on sends and what never leaves, then the choice. */
-export function TurnOnCommunity({ onDone }: { onDone: (signIn: boolean) => void }) {
-  const [origin, setOrigin] = useState('');
+/** Community is off on this computer: what turning it on sends and what never leaves, then the choice.
+ * `suggested`: a server an older version saved, offered here; nothing uses it until Turn on. */
+export function TurnOnCommunity({ onDone, suggested }: { onDone: (signIn: boolean) => void; suggested?: string | null }) {
+  const [origin, setOrigin] = useState(suggested ?? '');
   const [state, setState] = useState<{ busy: boolean; error: unknown }>({ busy: false, error: null });
   const turnOn = async (signIn: boolean) => {
     setState({ busy: true, error: null });
@@ -26,7 +27,7 @@ export function TurnOnCommunity({ onDone }: { onDone: (signIn: boolean) => void 
   return (
     <section className="cm-optin" aria-labelledby="cm-optin-title">
       <OptInText />
-      <ServerField value={origin} onChange={setOrigin} problem={badServer ? errorText(state.error) : ''} />
+      <ServerField value={origin} onChange={setOrigin} problem={badServer ? errorText(state.error) : ''} open={!!suggested} />
       {state.error != null && !badServer && <p className="tone-red" role="alert">{errorText(state.error)}</p>}
       <div className="cm-actions">
         <Btn variant="primary" disabled={state.busy} onClick={() => void turnOn(false)}>{W.browse}</Btn>
@@ -50,9 +51,9 @@ function OptInText() {
 }
 
 /** Another Sculptured server (self-hosted); left empty, the usual one. */
-function ServerField({ value, onChange, problem }: { value: string; onChange: (v: string) => void; problem: string }) {
+function ServerField({ value, onChange, problem, open }: { value: string; onChange: (v: string) => void; problem: string; open: boolean }) {
   return (
-    <details className="cm-server" open={problem !== '' || undefined}>
+    <details className="cm-server" open={open || problem !== '' || undefined}>
       <summary>{W.otherServer}</summary>
       <label>
         Server address

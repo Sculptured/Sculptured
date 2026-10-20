@@ -29,13 +29,15 @@ fn write<T: serde::Serialize>(conn: &Connection, key: &str, v: &T) -> rusqlite::
 
 pub(crate) fn settings_in(conn: &Connection) -> rusqlite::Result<Settings> {
     let mut raw: serde_json::Value = read(conn, GLOBAL)?;
-    if let Some(o) = raw.as_object_mut() {
-        if let Some(old) = o.remove("community_url") {
-            o.entry("sculptured_origin").or_insert(old);
-        }
+    // An older save's Community address (`community_url`, which the desktop app could set on its
+    // own) only pre-fills the Turn on page: Community stays off until the user turns it on.
+    if let Some(o) = raw.as_object_mut()
+        && let Some(old) = o.remove("community_url")
+    {
+        o.entry("suggested_origin").or_insert(old);
     }
     let mut s: Settings = serde_json::from_value(raw).unwrap_or_default();
-    s.sculptured_origin = s.sculptured_origin.as_deref().map(migrate_origin);
+    s.suggested_origin = s.suggested_origin.as_deref().map(migrate_origin);
     Ok(s)
 }
 
@@ -169,7 +171,12 @@ async fn put_settings(
     crate::extract::Json(req): crate::extract::Json<SaveSettings>,
 ) -> Result<crate::extract::Json<Settings>, crate::ApiError> {
     let mut s = req.settings;
-    s.sculptured_origin = s.sculptured_origin.as_deref().map(valid_origin).transpose()?;
+    {
+        // Only /api/community-link turns Community on, off or to another server.
+        let stored = st.store.lock().unwrap().settings()?;
+        s.sculptured_origin = stored.sculptured_origin;
+        s.suggested_origin = stored.suggested_origin;
+    }
     if !(1..=1440).contains(&s.question_timeout_min) {
         return Err(crate::ApiError::bad_request(
             "settings_invalid",
@@ -187,11 +194,13 @@ mod tests {
     use crate::views::Settings;
 
     #[test]
-    fn old_community_url_is_read_as_sculptured_origin_and_community_host_maps_to_app() {
+    fn an_old_community_url_is_only_a_suggestion_and_community_stays_off() {
         let store = Store::open_in_memory().unwrap();
         store.connection().execute("INSERT INTO settings (k, json) VALUES ('global', ?1)",
             [r#"{"community_url":"https://community.example.com","posture":"unrestricted","question_timeout_min":10}"#]).unwrap();
-        assert_eq!(store.settings().unwrap().sculptured_origin.as_deref(), Some("https://app.example.com"));
+        let s = store.settings().unwrap();
+        assert_eq!(s.sculptured_origin, None, "Community stays off until the user turns it on");
+        assert_eq!(s.suggested_origin.as_deref(), Some("https://app.example.com"));
     }
 
     #[test]

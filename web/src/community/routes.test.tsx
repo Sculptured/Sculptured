@@ -202,3 +202,12 @@ it('this computer: once the code is approved the panel says who you are signed i
   vi.useRealTimers();
   resetCommunityLink();
 });
+
+it('this computer: the Turn on page offers an address an older version saved', async () => {
+  const { resetCommunityLink } = await import('./link');
+  resetCommunityLink();
+  fakeFetch({ 'GET /api/community-link': () => [200, { ...linkOff, suggested_origin: 'https://sculptured.my.org' }] });
+  at('/community', local);
+  expect(await screen.findByLabelText('Server address')).toHaveValue('https://sculptured.my.org');
+  resetCommunityLink();
+});

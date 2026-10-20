@@ -43,3 +43,13 @@ it('refuses a plain http server address in words', async () => {
   expect(await screen.findByText(COMMUNITY_ERROR_WORDS.community_origin_invalid)).toBeInTheDocument();
   expect(onDone).not.toHaveBeenCalled();
 });
+
+it('an address saved by an older version is offered, not used, until Turn on', async () => {
+  const { calls, inits } = fakeFetch({ 'POST /api/community-link/enable': () => [200, { enabled: true, origin: 'https://sculptured.my.org', signed_in: false, account: null }] });
+  render(<MemoryRouter><TurnOnCommunity onDone={vi.fn()} suggested="https://sculptured.my.org" /></MemoryRouter>);
+  expect(screen.getByLabelText('Server address')).toHaveValue('https://sculptured.my.org');
+  expect(screen.getByLabelText('Server address')).toBeVisible();
+  expect(calls).toEqual([]);
+  await userEvent.click(screen.getByRole('button', { name: 'Turn on and browse' }));
+  expect(JSON.parse(String(inits[0]?.body))).toEqual({ origin: 'https://sculptured.my.org' });
+});

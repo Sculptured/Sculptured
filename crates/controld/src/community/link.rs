@@ -1,5 +1,5 @@
 //! `/api/community-link` (C5): whether Community is on, as whom, and turning it on or off.
-use super::{CommunityLinkView, REVOKE_TIMEOUT, creds, saved_origin};
+use super::{CommunityLinkView, REVOKE_TIMEOUT, creds};
 use crate::extract::Json;
 use crate::state::AppState;
 use crate::ApiError;
@@ -17,7 +17,11 @@ pub(super) fn routes() -> Router<AppState> {
 
 async fn get_link(State(st): State<AppState>) -> Result<Json<CommunityLinkView>, ApiError> {
     let Some(link) = st.community.clone() else { return Ok(Json(CommunityLinkView::off())) };
-    Ok(Json(link.view(saved_origin(&st)?).await))
+    let s = st.store.lock().unwrap().settings()?;
+    if s.sculptured_origin.is_none() {
+        return Ok(Json(CommunityLinkView { suggested_origin: s.suggested_origin, ..CommunityLinkView::off() }));
+    }
+    Ok(Json(link.view(s.sculptured_origin).await))
 }
 
 #[derive(Deserialize, Default)]
@@ -56,6 +60,9 @@ async fn turn_off(State(st): State<AppState>) -> Result<Json<Value>, ApiError> {
 fn set_origin(st: &AppState, origin: Option<String>) -> Result<(), ApiError> {
     let mut store = st.store.lock().unwrap();
     let mut s = store.settings()?;
+    if origin.is_some() {
+        s.suggested_origin = None;
+    }
     s.sculptured_origin = origin;
     store.save_settings(&s)?;
     Ok(())

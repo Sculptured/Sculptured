@@ -55,7 +55,7 @@ function OnThisComputer() {
   if (!link.enabled) {
     return (
       <main className="page page-wide community" data-vocab="community">
-        <TurnOnCommunity onDone={(signIn) => { setAskSignIn(signIn); void refresh(); }} />
+        <TurnOnCommunity suggested={link.suggested_origin} onDone={(signIn) => { setAskSignIn(signIn); void refresh(); }} />
       </main>
     );
   }
