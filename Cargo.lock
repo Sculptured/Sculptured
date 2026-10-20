@@ -405,6 +405,7 @@ dependencies = [
  "axum",
  "controld",
  "drivers",
+ "fixtures",
  "futures",
  "hex",
  "host-proto",

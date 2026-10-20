@@ -8,7 +8,7 @@ use model::PermissionPosture;
 pub struct Settings {
     /// The Sculptured server Community goes through (C5); None: Community is off. Older saves
     /// called it `community_url` and pointed at `community.{domain}` (migrated on read).
-    #[serde(default, alias = "community_url", skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub sculptured_origin: Option<String>,
     /// D7: unrestricted by default.

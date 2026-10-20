@@ -28,7 +28,13 @@ fn write<T: serde::Serialize>(conn: &Connection, key: &str, v: &T) -> rusqlite::
 }
 
 pub(crate) fn settings_in(conn: &Connection) -> rusqlite::Result<Settings> {
-    let mut s: Settings = read(conn, GLOBAL)?;
+    let mut raw: serde_json::Value = read(conn, GLOBAL)?;
+    if let Some(o) = raw.as_object_mut() {
+        if let Some(old) = o.remove("community_url") {
+            o.entry("sculptured_origin").or_insert(old);
+        }
+    }
+    let mut s: Settings = serde_json::from_value(raw).unwrap_or_default();
     s.sculptured_origin = s.sculptured_origin.as_deref().map(migrate_origin);
     Ok(s)
 }

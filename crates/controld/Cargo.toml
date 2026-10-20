@@ -17,7 +17,7 @@ regex.workspace = true
 ts-rs.workspace = true
 schemars.workspace = true
 serde_path_to_error = "0.1"
-reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
 # Built with other crates, reqwest gets rustls without a crypto provider; analytics installs this one.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rusqlite.workspace = true
@@ -40,6 +40,7 @@ test-seams = []
 
 [dev-dependencies]
 controld = { path = ".", features = ["test-seams"] }
+fixtures = { path = "../fixtures" }
 hostd.workspace = true
 drivers.workspace = true
 tempfile.workspace = true

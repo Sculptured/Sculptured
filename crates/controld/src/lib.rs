@@ -7,6 +7,7 @@ pub mod portable;
 pub mod generate;
 pub mod analytics;
 pub mod clis;
+pub mod community;
 pub mod checks;
 pub mod hosted;
 pub mod copies;

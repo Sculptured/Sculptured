@@ -74,6 +74,7 @@ fn routes() -> Router<AppState> {
         .merge(crate::checks::routes())
         .merge(crate::portable::routes())
         .merge(crate::generate::routes())
+        .merge(crate::community::routes())
         .route("/api", any(api_not_found))
         .route("/api/", any(api_not_found))
         .route("/api/{*rest}", any(api_not_found))

@@ -42,6 +42,9 @@ enum Cmd {
         /// Hosted beta: serve one user behind the gateway (needs SCULPTURED_GATEWAY_SECRET); no local agent runner.
         #[arg(long)]
         hosted: bool,
+        /// The Sculptured server Community goes through once it is turned on (not when hosted).
+        #[arg(long, env = "SCULPTURED_COMMUNITY_ORIGIN", default_value = controld::community::DEFAULT_ORIGIN)]
+        community_origin: String,
     },
     /// Run a host runtime that dials controld.
     Hostd {
@@ -194,7 +197,7 @@ async fn run(cli: Cli) -> ExitCode {
         .with_writer(std::io::stderr)
         .init();
     let result = match cli.cmd {
-        Cmd::Serve { port, data_dir, web_dir, claude_program, codex_program, question_timeout_secs, hosted } => {
+        Cmd::Serve { port, data_dir, web_dir, claude_program, codex_program, question_timeout_secs, hosted, community_origin } => {
             let data_dir = match data_dir.or_else(|| std::env::var_os("HOME").map(|h| default_data_dir(Path::new(&h)))) {
                 Some(d) => d,
                 None => {
@@ -202,7 +205,7 @@ async fn run(cli: Cli) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
-            serve(port, data_dir, web_dir, claude_program, codex_program, question_timeout_secs, hosted).await
+            serve(port, data_dir, web_dir, claude_program, codex_program, question_timeout_secs, hosted, community_origin).await
         }
         Cmd::Hostd { controld, host_id, data_dir, token, claude_program, codex_program } => {
             hostd::run_hostd(hostd::HostdOptions { controld_url: controld, host_id, data_dir, token, claude_program, codex_program, policy: None })
@@ -294,6 +297,7 @@ fn detach(cmd: &mut tokio::process::Command) {
     cmd.creation_flags(0x0000_0200 | 0x0800_0000);
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn serve(
     port: u16,
     data_dir: PathBuf,
@@ -302,6 +306,7 @@ async fn serve(
     codex_program: Option<PathBuf>,
     question_timeout_secs: Option<u64>,
     hosted: bool,
+    community_origin: String,
 ) -> Result<(), String> {
     private_dir(&data_dir)?;
     let mut store = Store::open(&data_dir.join("controld.sqlite")).map_err(|e| format!("cannot open store: {e}"))?;
@@ -327,7 +332,8 @@ async fn serve(
             _ => st,
         }
     } else {
-        st
+        // Off until the user turns it on; the gateway serves Community itself when hosted.
+        st.with_community(controld::community::CommunityLink::new(data_dir.clone(), community_origin))
     };
     // `fallback` (not `not_found_service`) keeps status 200 for SPA deep links.
     let web_ui = Router::new()

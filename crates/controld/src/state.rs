@@ -48,6 +48,8 @@ pub struct AppState {
     pub start_resumes: Arc<Mutex<HashMap<String, (String, [u64; 4])>>>,
     /// Hosted beta analytics (None: local mode, which sends nothing).
     pub analytics: Option<Arc<crate::analytics::Analytics>>,
+    /// Community on a self-run install (C5); None when hosted, where the gateway serves Community.
+    pub community: Option<Arc<crate::community::CommunityLink>>,
 }
 
 impl AppState {
@@ -76,11 +78,17 @@ impl AppState {
             workflow_jobs: Arc::default(),
             start_resumes: Arc::default(),
             analytics: None,
+            community: None,
         }
     }
 
     pub fn with_analytics(mut self, a: Arc<crate::analytics::Analytics>) -> Self {
         self.analytics = Some(a);
+        self
+    }
+
+    pub fn with_community(mut self, link: crate::community::CommunityLink) -> Self {
+        self.community = Some(Arc::new(link));
         self
     }
 
