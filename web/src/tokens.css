@@ -131,8 +131,8 @@
   --dur: 180ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   /* Logos board style: the loops a working agent's logo runs (slow on purpose: alive, not frantic). */
-  --logo-spin: 6s;          /* Claude starburst: one turn */
-  --logo-breathe: 3s;       /* Claude starburst: one breath */
+  --logo-walk: 1.2s;        /* Claude Code guy: one step with each leg pair */
+  --logo-breathe: 3s;       /* any other mark: one breath */
   --logo-turn: 4.8s;        /* Codex mark: two quarter turns with a rest */
   --logo-sway: 2.8s;      /* Practice flask: one sway, bubbles rise */
   --logo-orbit: 3.2s;       /* the working ring's arc */

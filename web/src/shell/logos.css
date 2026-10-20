@@ -76,6 +76,7 @@
 .logo-bubbles i:nth-child(3) { left: 5px; width: 5px; height: 5px; }
 
 @keyframes logo-spin { to { transform: rotate(360deg); } }
+@keyframes clawd-step { 0% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
 @keyframes logo-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 @keyframes logo-turn { 0% { transform: rotate(0deg); } 35%, 50% { transform: rotate(90deg); } 85%, 100% { transform: rotate(180deg); } }
 @keyframes logo-sway { 0%, 100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
@@ -89,8 +90,9 @@
     animation: logo-spin var(--logo-orbit) linear infinite;
   }
   .is-logo.logo-animated :is(.logo-orbit, .logo-mark, .logo-turn) { will-change: transform; }
-  .is-logo.logo-animated.v-claude .logo-mark { animation: logo-breathe var(--logo-breathe) var(--ease-in-out) infinite; }
-  .is-logo.logo-animated.v-claude .logo-turn { animation: logo-spin var(--logo-spin) linear infinite; }
+  /* The Claude Code guy walks on the spot: its leg pairs step in turn. */
+  .is-logo.logo-animated.v-claude .clawd-legs-a { animation: clawd-step var(--logo-walk) steps(1, end) infinite; }
+  .is-logo.logo-animated.v-claude .clawd-legs-b { animation: clawd-step var(--logo-walk) steps(1, end) calc(var(--logo-walk) / -2) infinite; }
   .is-logo.logo-animated.v-codex .logo-turn { animation: logo-turn var(--logo-turn) var(--ease-in-out) infinite; }
   .is-logo.logo-animated.v-practice .logo-turn { transform-origin: 50% 80%; animation: logo-sway var(--logo-sway) var(--ease-in-out) infinite; }
   .is-logo.logo-animated.v-practice .logo-bubbles i { animation: logo-bubble var(--logo-sway) ease-out infinite; }

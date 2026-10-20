@@ -185,7 +185,8 @@ export function VendorMark({ v, size = 'sm' }: { v: Vendor; size?: 'xs' | 'sm' |
   const icon: IconName = VENDOR_ICON[v.cls] ?? (v.name === 'unknown' ? 'unknown' : 'bot');
   return (
     <span className={`vendor avatar avatar-${size} ${v.cls}`} aria-hidden="true" title={v.name} style={{ width: px, height: px }}>
-      <Icon name={icon} size={Math.round(px * 0.62)} strokeWidth={2.2} />
+      {/* The Claude Code guy is pixel art: drawn larger so its eyes survive at tile size. */}
+      <Icon name={icon} size={Math.round(px * (icon === 'claude' ? 0.85 : 0.62))} strokeWidth={2.2} />
     </span>
   );
 }
