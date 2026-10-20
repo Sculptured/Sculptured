@@ -11,7 +11,10 @@ A **skill** is a set of instructions an agent loads only when it needs them: how
   <Step title="Open the agent">Select the agent on the Design board. Its panel has a **Skills** section.</Step>
   <Step title="Add a skill">Choose **Add skill**. A full-size window opens with three fields: **Name** (lowercase letters, digits and hyphens, such as `money-rules`), **When to use it** (the description the agent sees until it loads the skill) and **Instructions**, in Markdown.</Step>
   <Step title="Or load one">Choose **Load from file** and pick a `SKILL.md`. Its frontmatter gives the name and description; the rest becomes the instructions. Check them, then **Save skill**.</Step>
+  <Step title="Or take one from a catalog">Choose **Add from a catalog**, then **Anthropic** or **Google**, or **Another GitHub repository** and its address (any repository of `SKILL.md` folders, such as an HPC centre's). Search, **Preview**, then **Add**. The skill opens in the same window to check before you **Save skill**.</Step>
 </Steps>
+
+A catalog skill is copied into the agent as it is at the catalog's newest commit; later changes to the catalog don't reach it. Only its `SKILL.md` text is copied: a skill that also ships scripts or reference files needs those on the agent's computer. Read a skill before you add it, since it becomes part of the agent's instructions.
 
 Skills belong to the agent: copying the agent copies its skills, and a team file or MADL file carries them with it.
 

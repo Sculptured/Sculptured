@@ -9,6 +9,7 @@ import { Btn } from '../shell/ui';
 import '../shell/text-mode.css';
 import type { Edit } from './Panels';
 import { parseSkillMd, skillProblems } from './skills';
+import { SkillCatalog } from './SkillCatalog';
 
 const EMPTY: Skill = { name: '', description: '', body: '' };
 
@@ -75,6 +76,7 @@ function useSkillFile(onLoaded: (s: Skill) => void) {
 export function SkillFields({ agent, edit, locked }: { agent: DraftAgent; edit: Edit; locked: boolean }) {
   const skills = agent.advanced.skills ?? [];
   const [editing, setEditing] = useState<{ at: number; skill: Skill } | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   const picker = useSkillFile((skill) => setEditing({ at: -1, skill }));
   const set = (next: Skill[]) => edit((d: TeamDraft) => setAdvanced(d, agent.id, { skills: next.length ? next : undefined }), `skills:${agent.id}`);
   const save = (s: Skill) => {
@@ -89,10 +91,12 @@ export function SkillFields({ agent, edit, locked }: { agent: DraftAgent; edit: 
       <SkillList skills={skills} locked={locked} onEdit={(at) => setEditing({ at, skill: skills[at] })} onRemove={(at) => set(skills.filter((_, j) => j !== at))} />
       <div className="fld-actions">
         <Btn size="sm" icon="plus" disabled={locked} onClick={() => setEditing({ at: -1, skill: EMPTY })}>Add skill</Btn>
+        <Btn size="sm" disabled={locked} onClick={() => setBrowsing(true)}>Add from a catalog</Btn>
         <Btn size="sm" disabled={locked} onClick={picker.open}>Load from file</Btn>
         {picker.input}
       </div>
       {picker.error && <p role="alert" className="fld-error">{picker.error}</p>}
+      {browsing && <SkillCatalog onClose={() => setBrowsing(false)} onAdd={(skill) => { setBrowsing(false); setEditing({ at: -1, skill }); }} />}
       {editing && <SkillEditor initial={editing.skill} others={skills.filter((_, j) => j !== editing.at)} onSave={save} onClose={() => setEditing(null)} />}
     </fieldset>
   );

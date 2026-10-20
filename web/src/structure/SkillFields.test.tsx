@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import * as github from './githubSkills';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import type { TeamDraft } from '../generated/TeamDraft';
@@ -35,6 +36,18 @@ describe('An agent’s skills', () => {
     expect(saved().skills).toEqual([{ name: 'money-rules', description: 'Use when handling money.', body: 'Decimal only.' }]);
     fireEvent.click(screen.getByRole('button', { name: 'Remove skill money-rules' }));
     expect(saved().skills).toEqual([]);
+  });
+
+  it('come from a catalog, reviewed in the editor before they are saved', async () => {
+    vi.spyOn(github, 'loadCatalog').mockResolvedValue({ repo: 'anthropics/skills', commit: 'f00dfeed', skills: [{ path: 'pdf/SKILL.md', skill: { name: 'pdf', description: 'Use for PDF files.', body: 'Read PDFs.' } }], unreadable: 0 });
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add from a catalog' }));
+    fireEvent.change(screen.getByLabelText('Catalog'), { target: { value: 'anthropics/skills' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add pdf' }));
+    expect((screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value).toBe('pdf');
+    expect(saved().skills).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save skill' }));
+    expect(saved().skills).toEqual([{ name: 'pdf', description: 'Use for PDF files.', body: 'Read PDFs.' }]);
   });
 
   it('load from a SKILL.md, whose frontmatter names them', async () => {
