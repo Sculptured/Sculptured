@@ -46,8 +46,8 @@ function useBlocks(q: string, offset: number) {
 
 /** Cards in a grid (compact unless the member turned that off), each with its actions. */
 export function BlockGrid({ blocks, empty }: { blocks: Publication[] | null; empty: string }) {
-  const { me, signedIn } = useCommunity();
-  const library = useLibrary(signedIn);
+  const { me, workspace } = useCommunity();
+  const library = useLibrary(workspace);
   if (!blocks) return <p role="status" className="muted">Loading blocks…</p>;
   if (blocks.length === 0) return <p className="muted">{empty}</p>;
   return (

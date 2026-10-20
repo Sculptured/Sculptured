@@ -72,13 +72,6 @@ it('signed out, Community is browsable and reads no profile', async () => {
   expect(calls).not.toContain('GET /api/community/me');
 });
 
-it('the self-run app keeps its own Community page for now', async () => {
-  const { calls } = fakeFetch({});
-  at('/community', { kind: 'local' });
-  expect(await screen.findByRole('heading', { name: 'Community', level: 1 })).toBeVisible();
-  expect(calls.filter((c) => c.startsWith('GET /api/community/me'))).toEqual([]);
-});
-
 it('signed-out visitors get a light frame with Sign in, not the app', () => {
   render(<MemoryRouter initialEntries={['/community']}><Routes><Route element={<CommunityFrame />}><Route path="/community" element={<p>inside</p>} /></Route></Routes></MemoryRouter>);
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
@@ -109,4 +102,80 @@ it('a profile that cannot be read says why instead of asking you to sign in', as
   at('/community/me');
   expect(await screen.findByRole('alert')).toHaveTextContent('This Community account is disabled.');
   expect(screen.queryByText(/Sign in to edit/)).toBeNull();
+});
+
+const local: HostedSession = { kind: 'local' };
+const linkOff = { enabled: false, origin: null, signed_in: false, account: null };
+const linkOn = (signed_in = false) => ({ enabled: true, origin: 'https://app.usesculptured.com', signed_in, account: signed_in ? { name: 'You Example', handle: null } : null });
+
+it('this computer: the community section asks first and fetches nothing while off', async () => {
+  const { resetCommunityLink } = await import('./link');
+  resetCommunityLink();
+  const { calls } = fakeFetch({ 'GET /api/community-link': () => [200, linkOff] });
+  at('/community', local);
+  expect(await screen.findByRole('heading', { name: 'Turn on Community' })).toBeInTheDocument();
+  expect(calls.filter((c) => c.includes('/api/community/'))).toEqual([]);
+  resetCommunityLink();
+});
+
+it('this computer: Learn needs nothing turned on', async () => {
+  const { resetCommunityLink } = await import('./link');
+  resetCommunityLink();
+  const { calls } = fakeFetch({});
+  at('/community/learn', local);
+  expect(await screen.findByRole('heading', { name: 'Designing teams of agents' })).toBeVisible();
+  expect(calls).toEqual([]);
+});
+
+it('this computer: turning on opens Explore, where a block can be added to a project signed out', async () => {
+  const { resetCommunityLink } = await import('./link');
+  resetCommunityLink();
+  let on = false;
+  fakeFetch({
+    'GET /api/community-link': () => [200, on ? linkOn() : linkOff],
+    'POST /api/community-link/enable': () => { on = true; return [200, linkOn()]; },
+    'GET /api/community/blocks?q=&offset=0': () => [200, { blocks: [publication()] }],
+    'GET /api/group-blocks': () => [200, []],
+  });
+  at('/community', local);
+  (await screen.findByRole('button', { name: 'Turn on and browse' })).click();
+  expect(await screen.findByRole('searchbox', { name: 'Search blocks' })).toBeVisible();
+  const add = await screen.findByRole('button', { name: 'Add to project' });
+  expect(add).toBeEnabled();
+  expect(screen.queryByText('Sign in to add it to a project or your Library.')).toBeNull();
+  expect(screen.getByText('Sign in to save')).toBeVisible();
+  resetCommunityLink();
+});
+
+it('this computer: "Turn on and sign in" shows the code to approve above the page', async () => {
+  const { resetCommunityLink } = await import('./link');
+  resetCommunityLink();
+  let on = false;
+  fakeFetch({
+    'GET /api/community-link': () => [200, on ? linkOn() : linkOff],
+    'POST /api/community-link/enable': () => { on = true; return [200, linkOn()]; },
+    'POST /api/community-link/pair': () => [200, { user_code: 'ABCD-EFGH', verify_url: 'https://app.usesculptured.com/connect?code=ABCD-EFGH', expires_in: 600 }],
+    'GET /api/community-link/pair': () => [200, { status: 'pending' }],
+    'GET /api/community/blocks?q=&offset=0': () => [200, { blocks: [] }],
+  });
+  at('/community', local);
+  (await screen.findByRole('button', { name: 'Turn on and sign in' })).click();
+  expect(await screen.findByText('ABCD-EFGH')).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Open the sign-in page' })).toHaveAttribute('href', 'https://app.usesculptured.com/connect?code=ABCD-EFGH');
+  resetCommunityLink();
+});
+
+it('this computer: signed in, the profile loads; a refused key shows signed out', async () => {
+  const { resetCommunityLink } = await import('./link');
+  resetCommunityLink();
+  let signed = true;
+  fakeFetch({
+    'GET /api/community-link': () => [200, linkOn(signed)],
+    'GET /api/community/me': () => [200, { user: meUser() }],
+    'GET /api/community/saved': () => { signed = false; return [401, { error: { code: 'device_unknown', message: 'x' } }]; },
+  });
+  at('/community/saved', local);
+  expect(await screen.findByText(/Your Community sign-in was removed|Sign in to see what you saved/)).toBeVisible();
+  expect(await screen.findByText(/Sign in to see what you saved/)).toBeVisible();
+  resetCommunityLink();
 });

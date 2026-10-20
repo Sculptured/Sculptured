@@ -24,14 +24,14 @@ export function projectCopy(pub: Publication): GroupBlock | null {
 /** Add to project (two clicks, through the review dialog) and Save. Other kinds open in a later version. */
 /** `library`: the Library's blocks, loaded once by the page (null while loading). */
 export function BlockActions({ pub, library }: { pub: Publication; library: GroupBlock[] | null }) {
-  const { signedIn } = useCommunity();
+  const { workspace } = useCommunity();
   const [adding, setAdding] = useState(false);
   if (!opensHere(pub)) return <p className="muted">{COMMUNITY_WORDS.laterVersion}</p>;
   const copy = projectCopy(pub);
   return (
     <div className="cm-actions">
-      <Btn variant="primary" disabled={!copy || !signedIn} onClick={() => setAdding(true)}>{COMMUNITY_WORDS.addToProject}</Btn>
-      {!signedIn && <span className="muted">Sign in to add it to a project or your Library.</span>}
+      <Btn variant="primary" disabled={!copy || !workspace} onClick={() => setAdding(true)}>{COMMUNITY_WORDS.addToProject}</Btn>
+      {!workspace && <span className="muted">Sign in to add it to a project or your Library.</span>}
       {!copy && <span className="muted">This block is not a group Sculptured can add.</span>}
       {copy && library && <LibraryButton pub={pub} library={library} />}
       <SaveButton pub={pub} />
@@ -86,9 +86,9 @@ function LibraryButton({ pub, library }: { pub: Publication; library: GroupBlock
   );
 }
 
-/** The Library's blocks, once per page and only when signed in; an unreadable Library reads as empty (Save to Library still works). */
-export function useLibrary(signedIn: boolean): GroupBlock[] | null {
+/** The Library's blocks, once per page and only when there is a workspace; an unreadable Library reads as empty (Save to Library still works). */
+export function useLibrary(workspace: boolean): GroupBlock[] | null {
   const [library, setLibrary] = useState<GroupBlock[] | null>(null);
-  useEffect(() => { if (signedIn) api.groupBlocks().then(setLibrary, () => setLibrary([])); }, [signedIn]);
+  useEffect(() => { if (workspace) api.groupBlocks().then(setLibrary, () => setLibrary([])); }, [workspace]);
   return library;
 }

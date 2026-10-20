@@ -9,7 +9,7 @@ import { CommunityContext, type CommunityState } from './context';
 
 /** `ui` at `path`, inside a router and a Community state (signed out, hosted, by default). */
 export function renderCommunity(ui: ReactElement, o: { path: string; route?: string; state?: Partial<CommunityState> }): RenderResult {
-  const state: CommunityState = { signedIn: false, me: null, meState: 'ready', meError: null, reloadMe: async () => {}, ...o.state };
+  const state: CommunityState = { signedIn: false, workspace: o.state?.signedIn ?? false, me: null, meState: 'ready', meError: null, reloadMe: async () => {}, ...o.state };
   return render(
     <MemoryRouter initialEntries={[o.path]}>
       <CommunityContext.Provider value={state}>
