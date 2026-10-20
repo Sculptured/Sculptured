@@ -3,6 +3,7 @@
 mod connect;
 mod doctor;
 mod guard;
+mod run;
 mod runners;
 mod web_cache;
 use axum::Router;
@@ -127,6 +128,34 @@ enum Cmd {
         #[arg(long)]
         data_dir: Option<PathBuf>,
     },
+    /// Run a team from one MADL file here, in the terminal: what happens is printed as it happens, and
+    /// the exit code says how it went (0 finished, 1 an agent failed, 2 stopped by a budget, 3 needs
+    /// an answer, 4 the file or an option is invalid, 130 stopped with Ctrl+C).
+    Run {
+        file: PathBuf,
+        /// Where the agents work (default: this folder).
+        #[arg(long)]
+        folder: Option<PathBuf>,
+        /// The team's Input.
+        #[arg(long)]
+        input_text: Option<String>,
+        /// Most tokens (of every kind) for the run; may only lower what the file sets.
+        #[arg(long)]
+        tokens: Option<u64>,
+        /// Most minutes for the run; may only lower what the file sets.
+        #[arg(long)]
+        minutes: Option<u32>,
+        /// The run's data (default: ~/.sculptured/runs/<name>-<time>).
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        /// Seconds every agent must be idle, with nothing waiting, before the run counts as finished.
+        #[arg(long, default_value_t = 20, hide = true)]
+        settle_secs: u64,
+        #[arg(long)]
+        claude_program: Option<PathBuf>,
+        #[arg(long)]
+        codex_program: Option<PathBuf>,
+    },
     /// Stop every agent this computer's runner started, now, without the server (like Ctrl+C).
     Stop {
         #[arg(long)]
@@ -194,6 +223,10 @@ async fn run(cli: Cli) -> ExitCode {
         },
         Cmd::SetSecret { name, remove, data_dir } => connect::run_set_secret(&name, remove, data_dir),
         Cmd::Stop { data_dir } => connect::run_stop(data_dir),
+        Cmd::Run { file, folder, input_text, tokens, minutes, data_dir, settle_secs, claude_program, codex_program } => {
+            let code = run::run(run::RunArgs { file, folder, input_text, tokens, minutes, data_dir, settle: Duration::from_secs(settle_secs), claude_program, codex_program }).await;
+            return ExitCode::from(code);
+        }
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -301,7 +334,31 @@ async fn serve(
         .fallback_service(ServeDir::new(&web_dir).fallback(ServeFile::new(web_dir.join("index.html"))))
         .layer(axum::middleware::from_fn(web_cache::layer));
     let router = app(st.clone(), Some(web_ui));
+    let (_supervisor, server) = start_with(st, listener, actual, data_dir, token, claude_program, codex_program, hosted, router).await?;
+    println!("listening on http://127.0.0.1:{actual}");
+    server
+        .await
+        .map_err(|e| format!("server task failed: {e}"))?
+        .map_err(|e| format!("server error: {e}"))
+}
 
+/// Serving handles: the local runner's supervisor (None when hosted) and the HTTP server.
+type Started = (Option<tokio::task::JoinHandle<()>>, tokio::task::JoinHandle<std::io::Result<()>>);
+
+/// Serves `router` and, unless hosted, keeps a local runner connected; returns once that runner is
+/// connected (or 10 s have passed).
+#[allow(clippy::too_many_arguments)]
+async fn start_with(
+    st: AppState,
+    listener: tokio::net::TcpListener,
+    actual: u16,
+    data_dir: PathBuf,
+    token: String,
+    claude_program: Option<PathBuf>,
+    codex_program: Option<PathBuf>,
+    hosted: bool,
+    router: Router,
+) -> Result<Started, String> {
     let server = tokio::spawn(async move { axum::serve(listener, router).await });
     // A hostd that outlived a previous controld re-reads this file to find the new port.
     let host_dir = data_dir.join("host-local");
@@ -312,8 +369,9 @@ async fn serve(
         .and_then(|_| std::fs::rename(&url_tmp, &url_file))
         .map_err(|e| format!("cannot write {}: {e}", url_file.display()))?;
     // Hosted: agents run on the user's own computer (milestone 2), never on the server.
+    let mut supervisor = None;
     if !hosted {
-        tokio::spawn(supervise_hostd(st.hosts.clone(), actual, host_dir, token, claude_program, codex_program));
+        supervisor = Some(tokio::spawn(supervise_hostd(st.hosts.clone(), actual, host_dir, token, claude_program, codex_program)));
         // Announce readiness only once the local hostd is connected; a boot sent before
         // that would put every seat in attention ("Sculptured's agent runner is not connected").
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
@@ -325,11 +383,22 @@ async fn serve(
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
-    println!("listening on http://127.0.0.1:{actual}");
-    server
-        .await
-        .map_err(|e| format!("server task failed: {e}"))?
-        .map_err(|e| format!("server error: {e}"))
+    Ok((supervisor, server))
+}
+
+/// controld and a local runner on 127.0.0.1 for `sculptured run`, with no web UI: its address, state,
+/// and the local runner's supervisor (abort it before stopping the runner, or it starts another).
+pub(crate) async fn start_local(data_dir: &Path, claude_program: Option<PathBuf>, codex_program: Option<PathBuf>) -> Result<(String, Option<tokio::task::JoinHandle<()>>), String> {
+    private_dir(data_dir)?;
+    let store = Store::open(&data_dir.join("controld.sqlite")).map_err(|e| format!("cannot open store: {e}"))?;
+    let token = host_token(data_dir)?;
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| format!("cannot listen on 127.0.0.1: {e}"))?;
+    let actual = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let st = AppState::new(store, token.clone(), vec![format!("127.0.0.1:{actual}"), format!("localhost:{actual}")])
+        .with_cli_programs(claude_program.clone(), codex_program.clone());
+    let router = app(st.clone(), None);
+    let (supervisor, _server) = start_with(st, listener, actual, data_dir.to_path_buf(), token, claude_program, codex_program, false, router).await?;
+    Ok((format!("http://127.0.0.1:{actual}"), supervisor))
 }
 
 /// Keeps one local hostd child running; restarts it with backoff if it exits.

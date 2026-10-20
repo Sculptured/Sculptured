@@ -82,7 +82,9 @@ export function TeamExport({ teamId, draft, flush }: Props) {
       await flush();
       const { yaml } = await api.teamMadl(teamId, withFolders);
       const name = `${teamId}.madl.yaml`;
-      downloadText(name, yaml, 'application/yaml');
+      // The first line lets the file run from a terminal (`./team.madl.yaml`, after chmod +x); to MADL
+      // tools it is a YAML comment.
+      downloadText(name, yaml.startsWith('#!') ? yaml : `#!/usr/bin/env -S sculptured run\n${yaml}`, 'application/yaml');
       setExported(name);
     } catch (e) {
       setError(`Could not export the team: ${errorText(e)}`);

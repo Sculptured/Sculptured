@@ -1,0 +1,47 @@
+---
+title: Run from a terminal
+description: Run a team from its file with one command, see what happens as it happens, and use the exit code in scripts.
+---
+
+A team file runs without the app: `sculptured run` starts the team on this computer, prints a line whenever an agent starts working, finishes a turn, asks something or stops, and ends with an exit code that says how it went.
+
+```sh
+sculptured run review-team.madl.yaml --folder ./my-project
+```
+
+**Export team file** (the team's **Settings** → **Export**) saves a file that also runs on its own:
+
+```sh
+chmod +x review-team.madl.yaml
+./review-team.madl.yaml --folder ./my-project
+```
+
+Its first line, `#!/usr/bin/env -S sculptured run`, is a comment to every other tool, so the file is still an ordinary [MADL file](/guides/madl).
+
+## Options
+
+| Option | What it does |
+| --- | --- |
+| `--folder DIR` | Where the agents work (default: the current folder). Agents with a folder of their own keep it. |
+| `--input-text TEXT` | The team's Input. |
+| `--tokens N`, `--minutes N` | The run's budget. They can only lower what the file sets; a higher value is refused. |
+| `--data-dir DIR` | Where the run's records go (default: `~/.sculptured/runs/<name>-<time>`). |
+
+## While it runs
+
+- **Questions** are asked in the terminal: type the answer, or the number of an option. Without anyone at the terminal (a script, a job), the run stops and prints what was asked.
+- **Ctrl+C** asks every agent to wrap up; press it again to stop them at once. Closing the terminal or `kill` stops them at once too.
+- **The run is over** when every agent has stopped, or when every agent has finished its turn with nothing waiting for 20 seconds. Then the team is stopped and the runner it started ends.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Every agent finished |
+| 1 | An agent's turn failed, or the team could not start (the reasons are printed) |
+| 2 | A budget stopped the run |
+| 3 | An agent asked something and no one was at the terminal to answer |
+| 4 | The file is not valid (its MADL errors are printed) or an option is |
+| 130 | Stopped with Ctrl+C or asked to end |
+
+<Note>`sculptured run` uses Claude Code and Codex as they are signed in on this computer, so a run counts toward your plan like any other. Set a budget in the file, or lower it with `--tokens` or `--minutes`.</Note>

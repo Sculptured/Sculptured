@@ -95,6 +95,8 @@ describe('team Settings: export, the spec and more settings', () => {
     expect(api.teamMadl).toHaveBeenLastCalledWith('t', false);
     expect(clicked[0].download).toBe('t.madl.yaml');
     expect(within(advanced).getByRole('status')).toHaveTextContent('Exported t.madl.yaml');
+    const blob = vi.mocked(URL.createObjectURL).mock.calls.at(-1)![0] as Blob;
+    expect(await blob.text()).toBe('#!/usr/bin/env -S sculptured run\nmadl: draft\n');
     await user.click(within(advanced).getByRole('checkbox', { name: /Include folders/ }));
     await user.click(within(advanced).getByRole('button', { name: 'Export team file' }));
     await waitFor(() => expect(clicked).toHaveLength(2));
