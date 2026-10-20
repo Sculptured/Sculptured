@@ -126,6 +126,9 @@ pub fn decide(rules: &GuardRules, hook: &Value, size: &dyn Fn(&Path) -> Option<u
         }
         "Bash" | "shell" | "exec_command" => {
             let command = input.get("command").and_then(command_text)?;
+            if long_sleep(&command) {
+                return Some(format!("{MARK} Waiting with a long sleep keeps this conversation open and costly. To wait for a teammate, end your turn: a message wakes you. To wait for a command, run it in the foreground."));
+            }
             whole_file_printed(&command).and_then(|file| big(&file).map(|n| reason(&file, n)))
         }
         _ => None,
@@ -156,6 +159,24 @@ fn contract_reason(file: &str, what: &str, allowed: &[String]) -> String {
         "{MARK} {file} is outside what this agent {what} ({}). Stay within its data contract; for other files, ask the agent whose work they are.",
         allowed.join(", ")
     )
+}
+
+/// Longest sleep, in seconds, a shell command may wait for.
+const SLEEP_SECONDS: f64 = 30.0;
+
+/// True when one of the command's steps is `sleep` for longer than `SLEEP_SECONDS` (`120`, `5m`).
+fn long_sleep(command: &str) -> bool {
+    command.split(['\n', ';', '&', '|']).any(|step| {
+        let mut words = step.split_whitespace().skip_while(|w| matches!(*w, "do" | "then" | "else"));
+        if words.next() != Some("sleep") {
+            return false;
+        }
+        words.any(|w| {
+            let (n, unit) = w.find(|c: char| !(c.is_ascii_digit() || c == '.')).map_or((w, ""), |i| w.split_at(i));
+            let scale = match unit { "" | "s" => 1.0, "m" => 60.0, "h" => 3600.0, "d" => 86_400.0, _ => return false };
+            n.parse::<f64>().is_ok_and(|n| n * scale > SLEEP_SECONDS)
+        })
+    })
 }
 
 /// A shell command as text (Codex sends an argv list).
@@ -221,6 +242,16 @@ mod tests {
         assert_eq!(call("Read", json!({ "file_path": "/work/big.csv", "offset": 1, "limit": 200 })), None);
         assert_eq!(call("Read", json!({ "file_path": "/work/small.rs" })), None);
         assert_eq!(call("Read", json!({ "file_path": "/work/missing.txt" })), None, "unknown size: let it through");
+    }
+
+    #[test]
+    fn waiting_with_a_long_sleep_is_refused_with_how_to_wait_instead() {
+        let r = call("Bash", json!({ "command": "sleep 120 && cat status.txt" })).expect("refused");
+        assert!(r.starts_with(MARK) && r.contains("end your turn"), "{r}");
+        assert!(call("Bash", json!({ "command": "sleep 5m" })).is_some(), "minutes too");
+        assert!(call("Bash", json!({ "command": "while true; do sleep 60; done" })).is_some());
+        assert_eq!(call("Bash", json!({ "command": "sleep 2 && curl localhost:8080" })), None, "a short pause is fine");
+        assert_eq!(call("Bash", json!({ "command": "grep -n sleep 600 notes.txt" })), None, "the word in arguments is not a sleep");
     }
 
     #[test]
