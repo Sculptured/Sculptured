@@ -39,6 +39,9 @@ async fn token(State((state, _)): State<Shared>) -> Response {
 /// Revokes the calling key itself (C4); an unknown or revoked key is `401 device_unknown`.
 async fn revoke(State((state, _)): State<Shared>, headers: HeaderMap) -> Response {
     let mut s = state.lock().unwrap();
+    if s.revoke_fails {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "internal");
+    }
     if let Err(refused) = s.caller(&headers) {
         return refused;
     }

@@ -5,6 +5,7 @@ import type { CommunityLinkView } from '../generated/CommunityLinkView';
 import { Btn } from '../shell/ui';
 import { COMMUNITY_WORDS } from '../vocab';
 import { linkApi, useCommunityLink } from './link';
+import { KeyLeftNote } from './KeyLeftNote';
 import { SignInToSculptured } from './SignInToSculptured';
 
 /** The Account page's Community card on this computer: off (and where to turn it on), or on with
@@ -12,8 +13,12 @@ import { SignInToSculptured } from './SignInToSculptured';
 export function CommunityCard() {
   const { link, error, refresh } = useCommunityLink();
   if (!link) return error ? <p className="tone-red" role="alert">{error}</p> : <p role="status" className="muted">Loading…</p>;
-  if (!link.enabled) return <p>Community is off on this computer; nothing is sent to Sculptured’s servers. <Link to="/community">Open Community</Link></p>;
-  return <CommunityOn link={link} refresh={refresh} />;
+  return (
+    <>
+      <KeyLeftNote />
+      {link.enabled ? <CommunityOn link={link} refresh={refresh} /> : <p>Community is off on this computer; nothing is sent to Sculptured’s servers. <Link to="/community">Open Community</Link></p>}
+    </>
+  );
 }
 
 function host(origin: string | null): string {

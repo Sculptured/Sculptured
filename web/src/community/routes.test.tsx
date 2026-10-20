@@ -211,3 +211,12 @@ it('this computer: the Turn on page offers an address an older version saved', a
   expect(await screen.findByLabelText('Server address')).toHaveValue('https://sculptured.my.org');
   resetCommunityLink();
 });
+
+it('this computer: the Turn on page says when a sign-in may remain on the server', async () => {
+  const { resetCommunityLink } = await import('./link');
+  resetCommunityLink();
+  fakeFetch({ 'GET /api/community-link': () => [200, { ...linkOff, key_left_on: 'https://app.usesculptured.com' }] });
+  at('/community', local);
+  expect(await screen.findByText(/could not remove this computer’s Community sign-in/)).toBeVisible();
+  resetCommunityLink();
+});

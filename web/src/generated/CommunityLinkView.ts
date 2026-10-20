@@ -9,4 +9,9 @@ export type CommunityLinkView = { enabled: boolean, origin: string | null, signe
  * While off: a server address from an older save, to pre-fill the Turn on page (absent otherwise,
  * so the C5 shape is unchanged).
  */
-suggested_origin?: string, };
+suggested_origin?: string, 
+/**
+ * A Sculptured server that may still accept a key this computer forgot, because revoking it
+ * failed; the user can remove it on that account's Computers page. Absent otherwise.
+ */
+key_left_on?: string, };

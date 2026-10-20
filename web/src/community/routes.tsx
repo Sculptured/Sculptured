@@ -12,6 +12,7 @@ import { PeoplePage } from './PeoplePage';
 import { ProfilePage } from './ProfilePage';
 import { PublishPage } from './PublishPage';
 import { SavedPage } from './SavedPage';
+import { KeyLeftNote } from './KeyLeftNote';
 import { TurnOnCommunity } from './TurnOnCommunity';
 import { YoursPage } from './YoursPage';
 import { YourProfilePage } from './YourProfilePage';
@@ -55,6 +56,7 @@ function OnThisComputer() {
   if (!link.enabled) {
     return (
       <main className="page page-wide community" data-vocab="community">
+        <KeyLeftNote />
         <TurnOnCommunity suggested={link.suggested_origin} onDone={(signIn) => { setAskSignIn(signIn); void refresh(); }} />
       </main>
     );

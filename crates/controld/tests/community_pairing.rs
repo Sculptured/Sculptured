@@ -108,3 +108,21 @@ async fn turning_off_during_a_pairing_stops_it() {
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(creds::load(s.home.path()).is_none(), "an approval after turning off is not kept");
 }
+
+#[tokio::test]
+async fn a_key_approved_while_turning_off_is_revoked_not_left_behind() {
+    let (s, stub) = with_stub().await;
+    on(&s).await;
+    stub.set_pairing(PairingMode::Approve);
+    stub.set_delay(Duration::from_millis(800));
+    call(&s.router, "POST", "/api/community-link/pair", json!({})).await;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !stub.requests().iter().any(|r| r.path_and_query == "/gw/api/device/token") && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    call(&s.router, "DELETE", "/api/community-link", json!({})).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(stub.state.lock().unwrap().issued, 1, "the server handed out a key");
+    assert_eq!(stub.live_keys(), 0, "and it was revoked");
+    assert!(creds::load(s.home.path()).is_none());
+}

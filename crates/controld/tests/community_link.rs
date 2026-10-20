@@ -129,3 +129,43 @@ async fn an_old_community_url_only_suggests_a_server_and_nothing_is_contacted() 
     let (_, v) = call(&s.router, "POST", "/api/community-link/enable", json!({"origin": stub.origin})).await;
     assert_eq!((v["enabled"].as_bool(), v["suggested_origin"].as_str()), (Some(true), None), "turning on uses it up");
 }
+
+fn revokes(stub: &fixtures::community_stub::Stub) -> usize {
+    stub.requests().iter().filter(|r| r.path_and_query == "/gw/api/device/revoke").count()
+}
+
+#[tokio::test]
+async fn switching_to_another_server_revokes_the_old_key() {
+    let (s, stub) = with_stub().await;
+    on(&s).await;
+    signed_in(&s, &stub);
+    call(&s.router, "POST", "/api/community-link/enable", json!({"origin": "https://app.other.org"})).await;
+    assert_eq!((revokes(&stub), stub.live_keys()), (1, 0), "the old server no longer accepts the key");
+    assert!(creds::load(s.home.path()).is_none());
+}
+
+#[tokio::test]
+async fn a_key_the_server_could_not_revoke_is_reported_until_dismissed() {
+    let (s, stub) = with_stub().await;
+    on(&s).await;
+    signed_in(&s, &stub);
+    stub.set_revoke_failing(true);
+    call(&s.router, "DELETE", "/api/community-link", json!({})).await;
+    assert_eq!(revokes(&stub), 1);
+    let (_, v) = get(&s.router, "/api/community-link").await;
+    assert_eq!((v["enabled"].as_bool(), v["key_left_on"].as_str()), (Some(false), Some(stub.origin.as_str())), "{v}");
+    let (st, v) = call(&s.router, "DELETE", "/api/community-link/key-left", json!({})).await;
+    assert_eq!((st.as_u16(), v.get("key_left_on")), (200, None), "{v}");
+}
+
+#[tokio::test]
+async fn turning_off_with_the_server_down_says_a_key_may_remain() {
+    let (s, _stub) = with_stub().await;
+    let closed = { let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); l.local_addr().unwrap().port() };
+    let origin = format!("http://127.0.0.1:{closed}");
+    call(&s.router, "POST", "/api/community-link/enable", json!({"origin": origin})).await;
+    creds::save(s.home.path(), &creds::Credentials { origin: origin.clone(), device_id: "d".into(), key: "k".into() }).unwrap();
+    call(&s.router, "DELETE", "/api/community-link", json!({})).await;
+    let (_, v) = get(&s.router, "/api/community-link").await;
+    assert_eq!(v["key_left_on"].as_str(), Some(origin.as_str()));
+}

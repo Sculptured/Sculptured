@@ -53,13 +53,15 @@ pub struct StubState {
     pub others: Vec<User>,
     pub blocks: Vec<Block>,
     pub saved: BTreeSet<String>,
+    /// `POST /gw/api/device/revoke` answers 500 (the server cannot revoke right now).
+    pub revoke_fails: bool,
 }
 
 impl Default for StubState {
     fn default() -> Self {
         Self {
             requests: Vec::new(), pairing: PairingMode::Pending, delay: Duration::ZERO, key_given: false, keys: HashMap::new(), issued: 0,
-            you: seed::you(), others: vec![seed::ana()], blocks: seed::blocks(), saved: BTreeSet::new(),
+            you: seed::you(), others: vec![seed::ana()], blocks: seed::blocks(), saved: BTreeSet::new(), revoke_fails: false,
         }
     }
 }
@@ -117,7 +119,7 @@ pub fn router(state: Arc<Mutex<StubState>>, origin: String) -> Router {
 
 pub(crate) type Shared = (Arc<Mutex<StubState>>, String);
 
-/// Records every request but the control routes, then holds `/api/community/*` answers for `delay`.
+/// Records every request but the control routes, then holds `/api/community/*` and token answers for `delay`.
 async fn record(State(state): State<Arc<Mutex<StubState>>>, req: Request, next: Next) -> Response {
     let (parts, body) = req.into_parts();
     let bytes = to_bytes(body, 8 * 1024 * 1024).await.unwrap_or_default();
@@ -131,7 +133,7 @@ async fn record(State(state): State<Arc<Mutex<StubState>>>, req: Request, next: 
         s.delay
     };
     let community = path_and_query.starts_with("/api/community/");
-    if community && !delay.is_zero() {
+    if (community || path_and_query == "/gw/api/device/token") && !delay.is_zero() {
         tokio::time::sleep(delay).await;
     }
     let mut res = next.run(Request::from_parts(parts, Body::from(bytes))).await;
@@ -181,7 +183,7 @@ impl Stub {
     pub fn set_pairing(&self, m: PairingMode) {
         self.state.lock().unwrap().pairing = m;
     }
-    /// Held before every `/api/community/*` answer.
+    /// Held before every `/api/community/*` and `/gw/api/device/token` answer.
     pub fn set_delay(&self, d: Duration) {
         self.state.lock().unwrap().delay = d;
     }
@@ -191,6 +193,13 @@ impl Stub {
     }
     pub fn bump_version(&self, block_id: &str) {
         bump(&self.state, block_id);
+    }
+    pub fn set_revoke_failing(&self, fails: bool) {
+        self.state.lock().unwrap().revoke_fails = fails;
+    }
+    /// How many keys the server still accepts.
+    pub fn live_keys(&self) -> usize {
+        self.state.lock().unwrap().keys.values().filter(|live| **live).count()
     }
     /// Every issued key now gets `401 device_unknown`.
     pub fn revoke_all(&self) {

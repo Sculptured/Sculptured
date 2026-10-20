@@ -20,6 +20,8 @@ pub const DEFAULT_ORIGIN: &str = "https://app.usesculptured.com";
 pub const PROXY_TIMEOUT: Duration = Duration::from_secs(15);
 pub const REVOKE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const ACCOUNT_TTL: Duration = Duration::from_secs(60);
+/// Names the server a key may still work on after a failed revoke.
+const LEFT_FILE: &str = "community-key-left.txt";
 
 /// `GET /api/community-link`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
@@ -34,6 +36,11 @@ pub struct CommunityLinkView {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub suggested_origin: Option<String>,
+    /// A Sculptured server that may still accept a key this computer forgot, because revoking it
+    /// failed; the user can remove it on that account's Computers page. Absent otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub key_left_on: Option<String>,
 }
 
 /// Who you are signed in to Community as.
@@ -73,7 +80,7 @@ pub struct CommunityPairStatus {
 
 impl CommunityLinkView {
     pub fn off() -> Self {
-        Self { enabled: false, origin: None, signed_in: false, account: None, suggested_origin: None }
+        Self { enabled: false, origin: None, signed_in: false, account: None, suggested_origin: None, key_left_on: None }
     }
 }
 
@@ -155,6 +162,29 @@ impl CommunityLink {
         *self.pairing.lock().unwrap() = None;
     }
 
+    /// `POST {origin}/gw/api/device/revoke` with the key, a few seconds at most. True when the server
+    /// no longer accepts it (revoked now, or already unknown); otherwise it is remembered as maybe
+    /// left on that server (`key_left_on`).
+    pub(crate) async fn revoke(&self, c: &creds::Credentials) -> bool {
+        let sent = self.http.post(format!("{}/gw/api/device/revoke", c.origin)).bearer_auth(c.bearer()).header("origin", &c.origin).timeout(REVOKE_TIMEOUT).send().await;
+        let gone = sent.is_ok_and(|r| r.status().is_success() || r.status() == reqwest::StatusCode::UNAUTHORIZED);
+        if !gone {
+            if let Err(e) = std::fs::write(self.data_dir.join(LEFT_FILE), &c.origin) {
+                tracing::warn!(error = %e, "could not note a Community key left on the server");
+            }
+        }
+        gone
+    }
+
+    /// The server a forgotten key may still work on (see `revoke`).
+    pub(crate) fn key_left_on(&self) -> Option<String> {
+        std::fs::read_to_string(self.data_dir.join(LEFT_FILE)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    }
+
+    pub(crate) fn dismiss_key_left(&self) {
+        let _ = std::fs::remove_file(self.data_dir.join(LEFT_FILE));
+    }
+
     pub(crate) fn forget_account(&self) {
         *self.account.lock().unwrap() = None;
     }
@@ -190,7 +220,7 @@ impl CommunityLink {
     /// the server answered). Signed out and off make no request.
     pub(crate) async fn view(&self, origin: Option<String>) -> CommunityLinkView {
         let Some(origin) = origin else { return CommunityLinkView::off() };
-        let signed_out = CommunityLinkView { enabled: true, origin: Some(origin.clone()), signed_in: false, account: None, suggested_origin: None };
+        let signed_out = CommunityLinkView { enabled: true, origin: Some(origin.clone()), signed_in: false, account: None, suggested_origin: None, key_left_on: self.key_left_on() };
         let Some(c) = self.creds_for(&origin) else { return signed_out };
         match self.account(&c).await {
             Err(()) => {

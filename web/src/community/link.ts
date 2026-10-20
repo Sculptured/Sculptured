@@ -19,6 +19,7 @@ export const linkApi = {
   pair: () => apiRequest<CommunityPairStarted>('POST', '/api/community-link/pair', {}),
   pairStatus: () => apiRequest<CommunityPairStatus>('GET', '/api/community-link/pair'),
   turnOff: () => apiRequest<{ enabled: false }>('DELETE', '/api/community-link'),
+  dismissKeyLeft: () => apiRequest<CommunityLinkView>('DELETE', '/api/community-link/key-left'),
 };
 
 /** The hosted app's link, from its session (it never asks /api/community-link). Null on this computer. */

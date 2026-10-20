@@ -64,15 +64,18 @@ async fn poll(link: Arc<CommunityLink>, origin: String, s: device_pairing::Start
             Ok(Poll::Pending) | Err(_) => continue,
             Ok(Poll::Expired) => CommunityPairState::Expired,
             Ok(Poll::Denied) => CommunityPairState::Denied,
-            Ok(Poll::Approved { device_id, key }) => approved(&link, generation, creds::Credentials { origin: origin.clone(), device_id, key }),
+            Ok(Poll::Approved { device_id, key }) => approved(&link, generation, creds::Credentials { origin: origin.clone(), device_id, key }).await,
         };
         link.finish_pairing(generation, outcome);
         return;
     }
 }
 
-fn approved(link: &CommunityLink, generation: u64, c: creds::Credentials) -> CommunityPairState {
+/// Saves the approved key, unless this pairing was replaced or Community turned off meanwhile: then
+/// the key is revoked on the server, never left there unused.
+async fn approved(link: &CommunityLink, generation: u64, c: creds::Credentials) -> CommunityPairState {
     if !link.is_current(generation) {
+        link.revoke(&c).await;
         return CommunityPairState::Expired;
     }
     match creds::save(link.data_dir(), &c) {
