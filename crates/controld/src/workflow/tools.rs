@@ -27,8 +27,13 @@ pub fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result<Value
         "complete_work" => {
             let req: Complete = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
             let mut run = store.workflow_run(rig, start).map_err(|e| e.to_string())?.ok_or("No batch has been dispatched.")?;
+            let task = run.all_tasks().find(|t| t.assignment.as_deref() == Some(req.assignment.as_str())).map(|t| (t.input.id.clone(), t.input.title.clone()));
             engine::complete(&mut run, &agent.id, &req.assignment, &req.outcome, &req.result)?;
             store.save_workflow(&run, None).map_err(|e| e.to_string())?;
+            // The reply is read into the worker's context: one line, not the whole batch.
+            let (id, title) = task.unwrap_or_else(|| (req.assignment.clone(), String::new()));
+            let now = run.all_tasks().find(|t| t.input.id == id).map(|t| format!("; it is now {} at stage {}", serde_json::to_value(t.status).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default(), t.stage)).unwrap_or_default();
+            return Ok(json!({ "text": format!("Recorded outcome {:?} for task {id} ({title}){now}. Your next assignment, if any, arrives as a message; workflow_status reads the whole batch.", req.outcome) }));
         }
         "workflow_status" => {},
         _ => return Err("Unknown workflow tool.".into()),

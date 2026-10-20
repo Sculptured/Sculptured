@@ -1147,3 +1147,22 @@ async fn a_panel_reviewer_is_told_its_angle_and_a_split_vote_is_named() {
     let step = current(&st).tasks[0].history.last().unwrap().clone();
     assert!(step.result.starts_with(&format!("Reviewers disagree: {} voted approved; {} (red team) voted changes.", reviewers[1], reviewers[0])), "{}", step.result);
 }
+
+#[tokio::test]
+async fn complete_work_answers_in_one_line_not_the_whole_batch() {
+    let st = setup(Store::open_in_memory().unwrap());
+    let long = "x".repeat(5000);
+    call(&st,"team.dispatcher@book","dispatch_work",&json!({"batch_id":"short","summary":"source","tasks":[
+        {"id":"a","title":"Chapter A","context":long,"mode":"independent","depends_on":[]},
+        {"id":"b","title":"Chapter B","context":long,"mode":"independent","depends_on":[]}
+    ]})).unwrap();
+    scheduler::process(&st,"book").await.unwrap();
+    let first = current(&st);
+    let (i, task) = first.tasks.iter().enumerate().find(|(_, t)| t.assignment.is_some()).unwrap();
+    let agent = task.assigned_agent.clone().unwrap();
+    let reply = call(&st,&format!("team.{agent}@book"),"complete_work",&json!({"assignment":task.assignment,"outcome":"ready","result":long})).unwrap();
+    let text = reply["text"].as_str().unwrap();
+    assert!(text.contains("Chapter A") || text.contains("Chapter B"), "{text}");
+    assert!(text.len() < 400, "{} chars: {}", text.len(), &text[..200.min(text.len())]);
+    assert!(!current(&st).tasks[i].history.is_empty(), "the result is recorded");
+}
