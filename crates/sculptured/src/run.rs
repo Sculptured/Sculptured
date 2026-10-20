@@ -162,7 +162,10 @@ fn lower(draft: &mut Value, key: &str, n: u64, unit: &str) -> Result<(), Fail> {
     if let Some(hard) = draft["budget"][key]["hard"].as_u64().filter(|h| n > *h) {
         return Err(invalid(format!("--{key} {n} is above the file's {hard} {unit}: an option can only lower a budget")));
     }
-    draft["budget"][key] = json!({ "hard": n });
+    // Agents wrap up at the soft value: the file's if it is lower, otherwise 85% (time to finish before
+    // a hard limit such as a job's end).
+    let soft = draft["budget"][key]["soft"].as_u64().filter(|s| *s < n).unwrap_or(n * 85 / 100);
+    draft["budget"][key] = json!({ "soft": soft, "hard": n });
     Ok(())
 }
 
@@ -374,5 +377,22 @@ async fn wait_stopped(api: &Api, id: &str, within: Duration) {
             return;
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lowered_limit_keeps_room_to_wrap_up() {
+        let mut d = json!({ "budget": {} });
+        lower(&mut d, "minutes", 100, "minutes").unwrap();
+        assert_eq!(d["budget"]["minutes"], json!({ "soft": 85, "hard": 100 }), "agents wrap up before a job's time limit");
+        let mut d = json!({ "budget": { "minutes": { "soft": 30, "hard": 120 } } });
+        lower(&mut d, "minutes", 60, "minutes").unwrap();
+        assert_eq!(d["budget"]["minutes"], json!({ "soft": 30, "hard": 60 }), "the file's own lower soft value stays");
+        let mut d = json!({ "budget": { "tokens": { "hard": 10 } } });
+        assert!(lower(&mut d, "tokens", 20, "tokens").is_err());
     }
 }

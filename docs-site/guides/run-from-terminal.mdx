@@ -44,4 +44,33 @@ Its first line, `#!/usr/bin/env -S sculptured run`, is a comment to every other 
 | 4 | The file is not valid (its MADL errors are printed) or an option is |
 | 130 | Stopped with Ctrl+C or asked to end |
 
+## Inside a cluster job
+
+A batch job can run a team: the job ends the run when its time is up, and the agents wrap up first if `--minutes` leaves room (a lowered limit starts the wrap-up at 85% of it). Run it with `exec`, so the scheduler's stop signal reaches `sculptured run` directly. The compute node needs to reach Anthropic or OpenAI (check with `sculptured doctor`), and Claude Code or Codex signed in for your account; ask your site whether agents may run in jobs.
+
+<Tabs>
+  <Tab title="Slurm">
+    ```bash
+    #!/bin/bash
+    #SBATCH --job-name=review-team
+    #SBATCH --time=02:00:00
+    #SBATCH --signal=B:TERM@120
+    exec sculptured run review-team.madl.yaml --folder "$SLURM_SUBMIT_DIR" --minutes 110
+    ```
+    `--signal=B:TERM@120` asks the job to stop two minutes before its limit, so the run stops cleanly rather than being killed.
+  </Tab>
+  <Tab title="PBS">
+    ```bash
+    #!/bin/bash
+    #PBS -N review-team
+    #PBS -l walltime=02:00:00
+    cd "$PBS_O_WORKDIR"
+    exec sculptured run review-team.madl.yaml --folder "$PBS_O_WORKDIR" --minutes 110
+    ```
+    At the walltime PBS sends the job a stop signal before killing it; `--minutes 110` has the agents wrap up before that.
+  </Tab>
+</Tabs>
+
+The exit code tells the next step of a pipeline what happened (see [Exit codes](#exit-codes)).
+
 <Note>`sculptured run` uses Claude Code and Codex as they are signed in on this computer, so a run counts toward your plan like any other. Set a budget in the file, or lower it with `--tokens` or `--minutes`.</Note>
