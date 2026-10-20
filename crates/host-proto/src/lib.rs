@@ -66,6 +66,9 @@ pub struct LaunchParams {
     /// Claude agents: the protections to apply to the agent's tool calls. None = none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protection: Option<model::GuardRules>,
+    /// Codex agents: compact the conversation past this many tokens of context. None = Codex's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compact_tokens: Option<u64>,
     /// The agent's skills. Claude Code loads them natively; other CLIs read one with `read_skill`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skills: Vec<model::Skill>,

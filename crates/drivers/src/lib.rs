@@ -63,6 +63,8 @@ pub struct LaunchSpec {
     pub claude_setup: Option<model::ClaudeSetup>,
     /// Claude: guard the agent's tool calls with these rules, run by `guard` (the `sculptured` binary).
     pub protection: Option<ProtectionLaunch>,
+    /// Codex: compact the conversation once its context passes this many tokens (within a turn too).
+    pub compact_tokens: Option<u64>,
     /// Claude: plugin folders loaded for this session only (the agent's skills).
     pub plugin_dirs: Vec<PathBuf>,
     /// More MCP servers on this computer the agent is given (integrations such as Kindex).
@@ -125,6 +127,7 @@ impl LaunchSpec {
             add_dirs: vec![],
             claude_setup: None,
             protection: None,
+            compact_tokens: None,
             plugin_dirs: vec![],
             mcp_servers: vec![],
             remote_mcp: vec![],

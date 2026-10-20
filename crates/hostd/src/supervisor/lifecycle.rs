@@ -123,6 +123,7 @@ impl Supervisor {
         spec.claude_setup = p.claude_setup;
         let briefing_file = p.briefing.as_deref().and_then(|b| self.briefing_file(&req.seat, b));
         spec.protection = p.protection.clone().and_then(|rules| self.guard_program().map(|guard| drivers::ProtectionLaunch { rules, guard, briefing_file }));
+        spec.compact_tokens = p.compact_tokens;
         spec.add_dirs = self.add_dirs(p)?;
         if let (Some(tools), Some(t)) = (&p.seat_tools, token) {
             spec.seat_tools = self.grant_tools(&req.seat, req.drv.seat_tools_config_file(), tools, t)?;

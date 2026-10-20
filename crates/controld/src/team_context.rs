@@ -63,7 +63,7 @@ pub(crate) fn decision_log_note(store: &crate::store::Store, team: &str, on: boo
 }
 
 /// Every agent's usage counts against the person's own plan; tell agents what is expensive.
-const EFFICIENCY: &str = "Work efficiently: everything you read stays in your context and is re-read at every later step, and every agent you spawn is a full agent with usage of its own. Read a PDF with read_pdf first: it gives each page's text and names pages with no text, so you look at a page as an image only when it has no text and you need what is on it. Read only the parts of large files you need. Spawn a helper only for large, independent work; never spawn helpers to split up reading.";
+const EFFICIENCY: &str = "Work efficiently: everything you read stays in your context and is re-read at every later step, and every agent you spawn is a full agent with usage of its own. Read a PDF with read_pdf first: it gives each page's text and names pages with no text, so you look at a page as an image only when it has no text and you need what is on it. Read only the parts of large files you need. Your folder's AGENTS.md and CLAUDE.md are already loaded into your instructions: do not search for them. Spawn a helper only for large, independent work; never spawn helpers to split up reading.";
 
 pub(crate) fn briefing(d: &TeamDraft, seat: &str) -> Option<String> { briefing_with(d, seat, "") }
 
@@ -229,6 +229,7 @@ mod tests {
             assert!(text.contains("Folder: /home/me/project"));
             assert!(text.contains("Use spawn_agent to create helpers"));
             assert!(text.contains("read_pdf"), "every agent is told to read PDFs as text first");
+            assert!(text.contains("AGENTS.md and CLAUDE.md are already loaded"), "agents do not go looking for them");
             assert!(text.contains(&a.job));
         }
         assert!(briefing(&d, "missing").is_none());

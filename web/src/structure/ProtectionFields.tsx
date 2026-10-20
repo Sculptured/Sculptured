@@ -40,7 +40,7 @@ export function ProtectionFields({ draft, edit, locked }: { draft: TeamDraft; ed
           <span className="fld-meta">{n.unit}</span>
         </label>
       ))}
-      <p className="fld-meta">Claude agents: all three. Codex agents: the context limit only. An agent on a computer whose runner predates protections runs without them, and its page says so. Takes effect the next time an agent starts.</p>
+      <p className="fld-meta">Claude agents: all three. Codex agents: the context limit only (and Codex compacts its conversation within a long turn at twice it). An agent on a computer whose runner predates protections runs without them, and its page says so. Takes effect the next time an agent starts.</p>
       {p.on && <SafetyFields draft={draft} edit={edit} locked={locked} />}
     </fieldset>
   );

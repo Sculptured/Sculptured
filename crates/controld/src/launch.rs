@@ -56,6 +56,7 @@ fn fitted_params(
         }
     };
     let (claude_setup, protection) = claude_settings(st, rig, seat);
+    let compact_tokens = codex_compaction(st, rig, seat);
     // Given back after a compaction, which can summarize it away (Claude only: its SessionStart hook).
     let briefing = protection.as_ref().and_then(|_| st.store.lock().unwrap().draft(rig).ok().flatten()).and_then(|d| crate::team_context::briefing(&d, &seat.id));
     let (skills, integrations, components) = agent_extras(st, rig, seat);
@@ -66,6 +67,7 @@ fn fitted_params(
         protection,
         briefing,
         claude_setup,
+        compact_tokens,
         cwd,
         model: seat.model.clone(),
         posture,
@@ -193,6 +195,16 @@ fn agent_extras(st: &AppState, rig: &str, seat: &CompiledSeat) -> (Vec<model::Sk
     // The built-in ones by name too, for runners from before components.
     let names = components.iter().filter(|c| c.is_builtin()).map(|c| c.id.clone()).collect();
     (d.agent_skills(a), names, components)
+}
+
+/// Codex agents: the team's context ceiling acts between turns (notes, then a fresh conversation); a
+/// long turn can grow far past it, so Codex compacts within a turn at twice the ceiling.
+fn codex_compaction(st: &AppState, rig: &str, seat: &CompiledSeat) -> Option<u64> {
+    if seat.runtime != Runtime::Codex {
+        return None;
+    }
+    let draft = st.store.lock().unwrap().draft(rig).ok().flatten();
+    draft.map(|d| d.protection).unwrap_or_default().context_ceiling().map(|c| 2 * c)
 }
 
 /// Claude agents only: the part of the person's own Claude Code setup the team allows (None when all of

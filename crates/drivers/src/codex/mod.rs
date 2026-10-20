@@ -100,6 +100,12 @@ impl CodexAppServerDriver {
             p["config"]["features.multi_agent"] = json!(false);
             p["config"]["features.multi_agent_v2"] = json!(false);
         }
+        if let Some(limit) = spec.compact_tokens {
+            if !p["config"].is_object() {
+                p["config"] = json!({});
+            }
+            p["config"]["model_auto_compact_token_limit"] = json!(limit);
+        }
         for s in &spec.mcp_servers {
             if !p["config"].is_object() {
                 p["config"] = json!({});
@@ -189,6 +195,14 @@ mod sandbox_tests {
         assert_eq!(CodexAppServerDriver::thread_params(&spec)["sandbox"], "danger-full-access");
         spec.sandboxed = true;
         assert_eq!(CodexAppServerDriver::thread_params(&spec)["sandbox"], "workspace-write");
+    }
+
+    #[test]
+    fn codex_compacts_its_context_at_the_teams_limit() {
+        let mut spec = LaunchSpec::new("dev.a@r".parse().unwrap(), "/w".into());
+        assert!(CodexAppServerDriver::thread_params(&spec)["config"].get("model_auto_compact_token_limit").is_none());
+        spec.compact_tokens = Some(120_000);
+        assert_eq!(CodexAppServerDriver::thread_params(&spec)["config"]["model_auto_compact_token_limit"], 120_000);
     }
 
     #[test]
