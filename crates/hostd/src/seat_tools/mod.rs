@@ -19,6 +19,34 @@ use std::sync::{Arc, Mutex};
 
 /// The socket's file name inside hostd's data dir (`host-local/`, private to the user).
 pub const SOCKET_FILE: &str = "seat-tools.sock";
+/// The longest socket path that binds everywhere (`sun_path` is 108 bytes on Linux, 104 on macOS).
+pub const MAX_SOCKET_PATH: usize = 100;
+
+/// Where the agent tool socket goes for hostd data folder `data_dir`: inside it, unless that path is
+/// too long for a Unix socket; then in a private `sculptured` folder under `short_root`, named for the
+/// data folder.
+pub fn socket_path_in(data_dir: &std::path::Path, short_root: &std::path::Path) -> PathBuf {
+    let inside = data_dir.join(SOCKET_FILE);
+    if inside.as_os_str().len() < MAX_SOCKET_PATH {
+        return inside;
+    }
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    data_dir.hash(&mut h);
+    short_root.join("sculptured").join(format!("{:016x}.sock", h.finish()))
+}
+
+/// `socket_path_in` with the user's runtime folder (or the temp folder) as the short root, creating
+/// the private folder when the socket goes there.
+pub fn socket_path(data_dir: &std::path::Path) -> Result<PathBuf, String> {
+    let root = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).filter(|p| p.is_dir()).unwrap_or_else(std::env::temp_dir);
+    let path = socket_path_in(data_dir, &root);
+    if let Some(dir) = path.parent().filter(|_| !path.starts_with(data_dir)) {
+        std::fs::create_dir_all(dir).and_then(|_| crate::private::narrow_dir(dir)).map_err(|e| format!("cannot make the agent tool folder {}: {e}", dir.display()))?;
+    }
+    Ok(path)
+}
+
 /// Used when the client does not say which MCP protocol version it speaks.
 const DEFAULT_PROTOCOL: &str = "2025-06-18";
 
@@ -200,4 +228,24 @@ pub fn run_shim() -> Result<(), String> {
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod socket_path_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn the_socket_stays_in_a_short_data_folder() {
+        assert_eq!(socket_path_in(Path::new("/home/me/.sculptured/host-local"), Path::new("/run/user/1000")), PathBuf::from("/home/me/.sculptured/host-local/seat-tools.sock"));
+    }
+
+    #[test]
+    fn a_long_data_folder_gets_a_short_socket_path_of_its_own() {
+        let long = format!("/home/me/{}/data", "a-long-folder-name/".repeat(8));
+        let other = format!("{long}2");
+        let p = socket_path_in(Path::new(&long), Path::new("/run/user/1000"));
+        assert!(p.starts_with("/run/user/1000/sculptured") && p.as_os_str().len() < MAX_SOCKET_PATH, "{}", p.display());
+        assert_ne!(p, socket_path_in(Path::new(&other), Path::new("/run/user/1000")), "each data folder has its own socket");
+    }
 }

@@ -60,7 +60,7 @@ pub fn private_data_dir(dir: &std::path::Path) -> Result<(), String> {
 /// which is private (`private_data_dir`): the socket and the agents' tool config files are reachable by
 /// this user only.
 fn with_seat_tools(opts: &HostdOptions, drivers: Vec<Arc<dyn Driver>>, journal: Journal) -> Result<Supervisor, String> {
-    let socket = opts.data_dir.join(crate::seat_tools::SOCKET_FILE);
+    let socket = crate::seat_tools::socket_path(&opts.data_dir)?;
     let shim = std::env::current_exe().map_err(|e| format!("cannot locate sculptured for the agent tools: {e}"))?;
     let host = crate::supervisor::SeatToolsHost { socket: socket.clone(), shim };
     let sup = Supervisor::with_seat_tools(opts.host_id.clone(), drivers, journal, Some(host));
