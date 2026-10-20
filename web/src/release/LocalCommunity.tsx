@@ -18,12 +18,12 @@ export function LocalCommunity() {
     api.settings().then(
       (value) => {
         setSettings(value);
-        setAddress(value.community_url ?? "");
+        setAddress(value.sculptured_origin ?? "");
       },
       () => setNotice("Could not load your community connection."),
     );
   }, []);
-  const savedAddress = settings?.community_url;
+  const savedAddress = settings?.sculptured_origin;
   return (
     <section className="release-page community-account">
       <h1>Community</h1>
@@ -61,7 +61,7 @@ export function LocalCommunity() {
               e.preventDefault();
               if (!settings) return;
               try {
-                const next = { ...settings, community_url: address.trim() || undefined };
+                const next = { ...settings, sculptured_origin: address.trim() || undefined };
                 await api.saveSettings(next);
                 setSettings(next);
                 setChanging(false);

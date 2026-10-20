@@ -1,8 +1,7 @@
 // Sculptured desktop. Two modes, chosen on first launch and remembered (menu: Switch mode…):
 // - On this computer: a window on the local workspace. It starts the bundled `sculptured serve` (which
 //   starts the agent runner) unless one already answers on the port. Agents keep running when the
-//   window closes; the runner owns them. If an account address is set, its site may open in the
-//   window too, for Community (signing in is required there; "Add to project" comes back here).
+//   window closes; the runner owns them. Community stays off until it is turned on in the app.
 // - Sculptured account: the account's site, with this computer connected by the bundled runner
 //   (`sculptured connect`), approved in this window, and stopped when the app quits.
 // Teams and settings are not synced between the two (later).
@@ -140,17 +139,6 @@ function connectThisComputer(origin) {
   runner.child.on('exit', () => { runner = null; });
 }
 
-/** Local mode with an account address: point the workspace's Community link at it, unless one is set. */
-async function useAccountForCommunity(origin) {
-  try {
-    const settings = await (await fetch(`${ORIGIN}/api/settings`)).json();
-    if (settings.community_url) return;
-    await fetch(`${ORIGIN}/api/settings`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: { ...settings, community_url: origin } }) });
-  } catch {
-    // Community still works from its own page; nothing to do here.
-  }
-}
-
 function menu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
@@ -184,7 +172,6 @@ else {
     }
     if (!(await answering())) startServer();
     await waitReady();
-    if (mode.origin) await useAccountForCommunity(mode.origin);
     openWindow(allowedOrigins({ ...mode, local: ORIGIN }), ORIGIN);
   }).catch((e) => fail(e.message));
 }

@@ -15,7 +15,7 @@ it("connects the account here while preserving unrelated workspace settings", as
     .mockResolvedValue({
       posture: "restricted",
       question_timeout_min: 12,
-      community_url: "https://community.example.test",
+      sculptured_origin: "https://community.example.test",
     });
   const user = userEvent.setup();
   render(
@@ -36,7 +36,7 @@ it("connects the account here while preserving unrelated workspace settings", as
   expect(save).toHaveBeenCalledWith({
     posture: "restricted",
     question_timeout_min: 12,
-    community_url: "https://community.example.test",
+    sculptured_origin: "https://community.example.test",
   });
   expect(
     await screen.findByRole("link", { name: "Open your account →" }),
@@ -46,7 +46,7 @@ it("connects the account here while preserving unrelated workspace settings", as
 });
 
 it("once connected, shows the address and changes it only when asked", async () => {
-  vi.spyOn(api, "settings").mockResolvedValue({ posture: "restricted", question_timeout_min: 12, community_url: "https://community.example.test" });
+  vi.spyOn(api, "settings").mockResolvedValue({ posture: "restricted", question_timeout_min: 12, sculptured_origin: "https://community.example.test" });
   const user = userEvent.setup();
   render(<MemoryRouter><LocalCommunity /></MemoryRouter>);
   expect(await screen.findByText("community.example.test")).toBeInTheDocument();

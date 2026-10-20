@@ -6,9 +6,11 @@ use model::PermissionPosture;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Settings {
-    #[serde(default)]
+    /// The Sculptured server Community goes through (C5); None: Community is off. Older saves
+    /// called it `community_url` and pointed at `community.{domain}` (migrated on read).
+    #[serde(default, alias = "community_url", skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub community_url: Option<String>,
+    pub sculptured_origin: Option<String>,
     /// D7: unrestricted by default.
     pub posture: PermissionPosture,
     /// D8: 10 minutes by default. 1 to 1440.
@@ -21,7 +23,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { community_url: None, posture: PermissionPosture::Unrestricted, question_timeout_min: 10, copies_folder: None }
+        Self { sculptured_origin: None, posture: PermissionPosture::Unrestricted, question_timeout_min: 10, copies_folder: None }
     }
 }
 
