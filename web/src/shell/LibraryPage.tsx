@@ -15,7 +15,7 @@ export function librarySection(value?: string): LibrarySection {
 
 /** Private local groups are intentionally separate from public community records. */
 export function LibraryPage({section:_section}:{section:LibrarySection}) {
- return <section className="panel library-page" aria-label="Library"><header className="library-header"><div className="coastal-library-title"><BrandMark /><div><h1>Private Library</h1><p className="muted">Reusable agent groups, stored on this machine.</p></div></div><Link className="btn" to="/community">Community account</Link></header><GroupLibrary/></section>;
+ return <section className="panel library-page" aria-label="Library"><header className="library-header"><div className="coastal-library-title"><BrandMark /><div><h1>Private Library</h1><p className="muted">Reusable agent groups, stored on this machine.</p></div></div><Link className="btn" to="/community">Community</Link></header><GroupLibrary/></section>;
 }
 
 /** `/library/:collection`, as a page of its own. */

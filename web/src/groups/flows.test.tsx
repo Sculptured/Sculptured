@@ -8,7 +8,6 @@ import { captureGroup } from './blocks';
 import { AddToProject } from './AddToProject';
 import { useTeamList } from '../useTeamList';
 import { BlockDetails,BlockDescription } from './BlockDetails';
-import { blockTransferUrl,transferredBlock } from './blockTransfer';
 import { removeElement } from '../draft/edits';
 import { start,push,undo } from '../draft/history';
 vi.mock('../api',async(orig)=>{const m=await orig<typeof import('../api')>();return {...m,api:{...m.api,listTeams:vi.fn(),projectVisibility:vi.fn(),createTeam:vi.fn(),getTeam:vi.fn(),saveTeam:vi.fn(),listFolders:vi.fn()}};});
@@ -31,10 +30,6 @@ it('creates a blank project, inserts the group and navigates without starting it
  render(<MemoryRouter><ProjectList/><Routes><Route path="/" element={<AddToProject block={block()} onClose={()=>{}}/>}/><Route path="*" element={<Destination/>}/></Routes></MemoryRouter>);
  await userEvent.click(screen.getByRole('button',{name:'Add & open project'}));await screen.findByText('/team/new/structure');expect(api.createTeam).toHaveBeenCalledWith('blank',false,'Review pair',expect.any(String));
  expect(await within(screen.getByRole('navigation',{name:'Test projects'})).findByText('Newly imported project')).toBeVisible();
-});
-it('transfers reviewed content through a bounded local fragment and strips local settings',()=>{
- const b=block();b.draft.folder='/secret';b.draft.agents[0].folder='/private';const url=new URL(blockTransferUrl('http://127.0.0.1:4410',b));const copy=transferredBlock(url.hash)!;
- expect(url.search).toBe('');expect(copy.draft.folder).toBeUndefined();expect(copy.draft.agents[0].folder).toBeNull();expect(copy.draft.agents[0].advanced.permission).toBe('restricted');expect(()=>blockTransferUrl('https://evil.example',b)).toThrow();expect(()=>transferredBlock('#import-block='+encodeURIComponent('{bad'))).toThrow();
 });
 it('inspects individual agents and connections on the full board with linked source details',async()=>{
  render(<MemoryRouter><BlockDetails block={block()}/><BlockDescription text={'A review pair.\n\nArchitecture reference: Juncheng Yang, CS2680 Agent Design II, slide 15: https://cs2680.com/slides/5_agent_design_2.pdf#page=15. Original Sculptured instructions, not course-provided code or an endorsement. Reports-to/watch arrows describe intent; agents use managed messages to coordinate. Imported blocks require a folder and review; no agents start on import.'}/></MemoryRouter>);

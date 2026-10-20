@@ -1,9 +1,8 @@
 import {DismissibleError} from '../shell/DismissibleError';
 import { useEffect, useState, useRef } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { InspectBlock } from './InspectBlock';
 import { AddToProject } from './AddToProject';
-import { transferredBlock } from './blockTransfer';
 import { downloadBlock, sanitizeExport } from '../release/sharing';
 import { api } from '../api';
 import { errorText } from '../errors';
@@ -18,9 +17,7 @@ export function GroupLibrary() {
   const [blocks,setBlocks]=useState<GroupBlock[]|null>(null),[editing,setEditing]=useState<GroupBlock|null>(null),[error,setError]=useState('');
   const [inspecting,setInspecting]=useState<GroupBlock|null>(null);
   const fileInput=useRef<HTMLInputElement>(null);
-  const location=useLocation(),navigate=useNavigate();
   const [adding,setAdding]=useState<GroupBlock|null>(null);
-  useEffect(()=>{if(!location.hash.startsWith('#import-block='))return;try{setAdding(transferredBlock(location.hash));}catch(e){setError((e as Error).message);}navigate(location.pathname+location.search,{replace:true});},[location.hash,location.pathname,location.search,navigate]);
   const reload=()=>{setError('');api.groupBlocks().then(setBlocks,e=>setError(errorText(e)));};
   useEffect(reload,[]);
   if(editing)return <GroupEditor key={editing.id} initial={editing} onBack={()=>{setEditing(null);reload();}} onSaved={saved=>setBlocks(list=>[...(list??[]).filter(b=>b.id!==saved.id),saved])} />;

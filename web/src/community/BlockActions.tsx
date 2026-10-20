@@ -4,6 +4,7 @@ import { errorText } from '../errors';
 import type { GroupBlock } from '../generated/GroupBlock';
 import type { Publication } from '../generated/community/Publication';
 import { AddToProject } from '../groups/AddToProject';
+import { track } from '../hosted/analytics';
 import { sanitizeExport } from '../release/sharing';
 import { Btn } from '../shell/ui';
 import { COMMUNITY_WORDS } from '../vocab';
@@ -30,7 +31,7 @@ export function BlockActions({ pub, library }: { pub: Publication; library: Grou
   const copy = projectCopy(pub);
   return (
     <div className="cm-actions">
-      <Btn variant="primary" disabled={!copy || !workspace} onClick={() => setAdding(true)}>{COMMUNITY_WORDS.addToProject}</Btn>
+      <Btn variant="primary" disabled={!copy || !workspace} onClick={() => { track('add-from-community'); setAdding(true); }}>{COMMUNITY_WORDS.addToProject}</Btn>
       {!workspace && <span className="muted">Sign in to add it to a project or your Library.</span>}
       {!copy && <span className="muted">This block is not a group Sculptured can add.</span>}
       {copy && library && <LibraryButton pub={pub} library={library} />}

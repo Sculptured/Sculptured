@@ -1,11 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
-import { ReleasePage } from './release/ReleasePage';
-import { Profile } from './release/Profile';
-import { Community } from './release/Community';
 import { CommunityHost } from './community/CommunityHost';
 import { CommunitySection } from './community/routes';
 import { GitPage } from './release/GitPage';
-import { hosted } from './release/Nav';
 import { Shell } from './shell/Shell';
 import type { OpenStream } from './useRigStream';
 import { HostedGate, useHosted } from './hosted/HostedGate';
@@ -74,14 +70,6 @@ function ProjectRoutes() {
 }
 
 export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
-  if (hosted)
-    return (
-      <Routes>
-        <Route path="/community" element={<ReleasePage><Profile /></ReleasePage>} />
-        <Route path="/community/*" element={<ReleasePage><Community /></ReleasePage>} />
-        <Route path="*" element={<Navigate replace to="/community" />} />
-      </Routes>
-    );
   return (
     <Routes>
       <Route path="/join/:token" element={<JoinPage />} />
@@ -118,7 +106,7 @@ export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
 export default function App() {
   return (
     <BrowserRouter>
-      {hosted ? <AppRoutes /> : <HostedGate><AppRoutes /></HostedGate>}
+      <HostedGate><AppRoutes /></HostedGate>
     </BrowserRouter>
   );
 }

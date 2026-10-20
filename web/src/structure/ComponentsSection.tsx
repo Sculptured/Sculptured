@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { Component } from '../generated/Component';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { Btn } from '../shell/ui';
-import { communityRequest, useCommunitySession } from '../release/Community';
+import { communityRequest, useCommunitySession } from '../community/share';
 import type { Edit } from './Panels';
 import type { ComponentKind } from '../generated/ComponentKind';
 import { BUILTIN, KIND_LABEL, componentProblems, parseManifest, whereItRuns } from './components';

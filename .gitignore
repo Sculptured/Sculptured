@@ -8,7 +8,6 @@ web/dist
 web/test-results
 web/playwright-report
 
-web/community-dist
 
 docs-site/node_modules
 docs-site/.mintlify

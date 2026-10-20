@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 const FUNCTION_LINES = { max: 30, skipBlankLines: true, skipComments: true };
 
 export default tseslint.config(
-  { ignores: ['dist', 'community-dist', 'lint', 'test-results', 'playwright-report', 'src/generated'] },
+  { ignores: ['dist', 'lint', 'test-results', 'playwright-report', 'src/generated'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

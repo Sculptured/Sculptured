@@ -11,7 +11,7 @@ import { ComponentBlockCard } from '../release/ComponentBlockCard';
 import { api } from '../api';
 import * as registry from './mcpRegistry';
 
-vi.mock('../release/Community', () => ({ useCommunitySession: () => ({ session: { user: null, csrf: null } }), communityRequest: vi.fn() }));
+vi.mock('../community/share', () => ({ useCommunitySession: () => ({ session: { user: null, csrf: null } }), communityRequest: vi.fn() }));
 
 const notes = { id: 'notes', name: 'Notes server', description: 'Team notes.', kind: 'mcp', program: 'notes-mcp', install: 'pip install notes-mcp' };
 

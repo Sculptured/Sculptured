@@ -1,12 +1,3 @@
-.release-shell {
-  height: 100dvh;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-}
-.release-shell > main {
-  overflow: auto;
-  scrollbar-gutter: stable;
-}
 .release-page {
   max-width: 1200px;
   margin: 0 auto;
@@ -329,27 +320,10 @@ dialog.release-drawer::backdrop {
   background: color-mix(in srgb, var(--shade) 55%, transparent);
 }
 
-.release-shell > .workspace-nav {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--line);
-}
-.release-shell > .workspace-nav a {
-  color: var(--muted);
-  font-size: var(--text-md);
-}
-.release-shell > .workspace-nav a[aria-current] {
-  color: var(--text);
-}
 .community-account {
   max-width: 760px;
 }
 
-.release-shell > .workspace-nav {
-  flex-wrap: wrap;
-}
 
 /* Learn: agent design guide */
 .agent-design-guide { max-width: 860px; }
@@ -362,30 +336,4 @@ dialog.release-drawer::backdrop {
 .agent-design-guide .design-spec dd { margin: 0; }
 @media (max-width: 560px) { .agent-design-guide .design-spec div { grid-template-columns: 1fr; gap: 0; } }
 
-.connect-card {
-  gap: 18px;
-  border-color: var(--line-2);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) calc(var(--wash) * 6%), var(--panel)), var(--panel) 70%);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--shade) 20%, transparent), 0 8px 24px color-mix(in srgb, var(--shade) calc(var(--wash) * 18%), transparent);
-}
-.connect-head { display: flex; gap: 14px; align-items: flex-start; }
-.connect-head h2 { margin: 0 0 4px; }
-.connect-head p { margin: 0; }
-.connect-mark {
-  flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-lg);
-  color: var(--accent-ink); background: linear-gradient(135deg, var(--accent-fill), var(--accent-fill-strong));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--light) calc(var(--wash) * 15%), transparent), 0 4px 12px color-mix(in srgb, var(--accent) calc(var(--wash) * 35%), transparent);
-}
-.connect-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.connect-saved {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px;
-  border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg);
-}
-.connect-saved code { font-size: var(--text-sm); }
-.connect-saved .btn { margin-left: auto; }
-.connect-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 20%, transparent); }
-.connect-form { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
-.connect-form label { font-size: var(--text-md); font-weight: var(--weight-semibold); }
-.connect-row { display: flex; gap: 10px; }
-.connect-row input { flex: 1; }
-@media (max-width: 560px) { .connect-row { flex-direction: column; } }
+
