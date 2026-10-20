@@ -47,3 +47,13 @@
 .cm-tabs a { padding: 6px 10px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
 .cm-tabs a.on { color: var(--text); border-bottom-color: var(--accent, currentColor); }
 .cm-frame { min-height: 100vh; background: var(--bg); }
+/* Turning Community on, and signing in with a code (this computer). */
+.cm-optin { display: grid; gap: var(--space-2, 8px); max-width: 44rem; }
+.cm-optin h2 { margin: 8px 0 0; font-size: var(--text-md, 1rem); }
+.cm-optin ul { margin: 0; padding-left: 1.25rem; }
+.cm-server label { display: grid; gap: 4px; max-width: 28rem; margin-top: 6px; }
+.cm-signin-code { display: grid; gap: 6px; }
+.cm-signin-code h2 { margin: 0; font-size: var(--text-md, 1rem); }
+.cm-code { margin: 0; font-family: var(--font-mono, monospace); font-size: 1.75rem; letter-spacing: 0.08em; }
+.cm-card-on { display: grid; gap: 8px; }
+.cm-card-on p { margin: 0; }

@@ -100,4 +100,11 @@ describe('Community errors', () => {
       expect(errorText(new ApiError(400, code, 'SERVER TEXT'))).not.toMatch(/SERVER TEXT|could not do that/);
     expect(errorText(new ApiError(409, 'handle_taken', 'x'))).toBe('Someone already has that handle. Choose another.');
   });
+
+  it('says what went wrong between this computer and Community in plain words', () => {
+    for (const code of ['community_off', 'community_unreachable', 'community_timeout', 'community_too_large', 'community_origin_invalid', 'bad_scope', 'too_many_attempts'])
+      expect(errorText(new ApiError(502, code, 'SERVER TEXT'))).not.toMatch(/SERVER TEXT|could not do that/);
+    expect(errorText(new ApiError(504, 'community_timeout', 'x'))).toBe('Community did not answer within 15 seconds. Try again.');
+    expect(errorText(new ApiError(401, 'device_unknown', 'x'))).toBe('Your Community sign-in was removed. Sign in again.');
+  });
 });

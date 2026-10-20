@@ -1,4 +1,4 @@
-import { apiRequest } from '../api';
+import { ApiError, apiRequest as send } from '../api';
 import type { AvatarUrl } from '../generated/community/AvatarUrl';
 import type { BlockList } from '../generated/community/BlockList';
 import type { Me } from '../generated/community/Me';
@@ -9,8 +9,16 @@ import type { Publication } from '../generated/community/Publication';
 import type { ReportList } from '../generated/community/ReportList';
 import type { UserPage } from '../generated/community/UserPage';
 import type { GroupBlock } from '../generated/GroupBlock';
+import { linkKeyRefused } from './link';
 
 const c = (path: string) => `/api/community/${path}`;
+
+/** Every Community call: a key the server refused (`device_unknown`) signs this computer out of Community. */
+const apiRequest = <T,>(...args: Parameters<typeof send>): Promise<T> =>
+  send<T>(...args).catch((e: unknown) => {
+    if (e instanceof ApiError && e.code === 'device_unknown') linkKeyRefused();
+    throw e;
+  });
 const id = encodeURIComponent;
 
 export type PublishRequest = { id?: string; expected_version?: number; title: string; description: string; license: string; tags: string[]; content: GroupBlock; reviewed: true };

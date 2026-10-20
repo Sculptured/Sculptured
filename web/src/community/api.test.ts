@@ -35,3 +35,20 @@ it('an old-style {"error":"text"} answer is community_bad_answer and its text is
   fakeFetch({ 'GET /api/community/blocks?q=&offset=0': () => [400, { error: 'Invalid search' }] });
   await expect(communityApi.blocks('', 0)).rejects.toMatchObject({ code: 'community_bad_answer', message: '' });
 });
+
+it('a device_unknown answer refreshes the link so the page shows signed out', async () => {
+  const { renderHook } = await import('@testing-library/react');
+  const { resetCommunityLink, useCommunityLink } = await import('./link');
+  resetCommunityLink();
+  let signedIn = true;
+  const { calls } = fakeFetch({
+    'GET /api/community-link': () => [200, { enabled: true, origin: 'http://stub', signed_in: signedIn, account: null }],
+    'GET /api/community/saved': () => { signedIn = false; return [401, { error: { code: 'device_unknown' } }]; },
+  });
+  const { result } = renderHook(() => useCommunityLink());
+  await vi.waitFor(() => expect(result.current.link?.signed_in).toBe(true));
+  await expect(communityApi.saved()).rejects.toMatchObject({ code: 'device_unknown' });
+  await vi.waitFor(() => expect(result.current.link?.signed_in).toBe(false));
+  expect(calls.filter((c) => c === 'GET /api/community-link')).toHaveLength(2);
+  resetCommunityLink();
+});

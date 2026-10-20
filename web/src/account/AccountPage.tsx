@@ -8,6 +8,7 @@ import { useHosted } from '../hosted/HostedGate';
 import { gw } from '../hosted/session';
 import { UsageSummary } from './UsageSummary';
 import { CliAccounts } from '../shell/CliAccounts';
+import { CommunityCard } from '../community/CommunityCard';
 import './account.css';
 
 /** Who you are (hosted beta) with Sign out, and your own use of Sculptured. */
@@ -23,6 +24,7 @@ export function AccountPage() {
       <h1>Your account</h1>
       {s.kind === 'signed-in' ? <SignedIn name={s.user.name} email={s.user.email} admin={s.user.role === 'admin'} /> :
         <p className="muted">Sculptured runs on this computer, so there is no account to sign in to. Your usage is below.</p>}
+      {s.kind === 'local' && <section aria-label="Community"><h2>Community</h2><CommunityCard /></section>}
       <section aria-label="Agent sign-in and plan usage">
         <h2>Agent sign-in and plan usage</h2>
         <p className="muted">Whether Claude Code and Codex are signed in on this computer, and how much of each plan is used, as each CLI reports it.</p>

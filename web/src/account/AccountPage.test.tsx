@@ -99,3 +99,27 @@ it('says plainly when nothing has run yet', async () => {
   serve({ ...usage, totals: { input: 0, output: 0, cache_read: 0, cache_write: 0, reports: 0 }, by_day: days.map((d) => ({ ...d, tokens: 0 })), by_runtime: [], top_teams: [], cost: { ...usage.cost, usd: 0, by_source: [], reports_without_cost: 0 } });
   expect(await screen.findByText(/No agent has used any tokens yet/)).toBeInTheDocument();
 });
+
+it('local: shows the Community card and turns Community off', async () => {
+  const { resetCommunityLink } = await import('../community/link');
+  resetCommunityLink();
+  const calls: string[] = [];
+  let on = true;
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+    const u = String(url);
+    const m = init?.method ?? 'GET';
+    calls.push(`${m} ${u}`);
+    if (u.endsWith('/api/account/usage')) return reply(200, usage);
+    if (u.endsWith('/api/community-link') && m === 'GET') return reply(200, on ? { enabled: true, origin: 'https://app.usesculptured.com', signed_in: true, account: { name: 'You Example', handle: 'you-example' } } : { enabled: false, origin: null, signed_in: false, account: null });
+    if (u.endsWith('/api/community-link') && m === 'DELETE') { on = false; return reply(200, { enabled: false }); }
+    return reply(200, {});
+  });
+  render(<MemoryRouter><AccountPage /></MemoryRouter>);
+  const card = await screen.findByRole('region', { name: 'Community' });
+  expect(await within(card).findByText('Signed in as You Example (@you-example)')).toBeInTheDocument();
+  expect(within(card).getByText(/app\.usesculptured\.com/)).toBeInTheDocument();
+  await userEvent.click(within(card).getByRole('button', { name: 'Turn off Community' }));
+  expect(calls).toContain('DELETE /api/community-link');
+  expect(await within(card).findByRole('link', { name: 'Open Community' })).toHaveAttribute('href', '/community');
+  resetCommunityLink();
+});

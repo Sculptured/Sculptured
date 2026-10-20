@@ -51,6 +51,14 @@ export const COMMUNITY_ERROR_WORDS: Record<string, string> = {
   invalid: 'Community did not accept that. Check what you entered, then try again.',
   device_unknown: 'Your Community sign-in was removed. Sign in again.',
   community_unavailable: 'Community is not available on this Sculptured server right now.',
+  // Between this computer and Community (controld's own answers, and the gateway's while signing in).
+  community_off: 'Community is off on this computer. Turn it on to use it.',
+  community_unreachable: 'Could not reach Community. Check your internet connection, then try again.',
+  community_timeout: 'Community did not answer within 15 seconds. Try again.',
+  community_too_large: 'That is too large to send to Community (the limit is 300 KB).',
+  community_origin_invalid: 'Use an https:// address, such as https://app.usesculptured.com.',
+  bad_scope: `Sculptured refused this kind of sign-in. ${RELOAD}`,
+  too_many_attempts: 'Too many sign-in attempts. Wait a few minutes, then try again.',
 };
 
 export const ERROR_WORDS: Record<string, string> = {
