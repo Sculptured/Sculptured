@@ -10,7 +10,8 @@ import './community.css';
 type Me = { user: MeUser | null; state: CommunityState['meState']; error: unknown };
 
 /** Every Community page: your profile (when signed in), the tab row, then the page. `signInOpen`
- * (this computer, after "Turn on and sign in") shows the code to approve above the page. */
+ * (this computer, after "Turn on and sign in") shows the code to approve above the page, and then
+ * who you are signed in as. */
 export function CommunityLayout({ signedIn, workspace, signInOpen = false }: { signedIn: boolean; workspace: boolean; signInOpen?: boolean }) {
   const [me, setMe] = useState<Me>({ user: null, state: signedIn ? 'loading' : 'ready', error: null });
   const reloadMe = useCallback(async () => {
@@ -24,7 +25,7 @@ export function CommunityLayout({ signedIn, workspace, signInOpen = false }: { s
     <CommunityContext.Provider value={state}>
       <main className="page page-wide community" data-vocab="community">
         <CommunityTabs />
-        {signInOpen && !signedIn && <SignInToSculptured />}
+        {signInOpen && <SignInToSculptured />}
         <Outlet />
       </main>
     </CommunityContext.Provider>

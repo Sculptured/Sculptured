@@ -179,3 +179,26 @@ it('this computer: signed in, the profile loads; a refused key shows signed out'
   expect(await screen.findByText(/Sign in to see what you saved/)).toBeVisible();
   resetCommunityLink();
 });
+
+it('this computer: once the code is approved the panel says who you are signed in as', async () => {
+  const { resetCommunityLink } = await import('./link');
+  resetCommunityLink();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let on = false;
+  let approved = false;
+  fakeFetch({
+    'GET /api/community-link': () => [200, on ? linkOn(approved) : linkOff],
+    'POST /api/community-link/enable': () => { on = true; return [200, linkOn()]; },
+    'POST /api/community-link/pair': () => [200, { user_code: 'ABCD-EFGH', verify_url: 'https://app.usesculptured.com/connect?code=ABCD-EFGH', expires_in: 600 }],
+    'GET /api/community-link/pair': () => { approved = true; return [200, { status: 'approved' }]; },
+    'GET /api/community/me': () => [200, { user: meUser() }],
+    'GET /api/community/blocks?q=&offset=0': () => [200, { blocks: [] }],
+  });
+  at('/community', local);
+  (await screen.findByRole('button', { name: 'Turn on and sign in' })).click();
+  expect(await screen.findByText('ABCD-EFGH')).toBeVisible();
+  await vi.advanceTimersByTimeAsync(2100);
+  expect(await screen.findByText('Signed in as You Example')).toBeVisible();
+  vi.useRealTimers();
+  resetCommunityLink();
+});

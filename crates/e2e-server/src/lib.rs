@@ -17,6 +17,8 @@ pub const HOME_FOLDERS: [&str; 2] = ["projects/alpha", "projects/beta"];
 pub struct Session {
     tmp: Option<tempfile::TempDir>,
     serve: Option<Child>,
+    /// `fake-community`, the stub Sculptured server Community goes through in e2e.
+    stub: Option<Child>,
 }
 
 impl Session {
@@ -26,7 +28,7 @@ impl Session {
         for f in HOME_FOLDERS {
             std::fs::create_dir_all(tmp.path().join("home").join(f))?;
         }
-        Ok(Self { tmp: Some(tmp), serve: None })
+        Ok(Self { tmp: Some(tmp), serve: None, stub: None })
     }
 
     pub fn root(&self) -> &Path {
@@ -53,23 +55,25 @@ impl Session {
     pub fn serve_mut(&mut self) -> Option<&mut Child> {
         self.serve.as_mut()
     }
+    /// Hands the running `fake-community` to the session, which stops it on shutdown.
+    pub fn adopt_stub(&mut self, child: Child) {
+        self.stub = Some(child);
+    }
+    pub fn stub_mut(&mut self) -> Option<&mut Child> {
+        self.stub.as_mut()
+    }
 
-    /// Stops serve (SIGTERM, then SIGKILL after 10 s), then hostd, then removes the directory.
-    /// Safe to call more than once.
+    /// Stops serve (SIGTERM, then SIGKILL after 10 s), then hostd, then the Community stub
+    /// (SIGTERM, then SIGKILL after 5 s), then removes the directory. Safe to call more than once.
     pub fn shutdown(&mut self) {
-        if let Some(mut child) = self.serve.take() {
-            if matches!(child.try_wait(), Ok(None)) {
-                signal(child.id() as i32, libc::SIGTERM);
-                let deadline = Instant::now() + Duration::from_secs(10);
-                while matches!(child.try_wait(), Ok(None)) && Instant::now() < deadline {
-                    std::thread::sleep(Duration::from_millis(50));
-                }
-                let _ = child.kill();
-            }
-            let _ = child.wait();
+        if let Some(child) = self.serve.take() {
+            stop_child(child, Duration::from_secs(10));
         }
         if let Some(tmp) = self.tmp.as_ref() {
             stop_hostd(&tmp.path().join("data").join("host-local").join("hostd.pid"), tmp.path());
+        }
+        if let Some(child) = self.stub.take() {
+            stop_child(child, Duration::from_secs(5));
         }
         if let Some(tmp) = self.tmp.take()
             && let Err(e) = tmp.close()
@@ -83,6 +87,19 @@ impl Drop for Session {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+/// A child this session started: SIGTERM to its own pid, then SIGKILL after `grace`.
+fn stop_child(mut child: Child, grace: Duration) {
+    if matches!(child.try_wait(), Ok(None)) {
+        signal(child.id() as i32, libc::SIGTERM);
+        let deadline = Instant::now() + grace;
+        while matches!(child.try_wait(), Ok(None)) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = child.kill();
+    }
+    let _ = child.wait();
 }
 
 fn signal(pid: i32, sig: i32) {

@@ -119,3 +119,13 @@ fn a_session_dropped_early_still_removes_its_directory() {
     };
     assert!(!root.exists());
 }
+
+#[test]
+fn shutdown_stops_the_community_stub_too() {
+    let mut session = Session::new().unwrap();
+    let stub = sleeper();
+    let pid = stub.id() as i32;
+    session.adopt_stub(stub);
+    session.shutdown();
+    assert!(!alive(pid), "the stub is stopped");
+}
