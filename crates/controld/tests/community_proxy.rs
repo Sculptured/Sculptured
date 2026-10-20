@@ -102,15 +102,21 @@ async fn every_proxied_answer_is_sandboxed_and_nosniff() {
 }
 
 #[tokio::test]
-async fn a_request_body_over_300_kb_is_refused_before_sending() {
+async fn a_request_body_over_communitys_own_limit_is_refused_before_sending() {
+    assert_eq!(controld::community::proxy::MAX_REQUEST_BYTES, 1_100_000, "the same limit as Community's");
     let (s, stub) = with_stub().await;
     on(&s).await;
     signed_in(&s, &stub);
     let put = |n: usize| req("PUT", "/api/community/me/avatar").header("content-type", "image/png").body(Body::from(vec![0u8; n])).unwrap();
-    let (st, _, body) = raw(&s.router, put(307_201)).await;
+    let (st, _, body) = raw(&s.router, put(1_200_000)).await;
     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!((st.as_u16(), v["error"]["code"].as_str()), (413, Some("community_too_large")));
     assert!(stub.requests().iter().all(|r| r.method != "PUT"), "nothing was sent");
+    // A 600 KB body (a large group) goes through; here the server itself refuses it as a picture.
+    let (st, _, body) = raw(&s.router, put(600_000)).await;
+    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!((st.as_u16(), v["error"]["code"].as_str()), (413, Some("avatar_too_large")));
+    assert!(stub.requests().iter().any(|r| r.method == "PUT" && r.body.len() == 600_000));
     assert_eq!(raw(&s.router, put(262_144)).await.0.as_u16(), 200);
 }
 

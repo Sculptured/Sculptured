@@ -161,7 +161,7 @@ Block list and detail responses also carry `kind: "group" | "component"` (added 
 - `/api/community/{path}` is forwarded to `{origin}/api/community/{path}` only when enabled.
 - Only the C3 method and path patterns are allowed; anything else gets `404`.
 - It strips `Cookie`, `Origin` and `X-CSRF-Token`, and adds `Bearer` when signed in.
-- Request body ≤ 300 KB, response ≤ 2 MB, 15 s timeout.
+- Request body ≤ 1.1 MB (1,100,000 bytes, as Community accepts), response ≤ 2 MB, 15 s timeout.
 - When off, every `/api/community/*` request returns `409 {"error":{"code":"community_off"}}`.
 - **On `401 device_unknown` from upstream,** controld marks the link signed out: it deletes the key and keeps the origin. The page then says "Your Community sign-in was removed. Sign in again."
 - **To check a key,** controld calls `GET {origin}/api/community/me`.

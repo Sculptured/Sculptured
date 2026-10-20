@@ -10,7 +10,9 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use std::sync::Arc;
 
-pub const MAX_REQUEST_BYTES: usize = 300 * 1024;
+/// The same as Community's own request limit (its `DefaultBodyLimit`), so a group that publishes
+/// from the hosted app publishes from here too.
+pub const MAX_REQUEST_BYTES: usize = 1_100_000;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 /// R7: an upstream SVG opened directly on this origin must not run script.

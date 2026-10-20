@@ -55,7 +55,7 @@ export const COMMUNITY_ERROR_WORDS: Record<string, string> = {
   community_off: 'Community is off on this computer. Turn it on to use it.',
   community_unreachable: 'Could not reach Community. Check your internet connection, then try again.',
   community_timeout: 'Community did not answer within 15 seconds. Try again.',
-  community_too_large: 'That is too large to send to Community (the limit is 300 KB).',
+  community_too_large: 'That is too large to send to Community (the limit is 1.1 MB).',
   community_origin_invalid: 'Use an https:// address, such as https://app.usesculptured.com.',
   bad_scope: `Sculptured refused this kind of sign-in. ${RELOAD}`,
   too_many_attempts: 'Too many sign-in attempts. Wait a few minutes, then try again.',

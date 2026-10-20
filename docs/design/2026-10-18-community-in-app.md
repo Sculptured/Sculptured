@@ -55,7 +55,7 @@ The contracts win where they refine the design.
 |---|---|
 | Default origin | `https://app.usesculptured.com` |
 | Allowed origins | `https://…`, or `http://127.0.0.1:<port>` / `http://localhost:<port>` |
-| Proxy request body | ≤ 300 KB (`307200` bytes) |
+| Proxy request body | ≤ 1.1 MB (`1100000` bytes, Community's own limit) |
 | Proxy response | ≤ 2 MB (`2097152` bytes) |
 | Proxy timeout | 15 s |
 | Avatar | ≤ `262144` bytes, `image/png\|jpeg\|webp` |
@@ -589,7 +589,7 @@ git commit -m "controld: sign in to Sculptured for Community with a community-sc
 - Produces:
 
 ```rust
-pub const MAX_REQUEST_BYTES: usize = 300 * 1024;
+pub const MAX_REQUEST_BYTES: usize = 1_100_000;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 /// `path` is what follows /api/community/ (no query). Segments must be [A-Za-z0-9_-]{1,100}.
 pub fn allowed(method: &axum::http::Method, path: &str) -> bool;
@@ -656,7 +656,7 @@ POST blocks/*/save | DELETE blocks/*/save | POST blocks/*/report | GET saved | G
     // GET users/ana/avatar → content-security-policy contains "sandbox" and "default-src 'none'"; x-content-type-options nosniff
 }
 #[tokio::test] async fn a_request_body_over_300_kb_is_refused_before_sending() {
-    // PUT me/avatar with 307_201 bytes → 413 community_too_large, stub saw no PUT; 262_144 bytes → reaches stub (200)
+    // PUT me/avatar with 1_200_000 bytes → 413 community_too_large, stub saw no PUT; 600_000 bytes → reaches stub
 }
 #[tokio::test] async fn an_answer_over_2_mb_is_community_bad_answer() { /* GET blocks?q=huge → 502 community_bad_answer */ }
 #[tokio::test] async fn a_non_json_non_image_answer_is_community_bad_answer() { /* GET blocks?q=html → 502 community_bad_answer */ }
@@ -775,7 +775,7 @@ export const COMMUNITY_ERROR_WORDS: Record<string, string> = {
   community_off: 'Community is off on this computer. Turn it on to use it.',
   community_unreachable: 'Could not reach Community. Check your internet connection, then try again.',
   community_timeout: 'Community did not answer within 15 seconds. Try again.',
-  community_too_large: 'That is too large to send to Community (the limit is 300 KB).',
+  community_too_large: 'That is too large to send to Community (the limit is 1.1 MB).',
   community_bad_answer: 'Community answered in a way Sculptured does not accept. Try again later.',
   community_origin_invalid: 'Use an https:// address, such as https://app.usesculptured.com.',
   // C3 generic and new codes
