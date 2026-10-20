@@ -13,9 +13,6 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
   - Codex agents get `model_auto_compact_token_limit` at twice the team's context ceiling (`LaunchParams.compact_tokens`), so a long turn compacts before it reaches the model's window.
   - The protection guard refuses a shell step that sleeps longer than 30 seconds and says to end the turn instead.
 
-### Fixed
-- `sculptured run` with a long `--data-dir` failed to bind the agent tool socket (path longer than a Unix socket allows); the socket now goes in a private folder under the runtime directory when the path would be too long.
-
 ### Added
 - Clusters on the hosted Computers page (`web/src/hosted/Clusters.tsx`, gateway routes `/gw/api/clusters*`): add a login node (host, port, user, optional jump host; a key the server makes, a pasted key or a password), answer its MFA questions in place, see the authorized_keys line, the doctor report and the audit log of every SSH action; Reconnect and Remove.
 - Questions pages: `GET /api/teams/{id}/questions` (every question of a team, newest first, at most 500; the agent list now returns up to 200); the project's **Questions** tab (`/p/:team/questions`) and each agent's **Questions** tab (`questions/QuestionLog`): open questions answered in place (the existing question card), answers with the offered choices and the one picked, the agent's own decision on expiry, late answers, withdrawn ones; filters by outcome and agent.
@@ -35,6 +32,7 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 - Claim checks (`claims.rs`): at each completed turn, a claimed file change without a captured edit, or "tests pass" with no command run, is logged as a heuristic `claim-check` entry. An idea from Arbiter.
 
 ### Fixed
+- `sculptured run` with a long `--data-dir` failed to bind the agent tool socket (path longer than a Unix socket allows); the socket now goes in a private folder under the runtime directory when the path would be too long.
 - Contract write limits were never enforced: the guard hook matched only `Read|Bash`. The matcher now includes the edit tools when a contract limits writes, and every tool when safety rules exist (`GuardRules::hook_matcher`).
 - Agent skills (MADL MEP 0004): `AgentAdvanced.skills` (`model::Skill { name, description, body }`, Agent Skills format, checked as `skill-invalid`), edited on the agent panel (full-size editor, Load from file for a `SKILL.md`). Sent as `LaunchParams.skills` (runner feature `skills`): Claude Code gets a per-agent plugin folder in the runner's data dir via `--plugin-dir`; other CLIs get the list in their briefing and a `read_skill` agent tool. MADL embeds them; named-only skills are reported as not imported.
 - Integrations: `AgentAdvanced.integrations` (`kindex`), sent as `LaunchParams.integrations` (runner feature `integrations`). The runner finds `kin-mcp` itself and adds it as an MCP server (Claude `--mcp-config`, Codex `mcp_servers.kindex.*`); missing, the agent starts without it and a `features-dropped` note says how to install it.
