@@ -1,13 +1,14 @@
 //! Community on a self-run install (C5). Off until the user turns it on: then controld keeps a
 //! community-scope device key (`creds`), reports the link (`link`) and forwards an allow-listed
 //! `/api/community/*` to the Sculptured server with that key. The browser never sees the key.
+pub mod allow;
 pub mod creds;
 mod link;
 mod pairing;
+pub mod proxy;
 
 use crate::state::AppState;
 use axum::Router;
-use axum::extract::State;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -208,14 +209,5 @@ pub(crate) fn saved_origin(st: &AppState) -> Result<Option<String>, crate::ApiEr
 
 /// `/api/community-link*` and the `/api/community/*` proxy.
 pub fn routes() -> Router<AppState> {
-    link::routes().merge(pairing::routes()).route("/api/community/{*path}", axum::routing::any(forward))
-}
-
-/// `/api/community/*`: refused while Community is off (`409 community_off`).
-async fn forward(State(st): State<AppState>) -> Result<axum::response::Response, crate::ApiError> {
-    let on = st.community.is_some() && saved_origin(&st)?.is_some();
-    if !on {
-        return Err(crate::ApiError::conflict("community_off", "Community is off on this computer"));
-    }
-    Err(crate::ApiError::not_found("no API route"))
+    link::routes().merge(pairing::routes()).route("/api/community/{*path}", axum::routing::any(proxy::forward))
 }
