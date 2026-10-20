@@ -4,28 +4,29 @@ import { WORDS } from '../vocab';
 import type { AgentRow } from './model';
 import { Icon, StateMark } from './ui';
 
-/** Ray lengths of the Claude starburst, going round from the top: uneven, like a hand-cut spark. */
-const RAYS = [19, 15, 18, 14.5, 19.5, 15.5, 18.5, 14, 19, 16, 18, 15];
-
 /**
- * The Claude starburst: the app's asterisk mark (`claude` in icons.tsx) drawn out to twelve
- * uneven rays. Drawn here; no outside artwork.
+ * The Claude Code pixel guy on an 18 × 10 grid of tall pixels (1 wide, 2 high), read off the block
+ * art Claude Code prints at start: ` ▐▛███▜▌` / `▝▜█████▛▘` / `  ▘▘ ▝▝`. Body with its arms and
+ * two eye holes, then the legs in two pairs that step in turn while it works. Drawn here; no
+ * outside artwork. `claude` in icons.tsx is the same shape at icon size.
  */
-function ClaudeBurst() {
+const CLAWD_BODY = 'M3 0H15V4H17V6H15V8H3V6H1V4H3ZM5 2H6V4H5ZM12 2H13V4H12Z';
+const CLAWD_LEGS_A = 'M4 8h1v2h-1ZM11 8h1v2h-1Z';
+const CLAWD_LEGS_B = 'M6 8h1v2h-1ZM13 8h1v2h-1Z';
+
+function ClaudeGuy() {
   return (
-    <svg className="logo-svg" viewBox="0 0 48 48" width="52" height="52" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinecap="round">
-      {RAYS.map((r, i) => {
-        const a = (i / RAYS.length) * 2 * Math.PI - Math.PI / 2;
-        const f = (n: number) => Math.round(n * 100) / 100;
-        return <line key={i} x1={f(24 + Math.cos(a) * 3)} y1={f(24 + Math.sin(a) * 3)} x2={f(24 + Math.cos(a) * r)} y2={f(24 + Math.sin(a) * r)} />;
-      })}
+    <svg className="logo-svg clawd" viewBox="0 -1 18 12" width="66" height="44" aria-hidden="true" focusable="false" fill="currentColor" shapeRendering="crispEdges">
+      <path className="clawd-body" fillRule="evenodd" d={CLAWD_BODY} />
+      <path className="clawd-legs-a" d={CLAWD_LEGS_A} />
+      <path className="clawd-legs-b" d={CLAWD_LEGS_B} />
     </svg>
   );
 }
 
-/** The provider's mark, large: Claude's starburst, the Codex mark, the Practice flask, or a neutral bot. */
+/** The provider's mark, large: the Claude Code guy, the Codex mark, the Practice flask, or a neutral bot. */
 export function BrandLogo({ v }: { v: Vendor }) {
-  if (v.cls === 'v-claude') return <ClaudeBurst />;
+  if (v.cls === 'v-claude') return <ClaudeGuy />;
   if (v.cls === 'v-codex') return <Icon name="codex" size={50} strokeWidth={1.7} className="logo-svg" />;
   if (v.cls === 'v-practice') return <Icon name="practice" size={46} strokeWidth={1.7} className="logo-svg" />;
   return <Icon name={v.name === 'unknown' ? 'unknown' : 'bot'} size={44} strokeWidth={1.7} className="logo-svg" />;

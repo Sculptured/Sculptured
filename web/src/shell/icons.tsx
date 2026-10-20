@@ -263,13 +263,12 @@ const PATHS = {
       <path d="M8 16H3v5" />
     </>
   ),
-  /** Lucide `asterisk`: the Claude mark. */
+  /** The Claude Code pixel guy, drawn here from its terminal block art (CLAWD_* in LogoNode.tsx). */
   claude: (
-    <>
-      <path d="M12 6v12" />
-      <path d="M17.196 9 6.804 15" />
-      <path d="m6.804 9 10.392 6" />
-    </>
+    <g transform="translate(0 5.33) scale(1.3333)" fill="currentColor" stroke="none" shapeRendering="crispEdges">
+      <path fillRule="evenodd" d="M3 0H15V4H17V6H15V8H3V6H1V4H3ZM5 2H6V4H5ZM12 2H13V4H12Z" />
+      <path d="M4 8h1v2h-1ZM6 8h1v2h-1ZM11 8h1v2h-1ZM13 8h1v2h-1Z" />
+    </g>
   ),
   /** A diamond in a diamond: the Codex mark (drawn here). */
   codex: (

@@ -16,12 +16,7 @@ export function sanitizeExport(input: GroupBlock): GroupBlock {
       ||ids.size!==d.agents.length||d.agents.some(a=>!a||!validString(a.id)||!validString(a.name)||!validString(a.job)||!['claude','codex','practice'].includes(a.kind)||a.group_id!==g.id||![a.x,a.y].every(Number.isFinite))
       ||!Array.isArray(d.connections)||d.connections.length>500||d.connections.some(c=>!c||!validString(c.id)||!ids.has(c.from)||!ids.has(c.to)||!['hands-work-to','reports-to','watches'].includes(c.kind)))
     throw Error('Choose a valid group export from Sculptured Library');
-  if(d.workflow) {
-    const w=d.workflow;
-    if(!Array.isArray(w.stages)||w.stages.length>100||d.connections.length)throw Error('Invalid group workflow');
-    const stages=new Set(w.stages.map(s=>s?.id));
-    if(stages.size!==w.stages.length||w.stages.some(s=>!s||!validString(s.id)||!validString(s.name)||!ids.has(s.agent)||!s.routes||typeof s.routes!=='object'||Array.isArray(s.routes)||Object.values(s.routes).some(to=>to!==null&&!stages.has(to))||s.workers!==undefined&&(!Array.isArray(s.workers)||s.workers.some(id=>!ids.has(id)))))throw Error('Invalid group workflow references');
-  }
+  if(d.workflow) checkWorkflow(d.workflow, ids, d.connections.length);
   b.revision = 0; b.boundary_notes = [];
   delete b.source; // where a Library copy came from stays on this computer
   b.draft.revision = 0;
@@ -50,4 +45,18 @@ export function downloadBlock(b: GroupBlock) {
   a.download = `${b.id}.group.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** As Community checks it: stages with unique ids and routes inside the workflow; check, person and merge
+ * stages and review panels have no single agent; every agent a stage names is in the group. */
+function checkWorkflow(w: NonNullable<GroupBlock['draft']['workflow']>, ids: Set<string>, connections: number) {
+  const validString=(v:unknown)=>typeof v==='string'&&v.length<=200000;
+  if(!Array.isArray(w.stages)||w.stages.length>100||connections)throw Error('Invalid group workflow');
+  const stages=new Set(w.stages.map(s=>s?.id));
+  const members=(l:unknown)=>l===undefined||(Array.isArray(l)&&l.every(id=>ids.has(id)));
+  const agentOk=(st:typeof w.stages[number])=>{
+    const agentless=(st.kind!==undefined&&st.kind!=='agent')||(st.reviewers?.length??0)>0;
+    return agentless?(!st.agent||ids.has(st.agent)):ids.has(st.agent);
+  };
+  if(stages.size!==w.stages.length||w.stages.some(s=>!s||!validString(s.id)||!validString(s.name)||!agentOk(s)||!members(s.reviewers)||!members(s.workers)||!s.routes||typeof s.routes!=='object'||Array.isArray(s.routes)||Object.values(s.routes).some(to=>to!==null&&!stages.has(to))))throw Error('Invalid group workflow references');
 }
