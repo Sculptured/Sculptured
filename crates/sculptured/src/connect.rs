@@ -44,25 +44,24 @@ pub(crate) fn http() -> reqwest::Client { tls_provider(); reqwest::Client::build
 
 /// Runs the pairing: shows the code via `on_code(code, url)`, waits for approval, returns the credentials.
 pub async fn pair(origin: &str, name: &str, platform: &str, on_code: impl Fn(&str, &str)) -> Result<Credentials, String> {
+    use controld::device_pairing::{self, Poll, StartError};
     let origin = origin.trim_end_matches('/');
-    #[derive(Deserialize)] struct Start { device_code: String, user_code: String, verify_url: String, interval: u64, expires_in: u64 }
     let c = http();
-    let s: Start = c.post(format!("{origin}/gw/api/device/start")).header("origin", origin).json(&serde_json::json!({"name": name, "platform": platform}))
-        .send().await.map_err(|e| format!("cannot reach {origin}: {e}"))?.error_for_status().map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
+    let s = device_pairing::start(&c, origin, name, platform, None).await.map_err(|e| match e {
+        StartError::Network(m) => m,
+        StartError::Refused { status, code } => format!("{origin} refused the pairing ({status} {code})"),
+    })?;
     on_code(&s.user_code, &s.verify_url);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(s.expires_in);
+    let expired = || "The code expired before it was approved. Run `sculptured connect` again.".to_string();
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(s.interval.clamp(1, 30))).await;
-        if std::time::Instant::now() > deadline { return Err("The code expired before it was approved. Run `sculptured connect` again.".into()) }
-        let r = c.post(format!("{origin}/gw/api/device/token")).header("origin", origin).json(&serde_json::json!({"device_code": s.device_code})).send().await.map_err(|e| e.to_string())?;
-        match r.status().as_u16() {
-            200 => {
-                #[derive(Deserialize)] struct Got { device_id: String, device_key: String }
-                let g: Got = r.json().await.map_err(|e| e.to_string())?;
-                return Ok(Credentials { origin: origin.to_string(), device_id: g.device_id, key: g.device_key });
-            }
-            428 => continue,
-            _ => return Err("Pairing was not approved in time or was refused. Run `sculptured connect` again.".into()),
+        if std::time::Instant::now() > deadline { return Err(expired()) }
+        match device_pairing::poll_once(&c, origin, &s.device_code).await {
+            Ok(Poll::Approved { device_id, key }) => return Ok(Credentials { origin: origin.to_string(), device_id, key }),
+            Ok(Poll::Pending) | Err(_) => continue,
+            Ok(Poll::Expired) => return Err(expired()),
+            Ok(Poll::Denied) => return Err("Pairing was not approved in time or was refused. Run `sculptured connect` again.".into()),
         }
     }
 }

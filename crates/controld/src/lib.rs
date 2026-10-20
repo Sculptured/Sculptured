@@ -8,6 +8,7 @@ pub mod generate;
 pub mod analytics;
 pub mod clis;
 pub mod community;
+pub mod device_pairing;
 pub mod checks;
 pub mod hosted;
 pub mod copies;

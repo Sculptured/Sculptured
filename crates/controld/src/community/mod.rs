@@ -3,6 +3,7 @@
 //! `/api/community/*` to the Sculptured server with that key. The browser never sees the key.
 pub mod creds;
 mod link;
+mod pairing;
 
 use crate::state::AppState;
 use axum::Router;
@@ -10,6 +11,7 @@ use axum::extract::State;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use ts_rs::TS;
 
@@ -36,6 +38,33 @@ pub struct CommunityLinkAccount {
     pub handle: Option<String>,
 }
 
+/// `POST /api/community-link/pair`: the code to show and where to approve it.
+#[derive(Clone, Debug, Serialize, TS)]
+#[ts(export)]
+pub struct CommunityPairStarted {
+    pub user_code: String,
+    pub verify_url: String,
+    #[ts(type = "number")]
+    pub expires_in: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum CommunityPairState {
+    Pending,
+    Approved,
+    Expired,
+    Denied,
+}
+
+/// `GET /api/community-link/pair`.
+#[derive(Clone, Debug, Serialize, TS)]
+#[ts(export)]
+pub struct CommunityPairStatus {
+    pub status: CommunityPairState,
+}
+
 impl CommunityLinkView {
     pub fn off() -> Self {
         Self { enabled: false, origin: None, signed_in: false, account: None }
@@ -51,6 +80,10 @@ pub struct CommunityLink {
     pub(crate) timeout: Duration,
     /// (bearer it was read with, when, the account).
     account: Mutex<Option<(String, Instant, CommunityLinkAccount)>>,
+    /// The latest pairing: its generation and state. A newer pairing or turning off bumps
+    /// `generation`, so an older poll stops and never saves its key.
+    pairing: Mutex<Option<(u64, CommunityPairState)>>,
+    generation: AtomicU64,
 }
 
 impl CommunityLink {
@@ -58,7 +91,7 @@ impl CommunityLink {
         // The same provider as analytics, the runner's link and pairing (installing twice is harmless).
         let _ = rustls::crypto::ring::default_provider().install_default();
         let http = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build().expect("http client");
-        Self { data_dir, default_origin, http, timeout: PROXY_TIMEOUT, account: Mutex::new(None) }
+        Self { data_dir, default_origin, http, timeout: PROXY_TIMEOUT, account: Mutex::new(None), pairing: Mutex::new(None), generation: AtomicU64::new(0) }
     }
 
     /// Tests only shorten it.
@@ -86,6 +119,34 @@ impl CommunityLink {
             tracing::warn!(error = %e, "could not remove community.json");
         }
         self.forget_account();
+    }
+
+    /// A new pairing, pending; earlier ones stop.
+    pub(crate) fn begin_pairing(&self) -> u64 {
+        let g = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        *self.pairing.lock().unwrap() = Some((g, CommunityPairState::Pending));
+        g
+    }
+
+    pub(crate) fn is_current(&self, generation: u64) -> bool {
+        self.generation.load(Ordering::SeqCst) == generation
+    }
+
+    pub(crate) fn finish_pairing(&self, generation: u64, state: CommunityPairState) {
+        let mut p = self.pairing.lock().unwrap();
+        if p.is_some_and(|(g, _)| g == generation) {
+            *p = Some((generation, state));
+        }
+    }
+
+    pub(crate) fn pairing_state(&self) -> Option<CommunityPairState> {
+        self.pairing.lock().unwrap().map(|(_, s)| s)
+    }
+
+    /// Stops any pairing in flight and forgets its state.
+    pub(crate) fn cancel_pairing(&self) {
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        *self.pairing.lock().unwrap() = None;
     }
 
     pub(crate) fn forget_account(&self) {
@@ -147,7 +208,7 @@ pub(crate) fn saved_origin(st: &AppState) -> Result<Option<String>, crate::ApiEr
 
 /// `/api/community-link*` and the `/api/community/*` proxy.
 pub fn routes() -> Router<AppState> {
-    link::routes().route("/api/community/{*path}", axum::routing::any(forward))
+    link::routes().merge(pairing::routes()).route("/api/community/{*path}", axum::routing::any(forward))
 }
 
 /// `/api/community/*`: refused while Community is off (`409 community_off`).

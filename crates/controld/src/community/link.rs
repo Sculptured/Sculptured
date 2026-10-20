@@ -31,6 +31,7 @@ async fn enable(State(st): State<AppState>, Json(req): Json<Enable>) -> Result<J
     let Some(link) = st.community.clone() else { return Err(ApiError::not_found("Community is not available here")) };
     let origin = crate::settings::valid_origin(req.origin.as_deref().unwrap_or(link.default_origin()))?;
     if creds::load(link.data_dir()).is_some_and(|c| c.origin != origin) {
+        link.cancel_pairing();
         link.sign_out();
     }
     set_origin(&st, Some(origin.clone()))?;
@@ -41,6 +42,7 @@ async fn enable(State(st): State<AppState>, Json(req): Json<Enable>) -> Result<J
 /// most), then forgets the key and the server.
 async fn turn_off(State(st): State<AppState>) -> Result<Json<Value>, ApiError> {
     if let Some(link) = st.community.clone() {
+        link.cancel_pairing();
         if let Some(c) = creds::load(link.data_dir()) {
             let revoke = link.http.post(format!("{}/gw/api/device/revoke", c.origin)).bearer_auth(c.bearer()).header("origin", &c.origin).timeout(REVOKE_TIMEOUT);
             let _ = revoke.send().await;
