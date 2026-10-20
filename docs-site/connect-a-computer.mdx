@@ -197,7 +197,29 @@ A team runs on the computer chosen under **Run on** in its Design panel. One age
 
 <Note>Run Sculptured only where the computer's owner allows long-running programs. Many clusters forbid them on login nodes: ask your cluster's support first.</Note>
 
-### On a cluster
+### Add a cluster from the web app
+
+On the hosted service you can connect a cluster without installing anything yourself: Sculptured's server signs in to the login node over SSH, sets up the runner there and keeps it running.
+
+1. **Check your site's rules first.** Many clusters limit long-running programs, or AI tools, on login nodes. The runner is small and mostly waits, but some sites want it under `scrontab` or on a service node instead.
+2. On **Computers**, choose **Add a cluster**. Give the login node's host name, the port (22 unless your site says otherwise), your user name there and, if you reach it through a jump host (bastion), that host too.
+3. Choose how Sculptured signs in:
+   - **A key Sculptured makes** (recommended). Sculptured makes a key pair just for this cluster and shows its public half, with the exact line to add to `~/.ssh/authorized_keys` on the login node (and the line for the jump host, which allows a connection to the login node only). Add it, then choose **Connect**. The private half never leaves the server.
+   - **A private key you paste**, with its passphrase if it has one. The passphrase is used once to read the key and is not kept.
+   - **A password.**
+
+   Saved keys and passwords are encrypted with a server key kept outside the database, are never shown again, and are deleted when you remove the cluster.
+4. If the cluster asks for a code when anyone signs in (Duo, an OTP), the card shows its question; type the answer there. It is used once and never stored.
+
+Sculptured then copies the runner to `~/.sculptured/bin` on the login node, writes its own key to `~/.sculptured/runner/device.json` (readable only by you), starts it in a tmux session named `sculptured-runner` (with `nohup` where there is no tmux), runs `sculptured doctor` there and shows the report. From then on the cluster is one of your computers: agents can run on it, and messages and handoffs reach them as on any other computer.
+
+**Keeping it running.** If the cluster's runner loses its link for more than a few minutes, for example after the login node restarts, Sculptured signs in again and restarts it. A cluster that asks for a code at sign-in can't be reconnected without you: its card says **Reconnect needs your code** until you choose **Reconnect** and answer.
+
+**What Sculptured did.** Each cluster's card lists every SSH action with its time: connected, signed in, installed, paired, started or restarted, and anything that failed, with the reason. It also shows the login node's host key fingerprint. Sculptured saves that key the first time it connects and refuses to sign in if it ever changes.
+
+**Remove** deletes the saved key or password and revokes the runner's key; the runner on the cluster stops by itself. Remove the line you added to `~/.ssh/authorized_keys`, and `~/.sculptured` if you like.
+
+### Set up a cluster yourself
 
 1. Install Sculptured on the login node and run `sculptured doctor`. Under **This computer** it says whether the runner keeps running after you log out, whether the node reaches your Sculptured account, Anthropic and OpenAI, and which proxy settings are set (names only).
 2. If user services don't run there (common on clusters), keep the runner in tmux, where your site allows it: `tmux new -d -s sculptured 'sculptured connect <your Sculptured address>'`. Some sites offer scheduled jobs for this instead, such as NERSC's `scrontab`.
