@@ -1,3 +1,5 @@
+pub mod community_stub;
+
 use std::path::PathBuf;
 
 /// Scrubbed real protocol recordings from the M0 spike.
