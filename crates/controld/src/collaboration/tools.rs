@@ -113,6 +113,24 @@ async fn message(st: &AppState, seat: &str, args: &Value, key: &str) -> Result<V
         }
     }
     let id = uuid::Uuid::new_v4().to_string();
+    // A status note to an idle agent waits for its next message instead of starting a turn (an idle
+    // agent re-reads its whole context to answer it). A note to a busy agent rides its current turn.
+    let fyi = args.get("fyi").and_then(Value::as_bool).unwrap_or(false);
+    let idle = {
+        let view = st.store.lock().unwrap().seat(&target.id).map_err(err)?;
+        view.is_some_and(|v| v.lifecycle == SeatLifecycle::Running && v.activity == model::SeatActivity::Idle)
+    };
+    if fyi && idle {
+        let result = json!({"text":format!("Note {id} held for {}: it is idle, so the note reaches it with its next message.",target.id),"message_id":id});
+        let mut store = st.store.lock().unwrap();
+        store.save_tool_receipt(key, &args.to_string(), &result.to_string()).map_err(err)?;
+        store.hold_note(&id, &target.id, seat, text).map_err(err)?;
+        let item = store
+            .append_local(Actor::Seat(seat.into()), Subject::Seat(target.id.clone()), Provenance::AgentReported, EventBody::MessageQueued { message_id: id.clone(), intent: MessageIntent::Inform, text: text.into() })
+            .map_err(err)?;
+        st.publish(vec![item]);
+        return Ok(result);
+    }
     let text = crate::team_context::with_context(st, &target.id, text.into());
     let result = json!({"text":format!("Message {id} recorded for {}. Inspect its delivery/read status before retrying; this request ID never sends twice.",target.id),"message_id":id});
     // Persist the receipt before dispatch: an uncertain acknowledgement must never duplicate work.

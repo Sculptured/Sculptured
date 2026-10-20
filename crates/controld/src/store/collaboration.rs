@@ -27,6 +27,23 @@ impl ControlMode {
 pub struct SoftStop { pub seat: String, pub baseline: u64, pub requested_ms: i64, pub message_id: Option<String> }
 
 impl Store {
+    /// Holds a status note for an idle agent (see `team_context::with_context`).
+    pub fn hold_note(&self, message_id: &str, seat: &str, sender: &str, text: &str) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO held_notes (message_id, seat, sender, text, at_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![message_id, seat, sender, text, model::now_ms()],
+        )?;
+        Ok(())
+    }
+
+    /// The notes held for `seat`, oldest first, as (message id, sender, text); they are taken (removed).
+    pub fn take_held_notes(&self, seat: &str) -> rusqlite::Result<Vec<(String, String, String)>> {
+        let mut q = self.conn.prepare_cached("SELECT message_id, sender, text FROM held_notes WHERE seat = ?1 ORDER BY at_ms, rowid")?;
+        let notes: Vec<(String, String, String)> = q.query_map([seat], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?;
+        self.conn.execute("DELETE FROM held_notes WHERE seat = ?1", [seat])?;
+        Ok(notes)
+    }
+
     pub fn archived(&self, id: &str) -> rusqlite::Result<bool> {
         self.conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM archived_projects WHERE id=?1)",
