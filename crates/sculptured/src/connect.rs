@@ -40,7 +40,7 @@ pub fn tls_provider() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
-fn http() -> reqwest::Client { tls_provider(); reqwest::Client::builder().timeout(std::time::Duration::from_secs(20)).build().expect("client") }
+pub(crate) fn http() -> reqwest::Client { tls_provider(); reqwest::Client::builder().timeout(std::time::Duration::from_secs(20)).build().expect("client") }
 
 /// Runs the pairing: shows the code via `on_code(code, url)`, waits for approval, returns the credentials.
 pub async fn pair(origin: &str, name: &str, platform: &str, on_code: impl Fn(&str, &str)) -> Result<Credentials, String> {

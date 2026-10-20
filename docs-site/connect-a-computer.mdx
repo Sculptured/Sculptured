@@ -197,6 +197,14 @@ A team runs on the computer chosen under **Run on** in its Design panel. One age
 
 <Note>Run Sculptured only where the computer's owner allows long-running programs. Many clusters forbid them on login nodes: ask your cluster's support first.</Note>
 
+### On a cluster
+
+1. Install Sculptured on the login node and run `sculptured doctor`. Under **This computer** it says whether the runner keeps running after you log out, whether the node reaches your Sculptured account, Anthropic and OpenAI, and which proxy settings are set (names only).
+2. If user services don't run there (common on clusters), keep the runner in tmux, where your site allows it: `tmux new -d -s sculptured 'sculptured connect <your Sculptured address>'`. Some sites offer scheduled jobs for this instead, such as NERSC's `scrontab`.
+3. Give the agent that runs there what it needs to know about the scheduler: add Slurm or PBS skills with **Add from a catalog** (an HPC centre's catalog, or any GitHub repository of skills), or an existing Slurm or PBS MCP server with **From the MCP Registry**. The agent then submits and watches jobs itself (`sbatch`, `squeue`, `sacct`, or `qsub`, `qstat`), and every call shows in its timeline.
+
+Compute nodes often have no internet; an agent can run only where the node reaches Anthropic or OpenAI.
+
 ## Use one computer with several accounts
 
 A computer can run agents for more than one account, for example your own and a test account. Copy the connect command from the other account's **Computers** page and run it on the same computer. Sculptured sees that the computer is already connected to a different account and adds this one beside it: each account gets its own runner, its own folder (`~/.sculptured/runners/<id>`) and its own background service, so both run at once. Running an account's command again reconnects its existing runner instead of adding the computer twice.
