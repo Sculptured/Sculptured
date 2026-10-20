@@ -63,3 +63,23 @@ it('shows why the last send failed, and a refused address', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(/https:\/\/ address/);
 });
+
+it('removing the key keeps edits that were not saved out of it', async () => {
+  const puts = serve({ ...off, enabled: true, key_saved: true });
+  render(<TraceSettings teamId="t1" />);
+  await userEvent.click(await screen.findByRole('radio', { name: /also prompts and outputs/i }));
+  await userEvent.click(screen.getByRole('button', { name: /remove key/i }));
+  expect(puts[0]).toMatchObject({ key: '', content: 'metadata', enabled: true });
+});
+
+it('keeps "last sent" and the error up to date while open', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let sent: number | null = null;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(() => reply({ ...off, enabled: true, key_saved: true, last_sent_ms: sent }));
+  render(<TraceSettings teamId="t1" />);
+  expect(await screen.findByText('Nothing sent yet')).toBeInTheDocument();
+  sent = Date.UTC(2026, 9, 19, 12);
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(await screen.findByText(/^Last sent/)).toBeInTheDocument();
+  vi.useRealTimers();
+});

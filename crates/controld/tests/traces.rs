@@ -137,3 +137,28 @@ async fn a_run_started_again_before_it_was_sent_still_goes_whole() {
 fn controld_turns_ended(s: &Served, seat: &str) -> usize {
     events(&s.st, seat).iter().filter(|e| matches!(e.body, model::EventBody::TurnEnded { .. })).count()
 }
+
+#[tokio::test]
+async fn a_collector_that_keeps_failing_is_tried_less_often() {
+    let s = serve().await;
+    let _runner = connect(&s, vec![Arc::new(ClaudeStreamDriver { program: fake_bin("fake-claude") })], None).await;
+    let dir = tempfile::tempdir_in(s.home.path()).unwrap();
+    let id = team(&s, dir.path()).await;
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let h = hits.clone();
+    let app = Router::new().route("/v1/traces", post(move || {
+        h.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        async { (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "down") }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://127.0.0.1:{}/v1/traces", listener.local_addr().unwrap().port());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    call(&s.router, "PUT", &format!("/api/teams/{id}/traces"), json!({ "request_id": rid(), "enabled": true, "endpoint": endpoint, "key": "k", "content": "metadata" })).await;
+    start_team(&s, &id).await;
+    common::wait_for("a turn ends", || controld_turns_ended(&s, &format!("team.a@{id}")) > 0).await;
+    controld::traces::export::tick(&s.st).await;
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(get(&s.router, &format!("/api/teams/{id}/traces")).await.1["last_error"].as_str().unwrap().contains("500"));
+    controld::traces::export::tick(&s.st).await;
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "the next try waits");
+}

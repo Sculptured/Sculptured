@@ -29,6 +29,10 @@ struct Run {
     dropped: usize,
     finished: bool,
     done: bool,
+    /// Sends failed in a row, and when the next may be tried: a collector that is down is tried less
+    /// and less often (up to every 5 minutes), so it never slows the other teams' sends.
+    failures: u32,
+    next_try_ms: i64,
 }
 
 /// One tick at a time (the loop and a test may both call it). Keyed by the server's store as well as
@@ -98,6 +102,8 @@ async fn team_tick(st: &AppState, runs: &mut HashMap<String, Run>, team: &str) -
             dropped: 0,
             finished: sent_before && cfg.run_sent,
             done: false,
+            failures: 0,
+            next_try_ms: 0,
         });
     }
     let run = runs.get_mut(team).expect("inserted above");
@@ -125,6 +131,9 @@ async fn team_tick(st: &AppState, runs: &mut HashMap<String, Run>, team: &str) -
     if run.pending.is_empty() && run.from == read_from && !run.finished {
         return Ok(());
     }
+    if model::now_ms() < run.next_try_ms {
+        return Ok(());
+    }
     let hosted = matches!(st.auth, crate::auth::AuthPolicy::Gateway { .. });
     let mut sent = false;
     while !run.pending.is_empty() {
@@ -133,8 +142,11 @@ async fn team_tick(st: &AppState, runs: &mut HashMap<String, Run>, team: &str) -
             Ok(()) => {
                 run.pending.drain(..n);
                 sent = true;
+                run.failures = 0;
             }
             Err(e) => {
+                run.failures += 1;
+                run.next_try_ms = model::now_ms() + (5_000i64 << run.failures.min(6)).min(300_000);
                 note(st, team, |t| t.last_error = Some(e));
                 return Ok(());
             }
@@ -191,7 +203,7 @@ fn client(hosted: bool) -> &'static reqwest::Client {
         // See analytics: reqwest's rustls needs a provider chosen before a client is built.
         let _ = rustls::crypto::ring::default_provider().install_default();
         // No redirects: the key goes only to the address the team chose.
-        let b = reqwest::Client::builder().timeout(Duration::from_secs(15)).redirect(reqwest::redirect::Policy::none());
+        let b = reqwest::Client::builder().connect_timeout(Duration::from_secs(5)).timeout(Duration::from_secs(15)).redirect(reqwest::redirect::Policy::none());
         // On the hosted server no proxy either: it would resolve the name itself, past `PublicOnly`.
         if hosted { b.dns_resolver(PublicOnly).no_proxy() } else { b }.build().expect("http client")
     };

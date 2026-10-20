@@ -203,12 +203,23 @@ impl Builder {
             }
             EventBody::TurnEnded { turn_id, status } => {
                 self.turn_of.remove(seat);
-                self.end(&format!("turn:{sk}:{turn_id}"), e.at_ms, *status != TurnStatus::Completed).into_iter().collect()
+                let word = match status {
+                    TurnStatus::Completed => "completed",
+                    TurnStatus::Interrupted => "interrupted",
+                    TurnStatus::Failed => "failed",
+                };
+                // Interrupted (stopped by a person or a limit) is not an error; a failure is.
+                let ended = self.end(&format!("turn:{sk}:{turn_id}"), e.at_ms, *status == TurnStatus::Failed);
+                ended.map(|mut s| {
+                    s.attributes.push(("sculptured.turn_status".into(), Attr::Str(word.into())));
+                    s
+                }).into_iter().collect()
             }
             EventBody::ToolCalled { turn_id, call_id, name, input, parent_call_id } => {
                 let parent = parent_call_id.as_ref().and_then(|p| self.span_id_of(&format!("tool:{sk}:{p}")))
                     .or_else(|| self.turn_key(seat, &sk, turn_id.as_deref()).and_then(|k| self.span_id_of(&k)))
-                    .or_else(|| self.span_id_of(&format!("agent:{sk}")));
+                    .or_else(|| self.span_id_of(&format!("agent:{sk}")))
+                    .or_else(|| Some(self.run_id.clone()));
                 let attrs = vec![("lmnr.span.type".into(), Attr::Str("TOOL".into())), ("gen_ai.tool.name".into(), Attr::Str(name.clone()))];
                 self.begin(format!("tool:{sk}:{call_id}"), seat, format!("tool {name}"), parent, e.at_ms, attrs);
                 if let Some(o) = self.open.get_mut(&format!("tool:{sk}:{call_id}")) {
@@ -502,6 +513,30 @@ mod tests {
         assert!(spans.iter().any(|s| attr(s, "lmnr.span.input").is_some()));
         let bare = without_texts(spans);
         assert!(bare.iter().all(|s| attr(s, "lmnr.span.input").is_none() && attr(s, "lmnr.span.output").is_none()));
+    }
+
+
+    #[test]
+    fn a_tool_call_outside_any_agent_session_hangs_under_the_run() {
+        let mut b = Builder::new(ctx(false));
+        b.feed(&ev(1, "team.a@t", EventBody::ToolCalled { turn_id: None, call_id: "c1".into(), name: "Read".into(), input: serde_json::json!({}), parent_call_id: None }));
+        let spans = b.feed(&ev(2, "team.a@t", EventBody::ToolResulted { turn_id: None, call_id: "c1".into(), output: "x".into(), is_error: false }));
+        let run = b.finish_run(3_000);
+        assert_eq!(spans[0].parent.as_deref(), Some(run.span_id.as_str()), "never a second root");
+    }
+
+    #[test]
+    fn a_turn_says_how_it_ended_and_only_a_failure_is_an_error() {
+        let a = "team.a@t";
+        let mut b = Builder::new(ctx(false));
+        b.feed(&ev(1, a, session(1)));
+        let mut ended = |n: i64, status: TurnStatus| {
+            b.feed(&ev(n, a, EventBody::TurnStarted { turn_id: format!("t{n}") }));
+            b.feed(&ev(n + 1, a, EventBody::TurnEnded { turn_id: format!("t{n}"), status })).remove(0)
+        };
+        let (done, stopped, failed) = (ended(2, TurnStatus::Completed), ended(4, TurnStatus::Interrupted), ended(6, TurnStatus::Failed));
+        assert_eq!(attr(&stopped, "sculptured.turn_status"), Some(&Attr::Str("interrupted".into())));
+        assert_eq!((done.error, stopped.error, failed.error), (false, false, true));
     }
 
 }

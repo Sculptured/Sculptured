@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { api, type TraceExportView } from '../api';
 import { Btn } from '../shell/ui';
+import { useHosted } from '../hosted/HostedGate';
 
 const LAMINAR = 'https://api.lmnr.ai/v1/traces';
 type Set = (change: Partial<TraceExportView>) => void;
@@ -13,13 +14,17 @@ function useTraces(teamId: string) {
   const [error, setError] = useState('');
   useEffect(() => {
     api.traces(teamId).then((t) => { setSaved(t); setForm(t); }, (e: Error) => setError(e.message));
+    // "Last sent" and the last error change as the exporter works; edits in the form are kept.
+    const every = setInterval(() => api.traces(teamId).then(setSaved, () => {}), 30_000);
+    return () => clearInterval(every);
   }, [teamId]);
-  const save = async (endpoint: string, key: string | undefined) => {
-    if (!form) return false;
+  /** Saves `from` (the form, or the saved setting for Remove key) with this endpoint and key. */
+  const save = async (from: TraceExportView | null, endpoint: string, key: string | undefined) => {
+    if (!from) return false;
     setBusy(true);
     setError('');
     try {
-      const t = await api.saveTraces(teamId, { enabled: form.enabled, endpoint, content: form.content, ...(key === undefined ? {} : { key }) });
+      const t = await api.saveTraces(teamId, { enabled: from.enabled, endpoint, content: from.content, ...(key === undefined ? {} : { key }) });
       setSaved(t);
       setForm(t);
       return true;
@@ -45,7 +50,8 @@ export function TraceSettings({ teamId }: { teamId: string }) {
   if (!t.form || !t.saved) return t.error ? <p className="tone-red" role="alert">{t.error}</p> : null;
   const { form, saved } = t;
   const isOther = other ?? form.endpoint !== LAMINAR;
-  const save = (k: string | undefined) => void t.save(isOther ? form.endpoint.trim() : LAMINAR, k).then((ok) => ok && setKey(''));
+  const save = (k: string | undefined) => void t.save(form, isOther ? form.endpoint.trim() : LAMINAR, k).then((ok) => ok && setKey(''));
+  const removeKey = () => void t.save(saved, saved.endpoint, '');
   return (
     <fieldset className="ta-limits">
       <legend className="fld-label">Send traces</legend>
@@ -54,7 +60,7 @@ export function TraceSettings({ teamId }: { teamId: string }) {
         <span><b>Send this team's runs as traces</b><span className="fld-meta">Each run becomes one OpenTelemetry trace: the run, each agent’s session, its turns (model, tokens, cost) and tool calls. For people who already use an observability tool; the board stays the main view.</span></span>
       </label>
       <Destination form={form} other={isOther} setOther={setOther} set={t.set} />
-      <KeyField saved={saved.key_saved} value={key} onChange={setKey} onRemove={() => save('')} busy={t.busy} />
+      <KeyField saved={saved.key_saved} value={key} onChange={setKey} onRemove={removeKey} busy={t.busy} />
       <ContentField form={form} set={t.set} />
       <div className="set-links">
         <Btn onClick={() => save(key.trim() ? key : undefined)} disabled={t.busy}>Save</Btn>
@@ -68,6 +74,7 @@ export function TraceSettings({ teamId }: { teamId: string }) {
 
 function Destination({ form, other, setOther, set }: { form: TraceExportView; other: boolean; setOther: (o: boolean) => void; set: Set }) {
   const ids = useId();
+  const hosted = useHosted().kind === 'signed-in';
   const choose = (o: boolean) => { setOther(o); if (o && form.endpoint === LAMINAR) set({ endpoint: '' }); };
   return (
     <>
@@ -82,7 +89,7 @@ function Destination({ form, other, setOther, set }: { form: TraceExportView; ot
         <div className="fld">
           <label className="fld-label" htmlFor={`${ids}-url`}>Collector address</label>
           <input id={`${ids}-url`} className="fld-input" value={form.endpoint} placeholder="https://collector.example.com/v1/traces" spellCheck={false} onChange={(e) => set({ endpoint: e.target.value })} />
-          <p className="fld-hint">An https:// address, or http:// to this computer.</p>
+          <p className="fld-hint">{hosted ? 'A public https:// address.' : 'An https:// address, or http:// to this computer.'}</p>
         </div>
       )}
     </>
