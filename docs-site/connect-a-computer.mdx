@@ -206,14 +206,20 @@ On the hosted service you can connect a cluster without installing anything your
 3. Choose how Sculptured signs in:
    - **A key Sculptured makes** (recommended). Sculptured makes a key pair just for this cluster and shows its public half, with the exact line to add to `~/.ssh/authorized_keys` on the login node (and the line for the jump host, which allows a connection to the login node only). Add it, then choose **Connect**. The private half never leaves the server.
    - **A private key you paste**, with its passphrase if it has one. The passphrase is used once to read the key and is not kept.
+   - **A certificate your site issued**: a private key and its `-cert.pub` file, from NERSC's `sshproxy`, Smallstep's `step ssh`, or a Teleport-style CA. The card shows whom the certificate names and when it ends; from 2 hours before then it asks you to paste a new one (**Paste a new certificate**), and Sculptured never tries one that has ended.
    - **A password.**
 
+   Sculptured tries what the login node offers in this order: the key or certificate, then questions (keyboard-interactive), then the password, and goes on through a chain such as a password followed by a code.
+
    Saved keys and passwords are encrypted with a server key kept outside the database, are never shown again, and are deleted when you remove the cluster.
-4. If the cluster asks for a code when anyone signs in (Duo, an OTP), the card shows its question; type the answer there. It is used once and never stored.
+4. If the cluster asks for a code when anyone signs in (Duo, an OTP), the card shows its question; type the answer there. It is used once and never stored. The card shows every question the site asks at once, hides answers the site asks to hide, turns a sign-in link (a web or device-code sign-in) into a link, and counts down the time left to answer. For a Duo push, type `1` (or `push`) and approve on your phone: Sculptured waits up to 2 minutes for the approval. If a site asks for your password and a code in one field, type both as the site says.
+5. Choose how long Sculptured stays signed in (**Keep signed in for**, 12 hours unless you change it, at most 7 days; 0 keeps nothing). After you answer a code once, Sculptured keeps that SSH connection open and restarts the runner over it without asking again. The card says **Signed in until …**; **Sign out** closes the connection, and so does removing the cluster. Many sites end sessions sooner, and a restart of Sculptured's server closes it too: the next restart then asks for your code.
+
+**What can't work from a web app.** Hardware security keys (FIDO keys such as `sk-ed25519`), Kerberos (GSSAPI) tickets and SSH agent forwarding all need your own computer, so Sculptured's server cannot use them. If your site requires one of them, [set up the cluster yourself](#set-up-a-cluster-yourself).
 
 Sculptured then copies the runner to `~/.sculptured/bin` on the login node, writes its own key to `~/.sculptured/runner/device.json` (readable only by you), starts it in a tmux session named `sculptured-runner` (with `nohup` where there is no tmux), runs `sculptured doctor` there and shows the report. From then on the cluster is one of your computers: agents can run on it, and messages and handoffs reach them as on any other computer.
 
-**Keeping it running.** If the cluster's runner loses its link for more than a few minutes, for example after the login node restarts, Sculptured signs in again and restarts it. A cluster that asks for a code at sign-in can't be reconnected without you: its card says **Reconnect needs your code** until you choose **Reconnect** and answer.
+**Keeping it running.** If the cluster's runner loses its link for more than a few minutes, for example after the login node restarts, Sculptured signs in again and restarts it. While the connection is still signed in, this needs no code. Otherwise a cluster that asks for a code at sign-in can't be reconnected without you: its card says **Reconnect needs your code** until you choose **Reconnect** and answer.
 
 **What Sculptured did.** Each cluster's card lists every SSH action with its time: connected, signed in, installed, paired, started or restarted, and anything that failed, with the reason. It also shows the login node's host key fingerprint. Sculptured saves that key the first time it connects and refuses to sign in if it ever changes.
 

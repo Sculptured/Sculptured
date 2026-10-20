@@ -9,6 +9,7 @@ Changes you can see or use, by date. The open-source core's full history is on [
 
 ### Clusters from the web app
 
+- **More ways to sign in to a cluster:** certificates from your site (NERSC sshproxy, step-ca), with their end shown and a place to paste a new one; staying signed in after one code (12 hours by default, up to 7 days, **Sign out** on the card), so restarts don't ask again; every question of a sign-in round with its links, a Duo push hint and a countdown; and chains such as a password then a code. The Add dialog says what a web app can't use (hardware security keys, Kerberos, agent forwarding). See [Add a cluster from the web app](/connect-a-computer#add-a-cluster-from-the-web-app).
 - **Add a cluster** on the Computers page: give the login node, your user name and how to sign in (a key Sculptured makes, a private key or a password; a jump host if you need one). Sculptured's server connects over SSH, installs and starts the runner there (in tmux), runs `sculptured doctor` and keeps it running. Cluster codes such as Duo are asked for on the card and never stored, and every SSH action is listed on it. See [Add a cluster from the web app](/connect-a-computer#add-a-cluster-from-the-web-app).
 
 ## 19 October 2026
