@@ -10,6 +10,7 @@ import { CliInstall } from '../shell/CliInstall';
 import { CliSignInSteps } from '../shell/CliSignInSteps';
 import { gw } from './session';
 import { ConnectComputer } from './ConnectComputer';
+import { Clusters } from './Clusters';
 import './hosted.css';
 
 /** `scope` and `label` come from gateways that know Community access keys; older ones send neither. */
@@ -40,6 +41,7 @@ export function ComputersPage() {
         <p className="muted">Your agents run on your own computer, with its Claude Code and Codex sign-ins.</p>
         <ConnectComputer />
       </section>
+      <Clusters />
     </main>
   );
 }
