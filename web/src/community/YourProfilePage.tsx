@@ -14,7 +14,9 @@ export function YourProfilePage() {
         <section className="cm-page" aria-label="Your profile">
           <h1>Your profile</h1>
           {me.handle && <p><Link to={`/community/u/${encodeURIComponent(me.handle)}`}>See how others see it</Link></p>}
-          <AvatarPicker current={me.avatar_url} name={me.name} onChanged={() => void reloadMe()} />
+          {me.handle
+            ? <AvatarPicker current={me.avatar_url} name={me.name} onChanged={() => void reloadMe()} />
+            : <p className="muted">Choose a handle first (below); then you can add a picture.</p>}
           <ProfileForm me={me} onSaved={() => void reloadMe()} />
         </section>
       )}

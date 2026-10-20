@@ -67,10 +67,11 @@ function Field({ id, label, hint, problem, children }: { id: string; label: stri
 
 function LinksField({ links, problem, onChange }: { links: string[]; problem?: string; onChange: (l: string[]) => void }) {
   return (
-    <fieldset className="cm-field" aria-describedby={problem ? 'cm-links-problem' : undefined}>
+    <fieldset className="cm-field">
       <legend>Links</legend>
-      {links.map((l, i) => <input key={i} type="url" placeholder="https://" aria-label={`Link ${i + 1}`} value={l} onChange={(e) => onChange(links.map((x, j) => (j === i ? e.target.value : x)))} />)}
-      {problem && <small id="cm-links-problem" className="tone-red">{problem}</small>}
+      {links.map((l, i) => <input key={i} type="url" placeholder="https://" aria-label={`Link ${i + 1}`} value={l} aria-invalid={problem ? true : undefined} aria-describedby={problem ? 'cm-links-problem' : undefined}
+        onChange={(e) => onChange(links.map((x, j) => (j === i ? e.target.value : x)))} />)}
+      {problem && <small id="cm-links-problem" className="tone-red" role="alert">{problem}</small>}
     </fieldset>
   );
 }

@@ -20,7 +20,9 @@ export function YoursPage() {
     <section className="cm-page" aria-label="Yours">
       <p><Link className="btn btn-primary" to="/community/publish">Publish a group</Link></p>
       {blocks.length === 0 ? <p className="muted">You have not published anything yet.</p> : (
-        <div className="cm-grid">{blocks.map((b) => <BlockCard key={b.id} pub={b} actions={<Unpublish pub={b} onDone={() => setBlocks(blocks.filter((x) => x.id !== b.id))} />} />)}</div>
+        <div className="cm-grid">{blocks.map((b) => <BlockCard key={b.id} pub={b} actions={b.published
+          ? <Unpublish pub={b} onDone={() => setBlocks(blocks.filter((x) => x.id !== b.id))} />
+          : <span className="cm-state muted">Not published</span>} />)}</div>
       )}
     </section>
   );

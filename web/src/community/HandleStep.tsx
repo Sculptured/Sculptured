@@ -17,8 +17,8 @@ export function HandleStep({ name, onDone }: { name: string; onDone: () => void 
     <form className="cm-page" onSubmit={(e) => { e.preventDefault(); void use(); }}>
       <h2>Choose your handle</h2>
       <p>Your blocks and profile appear under it.</p>
-      <label>Handle<input value={handle} aria-describedby={problem ? 'cm-step-problem' : undefined} onChange={(e) => setHandle(e.target.value.trim().toLowerCase())} /></label>
-      {problem && <small id="cm-step-problem" className="tone-red">{problem}</small>}
+      <label>Handle<input value={handle} aria-invalid={problem ? true : undefined} aria-describedby={problem ? 'cm-step-problem' : undefined} onChange={(e) => setHandle(e.target.value.trim().toLowerCase())} /></label>
+      {problem && <small id="cm-step-problem" className="tone-red" role="alert">{problem}</small>}
       <Btn type="submit" variant="primary">Use this handle</Btn>
     </form>
   );

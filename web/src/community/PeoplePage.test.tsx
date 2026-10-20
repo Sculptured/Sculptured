@@ -25,3 +25,13 @@ it('lists people with their handle and pages with More', async () => {
   expect(await screen.findByText('Nobody matches that search.')).toBeVisible();
   expect(calls.at(-1)).toBe('GET /api/community/people?q=ana&offset=0');
 });
+
+it('a failed More keeps the people already listed and says why', async () => {
+  const first = Array.from({ length: 24 }, (_, i) => profile({ handle: `p${i}`, name: `Person ${i}` }));
+  fakeFetch({ 'GET /api/community/people?q=&offset=0': () => [200, { people: first, next: 24 }], 'GET /api/community/people?q=&offset=24': () => [500, { error: { code: 'internal', message: 'x' } }] });
+  renderCommunity(<PeoplePage />, { path: '/community/people' });
+  await userEvent.click(await screen.findByRole('button', { name: 'More' }));
+  expect(await screen.findByRole('alert')).toBeVisible();
+  expect(screen.getByRole('link', { name: /Person 0/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'More' })).toBeEnabled();
+});

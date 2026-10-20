@@ -45,13 +45,21 @@ it('a Community that cannot be reached says so in plain words, and Retry tries a
 
 it('pages through 24 blocks at a time', async () => {
   const many = Array.from({ length: 24 }, (_, i) => publication({ id: `b${i}`, title: `Block ${i}` }));
-  const { calls } = fakeFetch({ 'GET /api/community/blocks?q=&offset=0': () => [200, { blocks: many }], 'GET /api/community/blocks?q=&offset=24': () => [200, { blocks: [publication({ id: 'last', title: 'Last one' })] }] });
+  const { calls } = fakeFetch({ 'GET /api/community/blocks?q=&offset=0': () => [200, { blocks: many, next: 24 }], 'GET /api/community/blocks?q=&offset=24': () => [200, { blocks: [publication({ id: 'last', title: 'Last one' })] }] });
   renderCommunity(<ExplorePage />, { path: '/community' });
   await userEvent.click(await screen.findByRole('button', { name: 'Next' }));
   expect(await screen.findByRole('link', { name: 'Last one' })).toBeVisible();
   expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   expect(calls.filter((c) => c.startsWith('GET /api/community/blocks')).at(-1)).toBe('GET /api/community/blocks?q=&offset=24');
   expect(calls.filter((c) => c === 'GET /api/group-blocks').length).toBeLessThanOrEqual(2);
+});
+
+it('exactly a page of blocks, with no next one, offers no Next', async () => {
+  const many = Array.from({ length: 24 }, (_, i) => publication({ id: `b${i}`, title: `Block ${i}` }));
+  fakeFetch({ 'GET /api/community/blocks?q=&offset=0': () => [200, { blocks: many, next: null }] });
+  renderCommunity(<ExplorePage />, { path: '/community' });
+  expect(await screen.findByRole('link', { name: 'Block 0' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
 });
 
 it('a picture from anywhere else falls back to initials', () => {

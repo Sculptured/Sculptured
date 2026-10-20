@@ -52,3 +52,20 @@ it('signed out: asks to sign in', () => {
   renderCommunity(<YourProfilePage />, { path: '/community/me' });
   expect(screen.getByText('Sign in to edit your profile.')).toBeVisible();
 });
+
+it('offers a picture only once there is a handle, and says why', () => {
+  page(meUser({ handle: null, bio: '' }));
+  expect(screen.queryByLabelText('Choose a picture')).toBeNull();
+  expect(screen.getByText(/Choose a handle first/)).toBeInTheDocument();
+});
+
+it('a refused link is described on each link box and announced', async () => {
+  fakeFetch({ 'PATCH /api/community/me': () => [400, { error: { code: 'link_invalid', message: 'Links must start with https://' } }] });
+  page();
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText('Link 1'), 'http://a.example');
+  await user.click(screen.getByRole('button', { name: 'Save profile' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('https://');
+  expect(screen.getByLabelText('Link 1')).toHaveAccessibleDescription(expect.stringContaining('https://'));
+  expect(screen.getByLabelText('Link 1')).toBeInvalid();
+});

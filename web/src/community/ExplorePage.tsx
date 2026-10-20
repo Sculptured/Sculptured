@@ -24,7 +24,7 @@ export function ExplorePage() {
       {page.error ? <LoadProblem error={page.error} onRetry={page.retry} /> : <BlockGrid blocks={page.blocks} empty={q ? 'No blocks match that search.' : 'Nothing is published yet.'} />}
       <nav className="cm-pager" aria-label="Pages">
         <Btn disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>Previous</Btn>
-        <Btn disabled={(page.blocks?.length ?? 0) < PAGE} onClick={() => setOffset(offset + PAGE)}>Next</Btn>
+        <Btn disabled={!page.hasNext} onClick={() => setOffset(offset + PAGE)}>Next</Btn>
       </nav>
     </section>
   );
@@ -32,15 +32,16 @@ export function ExplorePage() {
 
 function useBlocks(q: string, offset: number) {
   const [blocks, setBlocks] = useState<Publication[] | null>(null);
+  const [hasNext, setHasNext] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     setError(null);
-    communityApi.blocks(q, offset).then((r) => { if (live) setBlocks(r.blocks); }, (e) => { if (live) setError(e); });
+    communityApi.blocks(q, offset).then((r) => { if (live) { setBlocks(r.blocks); setHasNext(r.next != null); } }, (e) => { if (live) setError(e); });
     return () => { live = false; };
   }, [q, offset, attempt]);
-  return { blocks, error, retry: () => setAttempt((n) => n + 1) };
+  return { blocks, hasNext, error, retry: () => setAttempt((n) => n + 1) };
 }
 
 /** Cards in a grid (compact unless the member turned that off), each with its actions. */

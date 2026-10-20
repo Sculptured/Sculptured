@@ -4,4 +4,8 @@ import type { Publication } from "./Publication";
 /**
  * A page of blocks.
  */
-export type BlockList = { blocks: Array<Publication>, offset?: number, };
+export type BlockList = { blocks: Array<Publication>, offset?: number, 
+/**
+ * Where the next page starts; None on the last page (Explore).
+ */
+next?: number, };

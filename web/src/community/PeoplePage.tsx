@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Profile } from '../generated/community/Profile';
+import { errorText } from '../errors';
 import { Btn } from '../shell/ui';
 import { communityApi } from './api';
 import { Avatar } from './Avatar';
@@ -10,7 +11,7 @@ import './community.css';
 /** `/community/people`: members with a handle, most published first, 24 at a time. */
 export function PeoplePage() {
   const [q, setQ] = useState('');
-  const { people, next, error, more, retry } = usePeople(q);
+  const { people, next, error, moreError, more, retry } = usePeople(q);
   return (
     <section className="cm-page" aria-label="People">
       <form role="search" className="cm-search" onSubmit={(e) => { e.preventDefault(); setQ(new FormData(e.currentTarget).get('q')?.toString().trim() ?? ''); }}>
@@ -20,6 +21,7 @@ export function PeoplePage() {
       {error ? <LoadProblem error={error} onRetry={retry} /> : !people ? <p role="status" className="muted">Loading people…</p> : people.length === 0 ? <p className="muted">{q ? 'Nobody matches that search.' : 'Nobody has a profile yet.'}</p> : (
         <ul className="cm-people">{people.map((p) => <PersonCard key={p.handle} p={p} />)}</ul>
       )}
+      {moreError != null && <p role="alert" className="tone-red">The next people could not be loaded: {errorText(moreError)}</p>}
       {next !== null && !error && <Btn onClick={more}>More</Btn>}
     </section>
   );
@@ -29,11 +31,16 @@ function usePeople(q: string) {
   const [people, setPeople] = useState<Profile[] | null>(null);
   const [next, setNext] = useState<number | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [moreError, setMoreError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
-  const load = (offset: number) => communityApi.people(q, offset).then((r) => { setPeople((old) => (offset === 0 ? r.people : [...(old ?? []), ...r.people])); setNext(r.next); }, setError);
+  // A failed first page replaces the list with the problem; a failed More keeps the list and says why below it.
+  const load = (offset: number) => {
+    setMoreError(null);
+    return communityApi.people(q, offset).then((r) => { setPeople((old) => (offset === 0 ? r.people : [...(old ?? []), ...r.people])); setNext(r.next); }, offset === 0 ? setError : setMoreError);
+  };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setError(null); setPeople(null); void load(0); }, [q, attempt]);
-  return { people, next, error, more: () => { if (next !== null) void load(next); }, retry: () => setAttempt((n) => n + 1) };
+  return { people, next, error, moreError, more: () => { if (next !== null) void load(next); }, retry: () => setAttempt((n) => n + 1) };
 }
 
 function PersonCard({ p }: { p: Profile }) {

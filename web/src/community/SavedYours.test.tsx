@@ -28,6 +28,13 @@ it('Yours unpublishes after confirming and links to Publish', async () => {
   await vi.waitFor(() => expect(calls).toContain('DELETE /api/community/blocks/b2'));
 });
 
+it('Yours marks a block that is not published, and offers Unpublish only on published ones', async () => {
+  fakeFetch({ 'GET /api/community/mine': () => [200, { blocks: [publication({ id: 'b3', title: 'Draft one', published: false })] }] });
+  renderCommunity(<YoursPage />, { path: '/community/mine', state: signedIn });
+  expect(await screen.findByText('Not published')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Unpublish' })).toBeNull();
+});
+
 it('signed out, both ask to sign in', () => {
   renderCommunity(<SavedPage />, { path: '/community/saved' });
   expect(screen.getByText(/Sign in to see what you saved/)).toBeVisible();
