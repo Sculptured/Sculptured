@@ -9,6 +9,7 @@ import { ComponentChips } from './ComponentChips';
 import { IntegrationFields } from './SkillFields';
 import { ComponentBlockCard } from '../release/ComponentBlockCard';
 import { api } from '../api';
+import * as registry from './mcpRegistry';
 
 vi.mock('../release/Community', () => ({ useCommunitySession: () => ({ session: { user: null, csrf: null } }), communityRequest: vi.fn() }));
 
@@ -77,6 +78,22 @@ describe('Components', () => {
     fireEvent.click(servers.getByRole('checkbox', { name: /OpenFOAM/ }));
     expect(saved().uses).toEqual(['openfoam']);
     expect(within(screen.getByRole('group', { name: 'Plugins and hooks' })).getByRole('checkbox', { name: /Signet/ })).toBeTruthy();
+  });
+
+  it('takes an MCP server from the official registry, filled into the form to check before it is added', async () => {
+    const search = vi.spyOn(registry, 'searchRegistry').mockResolvedValue([{ name: 'io.github.iowarp/slurm-mcp', description: 'Slurm workload management', version: '2.2.0', packages: [{ registryType: 'pypi', identifier: 'clio-kit', version: '2.2.0', transport: { type: 'stdio' } }] }]);
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'From the MCP Registry' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search the MCP Registry' }), { target: { value: 'slurm' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(search).toHaveBeenCalledWith('slurm');
+    fireEvent.click(await screen.findByRole('button', { name: 'Use slurm-mcp' }));
+    const form = screen.getByRole('group', { name: 'New component' });
+    expect(within(form).getByRole('textbox', { name: 'Program' })).toHaveValue('uvx');
+    expect(within(form).getByRole('textbox', { name: 'Arguments' })).toHaveValue('clio-kit==2.2.0');
+    expect(saved().components).toEqual([]);
+    fireEvent.click(within(form).getByRole('button', { name: 'Add' }));
+    expect(saved().components).toEqual(['slurm-mcp']);
   });
 
   it('offers a Claude plugin to Claude agents only', () => {

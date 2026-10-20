@@ -43,6 +43,7 @@ Claude plugins and tool hooks work for Claude Code agents only; the others work 
 
 - **Built in, as examples:** Kindex memory (a knowledge graph that outlasts the team) and Signet-Eval policy checks. They need no approval.
 - **The team's own:** in the team's **Settings**, under **More settings**, **Components** lists them with exactly what each runs or connects to. **New component** makes one from a short form: a remote MCP server, one on the computer, an installed Claude plugin, or a skill pack from an agent's skills. **Add a component** takes a manifest, pasted or loaded from a file, and **Share to Community** publishes one.
+- **From the MCP Registry:** **From the MCP Registry** searches the official [MCP Registry](https://registry.modelcontextprotocol.io). **Use** fills the new-component form with what the server runs: an npm package with `npx`, a PyPI package with `uvx`, a container image with `docker`, or its web address with each secret header named as `${NAME}`. Check it, then **Add**. Anyone can list a server there, so read what it runs first; the agent's computer still asks its owner to approve it.
 - **From Community:** a shared component shows what it runs and how to set it up. **Add to a team** puts it in that team's Components.
 - **Give it to an agent:** tick it in the agent's **Advanced** settings, where they are grouped as MCP servers, skill packs, and plugins and hooks. The agent's card then shows a chip for it. A component that needs another one (Signet needs Kindex) brings it along.
 

@@ -7,6 +7,7 @@ import type { Edit } from './Panels';
 import type { ComponentKind } from '../generated/ComponentKind';
 import { BUILTIN, KIND_LABEL, componentProblems, parseManifest, whereItRuns } from './components';
 import './components.css';
+import { McpRegistrySearch } from './McpRegistrySearch';
 
 /** Share one of the team's components to Community, as its own block. */
 function ShareButton({ c }: { c: Component }) {
@@ -82,8 +83,8 @@ const SETUP_HINT: Partial<Record<ComponentKind, string>> = { 'claude-plugin': 'c
 
 /** Make a component from a short form: a remote MCP server (such as a hosted OpenFOAM server), one on
  * the computer, an installed Claude plugin, or a pack of an agent's skills. */
-function NewComponent({ draft, team, onAdd, onClose }: { draft: TeamDraft; team: Component[]; onAdd: (c: Component) => void; onClose: () => void }) {
-  const [f, setF] = useState<Form>(BLANK);
+function NewComponent({ draft, team, initial, onAdd, onClose }: { draft: TeamDraft; team: Component[]; initial?: Partial<Form>; onAdd: (c: Component) => void; onClose: () => void }) {
+  const [f, setF] = useState<Form>({ ...BLANK, ...initial });
   const [problems, setProblems] = useState<string[]>([]);
   const set = (patch: Partial<Form>) => setF((x) => ({ ...x, ...patch }));
   const text = (label: string, key: 'name' | 'description' | 'install' | 'url' | 'program' | 'args' | 'plugin', placeholder = '') => (
@@ -143,7 +144,8 @@ function AddComponent({ team, onAdd }: { team: Component[]; onAdd: (c: Component
  * owner approves it there. */
 export function ComponentsSection({ draft, edit, locked }: { draft: TeamDraft; edit: Edit; locked: boolean }) {
   const own = draft.components ?? [];
-  const [making, setMaking] = useState(false);
+  const [making, setMaking] = useState<Partial<Form> | null>(null);
+  const [searching, setSearching] = useState(false);
   const set = (next: Component[]) => edit((d: TeamDraft) => ({ ...d, components: next.length ? next : undefined }), 'components');
   const row = (c: Component, builtin: boolean) => (
     <li key={c.id}>
@@ -160,8 +162,9 @@ export function ComponentsSection({ draft, edit, locked }: { draft: TeamDraft; e
       <p className="fld-hint muted">What agents can be given besides Sculptured's tools: MCP servers on their computers or at a web address, Claude plugins and tool hooks, and skill packs. Give one to an agent in its Advanced settings. Find more in <a href="/community">Community</a>, or add your own; a connected computer runs one that is not built in only after its owner approves it there (<code>sculptured approve-component</code>).</p>
       <ul className="components-list">{BUILTIN.map((c) => row(c, true))}{own.map((c) => row(c, false))}</ul>
       {!locked && (making
-        ? <NewComponent draft={draft} team={own} onAdd={(c) => set([...own, c])} onClose={() => setMaking(false)} />
-        : <div className="fld-actions"><Btn size="sm" icon="plus" onClick={() => setMaking(true)}>New component</Btn></div>)}
+        ? <NewComponent draft={draft} team={own} initial={making} onAdd={(c) => set([...own, c])} onClose={() => setMaking(null)} />
+        : <div className="fld-actions"><Btn size="sm" icon="plus" onClick={() => setMaking({})}>New component</Btn><Btn size="sm" onClick={() => setSearching(true)}>From the MCP Registry</Btn></div>)}
+      {!locked && searching && !making && <McpRegistrySearch onClose={() => setSearching(false)} onUse={(f) => { setSearching(false); setMaking(f); }} />}
       {!locked && <AddComponent team={own} onAdd={(c) => set([...own, c])} />}
     </fieldset>
   );
