@@ -44,6 +44,8 @@ import { plural } from '../format';
 import { logoRouteBox, logoRouteBoxes, useBoardStyle } from '../shell/boardStyle';
 import { LogoFace, logoClasses } from '../shell/LogoNode';
 import { ComponentChips } from './ComponentChips';
+import { useHosted } from '../hosted/HostedGate';
+import { useAgentComputers } from '../hosted/RunOn';
 import { workflowBounds, inputBox, stageBoxes, workflowLinks, WorkflowGraph, WorkflowAgentActions, type WorkflowTarget } from '../workflow/WorkflowGraph';
 
 export type CanvasHandle = {
@@ -161,6 +163,8 @@ export function StructureCanvas(p: Props) {
   const ids = useId();
   const { collapsed, setCollapsed } = useGroupVisibility(teamId);
   const home = useHome();
+  // Hosted: an agent on another computer than the team's says which, in its folder line.
+  const computers = useAgentComputers(teamId, useHosted().kind === 'signed-in');
   const { el, vp, vpRef, fit, zoomAt, startPan, reveal, toWorld, hold } = usePanZoom(teamId, useMemo(() => boundsOf(draft), [draft]));
   const [drag, setDrag] = useState<Drag | null>(null);
   const [wire, setWire] = useState<Wire | null>(null);
@@ -971,6 +975,7 @@ export function StructureCanvas(p: Props) {
                       {folderIssue ? <span aria-hidden="true">▲</span> : <Icon name="folder" size={11} />}
                       {folderIssue && a.folder && <span className="folder-why">{FOLDER_ISSUE_WORDS[folderIssue.code] ?? 'folder problem'} ·</span>}
                       <span className={a.folder ? 'mono' : undefined}>{(a.folder || draft.folder) ? shortPath((a.folder || draft.folder)!, home) : a.kind === 'practice' ? '~ (home folder)' : 'needs a folder'}</span>
+                      {computers[a.id] && <span className="sb-on"> · on {computers[a.id]}</span>}
                     </span>
                     </>}
                   </button>

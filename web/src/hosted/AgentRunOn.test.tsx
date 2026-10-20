@@ -8,15 +8,17 @@ const reply = (body: unknown) => Promise.resolve(new Response(JSON.stringify(bod
 
 function serve(settings: Record<string, unknown>) {
   const puts: Record<string, unknown>[] = [];
+  let current = settings;
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
     const u = String(url);
     if (u.endsWith('/devices')) return reply([{ id: 'laptop', name: 'Laptop', connected: true }, { id: 'hpc', name: 'Delta login', connected: false }]);
     if (init?.method === 'PUT') {
       const body = JSON.parse(String(init.body)) as { settings: Record<string, unknown> };
       puts.push(body.settings);
+      current = body.settings;
       return reply(body.settings);
     }
-    return reply(settings);
+    return reply(current);
   });
   return puts;
 }
@@ -37,4 +39,18 @@ it('says the team computer is the default', async () => {
   serve({ posture: null, question_timeout_min: null, own_copies: false, host: null, agent_hosts: { other: 'hpc' } });
   render(<AgentRunOn team="t1" agent="runner" name="Job runner" />);
   expect(await screen.findByRole('option', { name: "The team's computer" })).toBeInTheDocument();
+});
+
+it("names each agent's own computer for the board, and follows a change", async () => {
+  const { useAgentComputers } = await import('./RunOn');
+  const puts = serve({ posture: null, question_timeout_min: null, own_copies: false, host: 'laptop', agent_hosts: { runner: 'hpc' } });
+  function Board() {
+    const on = useAgentComputers('t1', true);
+    return <p data-testid="on">{JSON.stringify(on)}</p>;
+  }
+  render(<><Board /><AgentRunOn team="t1" agent="other" name="Other" /></>);
+  await waitFor(() => expect(screen.getByTestId('on')).toHaveTextContent('{"runner":"Delta login"}'));
+  await userEvent.selectOptions(await screen.findByLabelText('Other runs on'), 'laptop');
+  await waitFor(() => expect(puts).toHaveLength(1));
+  await waitFor(() => expect(screen.getByTestId('on')).toHaveTextContent('"other":"Laptop"'));
 });

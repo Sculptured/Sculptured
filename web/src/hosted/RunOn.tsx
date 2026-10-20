@@ -35,7 +35,10 @@ export function AgentRunOn({ team, agent, name }: { team: string; agent: string;
   const save = async (host: string) => {
     setError('');
     const { [agent]: _old, ...others } = settings.agent_hosts ?? {};
-    try { setSettings(await api.saveTeamSettings(team, { ...settings, agent_hosts: host ? { ...others, [agent]: host } : others })); } catch (e) { setError((e as Error).message); }
+    try {
+      setSettings(await api.saveTeamSettings(team, { ...settings, agent_hosts: host ? { ...others, [agent]: host } : others }));
+      window.dispatchEvent(new CustomEvent(AGENT_HOSTS_CHANGED, { detail: team }));
+    } catch (e) { setError((e as Error).message); }
   };
   return (
     <div className="fld">
@@ -48,4 +51,24 @@ export function AgentRunOn({ team, agent, name }: { team: string; agent: string;
       {error && <p className="tone-red" role="alert">{error}</p>}
     </div>
   );
+}
+
+const AGENT_HOSTS_CHANGED = 'sculptured:agent-hosts';
+
+/** Hosted: each agent that runs on its own computer, by that computer's name (for the board). */
+export function useAgentComputers(team: string, enabled: boolean): Record<string, string> {
+  const [on, setOn] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    const load = () => Promise.all([gw<Computer[]>('GET', '/devices'), api.teamSettings(team)]).then(([computers, s]) => {
+      const name = (id: string) => computers.find((c) => c.id === id)?.name ?? id;
+      if (live) setOn(Object.fromEntries(Object.entries(s.agent_hosts ?? {}).map(([agent, host]) => [agent, name(host)])));
+    }, () => {});
+    void load();
+    const changed = (e: Event) => { if ((e as CustomEvent<string>).detail === team) void load(); };
+    window.addEventListener(AGENT_HOSTS_CHANGED, changed);
+    return () => { live = false; window.removeEventListener(AGENT_HOSTS_CHANGED, changed); };
+  }, [team, enabled]);
+  return on;
 }
