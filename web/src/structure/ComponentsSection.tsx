@@ -3,6 +3,7 @@ import type { Component } from '../generated/Component';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { Btn } from '../shell/ui';
 import { communityRequest, useCommunitySession } from '../community/share';
+import { ShareSignIn } from '../community/ShareSignIn';
 import type { Edit } from './Panels';
 import type { ComponentKind } from '../generated/ComponentKind';
 import { BUILTIN, KIND_LABEL, componentProblems, parseManifest, whereItRuns } from './components';
@@ -13,7 +14,7 @@ import { McpRegistrySearch } from './McpRegistrySearch';
 function ShareButton({ c }: { c: Component }) {
   const { session } = useCommunitySession();
   const [state, setState] = useState<string | null>(null);
-  if (!session.user) return <a className="btn btn-sm" href="/api/community/login">Sign in to share</a>;
+  if (!session.user) return <ShareSignIn />;
   const share = async () => {
     setState('Sharing…');
     try {
