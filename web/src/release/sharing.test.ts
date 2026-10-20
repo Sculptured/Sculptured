@@ -42,3 +42,14 @@ describe('a Library copy from Community', () => {
     expect(sanitizeExport(b).source).toBeUndefined();
   });
 });
+
+it("keeps a workflow whose stages have no single agent: Community's Coding hospital example", async () => {
+  const { readFileSync } = await import('node:fs');
+  const team = JSON.parse(readFileSync(`${process.cwd()}/../examples/community/coding-hospital.json`, 'utf8')).team;
+  const group = { id: 'team', label: 'Coding hospital', x: 0, y: 0, w: 2000, h: 1200 };
+  const block = { id: 'coding-hospital', name: 'Coding hospital', revision: 0, boundary_notes: [], draft: { ...team, groups: [group], agents: team.agents.map((a: { group_id: string | null }) => ({ ...a, group_id: 'team' })), connections: [] } };
+  const out = sanitizeExport(block);
+  expect(out.draft.workflow?.stages.length).toBe(team.workflow.stages.length);
+  const panel = team.workflow.stages.find((s: { reviewers?: string[] }) => s.reviewers?.length);
+  expect(() => sanitizeExport({ ...block, draft: { ...block.draft, workflow: { ...block.draft.workflow, stages: block.draft.workflow.stages.map((s: { id: string }) => (s.id === panel.id ? { ...s, reviewers: ['nobody'] } : s)) } } })).toThrow();
+});

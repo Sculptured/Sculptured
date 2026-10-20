@@ -9,7 +9,8 @@ import { Btn } from '../shell/ui';
 import { COMMUNITY_WORDS } from '../vocab';
 import { communityApi } from './api';
 import { useCommunity } from './context';
-import { opensHere } from './kinds';
+import { ComponentTeamActions } from '../release/ComponentBlockCard';
+import { componentOf, opensHere } from './kinds';
 import { libraryState, saveToLibrary, type LibraryState } from './saveToLibrary';
 
 /** The block as a project gets it: no folders, no models, restricted permissions. Null when it is not a valid group. */
@@ -26,6 +27,8 @@ export function projectCopy(pub: Publication): GroupBlock | null {
 export function BlockActions({ pub, library }: { pub: Publication; library: GroupBlock[] | null }) {
   const { signedIn } = useCommunity();
   const [adding, setAdding] = useState(false);
+  const component = componentOf(pub);
+  if (component) return <ComponentTeamActions component={component} className="cm-actions" />;
   if (!opensHere(pub)) return <p className="muted">{COMMUNITY_WORDS.laterVersion}</p>;
   const copy = projectCopy(pub);
   return (
