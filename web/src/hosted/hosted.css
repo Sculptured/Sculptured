@@ -114,3 +114,10 @@
 .github-button:hover { background: #32383f; }
 .gsi-button:focus-visible, .github-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 480px) { .auth-card { padding: 22px 18px; } }
+.clusters { display: grid; gap: 10px; }
+.cluster-card { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.cluster-card p, .cluster-key p { margin: 0; }
+.cluster-key { display: grid; gap: 6px; }
+.cluster-confirm { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cluster-log { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: var(--text-md); }
+.cluster-add fieldset { display: grid; gap: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; }
