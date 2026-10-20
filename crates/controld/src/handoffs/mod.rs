@@ -171,20 +171,26 @@ async fn plan_once(st: &AppState, rig: &str, with_previous: bool) -> bool {
         match action {
             Action::Status { seat, waiting_for, stuck } => set_status(st, &seat, waiting_for, stuck),
             Action::Hand { write, host, name, team } => hand(st, write, host, &name, &team).await,
-            Action::Adopt { seat, start_seq, first, message_id, from, wave } => {
-                let adopted = st.store.lock().unwrap().record_adopted(&seat, start_seq, first, &message_id, from, wave);
-                match adopted {
-                    Ok(Some(items)) => {
-                        st.publish(items);
-                        adopted_any = true;
-                    }
-                    Ok(None) => {}
-                    Err(e) => tracing::error!(%seat, error = %e, "handoffs: cannot record a direct message as the handoff"),
-                }
-            }
+            Action::Adopt { seat, start_seq, first, message_id, from, wave } => adopted_any |= adopt(st, &seat, start_seq, first, &message_id, from, wave),
         }
     }
     adopted_any
+}
+
+/// Records `message_id` as the handoff of `from`; true when it was recorded now.
+fn adopt(st: &AppState, seat: &str, start_seq: i64, first: bool, message_id: &str, from: Vec<HandoffSource>, wave: Option<Wave>) -> bool {
+    let adopted = st.store.lock().unwrap().record_adopted(seat, start_seq, first, message_id, from, wave);
+    match adopted {
+        Ok(Some(items)) => {
+            st.publish(items);
+            true
+        }
+        Ok(None) => false,
+        Err(e) => {
+            tracing::error!(%seat, error = %e, "handoffs: cannot record a direct message as the handoff");
+            false
+        }
+    }
 }
 
 fn set_status(st: &AppState, seat: &str, waiting_for: Vec<String>, stuck: Option<HandoffStuck>) {

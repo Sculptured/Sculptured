@@ -36,33 +36,7 @@ fn active(st: &AppState, seat: &str) -> Result<String, String> {
 
 pub async fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result<Value, String> {
     if tool == "team_status" {
-        let (rig, _) = crate::launch::compiled_seat(st, seat).map_err(|e| e.message)?;
-        let store = st.store.lock().unwrap();
-        let snap = store
-            .rig_snapshot(&rig.name)
-            .map_err(err)?
-            .ok_or("Unknown project")?;
-        // Read into the caller's context on every call: one short line per agent, not JSON.
-        let word = |v: serde_json::Result<Value>| v.ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
-        let unique = |m: &str| snap.seats.iter().filter(|o| o.member == m).count() == 1;
-        let address = |id: &str, member: &str| if unique(member) { member.to_string() } else { id.to_string() };
-        let mut lines = vec![format!("Project {} ({}). Agents (send_agent_message takes the first word):", rig.name, word(serde_json::to_value(snap.desired)))];
-        for a in &snap.seats {
-            let state = match a.lifecycle {
-                SeatLifecycle::Running => word(serde_json::to_value(a.activity)),
-                other => word(serde_json::to_value(other)),
-            };
-            let mut line = format!("- {} · {} · {state}", address(&a.id, &a.member), a.label.as_deref().unwrap_or(&a.member));
-            if let Some(parent) = store.parent(&a.id).ok().flatten() {
-                let member = snap.seats.iter().find(|o| o.id == parent).map_or(parent.clone(), |o| address(&o.id, &o.member));
-                line.push_str(&format!(" · child of {member}"));
-            }
-            if let Some(control) = store.control(&a.id).ok().flatten() {
-                line.push_str(&format!(" · {}", word(serde_json::to_value(control))));
-            }
-            lines.push(line);
-        }
-        return Ok(json!({"text": lines.join("\n")}));
+        return team_status(st, seat);
     }
     let request = arg(args, "request_id", 128)?;
     let key = format!("agent-tool:{seat}:{tool}:{request}");
@@ -92,6 +66,37 @@ pub async fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result
         }
         _ => Err("Unknown collaboration tool".into()),
     }
+}
+
+/// The team as `team_status` gives it.
+fn team_status(st: &AppState, seat: &str) -> Result<Value, String> {
+    let (rig, _) = crate::launch::compiled_seat(st, seat).map_err(|e| e.message)?;
+    let store = st.store.lock().unwrap();
+    let snap = store
+        .rig_snapshot(&rig.name)
+        .map_err(err)?
+        .ok_or("Unknown project")?;
+    // Read into the caller's context on every call: one short line per agent, not JSON.
+    let word = |v: serde_json::Result<Value>| v.ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+    let unique = |m: &str| snap.seats.iter().filter(|o| o.member == m).count() == 1;
+    let address = |id: &str, member: &str| if unique(member) { member.to_string() } else { id.to_string() };
+    let mut lines = vec![format!("Project {} ({}). Agents (send_agent_message takes the first word):", rig.name, word(serde_json::to_value(snap.desired)))];
+    for a in &snap.seats {
+        let state = match a.lifecycle {
+            SeatLifecycle::Running => word(serde_json::to_value(a.activity)),
+            other => word(serde_json::to_value(other)),
+        };
+        let mut line = format!("- {} · {} · {state}", address(&a.id, &a.member), a.label.as_deref().unwrap_or(&a.member));
+        if let Some(parent) = store.parent(&a.id).ok().flatten() {
+            let member = snap.seats.iter().find(|o| o.id == parent).map_or(parent.clone(), |o| address(&o.id, &o.member));
+            line.push_str(&format!(" · child of {member}"));
+        }
+        if let Some(control) = store.control(&a.id).ok().flatten() {
+            line.push_str(&format!(" · {}", word(serde_json::to_value(control))));
+        }
+        lines.push(line);
+    }
+    Ok(json!({"text": lines.join("\n")}))
 }
 
 async fn message(st: &AppState, seat: &str, args: &Value, key: &str) -> Result<Value, String> {
