@@ -23,7 +23,7 @@ import { PickMenu } from './PickMenu';
 import { IntegrationFields, SkillFields } from './SkillFields';
 import { TokenLimitField } from './TokenLimitField';
 import { useHosted } from '../hosted/HostedGate';
-import { AgentRunOn } from '../hosted/RunOn';
+import { AgentRunOn, useAgentHosts } from '../hosted/RunOn';
 
 type Common = { draft: TeamDraft; a: DraftAgent; edit: Edit; locked: boolean };
 
@@ -120,24 +120,26 @@ export function FolderField({ draft, a, edit, locked, issues = [] }: Common & { 
   const ids = useId();
   const [picking, setPicking] = useState(false);
   const home = useHome();
-  const folder = effectiveFolder(draft, a);
   const hosted = useHosted().kind === 'signed-in';
-  const shown = folder ? shortPath(folder, home) : a.kind === 'practice' ? 'your home folder' : hosted ? 'its computer’s own folder' : 'none chosen';
+  // An agent on its own computer never uses the project folder: that path is on the team's computer.
+  const own = useAgentHosts(draft.id, hosted)[a.id];
+  const folder = own ? a.folder?.trim() || null : effectiveFolder(draft, a);
+  const shown = folder ? shortPath(folder, home) : own ? `${own.name}’s own folder` : a.kind === 'practice' ? 'your home folder' : hosted ? 'its computer’s own folder' : 'none chosen';
   const off = { disabled: locked, 'aria-describedby': locked ? `${ids}-lock` : undefined };
   return (<>
     <HostedRunOn draft={draft} a={a} />
-    <Field label="Folder" reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
+    <Field label={own ? `Folder on ${own.name}` : 'Folder'} reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
       <div className="fld-folder">
         <span className={`folder-path${a.folder ? '' : ' muted'}`} title={folder ?? undefined}>
           <Icon name="folder" size={14} className="muted" />
-          <span className={a.folder ? 'mono' : undefined}>{shown}{!a.folder && draft.folder ? ' · from project' : ''}</span>
+          <span className={a.folder ? 'mono' : undefined}>{shown}{!a.folder && !own && draft.folder ? ' · from project' : ''}</span>
         </span>
         <Btn {...off} onClick={() => setPicking(true)} aria-label={`Choose a folder for ${a.name || 'this agent'}`} icon="folder" size="sm">Choose…</Btn>
-        {a.folder && draft.agents.length > 1 && <Btn {...off} size="sm" variant="ghost" onClick={() => edit((d) => folderForAll(d, a.folder!))}>Use this folder for every agent</Btn>}
-        {a.folder && (draft.folder || a.kind === 'practice') && <Btn {...off} size="sm" variant="ghost" onClick={() => edit((d) => setFolder(d, a.id, null))}>{draft.folder ? 'Use project folder' : 'Clear'}</Btn>}
+        {a.folder && !own && draft.agents.length > 1 && <Btn {...off} size="sm" variant="ghost" onClick={() => edit((d) => folderForAll(d, a.folder!))}>Use this folder for every agent</Btn>}
+        {a.folder && (own || draft.folder || a.kind === 'practice') && <Btn {...off} size="sm" variant="ghost" onClick={() => edit((d) => setFolder(d, a.id, null))}>{own ? `Use ${own.name}’s own folder` : draft.folder ? 'Use project folder' : 'Clear'}</Btn>}
       </div>
       <FieldIssues issues={issues} />
-      {picking && <FolderPicker initialPath={folder} onClose={() => setPicking(false)} onChoose={(path) => { setPicking(false); edit((d) => setFolder(d, a.id, path)); }} />}
+      {picking && <FolderPicker team={hosted ? draft.id : undefined} host={own?.id} initialPath={folder} onClose={() => setPicking(false)} onChoose={(path) => { setPicking(false); edit((d) => setFolder(d, a.id, path)); }} />}
     </Field>
   </>);
 }

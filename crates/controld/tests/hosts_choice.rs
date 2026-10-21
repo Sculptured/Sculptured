@@ -113,3 +113,49 @@ async fn hosted_an_agent_without_a_folder_works_in_its_computers_own_folder() {
     let codes: Vec<&str> = saved["issues"].as_array().unwrap().iter().filter_map(|i| i["code"].as_str()).collect();
     assert!(!codes.contains(&"folder-missing"), "hosted: the runner uses its computer's first allowed folder: {codes:?}");
 }
+
+#[tokio::test]
+async fn hosted_an_agent_on_its_own_computer_starts_in_its_own_folder_not_the_teams() {
+    let s = serve_hosted().await;
+    let _laptop = connect_as(&s, "laptop", vec![Arc::new(drivers::stub::StubDriver)]).await;
+    let _hpc = connect_as(&s, "hpc-login", vec![Arc::new(drivers::stub::StubDriver)]).await;
+    let (_, rec) = signed(&s.router, "POST", "/api/teams", Some(json!({"request_id": rid(), "template": "blank", "practice": true, "name": "sites"}))).await;
+    let mut draft = rec["draft"].clone();
+    draft["folder"] = json!("/home/me/project");
+    let agent = |id: &str, folder: Option<&str>| json!({"id": id, "group_id": null, "name": id, "kind": "practice", "job": "Work", "folder": folder, "x": 40, "y": 40});
+    draft["agents"] = json!([agent("a", None), agent("b", None), agent("c", Some("/scratch/me/run"))]);
+    let id = draft["id"].as_str().unwrap().to_string();
+    let (status, saved) = signed(&s.router, "PUT", &format!("/api/teams/{id}"), Some(json!({"request_id": rid(), "revision": draft["revision"], "draft": draft}))).await;
+    assert_eq!(status.as_u16(), 200, "{saved}");
+    let settings = json!({"request_id": rid(), "settings": {"posture": null, "question_timeout_min": null, "own_copies": false, "host": "laptop", "agent_hosts": {"b": "hpc-login", "c": "hpc-login"}}});
+    assert_eq!(signed(&s.router, "PUT", &format!("/api/teams/{id}/settings"), Some(settings)).await.0.as_u16(), 200);
+    let (status, body) = signed(&s.router, "POST", &format!("/api/teams/{id}/start"), Some(json!({"request_id": rid()}))).await;
+    assert_eq!(status.as_u16(), 200, "{body}");
+    let snapshot = || s.st.store.lock().unwrap().rig_snapshot(&id).unwrap().unwrap().seats;
+    wait_for("all three launched", || snapshot().iter().all(|x| x.cwd.is_some())).await;
+    let seats = snapshot();
+    let cwd = |m: &str| seats.iter().find(|x| x.member == m).and_then(|x| x.cwd.clone()).unwrap_or_default();
+    assert_eq!(cwd("a"), "/home/me/project", "the team's computer uses the project folder");
+    assert_eq!(cwd("b"), ".", "another computer: its own folder there, not the project's path");
+    assert_eq!(cwd("c"), "/scratch/me/run", "a folder chosen for the agent is kept");
+}
+
+#[tokio::test]
+async fn hosted_a_team_whose_agents_all_have_their_own_computers_needs_no_team_computer() {
+    let s = serve_hosted().await;
+    let _desk = connect_as(&s, "desk", vec![Arc::new(drivers::stub::StubDriver)]).await;
+    let _hpc = connect_as(&s, "hpc-login", vec![Arc::new(drivers::stub::StubDriver)]).await;
+    let (_, rec) = signed(&s.router, "POST", "/api/teams", Some(json!({"request_id": rid(), "template": "blank", "practice": true, "name": "spread"}))).await;
+    let mut draft = rec["draft"].clone();
+    draft["agents"] = json!([{"id": "a", "group_id": null, "name": "A", "kind": "practice", "job": "Work", "folder": null, "x": 40, "y": 40},
+                             {"id": "b", "group_id": null, "name": "B", "kind": "practice", "job": "Work", "folder": null, "x": 300, "y": 40}]);
+    let id = draft["id"].as_str().unwrap().to_string();
+    signed(&s.router, "PUT", &format!("/api/teams/{id}"), Some(json!({"request_id": rid(), "revision": draft["revision"], "draft": draft}))).await;
+    let settings = json!({"request_id": rid(), "settings": {"posture": null, "question_timeout_min": null, "own_copies": false, "host": null, "agent_hosts": {"a": "desk", "b": "hpc-login"}}});
+    signed(&s.router, "PUT", &format!("/api/teams/{id}/settings"), Some(settings)).await;
+    let (_, rec) = signed(&s.router, "GET", &format!("/api/teams/{id}"), None).await;
+    let codes: Vec<&str> = rec["issues"].as_array().unwrap().iter().filter_map(|i| i["code"].as_str()).collect();
+    assert!(!codes.contains(&"computer-not-connected"), "{codes:?}");
+    let (status, body) = signed(&s.router, "POST", &format!("/api/teams/{id}/start"), Some(json!({"request_id": rid()}))).await;
+    assert_eq!(status.as_u16(), 200, "every agent has its own computer, so no team computer is needed: {body}");
+}

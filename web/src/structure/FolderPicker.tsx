@@ -47,6 +47,8 @@ export function shortPath(path: string, home: string | null): string {
 type Props = {
   /** Hosted: browse the computer that runs this team (its allowed folders). */
   team?: string;
+  /** Hosted: browse this computer (an agent's own) instead of the team's. */
+  host?: string;
   initialPath: string | null;
   onChoose: (path: string) => void;
   /** Choosing files instead of a folder: ticks persist across folders; gets their full paths. */
@@ -58,8 +60,8 @@ type Props = {
  * Chooses a folder inside the home folder. Lists folders only (never files), can make a new
  * folder, and says what went wrong in plain words. Esc closes and focus returns to the opener.
  */
-export function FolderPicker({ team, initialPath, onChoose, pickFiles, onClose }: Props) {
-  const on = team ? { team } : undefined;
+export function FolderPicker({ team, host, initialPath, onChoose, pickFiles, onClose }: Props) {
+  const on = host ? { host } : team ? { team } : undefined;
   const ids = useId();
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [busy, setBusy] = useState(true);

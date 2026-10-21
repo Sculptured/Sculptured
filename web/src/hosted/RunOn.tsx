@@ -57,13 +57,19 @@ const AGENT_HOSTS_CHANGED = 'sculptured:agent-hosts';
 
 /** Hosted: each agent that runs on its own computer, by that computer's name (for the board). */
 export function useAgentComputers(team: string, enabled: boolean): Record<string, string> {
-  const [on, setOn] = useState<Record<string, string>>({});
+  const hosts = useAgentHosts(team, enabled);
+  return Object.fromEntries(Object.entries(hosts).map(([agent, h]) => [agent, h.name]));
+}
+
+/** Hosted: each agent that runs on its own computer: that computer's id and name. */
+export function useAgentHosts(team: string, enabled: boolean): Record<string, { id: string; name: string }> {
+  const [on, setOn] = useState<Record<string, { id: string; name: string }>>({});
   useEffect(() => {
     if (!enabled) return;
     let live = true;
     const load = () => Promise.all([gw<Computer[]>('GET', '/devices'), api.teamSettings(team)]).then(([computers, s]) => {
       const name = (id: string) => computers.find((c) => c.id === id)?.name ?? id;
-      if (live) setOn(Object.fromEntries(Object.entries(s.agent_hosts ?? {}).map(([agent, host]) => [agent, name(host)])));
+      if (live) setOn(Object.fromEntries(Object.entries(s.agent_hosts ?? {}).map(([agent, host]) => [agent, { id: host, name: name(host) }])));
     }, () => {});
     void load();
     const changed = (e: Event) => { if ((e as CustomEvent<string>).detail === team) void load(); };

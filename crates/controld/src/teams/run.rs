@@ -119,19 +119,28 @@ pub(super) async fn start_team(State(st): State<AppState>, Path(id): Path<String
         crate::project_visibility::ensure_available(&st2.store.lock().unwrap(), &id)?;
         let draft = load(&st2, &id)?;
         if st2.store.lock().unwrap().archived(&id)? { return Err(ApiError::conflict("project_archived","Restore this project before starting it")); }
-        let build = startable(&st2, &draft, req.revision)?;
+        let mut build = startable(&st2, &draft, req.revision)?;
         let chosen = st2.store.lock().unwrap().team_settings(&id)?.host.filter(|h| !h.is_empty());
         let host = crate::launch::team_host(&st2, &id);
         let hosted = matches!(st2.auth, crate::auth::AuthPolicy::Gateway { .. });
-        if hosted && chosen.is_none() && st2.hosts.connected().len() > 1 {
+        let own = st2.store.lock().unwrap().team_settings(&id)?.agent_hosts;
+        let own_computer = |agent: &str| own.get(agent).is_some_and(|h| !h.is_empty());
+        // The project folder is a path on the team's computer: an agent on another computer without
+        // a folder of its own works in that computer's own folder (its runner resolves ".").
+        for seat in &mut build.rig.seats {
+            if own_computer(&seat.member) && draft.agents.iter().any(|a| a.id == seat.member && a.folder.as_deref().is_none_or(|f| f.trim().is_empty())) {
+                seat.cwd = ".".into();
+            }
+        }
+        let everyone_own = !draft.agents.is_empty() && draft.agents.iter().all(|a| own_computer(&a.id));
+        if hosted && !everyone_own && chosen.is_none() && st2.hosts.connected().len() > 1 {
             return Err(ApiError::conflict("needs_computer", "Choose which computer runs this team: Design → Run on."));
         }
         // An agent on its own computer needs that computer; the start names it and the agent.
-        let own = st2.store.lock().unwrap().team_settings(&id)?.agent_hosts;
         if let Some((agent, h)) = draft.agents.iter().find_map(|a| own.get(&a.id).filter(|h| !h.is_empty() && !st2.hosts.is_connected(h)).map(|h| (a, h))) {
             return Err(ApiError::conflict("needs_computer", format!("{h} is not connected, and {} runs there. Open Computers to connect it, or choose another computer for {}.", agent.name, agent.name)));
         }
-        if (hosted || chosen.is_some()) && !st2.hosts.is_connected(&host) {
+        if !everyone_own && (hosted || chosen.is_some()) && !st2.hosts.is_connected(&host) {
             return Err(match chosen {
                 Some(h) => ApiError::conflict("needs_computer", format!("{h} is not connected. Open Computers to connect it.")),
                 None => ApiError::conflict("needs_computer", "Connect a computer first: Computers → Connect a computer."),

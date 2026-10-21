@@ -5,6 +5,8 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Changed
+- Hosted teams across computers: an agent on its own computer (`TeamSettings.agent_hosts`) without a folder of its own starts in `.`, which its runner resolves to that computer's first allowed folder, instead of the project folder (a path on the team's computer). A team whose agents all have their own computers needs no team computer. On the hosted service `folder-missing` is not an issue. The agent's **Computer** sits above its folder, and its folder picker browses that computer.
+- Add a cluster: the sign-in choices are cards with a visible selection. A site that offers a password but no key sign-in is refused with "does not take keys", and the card drops the authorized_keys steps.
 - Fewer tokens for teams (measured on a Codex lead with two workers, 4 runs before and 5 after, all 12 tests passing each time: mean 795k → 639k tokens, tokens in turns with no tool call 148k → 32k, turns 7–9 → 4–5):
   - A `send_agent_message` marked `fyi` to an idle agent is held (`held_notes`, migration 29) and prepended to its next message or workflow assignment instead of starting a turn.
   - A message an agent sends the agent it hands work to during its work turn is recorded as that handoff (`HandedOver` on the agent's own message, `Store::record_adopted`); the result is not sent again, and the receiver's turn on the message is its work.

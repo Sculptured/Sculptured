@@ -188,10 +188,11 @@ Every agent on that computer can then use it.
 
 ## Run agents on more than one computer
 
-A team runs on the computer chosen under **Run on** in its Design panel. One agent can run somewhere else: open the agent, then **Advanced** → **Runs on**, and choose another connected computer, such as a desktop with a GPU or a cluster's login node. The rest of the team stays where it was.
+A team runs on the computer chosen under **Run on** in its Design panel. Any agent can run somewhere else: open the agent and choose its **Computer** (just above its folder), such as a desktop with a GPU or a cluster's login node. A team can spread over several computers this way: one agent at NERSC, one at NCSA, one on a lab machine and one on your own computer. When every agent has its own computer, the team needs no **Run on**.
 
+- **Each agent has its own folder on its own computer.** The project folder is a path on the team's computer, so an agent on another computer never uses it. Choose the agent's folder with **Choose…**, which browses that agent's computer (the field says **Folder on** *its computer*), or leave it empty: the agent then works in that computer's own folder, the first folder allowed there (your home folder on a cluster you added from the web app).
 - **Messages and handoffs** reach the agent on its computer, and its questions come to you as usual.
-- **Files stay where they were made.** An agent on another computer works in folders on that computer, and what it hands on is its reply: text and file paths. Put shared work in a git remote both computers can reach.
+- **Files stay where they were made.** What an agent hands on is its reply: text and file paths, never the files. Data too large to move, such as terabytes on a cluster's scratch, stays where it is; agents describe it by path, size and checksum. Put shared code in a git remote every computer can reach.
 - **Start needs every computer it uses.** If one is not connected, Start says which, and which agent runs there.
 - **Agents an agent starts** run on the same computer as the agent that started them.
 
@@ -203,17 +204,26 @@ On the hosted service you can connect a cluster without installing anything your
 
 1. **Check your site's rules first.** Many clusters limit long-running programs, or AI tools, on login nodes. The runner is small and mostly waits, but some sites want it under `scrontab` or on a service node instead.
 2. On **Computers**, choose **Add a cluster**. Give the login node's host name, the port (22 unless your site says otherwise), your user name there and, if you reach it through a jump host (bastion), that host too.
-3. Choose how Sculptured signs in:
-   - **A key Sculptured makes** (recommended). Sculptured makes a key pair just for this cluster and shows its public half, with the exact line to add to `~/.ssh/authorized_keys` on the login node (and the line for the jump host, which allows a connection to the login node only). Add it, then choose **Connect**. The private half never leaves the server.
-   - **A private key you paste**, with its passphrase if it has one. The passphrase is used once to read the key and is not kept.
-   - **A certificate your site issued**: a private key and its `-cert.pub` file, from NERSC's `sshproxy`, Smallstep's `step ssh`, or a Teleport-style CA. The card shows whom the certificate names and when it ends; from 2 hours before then it asks you to paste a new one (**Paste a new certificate**), and Sculptured never tries one that has ended.
-   - **A password.**
+3. Choose how Sculptured signs in. Each choice is a card; the selected one is highlighted.
+   - **Key Sculptured makes** (recommended where the site takes keys). Sculptured makes a key pair just for this cluster and shows its public half, with the exact line to add to `~/.ssh/authorized_keys` on the login node, a command that adds it, and the line for the jump host (which allows a connection to the login node only). Add it, then choose **Connect**. The private half never leaves the server. If the site takes no keys at all, the card says so and tells you to add the cluster again with **Password**.
+   - **Password**, for sites that take no keys. Codes and Duo pushes are asked for when you connect.
+   - **Certificate from your site**: a private key and its `-cert.pub` file, from NERSC's `sshproxy`, Smallstep's `step ssh`, or a Teleport-style CA. The card shows whom the certificate names and when it ends; from 2 hours before then it asks you to paste a new one (**Paste a new certificate**), and Sculptured never tries one that has ended.
+   - **Your own private key**, with its passphrase if it has one. The passphrase is used once to read the key and is not kept.
 
    Sculptured tries what the login node offers in this order: the key or certificate, then questions (keyboard-interactive), then the password, and goes on through a chain such as a password followed by a code.
 
    Saved keys and passwords are encrypted with a server key kept outside the database, are never shown again, and are deleted when you remove the cluster.
 4. If the cluster asks for a code when anyone signs in (Duo, an OTP), the card shows its question; type the answer there. It is used once and never stored. The card shows every question the site asks at once, hides answers the site asks to hide, turns a sign-in link (a web or device-code sign-in) into a link, and counts down the time left to answer. For a Duo push, type `1` (or `push`) and approve on your phone: Sculptured waits up to 2 minutes for the approval. If a site asks for your password and a code in one field, type both as the site says.
 5. Choose how long Sculptured stays signed in (**Keep signed in for**, 12 hours unless you change it, at most 7 days; 0 keeps nothing). After you answer a code once, Sculptured keeps that SSH connection open and restarts the runner over it without asking again. The card says **Signed in until …**; **Sign out** closes the connection, and so does removing the cluster. Many sites end sessions sooner, and a restart of Sculptured's server closes it too: the next restart then asks for your code.
+
+**Sites we know.**
+
+| Site | Host | Sign in with |
+|---|---|---|
+| NERSC Perlmutter | `perlmutter.nersc.gov` | **Certificate from your site**: run NERSC's `sshproxy.sh` on your computer and paste the key and `-cert.pub` it makes (good for 24 hours). Or **Password**, then your one-time code. |
+| NCSA Delta | one login node, such as `dt-login03.delta.ncsa.illinois.edu` | **Password**, then approve the Duo push. Delta takes no SSH keys. Use one login node, not `login.delta.ncsa.illinois.edu`: tmux sessions live on one node, and the alias can send a reconnect to another. |
+
+Both sites let you start agents from a login node, for light work only: compute goes through Slurm (`sbatch`, `srun`). NERSC asks that agents run under your supervision, work in `$HOME` or `$SCRATCH`, and not change `$CFS` without your permission ([NERSC's guidance on coding agents](https://docs.nersc.gov/development/coding-agents/)). Delta stops programs that look like applications on its login nodes ([Delta's login-node rules](https://docs.ncsa.illinois.edu/systems/delta/en/latest/user_guide/citizenship.html)).
 
 **What can't work from a web app.** Hardware security keys (FIDO keys such as `sk-ed25519`), Kerberos (GSSAPI) tickets and SSH agent forwarding all need your own computer, so Sculptured's server cannot use them. If your site requires one of them, [set up the cluster yourself](#set-up-a-cluster-yourself).
 

@@ -30,7 +30,7 @@ function HostedFolder({ draft, edit, locked }: { draft: TeamDraft; edit: Edit; l
     {picking && <FolderPicker team={draft.id} initialPath={draft.folder ?? null} onClose={() => setPicking(false)} onChoose={folder => {
       edit(d => setProjectFolder(d, folder)); setPicking(false);
     }} />}
-    <p className="fld-hint muted">A full path on the computer that runs this team. It must be inside a folder that computer allows (<code>sculptured allow &lt;folder&gt;</code>). Leave empty to use its first allowed folder.</p>
+    <p className="fld-hint muted">A full path on the computer that runs this team. It must be inside a folder that computer allows (<code>sculptured allow &lt;folder&gt;</code>). Leave empty to use its first allowed folder. Agents you put on another computer use their own folder there.</p>
     {locked && <p className="reason">Stop the team to change its folder.</p>}
     <RunOn team={draft.id} />
   </section>;
