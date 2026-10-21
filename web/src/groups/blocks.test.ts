@@ -25,3 +25,19 @@ it('adopts workflow stages into an empty project with new agent and stage IDs',(
  expect(result.reason).toBeUndefined();const w=result.draft.workflow!;
  expect(w.entry).toBe(w.stages[0].id);expect(w.dispatcher).toBe(result.draft.agents[0].id);expect(w.collector).toBe(result.draft.agents[1].id);expect(w.input).toBe('');expect(w.stages[1].routes.revise).toBe(w.entry);
 });
+it('maps every reference in an added workflow: reviewers, escalation, round-limit route, people and checks, and schedules',()=>{
+ const d=source();d.connections=[];
+ const block=captureGroup({...d,workflow:{input:'',dispatcher:'builder',collector:'reviewer',entry:'treat',max_tasks:4,max_steps:12,stages:[{id:'treat',name:'Treat',agent:'builder',routes:{done:'panel'}}]}},'g');
+ block.draft.workflow!.stages=[
+  {id:'treat',name:'Treat',agent:'builder',max_rounds:4,on_limit:'escalation',escalate:{after_rounds:2,agent:'reviewer'},routes:{done:'panel'}},
+  {id:'panel',name:'Panel',agent:'',reviewers:['builder','reviewer'],routes:{approved:null,changes:'treat'}},
+  {id:'escalation',name:'Escalation',kind:'human',agent:'',prompt:'Retry?',routes:{retry:'treat'}},
+ ] as never;
+ block.draft.schedules=[{id:'round',agent:'reviewer',every_minutes:30,message:'Board round'}];
+ const r=insertBlock(teamDraft({agents:[],connections:[]}),block);
+ expect(r.reason).toBeUndefined();
+ const w=r.draft.workflow!,[treat,panel,esc]=w.stages,[builder,reviewer]=r.draft.agents.map(a=>a.id);
+ expect(treat.escalate?.agent).toBe(reviewer);expect(treat.on_limit).toBe(esc.id);
+ expect(panel.reviewers).toEqual([builder,reviewer]);expect(panel.agent).toBe('');expect(esc.agent).toBe('');
+ expect(r.draft.schedules).toEqual([{id:expect.any(String),agent:reviewer,every_minutes:30,message:'Board round'}]);
+});

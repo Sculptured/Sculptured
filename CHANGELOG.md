@@ -4,6 +4,10 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 
 ## [Unreleased]
 
+### Fixed
+- Adding a group with a workflow to a project (from Community or your saved groups) now maps every reference to its new agent and stage ids: a stage's reviewers, its escalation agent and round-limit route, stages run by a person or a check (no agent), and the group's schedules, which were dropped. Coding hospital added to a project no longer shows broken Treatment and Code review stages.
+- Community item pages on the hosted service no longer fail with error 500.
+
 ### Changed
 - Hosted teams across computers: an agent on its own computer (`TeamSettings.agent_hosts`) without a folder of its own starts in `.`, which its runner resolves to that computer's first allowed folder, instead of the project folder (a path on the team's computer). A team whose agents all have their own computers needs no team computer. On the hosted service `folder-missing` is not an issue. The agent's **Computer** sits above its folder, and its folder picker browses that computer.
 - Add a cluster: the sign-in choices are cards with a visible selection. A site that offers a password but no key sign-in is refused with "does not take keys", and the card drops the authorized_keys steps.
