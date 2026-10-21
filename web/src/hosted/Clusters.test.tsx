@@ -63,7 +63,7 @@ it('a pasted password is sent once, then the cluster connects at once', async ()
   await userEvent.click(await screen.findByRole('button', { name: 'Add a cluster' }));
   await userEvent.type(screen.getByLabelText('Login node'), 'login.example.edu');
   await userEvent.type(screen.getByLabelText('User name'), 'alex');
-  await userEvent.click(screen.getByRole('radio', { name: /A password/ }));
+  await userEvent.click(screen.getByRole('radio', { name: /^Password/ }));
   const field = screen.getByLabelText('Password');
   expect(field).toHaveAttribute('type', 'password');
   await userEvent.type(field, 's3cret');
@@ -144,7 +144,7 @@ it('adds a certificate cluster, keeps it signed in 12 hours by default, and says
   expect(screen.getByText(/many sites limit how long a session/i)).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('Login node'), 'perlmutter.nersc.gov');
   await userEvent.type(screen.getByLabelText('User name'), 'alex');
-  await userEvent.click(screen.getByRole('radio', { name: /A certificate/ }));
+  await userEvent.click(screen.getByRole('radio', { name: /^Certificate from your site/ }));
   await userEvent.type(screen.getByLabelText('Private key'), 'KEY');
   await userEvent.type(screen.getByLabelText('Certificate (-cert.pub)'), 'ssh-ed25519-cert-v01@openssh.com AAAA');
   await userEvent.click(screen.getByRole('button', { name: 'Add cluster' }));

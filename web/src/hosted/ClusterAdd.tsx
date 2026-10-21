@@ -89,14 +89,20 @@ function JumpFields({ f, set }: { f: Fields; set: Setter }) {
 }
 
 function AuthFields({ f, set, auth, setAuth }: { f: Fields; set: Setter; auth: Auth; setAuth: (a: Auth) => void }) {
-  const choice = (a: Auth, text: string) => <label className="check"><input type="radio" name="auth" checked={auth === a} onChange={() => setAuth(a)} />{text}</label>;
+  const choice = (a: Auth, title: string, hint: string) => (
+    <label className={`auth-option${auth === a ? ' on' : ''}`}>
+      <input type="radio" name="auth" checked={auth === a} onChange={() => setAuth(a)} />
+      <span className="radio-mark" aria-hidden="true" />
+      <span><strong>{title}</strong><small>{hint}</small></span>
+    </label>
+  );
   return <>
-    <fieldset>
+    <fieldset className="auth-options">
       <legend>How Sculptured signs in</legend>
-      {choice('generated', 'A key Sculptured makes (recommended): you add its public half on the cluster')}
-      {choice('key', 'A private key you paste')}
-      {choice('certificate', 'A certificate your site issued (a private key and its -cert.pub, such as NERSC sshproxy or step-ca)')}
-      {choice('password', 'A password')}
+      {choice('generated', 'Key Sculptured makes', 'You add one line to ~/.ssh/authorized_keys on the cluster; no password is kept.')}
+      {choice('password', 'Password', 'Your site password. Codes and Duo pushes are asked when you connect. Use this when the site takes no keys, like NCSA Delta.')}
+      {choice('certificate', 'Certificate from your site', 'A private key and its -cert.pub, for example from NERSC sshproxy or step-ca.')}
+      {choice('key', 'Your own private key', 'Paste a key that already signs in to the cluster.')}
     </fieldset>
     {(auth === 'key' || auth === 'certificate') && <KeyFields f={f} set={set} />}
     {auth === 'certificate' && <label>Certificate (-cert.pub)<textarea required rows={3} value={f.certificate} onChange={set('certificate')} spellCheck={false} autoComplete="off" /></label>}
