@@ -26,7 +26,7 @@ function serve(settings: Record<string, unknown>) {
 it('runs an agent on another computer than the team, and back', async () => {
   const puts = serve({ posture: null, question_timeout_min: null, own_copies: false, host: 'laptop' });
   render(<AgentRunOn team="t1" agent="runner" name="Job runner" />);
-  const select = await screen.findByLabelText('Job runner runs on');
+  const select = await screen.findByLabelText('Job runner’s computer');
   expect(select).toHaveValue('');
   expect(screen.getByRole('option', { name: 'Delta login (not connected)' })).toBeInTheDocument();
   await userEvent.selectOptions(select, 'hpc');
@@ -50,7 +50,7 @@ it("names each agent's own computer for the board, and follows a change", async 
   }
   render(<><Board /><AgentRunOn team="t1" agent="other" name="Other" /></>);
   await waitFor(() => expect(screen.getByTestId('on')).toHaveTextContent('{"runner":"Delta login"}'));
-  await userEvent.selectOptions(await screen.findByLabelText('Other runs on'), 'laptop');
+  await userEvent.selectOptions(await screen.findByLabelText('Other’s computer'), 'laptop');
   await waitFor(() => expect(puts).toHaveLength(1));
   await waitFor(() => expect(screen.getByTestId('on')).toHaveTextContent('"other":"Laptop"'));
 });

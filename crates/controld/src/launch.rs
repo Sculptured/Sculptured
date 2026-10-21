@@ -102,7 +102,7 @@ pub fn agent_host(st: &AppState, seat: &str) -> String {
     own.filter(|h| !h.is_empty()).unwrap_or_else(|| team_host(st, rig))
 }
 
-fn hosted(st: &AppState) -> bool {
+pub(crate) fn hosted(st: &AppState) -> bool {
     matches!(st.auth, crate::auth::AuthPolicy::Gateway { .. })
 }
 

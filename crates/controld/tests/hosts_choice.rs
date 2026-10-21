@@ -99,3 +99,17 @@ async fn an_agent_whose_computer_is_offline_stops_the_start_and_is_named() {
     let message = body["error"]["message"].as_str().unwrap();
     assert!(message.contains("hpc-gone") && message.contains("Cluster runner"), "{message}");
 }
+
+#[tokio::test]
+async fn hosted_an_agent_without_a_folder_works_in_its_computers_own_folder() {
+    let s = serve_hosted().await;
+    let (status, rec) = signed(&s.router, "POST", "/api/teams", Some(json!({"request_id": rid(), "template": "blank", "name": "sites"}))).await;
+    assert_eq!(status.as_u16(), 200, "{rec}");
+    let mut draft = rec["draft"].clone();
+    draft["agents"] = json!([{"id": "a", "group_id": null, "name": "Delta", "kind": "claude", "job": "Plan", "folder": null, "x": 40, "y": 40}]);
+    let id = draft["id"].as_str().unwrap().to_string();
+    let (status, saved) = signed(&s.router, "PUT", &format!("/api/teams/{id}"), Some(json!({"request_id": rid(), "revision": draft["revision"], "draft": draft}))).await;
+    assert_eq!(status.as_u16(), 200, "{saved}");
+    let codes: Vec<&str> = saved["issues"].as_array().unwrap().iter().filter_map(|i| i["code"].as_str()).collect();
+    assert!(!codes.contains(&"folder-missing"), "hosted: the runner uses its computer's first allowed folder: {codes:?}");
+}

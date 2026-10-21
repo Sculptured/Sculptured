@@ -42,12 +42,12 @@ export function AgentRunOn({ team, agent, name }: { team: string; agent: string;
   };
   return (
     <div className="fld">
-      <label className="fld-label" htmlFor={`run-on-${team}-${agent}`}>{name} runs on</label>
-      <select id={`run-on-${team}-${agent}`} className="fld-input" value={settings.agent_hosts?.[agent] ?? ''} onChange={(e) => void save(e.target.value)}>
+      <label className="fld-label" htmlFor={`run-on-${team}-${agent}`}>Computer</label>
+      <select id={`run-on-${team}-${agent}`} aria-label={`${name}’s computer`} className="fld-input" value={settings.agent_hosts?.[agent] ?? ''} onChange={(e) => void save(e.target.value)}>
         <option value="">The team's computer</option>
         {computers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.connected ? '' : ' (not connected)'}</option>)}
       </select>
-      <p className="fld-hint">Messages and handoffs reach it there. Files stay on the computer where they were made; results arrive as text and file paths.</p>
+      <p className="fld-hint">Messages and handoffs reach it there. Files stay on that computer; results arrive as text and file paths. With no folder chosen, it works in that computer’s own folder.</p>
       {error && <p className="tone-red" role="alert">{error}</p>}
     </div>
   );

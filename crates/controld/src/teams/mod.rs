@@ -67,6 +67,10 @@ fn team_live_in(st: &AppState, store: &Store, id: &str) -> Result<bool, ApiError
 
 pub(crate) fn issues_for(st: &AppState, d: &TeamDraft) -> Vec<DraftIssue> {
     let mut issues = rigspec::validate_draft(d);
+    if crate::launch::hosted(st) {
+        // An agent with no folder works in its own computer's first allowed folder (the runner resolves ".").
+        issues.retain(|i| i.code != "folder-missing");
+    }
     issues.extend(folder_issues(st, d));
     issues.extend(folder_checks::computer_issues(st, d));
     issues

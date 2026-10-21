@@ -121,9 +121,11 @@ export function FolderField({ draft, a, edit, locked, issues = [] }: Common & { 
   const [picking, setPicking] = useState(false);
   const home = useHome();
   const folder = effectiveFolder(draft, a);
-  const shown = folder ? shortPath(folder, home) : a.kind === 'practice' ? 'your home folder' : 'none chosen';
+  const hosted = useHosted().kind === 'signed-in';
+  const shown = folder ? shortPath(folder, home) : a.kind === 'practice' ? 'your home folder' : hosted ? 'its computer’s own folder' : 'none chosen';
   const off = { disabled: locked, 'aria-describedby': locked ? `${ids}-lock` : undefined };
-  return (
+  return (<>
+    <HostedRunOn draft={draft} a={a} />
     <Field label="Folder" reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
       <div className="fld-folder">
         <span className={`folder-path${a.folder ? '' : ' muted'}`} title={folder ?? undefined}>
@@ -137,7 +139,7 @@ export function FolderField({ draft, a, edit, locked, issues = [] }: Common & { 
       <FieldIssues issues={issues} />
       {picking && <FolderPicker initialPath={folder} onClose={() => setPicking(false)} onChoose={(path) => { setPicking(false); edit((d) => setFolder(d, a.id, path)); }} />}
     </Field>
-  );
+  </>);
 }
 
 /** Who this agent hands work to (and other links), who hands it work, and Connect to… */
@@ -220,7 +222,6 @@ export function RawConfig({ draft, a, edit, locked }: Common) {
   return (
     <details className="fld-advanced" data-advanced>
       <summary>{WORDS.advanced}</summary>
-      <HostedRunOn draft={draft} a={a} />
       <Field label="When it restarts" htmlFor={`${ids}-resume`}>
         <select id={`${ids}-resume`} className="fld-input" value={a.advanced.resume} disabled={locked} onChange={(e) => edit((d) => setAdvanced(d, a.id, { resume: e.target.value as ResumeBehaviour }))}>
           {(Object.keys(RESUME_WORDS) as ResumeBehaviour[]).map((r) => <option key={r} value={r}>{RESUME_WORDS[r]}</option>)}
