@@ -159,3 +159,18 @@ async fn hosted_a_team_whose_agents_all_have_their_own_computers_needs_no_team_c
     let (status, body) = signed(&s.router, "POST", &format!("/api/teams/{id}/start"), Some(json!({"request_id": rid()}))).await;
     assert_eq!(status.as_u16(), 200, "every agent has its own computer, so no team computer is needed: {body}");
 }
+
+#[tokio::test]
+async fn a_new_team_runs_on_the_computer_you_chose_last_until_you_choose_otherwise() {
+    let s = serve().await;
+    let _local = connect_stub(&s).await;
+    let _desk = connect_as(&s, "desk", vec![Arc::new(drivers::stub::StubDriver)]).await;
+    let first = practice_chain(&s, "first", &[("a", "A", "Job")], &[]).await;
+    let chosen = |host: serde_json::Value| json!({"request_id": rid(), "settings": {"posture": null, "question_timeout_min": null, "own_copies": false, "host": host}});
+    assert_eq!(call(&s.router, "PUT", &format!("/api/teams/{first}/settings"), chosen(json!("desk"))).await.0.as_u16(), 200);
+    let second = practice_chain(&s, "second", &[("a", "A", "Job")], &[]).await;
+    assert_eq!(get(&s.router, &format!("/api/teams/{second}/settings")).await.1["host"], "desk", "remembered for a new team");
+    assert_eq!(call(&s.router, "PUT", &format!("/api/teams/{second}/settings"), chosen(json!(null))).await.0.as_u16(), 200);
+    assert_eq!(get(&s.router, &format!("/api/teams/{second}/settings")).await.1["host"], serde_json::Value::Null, "Automatic, once chosen, stays");
+    assert_eq!(get(&s.router, &format!("/api/teams/{first}/settings")).await.1["host"], "desk");
+}

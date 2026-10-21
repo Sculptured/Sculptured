@@ -3,10 +3,35 @@ use std::collections::HashSet;
 
 pub(super) fn check(d: &TeamDraft) -> Vec<DraftIssue> {
     let Some(w) = &d.workflow else { return vec![] };
-    errors(d, w).into_iter().map(|message| DraftIssue {
+    let issue = |code: &str, message: String| DraftIssue {
         element: ElementRef { kind: ElementKind::Team, id: d.id.clone() }, severity: IssueSeverity::Error,
-        code: "workflow-invalid".into(), message, detail: None, spec_path: None,
-    }).collect()
+        code: code.into(), message, detail: None, spec_path: None,
+    };
+    let mut issues: Vec<DraftIssue> = errors(d, w).into_iter().map(|m| issue("workflow-invalid", m)).collect();
+    let needs = folder_users(w);
+    if !has_folder(d) && !needs.is_empty() {
+        issues.push(issue("project-folder-needed", format!("Choose the project folder: {} {} there.", list(&needs), if needs.len() == 1 { "runs" } else { "run" })));
+    }
+    issues
+}
+
+/// What runs in the project folder: per-item copies, the guard, a dispatch command and check stages.
+fn folder_users(w: &Workflow) -> Vec<String> {
+    let mut v = Vec::new();
+    if w.copies == CopiesMode::PerItem { v.push("a copy per item".to_string()); }
+    if w.guard.is_some() { v.push("the guard".into()); }
+    if w.dispatch.is_some() { v.push("the dispatch command".into()); }
+    v.extend(w.stages.iter().filter(|s| s.kind == StageKind::Check).map(|s| s.name.trim().to_string()));
+    v
+}
+
+/// "a", "a and b", "a, b and c".
+fn list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 fn errors(d: &TeamDraft, w: &Workflow) -> Vec<String> {
@@ -17,12 +42,10 @@ fn errors(d: &TeamDraft, w: &Workflow) -> Vec<String> {
     }
     errors.extend(dispatch_errors(d, w));
     if !d.connections.is_empty() { errors.push("Dynamic workflows use stage routes instead of ordinary connections. Remove ordinary connections first.".into()); }
-    if w.copies == CopiesMode::PerItem && !has_folder(d) { errors.push("A copy per item needs the team's project folder.".into()); }
     if let Some(g) = &w.guard {
         if g.command.trim().is_empty() || g.command.len() > 2000 { errors.push("The guard needs a command of 1–2000 bytes.".into()); }
         if !(5..=1440).contains(&g.every_minutes) { errors.push("The guard runs every 5–1440 minutes.".into()); }
         if g.timeout_s.is_some_and(|t| !(1..=3600).contains(&t)) { errors.push("The guard needs a time limit of 1–3600 seconds.".into()); }
-        if !has_folder(d) { errors.push("The guard runs in the team's project folder; set one in team settings.".into()); }
     }
     let ids: HashSet<_> = w.stages.iter().map(|s| &s.id).collect();
     if w.stages.is_empty() || w.stages.len() > 16 || ids.len() != w.stages.len() || !ids.contains(&w.entry) {
@@ -60,7 +83,6 @@ fn dispatch_errors(d: &TeamDraft, w: &Workflow) -> Vec<String> {
     if d.agent(&w.collector).is_none() { e.push("Choose an existing assembly agent.".into()); }
     if c.command.trim().is_empty() || c.command.len() > 2000 { e.push("The dispatch command needs 1–2000 bytes.".into()); }
     if c.timeout_s.is_some_and(|t| !(1..=3600).contains(&t)) { e.push("The dispatch command needs a time limit of 1–3600 seconds.".into()); }
-    if !has_folder(d) { e.push("The dispatch command runs in the team's project folder; set one in team settings.".into()); }
     e
 }
 
@@ -94,7 +116,6 @@ fn kind_errors(d: &TeamDraft, w: &Workflow, s: &WorkflowStage) -> Vec<String> {
             if s.command.as_deref().map(str::trim).is_none_or(|c| c.is_empty() || c.len() > 2000) { e.push(format!("{name} needs a command of 1–2000 bytes.")); }
             if s.timeout_s.is_some_and(|t| !(1..=3600).contains(&t)) { e.push(format!("{name} needs a time limit of 1–3600 seconds.")); }
             if !only(&["passed", "failed"]) { e.push(format!("{name} needs exactly two routes: passed and failed.")); }
-            if !has_folder(d) { e.push(format!("{name} runs in the team's project folder; set one in team settings.")); }
         }
         StageKind::Human => {
             if !no_agents { e.push(format!("{name} is a person's decision: remove its agents.")); }

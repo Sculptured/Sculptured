@@ -9,6 +9,10 @@ import { Badge, Btn, Icon } from '../shell/ui';
 import type { SaveState, TeamDraftApi } from '../useTeamDraft';
 import { isTextField } from '../dom';
 import { LOCK_REASON, type Edit } from './Panels';
+import { FolderPicker } from './FolderPicker';
+import { setProjectFolder } from '../draft/folders';
+import { useHosted } from '../hosted/HostedGate';
+import { RunOn } from '../hosted/RunOn';
 import { StructureCanvas, type CanvasHandle } from './StructureCanvas';
 import type { WorkflowTarget } from '../workflow/WorkflowGraph';
 import { useDesignAssistant } from './assistant/useDesignAssistant';
@@ -83,7 +87,7 @@ export function SaveStatus({ state, error, onRetry, onReload, onKeepMine }: { st
 }
 
 /** Things to fix, floating over the board: each problem selects or opens what it is about. */
-function FixBox({ draft, issues, onShow }: { draft: TeamDraft; issues: DraftIssue[]; onShow: (i: DraftIssue) => void }) {
+function FixBox({ draft, issues, onShow, edit, locked }: { draft: TeamDraft; issues: DraftIssue[]; onShow: (i: DraftIssue) => void; edit: Edit; locked: boolean }) {
   // It starts open only while the list is short; a long list starts folded so it never covers the board.
   const [choice, setChoice] = useState<boolean | null>(null);
   const open = choice ?? issues.length <= 3;
@@ -102,6 +106,7 @@ function FixBox({ draft, issues, onShow }: { draft: TeamDraft; issues: DraftIssu
             return (
               <li key={`${i.element.kind}-${i.element.id}-${i.code}-${n}`}>
                 {selectionFor(draft, i) ? <button type="button" className="fix-item" onClick={() => onShow(i)}>{text}</button> : <span className="fix-item">{text}</span>}
+                <QuickFix draft={draft} issue={i} edit={edit} locked={locked} />
                 {i.detail && <details className="fix-detail" data-advanced><summary>Advanced</summary><code>{i.spec_path}</code> {i.detail}</details>}
               </li>
             );
@@ -110,6 +115,19 @@ function FixBox({ draft, issues, onShow }: { draft: TeamDraft; issues: DraftIssu
       )}
     </section>
   );
+}
+
+/** A fix done right in the list: choose the project folder, or the computer that runs the team. */
+function QuickFix({ draft, issue, edit, locked }: { draft: TeamDraft; issue: DraftIssue; edit: Edit; locked: boolean }) {
+  const hosted = useHosted().kind === 'signed-in';
+  const [picking, setPicking] = useState(false);
+  if (issue.code === 'project-folder-needed') return <>
+    <Btn size="sm" icon="folder" disabled={locked} onClick={() => setPicking(true)}>Choose folder…</Btn>
+    {picking && <FolderPicker team={hosted ? draft.id : undefined} initialPath={draft.folder ?? null} onClose={() => setPicking(false)}
+      onChoose={(folder) => { setPicking(false); edit((d) => setProjectFolder(d, folder)); }} />}
+  </>;
+  if (hosted && issue.code === 'computer-not-connected' && issue.element.kind === 'team') return <RunOn team={draft.id} />;
+  return null;
 }
 
 /** The selection, restored when the board comes back for the same team. */
@@ -197,7 +215,7 @@ export function StructureBoard({ teamId, t, running, onOpenAgent, onWorkflow, st
           />
           {selection?.kind === 'group' && <GroupBar key={selection.id} draft={draft} groupId={selection.id} issues={issues} edit={edit} locked={locked} onClose={() => setSel(null)} />}
           {selection?.kind === 'connection' && <ConnectionBar key={selection.id} draft={draft} connectionId={selection.id} edit={edit} locked={locked} onClose={() => setSel(null)} />}
-          <FixBox draft={draft} issues={issues} onShow={show} />
+          <FixBox draft={draft} issues={issues} onShow={show} edit={edit} locked={locked} />
           {a.open && (
             <div className="da-window">
               <DesignAssistant a={a} revision={t.draft?.revision ?? 0} lockedReason={runLocked ? 'Stop the team to change its design.' : null} comparison={comparison} onApprove={approve}

@@ -170,7 +170,10 @@
 .pt-name:focus-visible, .at-name:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-sm); }
 .agents-table tbody tr { cursor: pointer; }
 .agents-table tbody tr.picked { background: var(--accent-soft); }
-.agents-table .col-pick { width: 36px; padding-right: 0; }
+.agents-table .col-pick, .projects-table .col-pick { width: 36px; padding-right: 0; }
+.projects-table tbody tr.picked { background: var(--accent-soft); }
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; }
+.bulk-bar .trash-confirm { flex-basis: 100%; }
 .agents-table .col-folder { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
 .agents-table .col-said { max-width: 360px; font-size: var(--text-sm); }
 .agents-table .said { display: flex; gap: 6px; align-items: baseline; }

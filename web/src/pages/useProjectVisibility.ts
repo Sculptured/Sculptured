@@ -26,6 +26,13 @@ export function useProjectVisibility() {
   };
   const change = (id: string, status: ProjectVisibilityStatus) => act(id, async () => { await api.setProjectVisibility(id, status); setVisibility((old) => ({ ...old, [id]: status })); });
   const deleteForever = (id: string) => act(id, async () => { await api.deleteProjectForever(id); setDeleted((old) => new Set(old).add(id)); });
+  /** Several at once (the selection bar): one after another, stopping at the first that fails. */
+  const changeMany = (ids: string[], status: ProjectVisibilityStatus) => act('bulk', async () => {
+    for (const id of ids) { await api.setProjectVisibility(id, status); setVisibility((old) => ({ ...old, [id]: status })); }
+  });
+  const deleteManyForever = (ids: string[]) => act('bulk', async () => {
+    for (const id of ids) { await api.deleteProjectForever(id); setDeleted((old) => new Set(old).add(id)); }
+  });
   const statusOf = (id: string): ProjectVisibilityStatus | 'deleted' => (deleted.has(id) ? 'deleted' : (visibility[id] ?? 'visible'));
-  return { statusOf, change, deleteForever, busy, error, loadError };
+  return { statusOf, change, changeMany, deleteForever, deleteManyForever, busy, error, loadError };
 }

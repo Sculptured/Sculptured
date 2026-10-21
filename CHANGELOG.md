@@ -8,7 +8,12 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 - Adding a group with a workflow to a project (from Community or your saved groups) now maps every reference to its new agent and stage ids: a stage's reviewers, its escalation agent and round-limit route, stages run by a person or a check (no agent), and the group's schedules, which were dropped. Coding hospital added to a project no longer shows broken Treatment and Code review stages.
 - Community item pages on the hosted service no longer fail with error 500.
 
+### Added
+- Projects: tick projects (or all of them) to hide them or move them to the Trash together; in the Trash, tick projects to restore them or delete them forever after one confirmation. Running projects can't be moved to the Trash.
+
 ### Changed
+- A workflow without a project folder shows one issue, `project-folder-needed` ("Choose the project folder: … run there."), instead of one per user (copy per item, guard, dispatch command, each check stage). **Things to fix** offers **Choose folder…** for it, and on the hosted service a **Run on** choice for a team without a computer.
+- A team whose settings were never saved runs on the computer chosen last under **Run on** (`last_team_host`); choosing Automatic for a team keeps it automatic.
 - Hosted teams across computers: an agent on its own computer (`TeamSettings.agent_hosts`) without a folder of its own starts in `.`, which its runner resolves to that computer's first allowed folder, instead of the project folder (a path on the team's computer). A team whose agents all have their own computers needs no team computer. On the hosted service `folder-missing` is not an issue. The agent's **Computer** sits above its folder, and its folder picker browses that computer.
 - Add a cluster: the sign-in choices are cards with a visible selection. A site that offers a password but no key sign-in is refused with "does not take keys", and the card drops the authorized_keys steps.
 - Fewer tokens for teams (measured on a Codex lead with two workers, 4 runs before and 5 after, all 12 tests passing each time: mean 795k → 639k tokens, tokens in turns with no tool call 148k → 32k, turns 7–9 → 4–5):

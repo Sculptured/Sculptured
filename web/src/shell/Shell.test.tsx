@@ -146,6 +146,37 @@ describe('Projects home', () => {
     expect(within(row()).getByText('Stop the team before moving it to the Trash.')).toBeInTheDocument();
   });
 
+  it('selects many projects like a mail inbox and hides them together; running ones can’t go to the Trash', async () => {
+    await twoTeams('/');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('checkbox', { name: 'Select all projects' }));
+    expect(screen.getByRole('checkbox', { name: 'Select r' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select q' })).toBeChecked();
+    expect(screen.getByRole('status', { name: 'Selected projects' })).toHaveTextContent('2 selected');
+    expect(screen.getByRole('button', { name: 'Move selected to Trash' })).toBeDisabled();
+    expect(screen.getByText('Stop running projects before moving them to the Trash.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Hide selected' }));
+    expect(api.setProjectVisibility).toHaveBeenCalledWith('r', 'hidden');
+    expect(api.setProjectVisibility).toHaveBeenCalledWith('q', 'hidden');
+    expect(await screen.findByText('Hidden projects (2)')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Selected projects' })).toBeNull();
+  });
+
+  it('the Trash deletes many projects forever after one explicit confirmation', async () => {
+    vi.mocked(api.projectVisibility).mockResolvedValue([{ id: 'r', status: 'trashed' }, { id: 'q', status: 'trashed' }]);
+    vi.mocked(api.deleteProjectForever).mockResolvedValue({ deleted: 'r' });
+    await twoTeams('/');
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Trash (2)'));
+    await user.click(screen.getByRole('checkbox', { name: 'Select everything in the Trash' }));
+    await user.click(screen.getByRole('button', { name: 'Delete selected forever' }));
+    expect(api.deleteProjectForever).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Delete 2 projects forever?');
+    await user.click(screen.getByRole('button', { name: 'Yes, delete 2 forever' }));
+    await waitFor(() => expect(api.deleteProjectForever).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(/^Trash/)).toBeNull());
+  });
+
   it('a project in the Trash can be restored, or deleted forever after an explicit second confirmation', async () => {
     vi.mocked(api.projectVisibility).mockResolvedValue([{ id: 'r', status: 'trashed' }]);
     vi.mocked(api.deleteProjectForever).mockResolvedValue({ deleted: 'r' });

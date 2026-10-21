@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { shortAge } from '../herdr';
 import { agentsPath, boardPath } from '../paths';
@@ -67,10 +68,23 @@ function ProjectTable({ rows, v }: { rows: TeamRow[]; v: ReturnType<typeof usePr
     shell.pending.current = { team, action, until: Date.now() + 10_000 };
     navigate(boardPath(team));
   };
+  const picks = usePicks(rows.map((r) => r.rig));
+  const chosen = rows.filter((r) => picks.has(r.rig));
+  const anyLive = chosen.some(running);
+  const bulk = v.busy === 'bulk';
   return (
     <div className="table-wrap">
+      {chosen.length > 0 && (
+        <div className="bulk-bar">
+          <span role="status" aria-label="Selected projects">{chosen.length} selected</span>
+          <Btn size="sm" disabled={bulk} onClick={() => void v.changeMany(chosen.map((r) => r.rig), 'hidden').then((ok) => ok && picks.clear())}>Hide selected</Btn>
+          <Btn size="sm" icon="trash" disabled={bulk || anyLive} onClick={() => void v.changeMany(chosen.map((r) => r.rig), 'trashed').then((ok) => ok && picks.clear())}>Move selected to Trash</Btn>
+          <Btn size="sm" variant="ghost" onClick={picks.clear}>Clear selection</Btn>
+          {anyLive && <small className="muted">Stop running projects before moving them to the Trash.</small>}
+        </div>
+      )}
       <table className="data-table projects-table">
-        <thead><tr><th>Name</th><th>Status</th><th className="col-num">Agents</th><th className="col-age">Last activity</th><th className="col-act"><span className="sr-only">Actions</span></th></tr></thead>
+        <thead><tr><th className="col-pick"><AllBox label="Select all projects" picks={picks} /></th><th>Name</th><th>Status</th><th className="col-num">Agents</th><th className="col-age">Last activity</th><th className="col-act"><span className="sr-only">Actions</span></th></tr></thead>
         <tbody>
           {rows.map((r) => {
             const summary = shell.summaries?.find((s) => s.id === r.rig);
@@ -78,7 +92,8 @@ function ProjectTable({ rows, v }: { rows: TeamRow[]; v: ReturnType<typeof usePr
             const live = running(r);
             const canStart = !live && shell.isTeam(r.rig);
             return (
-              <tr key={r.rig} data-team={r.rig}>
+              <tr key={r.rig} data-team={r.rig} className={picks.has(r.rig) ? 'picked' : undefined}>
+                <td className="col-pick"><input type="checkbox" aria-label={`Select ${r.title}`} checked={picks.has(r.rig)} onChange={() => picks.toggle(r.rig)} /></td>
                 <td><Link to={boardPath(r.rig)} className="pt-name">{r.title}</Link></td>
                 <td><StatusBadge s={teamStatus(r)} /></td>
                 <td className="col-num"><Link to={agentsPath(r.rig)} className="muted" aria-label={`${r.agents.length} agents in ${r.title}`}>{r.agents.length}</Link></td>
@@ -108,6 +123,7 @@ function ProjectTable({ rows, v }: { rows: TeamRow[]; v: ReturnType<typeof usePr
 /** Hidden projects and the Trash, one step back: each can be shown or restored. */
 function Stored({ v }: { v: ReturnType<typeof useProjectVisibility> }) {
   const shell = useShell();
+  const trash = usePicks(shell.rows.filter((t) => v.statusOf(t.rig) === 'trashed').map((t) => t.rig));
   return (
     <>
       {(['hidden', 'trashed'] as const).map((status) => {
@@ -117,12 +133,61 @@ function Stored({ v }: { v: ReturnType<typeof useProjectVisibility> }) {
           <details className="project-storage" key={status}>
             <summary>{status === 'hidden' ? 'Hidden projects' : 'Trash'} ({items.length})</summary>
             {status === 'trashed' && <p className="muted">Drafts, files and history are kept.</p>}
+            {status === 'trashed' && <TrashBulk items={items.map((t) => t.rig)} picks={trash} v={v} />}
             {items.map((t) => status === 'trashed'
-              ? <TrashItem key={t.rig} title={t.title} busy={v.busy === t.rig} onRestore={() => void v.change(t.rig, 'visible')} onDelete={() => void v.deleteForever(t.rig)} />
+              ? <TrashItem key={t.rig} title={t.title} busy={v.busy === t.rig || v.busy === 'bulk'} onRestore={() => void v.change(t.rig, 'visible')} onDelete={() => void v.deleteForever(t.rig)} picked={trash.has(t.rig)} onPick={() => trash.toggle(t.rig)} />
               : <div key={t.rig} className="stored-row"><span>{t.title}</span><Btn size="sm" disabled={v.busy === t.rig} onClick={() => void v.change(t.rig, 'visible')}>Show</Btn></div>)}
           </details>
         );
       })}
     </>
+  );
+}
+
+type Picks = { has: (id: string) => boolean; toggle: (id: string) => void; all: () => void; clear: () => void; count: number; total: number };
+
+/** A selection over `ids` (like a mail inbox); ids that leave the list leave the selection. */
+function usePicks(ids: string[]): Picks {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const present = new Set(ids);
+  const live = [...picked].filter((id) => present.has(id));
+  return {
+    has: (id) => picked.has(id) && present.has(id),
+    toggle: (id) => setPicked((old) => { const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next; }),
+    all: () => setPicked(new Set(ids)),
+    clear: () => setPicked(new Set()),
+    count: live.length,
+    total: ids.length,
+  };
+}
+
+/** Ticks everything, or nothing; shows a dash when some are ticked. */
+function AllBox({ label, picks }: { label: string; picks: Picks }) {
+  const box = useRef<HTMLInputElement>(null);
+  const all = picks.total > 0 && picks.count === picks.total;
+  useEffect(() => { if (box.current) box.current.indeterminate = picks.count > 0 && !all; });
+  return <input ref={box} type="checkbox" aria-label={label} checked={all} disabled={picks.total === 0} onChange={() => (all ? picks.clear() : picks.all())} />;
+}
+
+/** The Trash's selection bar: restore, or delete forever after one explicit confirmation. */
+function TrashBulk({ items, picks, v }: { items: string[]; picks: Picks; v: ReturnType<typeof useProjectVisibility> }) {
+  const [confirming, setConfirming] = useState(false);
+  const chosen = items.filter((id) => picks.has(id));
+  const bulk = v.busy === 'bulk';
+  const n = chosen.length;
+  return (
+    <div className="bulk-bar">
+      <AllBox label="Select everything in the Trash" picks={picks} />
+      {n > 0 && <span role="status" aria-label="Selected in the Trash">{n} selected</span>}
+      {n > 0 && <Btn size="sm" disabled={bulk} onClick={() => void v.changeMany(chosen, 'visible').then((ok) => ok && picks.clear())}>Restore selected</Btn>}
+      {n > 0 && <Btn size="sm" disabled={bulk} onClick={() => setConfirming(true)}>Delete selected forever</Btn>}
+      {confirming && n > 0 && (
+        <div role="alert" className="trash-confirm">
+          <p>Delete {n} {n === 1 ? 'project' : 'projects'} forever? Their designs, runs and history can't be restored. Your project folders are not touched.</p>
+          <button className="btn btn-sm tone-red" disabled={bulk} onClick={() => { setConfirming(false); void v.deleteManyForever(chosen).then((ok) => ok && picks.clear()); }}>Yes, delete {n} forever</button>
+          <button className="btn btn-sm" onClick={() => setConfirming(false)}>Cancel</button>
+        </div>
+      )}
+    </div>
   );
 }

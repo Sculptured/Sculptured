@@ -382,6 +382,17 @@ describe('Structure board: problems and Start', () => {
     expect(within(setup).getByRole('status', { name: 'Problems' })).toHaveTextContent('2 to fix');
   });
 
+  it('a missing project folder is fixed from Things to fix: Choose folder… picks it right there', async () => {
+    const team = { element: { kind: 'team' as const, id: 't' }, severity: 'error' as const, code: 'project-folder-needed', message: 'Choose the project folder: the guard and Tests run there.', detail: null, spec_path: null };
+    await board(teamRecord({ issues: [team] }));
+    const user = userEvent.setup();
+    const fixes = screen.getByRole('region', { name: 'Things to fix' });
+    await user.click(within(fixes).getByRole('button', { name: 'Choose folder…' }));
+    const picker = await screen.findByRole('dialog');
+    await user.click(await within(picker).findByRole('button', { name: /^Use/ }));
+    await waitFor(() => expect(lastSaved().folder).toBe('/home/me'));
+  });
+
   it('a start refused with problems shows them on the board', async () => {
     await board();
     vi.mocked(api.startTeam).mockRejectedValue(

@@ -7,6 +7,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 const GLOBAL: &str = "global";
 const OVERRIDE: &str = "override:question_timeout_ms";
+/// The computer last chosen under Run on: a new team starts there.
+const LAST_HOST: &str = "last_team_host";
 
 fn team_key(team: &str) -> String {
     format!("team:{team}")
@@ -73,7 +75,12 @@ pub fn valid_origin(raw: &str) -> Result<String, crate::ApiError> {
 }
 
 pub(crate) fn team_settings_in(conn: &Connection, team: &str) -> rusqlite::Result<TeamSettings> {
-    read(conn, &team_key(team))
+    let saved: Option<String> = conn.query_row("SELECT json FROM settings WHERE k = ?1", [team_key(team)], |r| r.get(0)).optional()?;
+    match saved {
+        Some(_) => read(conn, &team_key(team)),
+        // A team whose settings were never saved runs on the computer chosen last for any team.
+        None => Ok(TeamSettings { host: read::<Option<String>>(conn, LAST_HOST)?, ..Default::default() }),
+    }
 }
 
 /// A team's question timeout: the test override, else the team's minutes, else the global minutes.
@@ -98,6 +105,9 @@ impl Store {
         team_settings_in(self.connection(), team)
     }
     pub fn save_team_settings(&mut self, team: &str, s: &TeamSettings) -> rusqlite::Result<()> {
+        if let Some(h) = s.host.as_deref().filter(|h| !h.is_empty()) {
+            write(self.connection(), LAST_HOST, &Some(h))?;
+        }
         write(self.connection(), &team_key(team), s)
     }
     /// `sculptured serve --question-timeout-secs` (tests and e2e only). None removes it.
