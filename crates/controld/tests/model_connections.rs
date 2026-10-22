@@ -62,11 +62,11 @@ impl Driver for RecordingClaude {
         StubDriver.capabilities()
     }
     async fn launch(&self, spec: drivers::LaunchSpec) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        self.0.lock().unwrap().push((spec.seat.to_string(), spec.env.clone()));
+        self.0.lock().unwrap().push((spec.seat.to_string(), spec.env.0.clone()));
         StubDriver.launch(spec).await
     }
     async fn resume(&self, spec: drivers::LaunchSpec, native_id: &str) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        self.0.lock().unwrap().push((spec.seat.to_string(), spec.env.clone()));
+        self.0.lock().unwrap().push((spec.seat.to_string(), spec.env.0.clone()));
         StubDriver.resume(spec, native_id).await
     }
 }

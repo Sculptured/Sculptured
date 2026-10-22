@@ -131,7 +131,7 @@ impl Supervisor {
                 if !p.workflow {
                     env.push((host_proto::seat_tools::WORKFLOW_ENV.to_string(), "0".to_string()));
                 }
-                env
+                env.into()
             },
             approve: p.approve,
             config_file: config_file.clone(),

@@ -25,7 +25,7 @@ fn only_allowed_folders_and_no_server_supplied_programs_env_or_args() {
     }
     assert!(pol.check(&p("/definitely/missing")).is_err());
     let mut with_program = p(proj.to_str().unwrap()); with_program.program = Some("/bin/sh".into());
-    let mut with_env = p(proj.to_str().unwrap()); with_env.env = vec![("LD_PRELOAD".into(), "x".into())];
+    let mut with_env = p(proj.to_str().unwrap()); with_env.env = vec![("LD_PRELOAD".into(), "x".into())].into();
     let mut with_args = p(proj.to_str().unwrap()); with_args.extra_args = vec!["--dangerous".into()];
     for bad in [with_program, with_env, with_args] {
         assert!(pol.check(&bad).unwrap_err().contains("refused"), "{bad:?}");

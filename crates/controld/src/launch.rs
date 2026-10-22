@@ -100,7 +100,7 @@ fn fitted_params(
         cwd,
         // A connection that names its model (OpenRouter) runs with it: the agent's own may not exist there.
         model: access.model.or_else(|| seat.model.clone()),
-        env: access.env,
+        env: access.env.into(),
         posture,
         seat_tools: crate::seat_tools::launch_params(st, seat, posture),
         usage_baseline,

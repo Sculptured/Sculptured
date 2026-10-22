@@ -118,7 +118,7 @@ pub async fn tools_host_with(dir: &Path, approve: bool, limits: SocketLimits) ->
     let ws = linked(&sup).await;
     let params = LaunchParams { cwd: dir.display().to_string(), seat_tools: Some(SeatToolsParams { approve, workflow: true }), ..Default::default() };
     sup.handle(HostCommand::Launch { seat: "dev.a@r".into(), driver: "stub".into(), params }).await.unwrap();
-    let token = seen.lock().unwrap().clone().unwrap().seat_tools.unwrap().env.into_iter().find(|(k, _)| k == TOKEN_ENV).unwrap().1;
+    let token = seen.lock().unwrap().clone().unwrap().seat_tools.unwrap().env.0.into_iter().find(|(k, _)| k == TOKEN_ENV).unwrap().1;
     (sup, ws, socket, token)
 }
 

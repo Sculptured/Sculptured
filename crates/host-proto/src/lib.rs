@@ -38,6 +38,36 @@ fn offered() -> bool {
     true
 }
 
+/// Environment for an agent's process. It can hold a key, so Debug shows the names only; on the wire
+/// it is the plain list of pairs.
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Env(pub Vec<(String, String)>);
+
+impl std::fmt::Debug for Env {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.0.iter().map(|(k, _)| format!("{k}=…"))).finish()
+    }
+}
+impl std::ops::Deref for Env {
+    type Target = Vec<(String, String)>;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+impl std::ops::DerefMut for Env {
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.0 }
+}
+impl From<Vec<(String, String)>> for Env {
+    fn from(v: Vec<(String, String)>) -> Self { Env(v) }
+}
+impl FromIterator<(String, String)> for Env {
+    fn from_iter<I: IntoIterator<Item = (String, String)>>(i: I) -> Self { Env(i.into_iter().collect()) }
+}
+impl<'a> IntoIterator for &'a Env {
+    type Item = &'a (String, String);
+    type IntoIter = std::slice::Iter<'a, (String, String)>;
+    fn into_iter(self) -> Self::IntoIter { self.0.iter() }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct LaunchParams {
     pub cwd: String,
@@ -45,7 +75,7 @@ pub struct LaunchParams {
     pub program: Option<String>,
     /// A model connection's settings for the agent's process (`MODEL_ENV_KEYS`). They hold a key: never
     /// log, store or record them.
-    pub env: Vec<(String, String)>,
+    pub env: Env,
     pub extra_args: Vec<String>,
     #[serde(default)]
     pub posture: PermissionPosture,

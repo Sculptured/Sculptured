@@ -155,3 +155,12 @@ fn a_stop_without_hard_keeps_the_grace_path_and_old_runners_read_a_hard_one() {
     assert_eq!(hard["hard"], true);
     assert_eq!(hard["grace_ms"], 5000, "an older runner, which ignores `hard`, still stops within the grace");
 }
+
+#[test]
+fn launch_settings_never_print_a_key_when_debug_formatted() {
+    let p = host_proto::LaunchParams { env: vec![("ANTHROPIC_API_KEY".to_string(), "sk-ant-secret-123".to_string())].into(), ..Default::default() };
+    let shown = format!("{p:?}");
+    assert!(shown.contains("ANTHROPIC_API_KEY") && !shown.contains("sk-ant-secret-123"), "{shown}");
+    let json = serde_json::to_value(&p).unwrap();
+    assert_eq!(json["env"], serde_json::json!([["ANTHROPIC_API_KEY", "sk-ant-secret-123"]]), "the wire format is unchanged");
+}
