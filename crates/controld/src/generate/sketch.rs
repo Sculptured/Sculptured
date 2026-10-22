@@ -163,7 +163,7 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
             Kinds::AsSketched => kind_of(&a.kind),
         };
         let advanced = AgentAdvanced { check: a.check.clone().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()), ..Default::default() };
-        agents.push(DraftAgent { id, group_id, name, kind, job: a.job.clone(), folder: None, x: 0, y: 0, advanced });
+        agents.push(DraftAgent { id, group_id, name, kind, job: a.job.clone(), folder: None, x: 0, y: 0, advanced, connection: None });
     }
     // Arrows: only between known, different agents; no duplicates.
     let mut connections = Vec::new();

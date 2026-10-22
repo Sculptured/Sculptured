@@ -9,11 +9,11 @@ pub fn template(id: &str, name: &str, practice: bool) -> TeamDraft {
     let mut agents: Vec<DraftAgent> = roles.iter().enumerate().map(|(i, (id, name, job))| DraftAgent {
         id: (*id).into(), name: (*name).into(), job: (*job).into(), group_id: (i > 0 && i < 5).then(|| "mathematical-visualization".into()),
         kind: if practice { AgentKind::Practice } else { AgentKind::Codex }, folder: None,
-        x: positions[i].0, y: positions[i].1, advanced: AgentAdvanced::default(),
+        x: positions[i].0, y: positions[i].1, advanced: AgentAdvanced::default(), connection: None,
     }).collect();
     for a in &mut agents { a.y += 500; }
     for (i,(id,name,job)) in [("engine-creator","3D engine creator",ENGINE),("engine-reviewer","3D engine verifier",ENGINE_REVIEW),("engine-support","Engine support",ENGINE_SUPPORT)].iter().enumerate() {
-        agents.push(DraftAgent{id:(*id).into(),name:(*name).into(),job:(*job).into(),group_id:Some("webgpu-engine".into()),kind:if practice{AgentKind::Practice}else{AgentKind::Codex},folder:None,x:330+(i as i32)*280,y:100,advanced:AgentAdvanced::default()});
+        agents.push(DraftAgent{id:(*id).into(),name:(*name).into(),job:(*job).into(),group_id:Some("webgpu-engine".into()),kind:if practice{AgentKind::Practice}else{AgentKind::Codex},folder:None,x:330+(i as i32)*280,y:100,advanced:AgentAdvanced::default(),connection:None});
     }
     let stage = |id: &str, name: &str, agent: &str, routes: &[(&str, Option<&str>)]| WorkflowStage {
         id: id.into(), name: name.into(), agent: agent.into(), workers: vec![], routes: routes.iter().map(|(k,v)| ((*k).into(), v.map(str::to_string))).collect(), ..Default::default()

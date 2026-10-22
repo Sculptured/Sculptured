@@ -100,7 +100,7 @@ fn agent(r: &Role, roles: &[Role], names: &HashMap<&str, String>, (x, y): (i32, 
     let t = r.threads[0];
     let kind = if t.runtime == "codex-app-server" { AgentKind::Codex } else { AgentKind::Claude };
     let advanced = AgentAdvanced { model: model_of(r), ..Default::default() };
-    DraftAgent { id: r.id.clone(), group_id: None, name: names[r.id.as_str()].clone(), kind, job: job(r, roles, names), folder: t.cwd.clone().or_else(|| session_folder.map(str::to_string)), x, y, advanced }
+    DraftAgent { id: r.id.clone(), group_id: None, name: names[r.id.as_str()].clone(), kind, job: job(r, roles, names), folder: t.cwd.clone().or_else(|| session_folder.map(str::to_string)), x, y, advanced, connection: None }
 }
 
 fn first_prompt(t: &Thread) -> Option<String> {

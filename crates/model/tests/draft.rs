@@ -12,6 +12,7 @@ fn builder() -> DraftAgent {
         x: 40,
         y: 40,
         advanced: AgentAdvanced::default(),
+        connection: None,
     }
 }
 
@@ -26,6 +27,7 @@ fn reviewer() -> DraftAgent {
         x: 300,
         y: 40,
         advanced: AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None, model: Some("opus".into()), permission: PermissionPosture::Restricted, resume: ResumeBehaviour::RelaunchFresh, token_limit: None, check: None, briefing: None },
+        connection: None,
     }
 }
 
@@ -135,4 +137,19 @@ fn the_input_reaches_the_agents_it_points_to_with_their_job() {
     assert_eq!(json["input"]["to"], json!([]));
     assert_eq!(serde_json::from_value::<TeamDraft>(json).unwrap(), d, "round-trips");
     assert!(serde_json::to_value(draft()).unwrap().get("input").is_none(), "no Input, no field");
+}
+
+/// An agent's model connection (a connection id kept by the gateway) is saved with the draft and
+/// left out of the JSON when unset, so older drafts stay byte-identical and still load.
+#[test]
+fn an_agents_model_connection_round_trips_and_is_omitted_when_unset() {
+    let d = draft();
+    let v = serde_json::to_value(&d).unwrap();
+    assert!(v["agents"][1].get("connection").is_none(), "unset: no field: {}", v["agents"][1]);
+    assert_eq!(serde_json::from_value::<TeamDraft>(v).unwrap().agents[1].connection, None);
+    let mut d = draft();
+    d.agents[1].connection = Some("conn-7".into());
+    let v = serde_json::to_value(&d).unwrap();
+    assert_eq!(v["agents"][1]["connection"], "conn-7");
+    assert_eq!(serde_json::from_value::<TeamDraft>(v).unwrap(), d);
 }

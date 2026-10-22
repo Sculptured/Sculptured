@@ -154,6 +154,7 @@ fn compile_seat(spec: &RigSpec, pod: &PodSpec, m: &MemberSpec) -> CompiledSeat {
         model: m.model.clone(),
         restore_policy: m.restore_policy.as_deref().and_then(RestorePolicy::parse).unwrap_or(RestorePolicy::ResumeIfPossible),
         permission_policy: m.permission_policy.clone().or_else(|| spec.permission_policy.clone()),
+        connection: m.connection.clone().filter(|_| matches!(Runtime::parse(&m.runtime), Some(Runtime::ClaudeCode))),
     }
 }
 

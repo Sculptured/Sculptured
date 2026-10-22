@@ -2,7 +2,7 @@
 use super::names::{edge_kind_of, restore_of, runtime_of};
 use super::{AGENT_REF, RESTRICTED_POLICY, SPEC_VERSION};
 use crate::{EdgeSpec, MemberSpec, PodSpec, RigSpec};
-use model::{DraftAgent, PermissionPosture, TeamDraft, DEFAULT_GROUP_ID};
+use model::{AgentKind, DraftAgent, PermissionPosture, TeamDraft, DEFAULT_GROUP_ID};
 
 /// Where each spec element came from, so diagnostic paths map back to draft ids.
 pub(super) struct SpecIndex {
@@ -31,6 +31,9 @@ fn member(d: &TeamDraft, a: &DraftAgent) -> MemberSpec {
         session_source: None,
         starter_ref: None,
         startup: None,
+        connection: (a.kind == AgentKind::Claude)
+            .then(|| a.connection.as_deref().map(str::trim).filter(|c| !c.is_empty()).map(str::to_string))
+            .flatten(),
     }
 }
 

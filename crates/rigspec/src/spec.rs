@@ -52,6 +52,10 @@ pub struct MemberSpec {
     pub session_source: Option<Value>,
     pub starter_ref: Option<Value>,
     pub startup: Option<Value>,
+    /// Sculptured: the person's model connection (an id the gateway keeps) a Claude Code member
+    /// runs with. Never written to a team file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
