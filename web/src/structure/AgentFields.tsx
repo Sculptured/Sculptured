@@ -4,7 +4,10 @@ import { effectiveFolder, folderForAll } from '../draft/folders';
 import { drawnGroups } from '../draft/geometry';
 import { groupOf, seatIdFor } from '../draft/ids';
 import { MARK } from '../draft/issues';
-import { groupDefault, isModelKind, setKind, type ModelKind } from '../draft/models';
+import { groupDefault, isModelKind, setKind, setRunsOn, type ModelKind } from '../draft/models';
+import type { AgentKind } from '../generated/AgentKind';
+import { Link } from 'react-router-dom';
+import { connectionLabel, useConnections, type ModelConnection } from '../hosted/connections';
 import type { ConnectionKind } from '../generated/ConnectionKind';
 import type { DraftAgent } from '../generated/DraftAgent';
 import type { DraftIssue } from '../generated/DraftIssue';
@@ -60,9 +63,9 @@ export function Hint({ text, id }: { text: string; id?: string }) {
 }
 
 /** A label above its control; `help` is a "?" beside it (its words in `helpId`); `reason` explains a disabled control in visible text. */
-export function Field({ label, htmlFor, children, reason, reasonId, help, helpId }: { label: string; htmlFor?: string; children: ReactNode; reason?: string | null; reasonId?: string; help?: string; helpId?: string }) {
+export function Field({ label, htmlFor, children, reason, reasonId, help, helpId, tour }: { label: string; htmlFor?: string; children: ReactNode; reason?: string | null; reasonId?: string; help?: string; helpId?: string; /** An anchor for the setup tour. */ tour?: string }) {
   return (
-    <div className="fld">
+    <div className="fld" data-tour={tour}>
       <div className="fld-label-row"><label className="fld-label" htmlFor={htmlFor}>{label}</label>{help && <Hint text={help} id={helpId} />}</div>
       {children}
       {reason && <p id={reasonId} className="reason fld-reason">{reason}</p>}
@@ -80,17 +83,26 @@ export function NameField({ a, edit, inputRef, issues = [] }: { a: DraftAgent; e
   );
 }
 
-/** "Runs on" (Claude or Codex) and its model, side by side. */
+/** "Runs on" (Claude or Codex, and hosted, your model connections) and its model, side by side. */
 export function RunsOnField({ draft, a, edit, locked }: Common) {
   const k = a.kind;
+  const hosted = useHosted().kind === 'signed-in';
+  const conns = useConnections(hosted);
+  const conn = k === 'claude' && a.connection ? conns.list.find((c) => c.id === a.connection) ?? null : null;
+  const picker = hosted && (conns.list.length > 0 || (conns.loaded && !!a.connection));
   const fallback = isModelKind(k) ? groupDefault(draft, a.group_id, k) : null;
   const from = a.group_id && draft.groups.find((g) => g.id === a.group_id)?.models?.[k as ModelKind] ? 'group' : 'team';
+  const label = `${a.name || 'This agent'} runs on`;
   return (
     <div className="fld runs-on">
       <span className="fld-label">Runs on</span>
       <div className="runs-on-row">
-        <KindSwitch label={`${a.name || 'This agent'} runs on`} value={k} disabled={locked} onChange={(next) => edit((d) => setKind(d, a.id, next))} />
-        {isModelKind(k) ? (
+        {picker
+          ? <RunsOnPicker a={a} label={label} conns={conns.list} disabled={locked} onChange={(kind, id) => edit((d) => setRunsOn(d, a.id, kind, id))} />
+          : <KindSwitch label={label} value={k} disabled={locked} onChange={(next) => edit((d) => setKind(d, a.id, next))} />}
+        {conn?.provider === 'openrouter' ? (
+          <span className="muted">Model: <code>{conn.model}</code> · from the connection</span>
+        ) : isModelKind(k) ? (
           <ModelSelect key={k} kind={k} label={`${KIND_LABEL[k]} model for ${a.name || 'this agent'}`} value={a.advanced.model}
             inherited={fallback ? `${modelLabel(k, fallback)}, from the ${from}` : modelLabel(k, null)} disabled={locked}
             onChange={(model) => edit((d) => setAdvanced(d, a.id, { model }), `model:${a.id}`)} />
@@ -98,8 +110,39 @@ export function RunsOnField({ draft, a, edit, locked }: Common) {
           <span className="muted">free · no model calls</span>
         )}
       </div>
+      <ConnectionWarning a={a} conn={conn} loaded={conns.loaded} />
       {locked && <p className="reason fld-reason">{LOCK_REASON}</p>}
     </div>
+  );
+}
+
+/** A chosen connection whose last check failed, or that was removed. */
+function ConnectionWarning({ a, conn, loaded }: { a: DraftAgent; conn: ModelConnection | null; loaded: boolean }) {
+  if (conn?.checked?.ok === false) return <p className="fld-issue tone-amber"><span aria-hidden="true">⚠ </span>This connection’s last check failed. <Link to="/setup?step=models">Check it in Setup</Link></p>;
+  if (a.kind === 'claude' && a.connection && loaded && !conn) return <p className="fld-issue tone-amber"><span aria-hidden="true">⚠ </span>This agent’s model connection was removed. Choose another.</p>;
+  return null;
+}
+
+const MISSING = '__missing__';
+const CONN = 'connection:';
+
+/** Hosted: Claude by subscription, each of your model connections, Codex (and Practice for a Practice agent). */
+function RunsOnPicker({ a, label, conns, disabled, onChange }: { a: DraftAgent; label: string; conns: ModelConnection[]; disabled: boolean; onChange: (kind: AgentKind, connection: string | null) => void }) {
+  const known = a.kind === 'claude' && a.connection ? conns.some((c) => c.id === a.connection) : true;
+  const value = a.kind === 'claude' && a.connection ? (known ? `${CONN}${a.connection}` : MISSING) : a.kind;
+  return (
+    <select aria-label={label} className="fld-input" value={value} disabled={disabled}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v.startsWith(CONN)) onChange('claude', v.slice(CONN.length));
+        else if (v !== MISSING) onChange(v as AgentKind, null);
+      }}>
+      <option value="claude">Claude (subscription)</option>
+      {conns.map((c) => <option key={c.id} value={`${CONN}${c.id}`}>{connectionLabel(c)}{c.checked?.ok === false ? ' (check failed)' : ''}</option>)}
+      {!known && <option value={MISSING} disabled>Removed connection</option>}
+      <option value="codex">{KIND_LABEL.codex}</option>
+      {a.kind === 'practice' && <option value="practice">{KIND_LABEL.practice}</option>}
+    </select>
   );
 }
 
@@ -128,7 +171,7 @@ export function FolderField({ draft, a, edit, locked, issues = [] }: Common & { 
   const off = { disabled: locked, 'aria-describedby': locked ? `${ids}-lock` : undefined };
   return (<>
     <HostedRunOn draft={draft} a={a} />
-    <Field label={own ? `Folder on ${own.name}` : 'Folder'} reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
+    <Field tour="agent-folder" label={own ? `Folder on ${own.name}` : 'Folder'} reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
       <div className="fld-folder">
         <span className={`folder-path${a.folder ? '' : ' muted'}`} title={folder ?? undefined}>
           <Icon name="folder" size={14} className="muted" />

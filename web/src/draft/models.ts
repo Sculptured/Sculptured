@@ -26,11 +26,24 @@ export function effectiveModel(d: TeamDraft, a: DraftAgent): { model: string | n
   return team ? { model: team, source: 'team' } : { model: null, source: 'cli' };
 }
 
-/** Switches one agent to another kind. Its own model belonged to the old CLI, so it is cleared. */
+const withoutConnection = (a: DraftAgent): DraftAgent => {
+  const { connection: _gone, ...rest } = a;
+  return rest;
+};
+
+/** Switches one agent to another kind. Its own model and model connection belonged to the old CLI, so they are cleared. */
 export const setKind = (d: TeamDraft, id: string, kind: AgentKind): TeamDraft => ({
   ...d,
-  agents: d.agents.map((a) => (a.id === id ? { ...a, kind, advanced: { ...a.advanced, model: null } } : a)),
+  agents: d.agents.map((a) => (a.id === id ? withoutConnection({ ...a, kind, advanced: { ...a.advanced, model: null } }) : a)),
 });
+
+/** What an agent runs on: a kind and, for Claude, one of your model connections (null: the subscription). */
+export function setRunsOn(d: TeamDraft, id: string, kind: AgentKind, connection: string | null): TeamDraft {
+  const a = d.agents.find((x) => x.id === id);
+  if (!a) return d;
+  const base = a.kind === kind ? d : setKind(d, id, kind);
+  return { ...base, agents: base.agents.map((x) => (x.id !== id ? x : kind === 'claude' && connection ? { ...x, connection } : withoutConnection(x))) };
+}
 
 /** Switches every agent in `ids` (default: all) to `kind`. */
 export const setKindAll = (d: TeamDraft, kind: AgentKind, ids?: string[]): TeamDraft =>

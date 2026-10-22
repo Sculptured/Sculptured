@@ -20,7 +20,7 @@ export async function loadSession(): Promise<HostedSession> {
 
 export class GwError extends Error { constructor(public status: number, public code: string, message: string) { super(message); } }
 
-export async function gw<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+export async function gw<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (method !== 'GET' && csrf) headers['x-csrf-token'] = csrf;

@@ -18,4 +18,4 @@ job: string,
 /**
  * Absolute path. Practice agents may leave it empty (they use the home folder).
  */
-folder: string | null, x: number, y: number, advanced: AgentAdvanced, };
+folder: string | null, x: number, y: number, advanced: AgentAdvanced, connection?: string | null, };
