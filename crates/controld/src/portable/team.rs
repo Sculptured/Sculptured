@@ -31,6 +31,10 @@ pub struct PortableSettings {
 #[must_use]
 pub fn portable(mut team: TeamDraft, s: &TeamSettings, include_folders: bool) -> PortableTeam {
     team.revision = 0;
+    // A model connection is the person's own; importing asks which of theirs to use.
+    for a in &mut team.agents {
+        a.connection = None;
+    }
     if !include_folders {
         team.folder = None;
         for a in &mut team.agents {

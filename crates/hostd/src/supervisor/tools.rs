@@ -214,7 +214,7 @@ impl Supervisor {
                         "0".to_string(),
                     ));
                 }
-                env
+                env.into()
             },
             approve: p.approve,
             config_file: config_file.clone(),

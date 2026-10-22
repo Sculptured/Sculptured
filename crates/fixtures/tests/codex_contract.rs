@@ -33,7 +33,8 @@ fn spec(dir: &Path) -> LaunchSpec {
             "FAKE_CODEX_LOG".into(),
             dir.join("codex.log").display().to_string(),
         ),
-    ];
+    ]
+    .into();
     s
 }
 fn msg(id: &str, text: &str) -> OutboundMessage {
@@ -539,7 +540,7 @@ async fn seat_tools_reach_codex_as_thread_config() {
     sp.seat_tools = Some(SeatToolsLaunch {
         program: "/opt/sculptured".into(),
         args: vec!["seat-tools".into()],
-        env: vec![("SCULPTURED_SEAT_TOKEN".into(), "tok-secret".into())],
+        env: vec![("SCULPTURED_SEAT_TOKEN".into(), "tok-secret".into())].into(),
         approve: false,
         config_file: Some(file.clone()),
     });
@@ -776,7 +777,7 @@ async fn real_codex_probe() {
         sp.seat_tools = Some(SeatToolsLaunch {
             program: bin.clone(),
             args: vec!["seat-tools".into()],
-            env,
+            env: env.into(),
             approve: false,
             config_file: None,
         });
@@ -784,7 +785,8 @@ async fn real_codex_probe() {
         sp.env = vec![(
             "CODEX_PROBE_REC".into(),
             out.join(rec).display().to_string(),
-        )];
+        )]
+        .into();
         if let Some(fake) = &dry {
             sp.env.push(("CODEX_PROBE_PROGRAM".into(), fake.clone()));
             sp.env.push((

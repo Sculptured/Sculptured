@@ -10,7 +10,7 @@ fn tools(approve: bool) -> SeatToolsLaunch {
     SeatToolsLaunch {
         program: "/opt/sculptured".into(),
         args: vec!["seat-tools".into()],
-        env: vec![("SCULPTURED_SEAT_TOKEN".into(), "tok".into())],
+        env: vec![("SCULPTURED_SEAT_TOKEN".into(), "tok".into())].into(),
         approve,
         config_file: None,
     }

@@ -186,6 +186,8 @@ fn draft_agent(
             token_limit: None,
             check: None,
         },
+        // A team file never names the person's own model connection.
+        connection: None,
     }
 }
 

@@ -7,7 +7,7 @@ pub(crate) use seats::{stop_on_host, stoppable};
 
 use crate::error::ApiError;
 use crate::hosts::controld;
-use crate::launch::launch_params;
+use crate::launch::launch_params_with_connection;
 use crate::seat_ids::rig_of;
 use crate::state::{AppState, BootGuard};
 use crate::store::{RigSource, is_live};

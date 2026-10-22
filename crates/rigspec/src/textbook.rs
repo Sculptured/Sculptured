@@ -39,6 +39,7 @@ pub fn template(id: &str, name: &str, practice: bool) -> TeamDraft {
             x: positions[i].0,
             y: positions[i].1,
             advanced: AgentAdvanced::default(),
+            connection: None,
         })
         .collect();
     for a in &mut agents {
@@ -66,6 +67,7 @@ pub fn template(id: &str, name: &str, practice: bool) -> TeamDraft {
             x: 330 + (i as i32) * 280,
             y: 100,
             advanced: AgentAdvanced::default(),
+            connection: None,
         });
     }
     let stage =

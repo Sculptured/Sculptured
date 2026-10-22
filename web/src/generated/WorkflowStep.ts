@@ -8,7 +8,7 @@ export type WorkflowStep = { assignment: string, stage: string, agent: string, o
  */
 evidence?: string, 
 /**
- * A panel's votes by reviewer (late ones are keyed "<agent> (late)").
+ * A panel's votes by reviewer (late ones are keyed `<agent> (late)`).
  */
 votes?: { [key in string]: string }, 
 /**

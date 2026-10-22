@@ -197,6 +197,7 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
             x: 0,
             y: 0,
             advanced,
+            connection: None,
         });
     }
     // Arrows: only between known, different agents; no duplicates.

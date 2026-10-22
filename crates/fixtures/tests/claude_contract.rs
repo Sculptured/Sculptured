@@ -18,7 +18,7 @@ fn driver() -> ClaudeStreamDriver {
 fn spec(dir: &Path, env: Vec<(String, String)>) -> LaunchSpec {
     let mut s = LaunchSpec::new("dev.impl@r".parse().unwrap(), dir.to_path_buf());
     s.model = Some("fake-model".into());
-    s.env = env;
+    s.env = env.into();
     s.native_session_id = Some("sess-1".into());
     s
 }
@@ -604,7 +604,7 @@ async fn seat_tools_raise_the_clis_mcp_tool_timeout() {
             sp.seat_tools = Some(SeatToolsLaunch {
                 program: "/opt/sculptured".into(),
                 args: vec!["seat-tools".into()],
-                env: vec![],
+                env: Default::default(),
                 approve: false,
                 config_file: None,
             });
@@ -634,7 +634,7 @@ async fn the_seat_tools_config_is_a_private_file_and_the_token_stays_off_argv() 
     sp.seat_tools = Some(SeatToolsLaunch {
         program: "/opt/sculptured".into(),
         args: vec!["seat-tools".into()],
-        env: vec![("SCULPTURED_SEAT_TOKEN".into(), "secret-token-1".into())],
+        env: vec![("SCULPTURED_SEAT_TOKEN".into(), "secret-token-1".into())].into(),
         approve: false,
         config_file: Some(file.clone()),
     });
@@ -675,7 +675,7 @@ async fn an_existing_config_file_is_narrowed_to_owner_only_and_replaced() {
     sp.seat_tools = Some(SeatToolsLaunch {
         program: "/opt/sculptured".into(),
         args: vec!["seat-tools".into()],
-        env: vec![("SCULPTURED_SEAT_TOKEN".into(), "secret-token-2".into())],
+        env: vec![("SCULPTURED_SEAT_TOKEN".into(), "secret-token-2".into())].into(),
         approve: false,
         config_file: Some(file.clone()),
     });

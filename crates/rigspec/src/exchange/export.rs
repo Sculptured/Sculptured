@@ -49,6 +49,8 @@ pub fn export_yaml(d: &TeamDraft) -> String {
     let mut spec = crate::draft::draft_spec(d);
     for pod in &mut spec.pods {
         for m in &mut pod.members {
+            // The person's own model connection never travels in a team file.
+            m.connection = None;
             // `draft_spec` writes `.` for a missing folder; for Claude or Codex that would
             // be a made-up working folder, so the export leaves it blank.
             if d.agents

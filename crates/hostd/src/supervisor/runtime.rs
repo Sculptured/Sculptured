@@ -272,6 +272,7 @@ impl Supervisor {
         f.push(host_proto::features::INTEGRATIONS);
         f.push(host_proto::features::COMPONENTS);
         f.push(host_proto::features::COMPONENT_KINDS);
+        f.push(host_proto::features::MODEL_ENV);
         if self.inner.ops.is_some() {
             f.push(host_proto::features::LOCAL_OPS);
             f.push(host_proto::features::USAGE_REPORTS);

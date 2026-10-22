@@ -182,6 +182,7 @@ pub async fn tools_host_with(
         .seat_tools
         .unwrap()
         .env
+        .0
         .into_iter()
         .find(|(k, _)| k == TOKEN_ENV)
         .unwrap()

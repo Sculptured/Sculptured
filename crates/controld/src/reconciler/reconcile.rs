@@ -393,7 +393,11 @@ pub(crate) async fn launch_one(
     let Some(driver) = local_driver(st, seat, &host) else {
         return false;
     };
-    let params = match crate::reconciler::launch_params(st, &host, rig, seat, spec_dir) {
+    let params = match crate::reconciler::launch_params_with_connection(
+        st, &host, rig, seat, spec_dir,
+    )
+    .await
+    {
         Ok(p) => p,
         Err(reason) => {
             attention(st, seat_id, Provenance::ProtocolObserved, reason);

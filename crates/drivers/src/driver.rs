@@ -12,7 +12,7 @@ pub const HOST_TOKEN_ENV: &str = "SCULPTURED_HOST_TOKEN";
 pub struct SeatToolsLaunch {
     pub program: PathBuf,
     pub args: Vec<String>,
-    pub env: Vec<(String, String)>,
+    pub env: host_proto::Env,
     /// Also expose `approve`, the permission-prompt tool (restricted posture).
     pub approve: bool,
     /// Where a driver that passes the config as a file writes it (mode 0600, in hostd's private
@@ -37,7 +37,7 @@ pub struct LaunchSpec {
     pub model: Option<String>,
     /// Overrides the driver's default CLI path (tests point this at fixtures).
     pub program: Option<PathBuf>,
-    pub env: Vec<(String, String)>,
+    pub env: host_proto::Env,
     pub extra_args: Vec<String>,
     /// Pre-assigned native session id (Claude `--session-id`). Generated if None.
     pub native_session_id: Option<String>,
@@ -117,7 +117,7 @@ impl LaunchSpec {
             cwd,
             model: None,
             program: None,
-            env: vec![],
+            env: Default::default(),
             extra_args: vec![],
             native_session_id: None,
             posture: PermissionPosture::Unrestricted,

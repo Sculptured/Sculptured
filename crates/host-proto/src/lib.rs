@@ -16,6 +16,10 @@ pub mod features;
 /// The seat-tools socket: one JSON line from the agent's shim (or a Practice agent) to hostd, one back.
 pub mod seat_tools;
 
+/// An agent's process environment, and the only part of it the server may set.
+mod env;
+pub use env::{Env, MODEL_BASE_URLS, MODEL_ENV_KEYS, model_env_allowed};
+
 mod protocol;
 pub use protocol::{
     DriverInfo, FromHost, HostCommand, HostEvent, HostPolicyInfo, LaunchMode, LaunchParams,

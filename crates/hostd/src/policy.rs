@@ -375,7 +375,9 @@ impl RunnerPolicy {
 
     /// The folder the agent will run in, or why not.
     pub fn check(&self, p: &LaunchParams) -> Result<PathBuf, String> {
-        if p.program.is_some() || !p.env.is_empty() || !p.extra_args.is_empty() {
+        // The server may give an agent its model connection's key, and nothing else of its environment.
+        if p.program.is_some() || !host_proto::model_env_allowed(&p.env) || !p.extra_args.is_empty()
+        {
             return Err("refused: the server asked to change the program, its environment or its arguments; this computer only runs its own Claude Code / Codex".into());
         }
         let first = self.allowed_folders.first().ok_or(

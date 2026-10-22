@@ -27,6 +27,7 @@ pub fn template(id: &str, team: &str, name: &str, practice: bool) -> Option<Team
             permission: PermissionPosture::Restricted,
             ..AgentAdvanced::default()
         },
+        connection: None,
     };
     let edge = |from: &str, to: &str| DraftConnection {
         id: format!("{from}-{to}"),

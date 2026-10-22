@@ -18,6 +18,7 @@ fn agent(id: &str, name: &str, kind: AgentKind, folder: Option<&str>) -> DraftAg
         x: 0,
         y: 0,
         advanced: AgentAdvanced::default(),
+        connection: None,
     }
 }
 
@@ -896,4 +897,24 @@ fn an_unknown_or_clashing_component_is_named() {
         codes(&d).contains(&"component-invalid".to_string()),
         "a team's own component cannot reuse a built-in id"
     );
+}
+
+/// A Claude agent's model connection reaches its compiled seat, so the server knows it at launch.
+/// Other kinds ignore it, and an agent without one compiles as before.
+#[test]
+fn a_claude_agents_model_connection_reaches_its_compiled_seat_and_other_kinds_ignore_it() {
+    let mut d = pair();
+    d.agents[0].connection = Some("conn-1".into());
+    d.agents[1].connection = Some("conn-2".into());
+    let b = rigspec::from_draft(&d).unwrap();
+    let seat = |id: &str| b.rig.seats.iter().find(|s| s.member == id).unwrap().clone();
+    assert_eq!(seat("builder").connection.as_deref(), Some("conn-1"));
+    assert_eq!(
+        seat("reviewer").connection,
+        None,
+        "a Practice agent has no model connection"
+    );
+    let plain = rigspec::from_draft(&pair()).unwrap();
+    assert!(plain.rig.seats.iter().all(|s| s.connection.is_none()));
+    assert!(!plain.yaml.contains("connection"), "{}", plain.yaml);
 }

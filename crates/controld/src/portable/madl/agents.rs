@@ -41,6 +41,8 @@ impl Cx<'_> {
             x,
             y,
             advanced: self.advanced(&at, i, a, r),
+            // MADL names the provider kind, never the person's own connection.
+            connection: None,
         })
     }
 

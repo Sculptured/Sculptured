@@ -231,6 +231,7 @@ fn helper(group_id: Option<&str>, advanced: AgentAdvanced) -> DraftAgent {
         x: 40,
         y: 300,
         advanced,
+        connection: None,
     }
 }
 
@@ -695,4 +696,19 @@ fn inherited_project_folder_survives_export_and_import() {
         rigspec::from_draft(&loaded).unwrap().rig.seats[0].cwd,
         "/home/me/project"
     );
+}
+
+/// A model connection is the person's own: a team file never names it, and importing gives none.
+#[test]
+fn a_team_file_never_carries_an_agents_model_connection() {
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", false).unwrap();
+    d.agents[0].kind = AgentKind::Claude;
+    d.agents[0].connection = Some("conn-secret-id".into());
+    let yaml = rigspec::exchange::export_yaml(&d);
+    assert!(
+        !yaml.contains("conn-secret-id") && !yaml.contains("connection:"),
+        "{yaml}"
+    );
+    let back = round_trip(&d);
+    assert!(back.draft.agents.iter().all(|a| a.connection.is_none()));
 }

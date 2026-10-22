@@ -184,6 +184,10 @@ fn compile_seat(spec: &RigSpec, pod: &PodSpec, m: &MemberSpec) -> CompiledSeat {
             .permission_policy
             .clone()
             .or_else(|| spec.permission_policy.clone()),
+        connection: m
+            .connection
+            .clone()
+            .filter(|_| matches!(Runtime::parse(&m.runtime), Some(Runtime::ClaudeCode))),
     }
 }
 

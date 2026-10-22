@@ -113,6 +113,11 @@ pub struct CompiledSeat {
     pub model: Option<String>,
     pub restore_policy: RestorePolicy,
     pub permission_policy: Option<String>,
+    /// Claude Code seats: the person's model connection (an id the gateway keeps). None = the CLI's
+    /// own sign-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub connection: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

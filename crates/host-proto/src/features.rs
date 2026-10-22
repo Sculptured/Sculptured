@@ -25,3 +25,6 @@ pub const COMPONENTS: &str = "components";
 /// Starts remote MCP servers and Claude plugins among `LaunchParams.components`; an older runner
 /// cannot read them at all.
 pub const COMPONENT_KINDS: &str = "component-kinds";
+/// Passes a model connection's settings (`LaunchParams.env`, `MODEL_ENV_KEYS` only) to the agent's
+/// CLI. An older runner refuses any environment, so a launch with one is refused before it is sent.
+pub const MODEL_ENV: &str = "model-env";

@@ -1,5 +1,5 @@
 use super::{
-    Actor, Answer, Caps, Deserialize, DeserializeOwned, EventBody, MessageIntent,
+    Actor, Answer, Caps, Deserialize, DeserializeOwned, Env, EventBody, MessageIntent,
     PermissionPosture, Provenance, Serialize, Subject, TenureCause, features,
 };
 
@@ -41,7 +41,9 @@ pub struct LaunchParams {
     pub cwd: String,
     pub model: Option<String>,
     pub program: Option<String>,
-    pub env: Vec<(String, String)>,
+    /// A model connection's settings for the agent's process (`MODEL_ENV_KEYS`). They hold a key: never
+    /// log, store or record them.
+    pub env: Env,
     pub extra_args: Vec<String>,
     #[serde(default)]
     pub posture: PermissionPosture,
@@ -270,6 +272,7 @@ impl LaunchParams {
                 features::COMPONENT_KINDS,
             ),
             (self.own_copy.is_some(), features::LOCAL_OPS),
+            (!self.env.is_empty(), features::MODEL_ENV),
         ]
         .into_iter()
         .filter_map(|(needed, feature)| needed.then_some(feature))

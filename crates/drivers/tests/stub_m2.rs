@@ -366,7 +366,7 @@ async fn tool_session(
     spec.seat_tools = Some(SeatToolsLaunch {
         program: "/opt/sculptured".into(),
         args: vec!["seat-tools".into()],
-        env: host_proto::seat_tools::shim_env(socket, "tok", false),
+        env: host_proto::seat_tools::shim_env(socket, "tok", false).into(),
         approve: false,
         config_file: None,
     });

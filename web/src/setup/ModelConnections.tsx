@@ -26,8 +26,8 @@ export function ModelConnections({ onWorking }: { onWorking?: (ok: boolean) => v
   const check = async (id: string) => {
     setBusy(id); setError('');
     try {
-      const r = await checkConnection(id);
-      setResults((m) => ({ ...m, [id]: { ok: r.ok, detail: r.detail, at: new Date().toISOString() } }));
+      const { checked } = await checkConnection(id);
+      if (checked) setResults((m) => ({ ...m, [id]: checked }));
       await reload();
     } catch (e) { setError(failText(e)); } finally { setBusy(null); }
   };

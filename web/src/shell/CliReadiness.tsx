@@ -10,9 +10,11 @@ import { Btn } from './ui';
 
 export const PRODUCT: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
 
-/** The CLIs a team's agents run on (`claude`, `codex`); Practice agents need none. */
+/** The CLIs a team's agents need signed in (`claude`, `codex`). Practice agents need none, and nor
+ * does an agent on a model connection: it runs on that connection's key. */
 export function cliNeeds(draft: TeamDraft): string[] {
-  return [...new Set(draft.agents.map((a) => a.kind).filter((k): k is 'claude' | 'codex' => k === 'claude' || k === 'codex'))].sort();
+  const signIn = draft.agents.filter((a) => !a.connection).map((a) => a.kind);
+  return [...new Set(signIn.filter((k): k is 'claude' | 'codex' => k === 'claude' || k === 'codex'))].sort();
 }
 
 const notReady = (c: CliStatus) => !c.installed || c.signed_in === false;

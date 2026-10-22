@@ -56,7 +56,7 @@ fn only_allowed_folders_and_no_server_supplied_programs_env_or_args() {
     let mut with_program = p(proj.to_str().unwrap());
     with_program.program = Some("/bin/sh".into());
     let mut with_env = p(proj.to_str().unwrap());
-    with_env.env = vec![("LD_PRELOAD".into(), "x".into())];
+    with_env.env = vec![("LD_PRELOAD".into(), "x".into())].into();
     let mut with_args = p(proj.to_str().unwrap());
     with_args.extra_args = vec!["--dangerous".into()];
     for bad in [with_program, with_env, with_args] {
@@ -597,4 +597,44 @@ fn generation_is_allowed_by_default_and_can_be_turned_off() {
     let e = off.check_op(&op).unwrap_err();
     assert_eq!(e.code, "not_allowed_here");
     assert!(e.message.contains("--enable generate"), "{}", e.message);
+}
+
+/// The server may hand an agent its model connection's key (and OpenRouter's address), and nothing
+/// else: another variable, a second copy of a key or another address is refused.
+#[test]
+fn a_model_connections_key_is_the_only_environment_the_server_may_give() {
+    let root = tempfile::tempdir().unwrap();
+    let mut pol = RunnerPolicy::default();
+    pol.allow(root.path()).unwrap();
+    let with = |env: &[(&str, &str)]| {
+        let mut l = p(root.path().to_str().unwrap());
+        l.env = env
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        pol.check(&l)
+    };
+    assert!(with(&[("ANTHROPIC_API_KEY", "k")]).is_ok());
+    assert!(
+        with(&[
+            ("ANTHROPIC_BASE_URL", "https://openrouter.ai/api"),
+            ("ANTHROPIC_AUTH_TOKEN", "k"),
+            ("ANTHROPIC_API_KEY", "")
+        ])
+        .is_ok()
+    );
+    for bad in [
+        vec![("ANTHROPIC_API_KEY", "k"), ("PATH", "/tmp")],
+        vec![
+            ("ANTHROPIC_BASE_URL", "https://example.com/api"),
+            ("ANTHROPIC_AUTH_TOKEN", "k"),
+        ],
+        vec![("ANTHROPIC_API_KEY", "k"), ("ANTHROPIC_API_KEY", "other")],
+    ] {
+        assert!(
+            with(&bad).unwrap_err().contains("refused"),
+            "{:?}",
+            bad.iter().map(|(k, _)| k).collect::<Vec<_>>()
+        );
+    }
 }

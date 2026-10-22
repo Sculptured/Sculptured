@@ -79,7 +79,8 @@ pub fn fit_params(
         .into_iter()
         .filter(|f| st.hosts.is_connected(host) && !st.hosts.host_supports(host, f))
         .collect();
-    if missing.contains(&features::POSTURE) {
+    // Without its model connection the agent would run on the computer's own sign-in, or not at all.
+    if missing.contains(&features::POSTURE) || missing.contains(&features::MODEL_ENV) {
         return Err(older_runner(host));
     }
     if missing.is_empty() {

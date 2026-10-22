@@ -9,6 +9,8 @@ const GLOBAL: &str = "global";
 const OVERRIDE: &str = "override:question_timeout_ms";
 /// The computer last chosen under Run on: a new team starts there.
 const LAST_HOST: &str = "last_team_host";
+/// Which setup steps the person finished or skipped (`crate::setup`).
+const SETUP: &str = "setup";
 
 fn team_key(team: &str) -> String {
     format!("team:{team}")
@@ -141,6 +143,12 @@ impl Store {
                 .execute("DELETE FROM settings WHERE k = ?1", [OVERRIDE])
                 .map(|_| ()),
         }
+    }
+    pub fn setup_progress(&self) -> rusqlite::Result<crate::setup::SetupProgress> {
+        read(self.connection(), SETUP)
+    }
+    pub fn save_setup_progress(&mut self, p: &crate::setup::SetupProgress) -> rusqlite::Result<()> {
+        write(self.connection(), SETUP, p)
     }
     pub fn question_timeout_ms(&self, rig: &str) -> rusqlite::Result<u64> {
         question_timeout_ms_in(self.connection(), rig)

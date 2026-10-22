@@ -220,6 +220,7 @@ fn agent(
         x,
         y,
         advanced,
+        connection: None,
     }
 }
 
