@@ -23,7 +23,35 @@ pub fn driver_for(rt: Runtime) -> Option<&'static str> {
 /// plain words) when the host is an older hostd that cannot honour them: a restricted agent is refused,
 /// never run unrestricted.
 pub fn launch_params(st: &AppState, host: &str, rig: &str, seat: &CompiledSeat, spec_dir: &Path) -> Result<LaunchParams, String> {
-    fitted_params(st, host, rig, seat, spec_dir, None)
+    fitted_params(st, host, rig, seat, spec_dir, None, ModelAccess::default())
+}
+
+/// `launch_params` with the agent's model connection read from the gateway (hosted): what a real
+/// launch sends. Err (in plain words) when the connection cannot be read: the agent does not start.
+pub async fn launch_params_with_connection(st: &AppState, host: &str, rig: &str, seat: &CompiledSeat, spec_dir: &Path) -> Result<LaunchParams, String> {
+    let access = model_access(st, seat).await?;
+    fitted_params(st, host, rig, seat, spec_dir, None, access)
+}
+
+/// What a model connection gives one launch. `env` holds a key: it only ever goes into
+/// `LaunchParams.env`, never into an event, the store, a log or an error.
+#[derive(Default)]
+pub struct ModelAccess {
+    env: Vec<(String, String)>,
+    model: Option<String>,
+}
+
+/// Hosted Claude Code agents with a model connection: its settings from the gateway. Nothing for any
+/// other agent, and nothing in local mode, where the computer's own sign-in is used.
+pub async fn model_access(st: &AppState, seat: &CompiledSeat) -> Result<ModelAccess, String> {
+    let Some(id) = seat.connection.as_deref().filter(|_| hosted(st) && seat.runtime == Runtime::ClaudeCode) else {
+        return Ok(ModelAccess::default());
+    };
+    let name = seat.label.clone().unwrap_or_else(|| seat.member.clone());
+    let fail = |why: String| format!("Couldn't read the model connection for {name}: {why}. Check it under Setup → Models.");
+    let gateway = st.gateway.as_ref().ok_or_else(|| fail("this server has no way to read model connections".into()))?;
+    let got = gateway.connection_env(id).await.map_err(fail)?;
+    Ok(ModelAccess { env: got.env, model: got.model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty()) })
 }
 
 /// `launch_params` with a usage baseline (a resumed session's usage so far), fitted with the rest: an
@@ -35,6 +63,7 @@ fn fitted_params(
     seat: &CompiledSeat,
     spec_dir: &Path,
     usage_baseline: Option<[u64; 4]>,
+    access: ModelAccess,
 ) -> Result<LaunchParams, String> {
     if st.store.lock().unwrap().budget_exhausted(&seat.id).map_err(|e|e.to_string())? {return Err("Agent output budget exhausted; start a new project run to reset it".into());}
     let posture = crate::posture::for_seat(st, rig, seat);
@@ -69,7 +98,9 @@ fn fitted_params(
         claude_setup,
         compact_tokens,
         cwd,
-        model: seat.model.clone(),
+        // A connection that names its model (OpenRouter) runs with it: the agent's own may not exist there.
+        model: access.model.or_else(|| seat.model.clone()),
+        env: access.env,
         posture,
         seat_tools: crate::seat_tools::launch_params(st, seat, posture),
         usage_baseline,
@@ -159,7 +190,8 @@ pub async fn relaunch(
     let host = seat_host(st, seat)?;
     // An older runner cannot restart an agent; refuse before anything is recorded for this launch.
     st.hosts.check_features(&host, &[host_proto::features::RESTART]).map_err(|e| ApiError::conflict("older_runner", e))?;
-    let params = fitted_params(st, &host, &rig.name, &spec, &spec_dir(st, &rig.name), usage_baseline)
+    let access = model_access(st, &spec).await.map_err(|e| ApiError::conflict("model_connection", e))?;
+    let params = fitted_params(st, &host, &rig.name, &spec, &spec_dir(st, &rig.name), usage_baseline, access)
         .map_err(|e| ApiError::conflict("older_runner", e))?;
     st.store.lock().unwrap().set_seat_cwd(seat, &params.cwd)?;
     let cmd = HostCommand::Restart { seat: seat.to_string(), driver: driver.to_string(), params, mode, cause };

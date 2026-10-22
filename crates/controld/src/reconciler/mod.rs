@@ -8,7 +8,7 @@ pub(crate) use seats::stoppable;
 
 use crate::error::ApiError;
 use crate::hosts::controld;
-use crate::launch::launch_params;
+use crate::launch::launch_params_with_connection;
 use crate::state::{AppState, BootGuard};
 use crate::store::{is_live, RigSource};
 use crate::seat_ids::rig_of;
@@ -289,7 +289,7 @@ pub(crate) async fn launch_one(st: &AppState, seat: &rigspec::CompiledSeat, spec
     // A computer whose link just dropped gets a moment to come back before the agent needs attention.
     st.hosts.wait_connected(&host).await;
     let Some(driver) = local_driver(st, seat, &host) else { return false };
-    let params = match launch_params(st, &host, rig, seat, spec_dir) {
+    let params = match launch_params_with_connection(st, &host, rig, seat, spec_dir).await {
         Ok(p) => p,
         Err(reason) => {
             attention(st, seat_id, Provenance::ProtocolObserved, reason);

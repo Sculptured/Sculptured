@@ -58,6 +58,7 @@ fn routes() -> Router<AppState> {
         .merge(crate::folders::routes())
         .merge(crate::questions::routes())
         .merge(crate::settings::routes())
+        .merge(crate::setup::routes())
         .merge(crate::git::routes())
         .merge(crate::monitor::routes())
         .merge(crate::restore::routes())
