@@ -44,7 +44,8 @@ function serve(w: World) {
       posts.push({ url: u, body });
       const result = w.check ?? { ok: true, detail: 'Key works' };
       w.connections = w.connections.map((c) => (c.id === check[1] ? { ...c, checked: { ...result, at: '2026-10-21T00:00:00Z' } } : c));
-      return reply(result);
+      // The gateway answers with the connection, its `checked` filled in.
+      return reply(w.connections.find((c) => c.id === check[1]));
     }
     return reply({}, 404);
   });

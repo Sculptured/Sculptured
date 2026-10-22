@@ -22,7 +22,8 @@ export async function listConnections(): Promise<ModelConnection[]> {
   return Array.isArray(r?.connections) ? r.connections : [];
 }
 export const addConnection = (c: NewConnection) => gw<ModelConnection>('POST', '/connections', c);
-export const checkConnection = (id: string) => gw<{ ok: boolean; detail: string }>('POST', `/connections/${encodeURIComponent(id)}/check`);
+/** Checks the key without spending tokens; answers with the connection, its `checked` filled in. */
+export const checkConnection = (id: string) => gw<ModelConnection>('POST', `/connections/${encodeURIComponent(id)}/check`);
 export const deleteConnection = (id: string) => gw<unknown>('DELETE', `/connections/${encodeURIComponent(id)}`);
 
 /** Your model connections (hosted only; none elsewhere or when the gateway has none). */
