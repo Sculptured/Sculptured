@@ -1,0 +1,48 @@
+---
+title: Set up your account
+description: The setup steps after sign-up on the hosted service, how model keys are kept, and what key-based runs cost.
+---
+
+After you create an account on the hosted service, Sculptured opens **Setup**. It walks you through what agents need before they can work: a computer to run on and a way to reach a model. Your progress is saved on the server, so you can stop and carry on from any device.
+
+Until **Computer** and **Models** are done, the app's pages lead back to Setup. Your account, sign-out, the docs and Community stay open. The other steps are optional; you can skip them and come back later from **Account** or from the **Finish setup** note on Projects.
+
+Accounts that already have a connected computer and a signed-in Claude Code or Codex count as set up and are not sent through Setup.
+
+<Note>Setup is for the hosted service. If you run Sculptured yourself, agents use the Claude Code and Codex sign-ins on your own computer; see the [Quickstart](/quickstart).</Note>
+
+## The steps
+
+1. **Welcome.** What Sculptured does and what the next steps set up.
+2. **Computer.** Connect the computer your agents will run on, with the install command or the Mac app. The page updates when the computer connects, then shows its name and which of Claude Code and Codex it found. If your computer is a cluster, choose **My computer is a cluster** to add it; it counts as your computer. The Mac app skips this step, because the computer is the one it runs on. See [Connect a computer](/connect-a-computer).
+3. **Models.** Add at least one model connection. Each has a **Check** that tests it without using any tokens.
+4. **More computers** (optional). Add a cluster or connect another computer. Agents on different computers work together by sending messages; your files stay on the computer where they are.
+5. **First project** (optional). Creates a practice team (practice agents use no model and cost nothing) and opens its board, with a few tips pinned to the real screens: an agent card, its computer and folder, **Start**, the Run board, and a question or **Things to fix**. Use **Next**, **Back** or **Skip tour**; Esc ends it. It finishes on Projects.
+
+## Model connections
+
+A model connection is how an agent reaches a model. Each agent's block lets you choose one, the same way you choose Claude Code or Codex. A team uses its first working connection for new agents.
+
+| Connection | What you give | What **Check** does |
+|---|---|---|
+| **Claude, subscription** | Sign in to Claude Code on a connected computer (paste the code it shows). | Uses the existing Claude Code sign-in check. |
+| **Claude, API key** | An Anthropic API key. | Lists the models the key can use. Uses no tokens. |
+| **Claude via OpenRouter** | An OpenRouter key and a model. Claude Code then sends its requests to OpenRouter. | Reads the key's details from OpenRouter. Uses no tokens. |
+| **Codex, ChatGPT subscription** | Sign in to Codex with the one-time code it shows. | Uses the existing Codex sign-in check. |
+
+With OpenRouter, choose a Claude model. Claude Code expects Anthropic's models, and others may not work with it.
+
+### How keys are kept
+
+- A key you add is sealed on Sculptured's server, the same way cluster passwords are. It is never shown again; the app shows only its last four characters.
+- When an agent with that connection starts, the server sends the key to that agent's process on your computer, and only there. It is not written to the team, its events or logs, and Sculptured does not save it on your computer.
+- Team files and MADL documents never carry your connection or its key. When you import a team, you choose which of your connections its agents use.
+- Deleting a connection deletes its key.
+
+If a key can't be read when an agent starts, the agent doesn't start, and its card says: "Couldn't read the model connection for *agent*: *reason*. Check it under Setup → Models."
+
+## Costs
+
+A run that uses an API key or OpenRouter is billed to your own Anthropic or OpenRouter account, at that provider's prices. Sculptured does not pay for model use. Budget views mark these runs as a pay-per-use key, and their costs as estimates based on the provider's prices. A subscription connection uses your Claude or ChatGPT plan, as before.
+
+A connection's **Check** uses no tokens. The first real use of a key is your first run with it.
