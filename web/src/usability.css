@@ -136,13 +136,5 @@ div.cli-signin-steps { padding-left: 0; }
 .cli-install p { margin: 0; }
 .cli-install-cmd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cli-install-cmd code { overflow-wrap: anywhere; }
-/* Home: the first-run checklist. */
-.getting-started { margin: 0 0 var(--space-4, 16px); padding: 12px 16px; }
-.getting-started-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.getting-started h2 { margin: 0; font-size: var(--text-lg); }
-.getting-started ol { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
-.getting-started li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.getting-started .gs-state { min-width: 5.5em; color: var(--muted); }
-.getting-started li.done .gs-title { color: var(--muted); }
 .raise-limit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .raise-limit input { width: 9rem; }

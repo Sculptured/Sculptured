@@ -131,6 +131,9 @@ export type AssistantTurn = { role: 'person' | 'assistant'; text: string };
 /** The assistant's proposed design: nothing is saved until the person approves it. */
 export type DesignProposal = { summary: string; madl: string; draft: TeamDraft; dropped: Diagnostic[]; issues: DraftIssue[] };
 
+/** Setup progress, saved on the server so it resumes on any device. */
+export type SetupProgress = { done: string[]; skipped: string[] };
+
 export type StartResult = { rig: string; warnings: DraftIssue[] };
 
 export type SendBody = { text: string; intent: MessageIntent; interrupt: boolean };
@@ -140,6 +143,9 @@ export const api = {
   /** Hosted: `host` picks the computer (else the only connected one). */
   clis: (on?: CliOn) => get<import('./generated/CliStatus').CliStatus[]>(`/api/clis${cliQuery(on)}`),
   /** Connected computers (agent runners) with their drivers and, for connected computers, what they allow. */
+  /** Which setup steps are done or skipped (ids: welcome, computer, models, computers, tour). */
+  setup: () => get<SetupProgress>('/api/setup'),
+  saveSetup: (p: SetupProgress) => request<SetupProgress>('PUT', '/api/setup', p),
   hosts: () => get<{ id: string; drivers: string[]; policy: import('./generated/HostPolicyInfo').HostPolicyInfo | null; max_working?: number | null }[]>('/api/hosts'),
   /** Most agents working at once on a computer, across its teams (null = no cap). */
   setHostLimit: (id: string, max_working: number | null) => request<{ id: string; max_working: number | null }>('PUT', `/api/hosts/${encodeURIComponent(id)}/limit`, { max_working }),

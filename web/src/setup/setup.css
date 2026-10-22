@@ -1,0 +1,33 @@
+/* Setup: a full page with a step bar, its steps, and the tour's tips. */
+.setup-page { max-width: 760px; margin: 32px auto; padding: 0 16px; display: grid; gap: var(--space-4); }
+.setup-page h1 { font-size: var(--text-2xl); margin: 0; }
+.setup-page h2 { font-size: var(--text-xl); margin: 0 0 var(--space-2); }
+.setup-page h3 { font-size: var(--text-lg); margin: var(--space-3) 0 var(--space-2); }
+.setup-top { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.setup-steps ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.setup-steps button { display: grid; gap: 2px; text-align: left; min-height: var(--control-h); padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.setup-steps button[aria-current='step'] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.setup-steps button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.setup-step-name { font-weight: var(--weight-semibold); }
+.setup-step-state { font-size: var(--text-sm); color: var(--muted); }
+.setup-step-state.done { color: var(--green); }
+.setup-body { display: grid; gap: var(--space-3); }
+.setup-body p { margin: 0; line-height: var(--leading); }
+.setup-nav { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.setup-live { display: flex; gap: var(--space-2); align-items: center; }
+.setup-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.setup-list > li { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+.setup-list > li .setup-row-actions { margin-left: auto; display: flex; gap: var(--space-2); }
+.setup-form { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); }
+.setup-form h3 { margin: 0; }
+.setup-form .fld-input { width: 100%; }
+.setup-forms { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.setup-note { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); margin-bottom: var(--space-3); }
+
+.tour-tip { position: fixed; z-index: 1000; width: min(360px, calc(100vw - 32px)); padding: var(--space-3) var(--space-4); background: var(--bg); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); display: grid; gap: var(--space-2); }
+.tour-tip.docked { left: 16px; right: 16px; bottom: 16px; width: auto; max-width: 520px; margin: 0 auto; }
+.tour-tip p { margin: 0; line-height: var(--leading); }
+.tour-title { font-size: var(--text-lg); margin: 0; }
+.tour-count { font-size: var(--text-sm); }
+.tour-actions { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+[data-tour-on] { outline: 3px solid var(--accent); outline-offset: 3px; }

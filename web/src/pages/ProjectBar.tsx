@@ -19,14 +19,14 @@ function Tabs({ team }: { team: string }) {
   // An agent's own page belongs to Agents; a workflow page belongs to the Board.
   const { pathname } = useLocation();
   const onWorkflow = pathname.includes('/workflow/');
-  const tab = (to: string, label: string, also = false) => (
-    <NavLink to={to} className={({ isActive }) => `pb-tab${isActive || also ? ' on' : ''}`} aria-current={also ? 'page' : undefined}>{label}</NavLink>
+  const tab = (to: string, label: string, also = false, tour?: string) => (
+    <NavLink to={to} className={({ isActive }) => `pb-tab${isActive || also ? ' on' : ''}`} aria-current={also ? 'page' : undefined} data-tour={tour}>{label}</NavLink>
   );
   return (
     <nav className="pb-tabs" aria-label="Project">
       {tab(boardPath(team), 'Board', onWorkflow)}
       {tab(agentsPath(team), 'Agents')}
-      {tab(questionsPath(team), 'Questions')}
+      {tab(questionsPath(team), 'Questions', false, 'questions')}
       {tab(resultsPath(team), 'Results')}
       {tab(settingsPath(team), 'Settings')}
     </nav>
@@ -96,7 +96,7 @@ function Primary({ p, start, stop, why }: { p: Project; start: StartApi; stop: S
     );
   if (!p.builtHere) return null;
   return (
-    <Btn variant="primary" icon="play" className="start-btn" onClick={start.ask} disabled={!!start.reason} aria-describedby={start.reason ? why : undefined} aria-label="Start team" tip={start.reason ?? undefined}>
+    <Btn variant="primary" icon="play" className="start-btn" data-tour="start" onClick={start.ask} disabled={!!start.reason} aria-describedby={start.reason ? why : undefined} aria-label="Start team" tip={start.reason ?? undefined}>
       <span>Start<span className="wide-only"> team</span></span>
     </Btn>
   );

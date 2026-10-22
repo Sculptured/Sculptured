@@ -24,6 +24,7 @@ export function AccountPage() {
       <h1>Your account</h1>
       {s.kind === 'signed-in' ? <SignedIn name={s.user.name} email={s.user.email} admin={s.user.role === 'admin'} /> :
         <p className="muted">Sculptured runs on this computer, so there is no account to sign in to. Your usage is below.</p>}
+      {s.kind === 'local' && <p><Link to="/setup">Setup</Link> <span className="muted">· model sign-in and a practice project with a short tour</span></p>}
       {s.kind === 'local' && <section aria-label="Community"><h2>Community</h2><CommunityCard /></section>}
       <section aria-label="Agent sign-in and plan usage">
         <h2>Agent sign-in and plan usage</h2>
@@ -47,6 +48,7 @@ function SignedIn({ name, email, admin }: { name: string; email: string; admin: 
     <section aria-label="Signed in" className="acct-who">
       <div><strong>{name}</strong><span className="muted">{email}</span>{admin && <span className="muted">Admin</span>}</div>
       <div className="acct-actions">
+        <Link to="/setup">Setup</Link>
         <Link to="/computers">Computers</Link>
         <Link to="/what-we-record">What we record</Link>
         <button type="button" className="btn" disabled={busy} onClick={signOut}>Sign out</button>

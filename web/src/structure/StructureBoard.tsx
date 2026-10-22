@@ -93,7 +93,7 @@ function FixBox({ draft, issues, onShow, edit, locked }: { draft: TeamDraft; iss
   const open = choice ?? issues.length <= 3;
   if (issues.length === 0) return null;
   return (
-    <section className={`panel fix-box${open ? '' : ' closed'}`} aria-label="Things to fix">
+    <section className={`panel fix-box${open ? '' : ' closed'}`} aria-label="Things to fix" data-tour="fix">
       <div className="panel-bar">
         <span className="panel-title tone-red"><Icon name="alert" size={15} />Things to fix <Badge tone="red">{issues.length}</Badge></span>
         <span className="panel-rule" aria-hidden="true" />

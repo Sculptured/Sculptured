@@ -100,6 +100,19 @@ function useComputerClis(id: string, signingIn: boolean, onError: (e: string) =>
 
 /** What a connected computer allows, and its Claude Code / Codex sign-in, signed in from here. */
 function ComputerDetails({ id, name, policy }: { id: string; name: string; policy: HostPolicyInfo }) {
+  return (
+    <div className="computer-details">
+      <p><strong>{policy.access === 'sandboxed' ? 'Sandboxed' : 'Full access'}</strong> <span className="muted">· agents start in:</span></p>
+      <ul className="computer-folders">{policy.allowed_folders.map((f) => <li key={f}><code>{f}</code></li>)}</ul>
+      {policy.allowed_folders.length === 0 && <p className="tone-amber">No folders allowed yet: run <code>sculptured allow &lt;folder&gt;</code> on it.</p>}
+      <p className="muted">Also allowed: {policy.capabilities.map((c) => CAPS[c] ?? c).join(', ') || 'nothing else'}.</p>
+      <ComputerClis id={id} name={name} canSignIn={policy.capabilities.includes('cli_sign_in')} />
+    </div>
+  );
+}
+
+/** A computer's Claude Code and Codex: signed in or not, with Sign in from here when it allows that. */
+export function ComputerClis({ id, name, canSignIn }: { id: string; name: string; canSignIn: boolean }) {
   const [started, setStarted] = useState<Record<string, LoginStarted>>({});
   const [error, setError] = useState('');
   const clis = useComputerClis(id, Object.keys(started).length > 0, setError);
@@ -109,17 +122,13 @@ function ComputerDetails({ id, name, policy }: { id: string; name: string; polic
   };
   const label = (n: string) => (n === 'claude' ? 'Claude' : 'Codex');
   return (
-    <div className="computer-details">
-      <p><strong>{policy.access === 'sandboxed' ? 'Sandboxed' : 'Full access'}</strong> <span className="muted">· agents start in:</span></p>
-      <ul className="computer-folders">{policy.allowed_folders.map((f) => <li key={f}><code>{f}</code></li>)}</ul>
-      {policy.allowed_folders.length === 0 && <p className="tone-amber">No folders allowed yet: run <code>sculptured allow &lt;folder&gt;</code> on it.</p>}
-      <p className="muted">Also allowed: {policy.capabilities.map((c) => CAPS[c] ?? c).join(', ') || 'nothing else'}.</p>
+    <>
       {clis && (
         <ul className="computer-clis">
           {clis.map((c) => (
             <li key={c.name}>
               {label(c.name)}: {!c.installed ? 'not installed' : c.signed_in ? `signed in${c.account ? ` (${c.account})` : ''}` : 'not signed in'}
-              {c.installed && c.signed_in !== true && policy.capabilities.includes('cli_sign_in') && (
+              {c.installed && c.signed_in !== true && canSignIn && (
                 <button className="btn" aria-label={`Sign in to ${label(c.name)} on ${name}`} onClick={() => void signIn(c.name)}>Sign in</button>
               )}
               {started[c.name] && c.signed_in !== true && <CliSignInSteps cli={c.name} on={id} started={started[c.name]} />}
@@ -129,6 +138,6 @@ function ComputerDetails({ id, name, policy }: { id: string; name: string; polic
         </ul>
       )}
       {error && <p className="tone-red" role="alert">{error}</p>}
-    </div>
+    </>
   );
 }

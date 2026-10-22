@@ -39,7 +39,7 @@ function ModeSwitch({ mode, p, onChange }: { mode: BoardMode; p: Project; onChan
     </button>
   );
   return (
-    <span role="group" aria-label="Board mode" className="seg mode-switch">
+    <span role="group" aria-label="Board mode" className="seg mode-switch" data-tour="board-mode">
       {option('design', 'Design', 'graph', p.builtHere ? null : NO_DESIGN)}
       {option('run', 'Run', 'activity', p.started ? null : RUN_NOT_YET)}
     </span>

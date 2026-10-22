@@ -26,6 +26,8 @@ import { AgentPage } from './pages/AgentPage';
 import { ResultsPage } from './pages/ResultsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { WorkflowPage } from './pages/WorkflowPage';
+import { SetupGate } from './setup/SetupGate';
+import { SetupPage } from './setup/SetupPage';
 
 /** Hosted beta admin page; anyone else goes home. */
 function AdminGuard() {
@@ -76,6 +78,7 @@ export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset/:token" element={<ResetPage />} />
       <Route path="/admin" element={<AdminGuard />} />
+      <Route path="/setup" element={<SetupPage />} />
       <Route path="/connect" element={<ConnectPage />} />
       <Route path="/computers" element={<ComputersPage />} />
       <Route path="/ops" element={<OpsPage />} />
@@ -106,7 +109,7 @@ export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <HostedGate><AppRoutes /></HostedGate>
+      <HostedGate><SetupGate><AppRoutes /></SetupGate></HostedGate>
     </BrowserRouter>
   );
 }
