@@ -15,20 +15,6 @@ use crate::{Diagnostic, Severity};
 pub use export::export_yaml;
 pub use import::import_yaml;
 
-pub const META_PREFIX: &str = "# sculptured: ";
-pub const NOT_IMPORTED: &str = "not imported: the team builder does not support this yet";
-
-#[derive(Clone, Debug)]
-pub struct Imported {
-    pub draft: model::TeamDraft,
-    /// Parts of the spec the builder cannot represent, as warnings with their paths.
-    pub dropped: Vec<Diagnostic>,
-}
-
-fn dropped_with(path: String, message: &str) -> Diagnostic {
-    Diagnostic { path, severity: Severity::Warning, message: message.into() }
-}
-
-fn dropped(path: String) -> Diagnostic {
-    dropped_with(path, NOT_IMPORTED)
-}
+mod format;
+pub use format::{Imported, META_PREFIX, NOT_IMPORTED};
+use format::{dropped, dropped_with};

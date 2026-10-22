@@ -1,7 +1,11 @@
 //! Running a check command: `sh -c <command>` in a folder, with a time limit, keeping the end of the
 //! output. Who may run it, and recording the result, is the caller's business.
+use crate::process;
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
+use tokio::process::Child;
 
 /// A check still running after this long is stopped and counts as failed.
 pub const TIMEOUT: Duration = Duration::from_secs(600);
@@ -16,86 +20,96 @@ pub struct CheckOutcome {
     pub output: String,
 }
 
-/// (passed, exit code, timed out, the end of stdout then stderr).
+/// Runs a check and keeps the end of stdout followed by stderr.
 pub async fn execute(cmd: &str, cwd: &str) -> CheckOutcome {
     execute_within(cmd, cwd, TIMEOUT).await
 }
 
 /// `execute` with its own time limit (a workflow check stage's `timeout_s`).
 pub async fn execute_within(cmd: &str, cwd: &str, limit: Duration) -> CheckOutcome {
-    let (passed, exit_code, timed_out, output) = run(cmd, cwd, limit).await;
-    CheckOutcome { passed, exit_code, timed_out, output }
-}
-
-/// The check as a shell command line: `sh -c` on Unix, `cmd /C` on Windows (no console window).
-pub(crate) fn shell(cmd: &str) -> tokio::process::Command {
-    #[cfg(windows)]
-    {
-        let mut c = tokio::process::Command::new("cmd");
-        c.arg("/C").raw_arg(cmd).creation_flags(0x0800_0000);
-        c
-    }
-    #[cfg(not(windows))]
-    {
-        let mut c = tokio::process::Command::new("sh");
-        c.arg("-c").arg(cmd);
-        c
-    }
-}
-
-async fn run(cmd: &str, cwd: &str, limit: Duration) -> (bool, Option<i32>, bool, String) {
-    let child = shell(cmd)
-        .current_dir(cwd)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true)
-        .spawn();
-    let mut child = match child {
-        Ok(c) => c,
-        Err(e) => return (false, None, false, format!("Could not run the check in {cwd}: {e}")),
-    };
-    let (mut out, mut err) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
-    let work = async {
-        let (mut o, mut e) = (Vec::new(), Vec::new());
-        let (_, _, status) = tokio::join!(out.read_to_end(&mut o), err.read_to_end(&mut e), child.wait());
-        (status, o, e)
-    };
-    match tokio::time::timeout(limit, work).await {
-        Ok((status, o, e)) => {
-            let code = status.ok().and_then(|s| s.code());
-            let mut text = String::from_utf8_lossy(&o).into_owned();
-            if !e.is_empty() {
-                text.push_str(&String::from_utf8_lossy(&e));
-            }
-            (code == Some(0), code, false, tail(&text))
+    let mut child = match process::spawn(cmd, cwd) {
+        Ok(child) => child,
+        Err(error) => {
+            return CheckOutcome::failed(
+                format!("Could not run the check in {cwd}: {error}"),
+                false,
+            );
         }
-        Err(_) => (false, None, true, format!("Stopped after {} s without finishing.", limit.as_secs())),
+    };
+    match tokio::time::timeout(limit, collect(&mut child)).await {
+        Ok(outcome) => outcome,
+        Err(_) => CheckOutcome::failed(process::timeout_message(limit), true),
+    }
+}
+
+impl CheckOutcome {
+    fn failed(output: String, timed_out: bool) -> Self {
+        Self {
+            passed: false,
+            exit_code: None,
+            timed_out,
+            output,
+        }
+    }
+}
+
+async fn collect(child: &mut Child) -> CheckOutcome {
+    let mut stdout = child.stdout.take().expect("check stdout is piped");
+    let mut stderr = child.stderr.take().expect("check stderr is piped");
+    let (mut output, mut errors) = (Vec::new(), Vec::new());
+    let (_, _, status) = tokio::join!(
+        stdout.read_to_end(&mut output),
+        stderr.read_to_end(&mut errors),
+        child.wait()
+    );
+    let exit_code = status.ok().and_then(|status| status.code());
+    let mut text = String::from_utf8_lossy(&output).into_owned();
+    text.push_str(&String::from_utf8_lossy(&errors));
+    CheckOutcome {
+        passed: exit_code == Some(0),
+        exit_code,
+        timed_out: false,
+        output: tail(&text),
     }
 }
 
 /// One run at a time per key (an agent's check); asking while one runs makes it run once more afterwards
 /// (a turn that ended meanwhile), never more.
 #[derive(Default)]
-pub struct Rerun(std::sync::Mutex<std::collections::HashMap<String, bool>>);
+pub struct Rerun(Mutex<HashMap<String, bool>>);
 
 impl Rerun {
     /// True when nothing runs for `key`: the caller starts the run. False: one more run is queued.
     pub fn start(&self, key: &str) -> bool {
-        let mut r = self.0.lock().unwrap();
+        let mut r = self.0.lock().expect("rerun state mutex is not poisoned");
         match r.get_mut(key) {
-            Some(again) => { *again = true; false }
-            None => { r.insert(key.to_string(), false); true }
+            Some(again) => {
+                *again = true;
+                false
+            }
+            None => {
+                r.insert(key.to_string(), false);
+                true
+            }
         }
     }
 
     /// After a run: true to run once more; false ends it.
     pub fn again(&self, key: &str) -> bool {
-        let mut r = self.0.lock().unwrap();
-        if r.get(key) == Some(&true) { r.insert(key.to_string(), false); true } else { r.remove(key); false }
+        let mut r = self.0.lock().expect("rerun state mutex is not poisoned");
+        if let Some(again) = r.get_mut(key)
+            && *again
+        {
+            *again = false;
+            true
+        } else {
+            r.remove(key);
+            false
+        }
     }
 }
 
+#[must_use]
 pub fn tail(s: &str) -> String {
     let s = s.trim_end();
     if s.len() <= KEEP {
@@ -128,9 +142,20 @@ mod tests {
     async fn a_check_passes_on_exit_zero_and_keeps_the_end_of_its_output() {
         let dir = tempfile::tempdir().unwrap();
         let d = dir.path().to_str().unwrap();
-        assert_eq!(run("echo ok", d, TIMEOUT).await, (true, Some(0), false, "ok".into()));
-        let (passed, code, _, out) = run("echo out; echo bad >&2; exit 3", d, TIMEOUT).await;
-        assert_eq!((passed, code, out.as_str()), (false, Some(3), "out\nbad"));
+        assert_eq!(
+            execute("echo ok", d).await,
+            CheckOutcome {
+                passed: true,
+                exit_code: Some(0),
+                timed_out: false,
+                output: "ok".into()
+            }
+        );
+        let out = execute("echo out; echo bad >&2; exit 3", d).await;
+        assert_eq!(
+            (out.passed, out.exit_code, out.output.as_str()),
+            (false, Some(3), "out\nbad")
+        );
         let long = tail(&"x".repeat(KEEP + 50));
         assert!(long.starts_with('…') && long.chars().count() == KEEP + 1);
     }

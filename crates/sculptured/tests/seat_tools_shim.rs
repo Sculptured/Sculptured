@@ -1,6 +1,6 @@
 //! `sculptured seat-tools`, the MCP server a CLI starts for its agent: the real binary over stdio,
 //! relaying a tool call through a fake hostd socket. No model and no CLI are involved.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
@@ -13,12 +13,16 @@ fn fake_socket(path: &std::path::Path) -> mpsc::Receiver<Value> {
     let listener = UnixListener::bind(path).unwrap();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        for conn in listener.incoming() {
+        let matching_listener = listener.incoming();
+        for conn in matching_listener {
             let Ok(mut conn) = conn else { return };
             let mut line = String::new();
-            BufReader::new(conn.try_clone().unwrap()).read_line(&mut line).unwrap();
+            BufReader::new(conn.try_clone().unwrap())
+                .read_line(&mut line)
+                .unwrap();
             let _ = tx.send(serde_json::from_str::<Value>(line.trim()).unwrap());
-            let reply = json!({ "ok": true, "result": { "text": "Recorded your report." }, "error": null });
+            let reply =
+                json!({ "ok": true, "result": { "text": "Recorded your report." }, "error": null });
             let _ = writeln!(conn, "{reply}");
         }
     });
@@ -56,27 +60,64 @@ fn the_shim_speaks_mcp_on_stdio_and_relays_calls_to_the_socket() {
     let (tx, rx) = mpsc::channel();
     let stdout = child.stdout.take().unwrap();
     std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines() {
+        let matching_items = BufReader::new(stdout).lines();
+        for line in matching_items {
             let Ok(line) = line else { return };
-            let _ = tx.send(serde_json::from_str::<Value>(&line).expect("stdout carries only the protocol"));
+            let _ = tx.send(
+                serde_json::from_str::<Value>(&line).expect("stdout carries only the protocol"),
+            );
         }
     });
     let mut replies: HashMap<i64, Value> = HashMap::new();
     while replies.len() < 3 {
-        let r = rx.recv_timeout(Duration::from_secs(10)).expect("a reply in time");
+        let r = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("a reply in time");
         replies.insert(r["id"].as_i64().unwrap(), r);
     }
     assert_eq!(replies[&1]["result"]["serverInfo"]["name"], "rig");
-    let names: Vec<&str> = replies[&2]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["request_input", "record_decision", "report", "dispatch_work", "complete_work", "workflow_status", "read_decisions", "search_history", "record_lesson", "spawn_agent", "send_agent_message", "team_status", "read_pdf"], "no approve without SCULPTURED_SEAT_APPROVE");
-    assert_eq!(replies[&3]["result"]["content"][0]["text"], "Recorded your report.");
+    let names: Vec<&str> = replies[&2]["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "request_input",
+            "record_decision",
+            "report",
+            "dispatch_work",
+            "complete_work",
+            "workflow_status",
+            "read_decisions",
+            "search_history",
+            "record_lesson",
+            "spawn_agent",
+            "send_agent_message",
+            "team_status",
+            "read_pdf"
+        ],
+        "no approve without SCULPTURED_SEAT_APPROVE"
+    );
+    assert_eq!(
+        replies[&3]["result"]["content"][0]["text"],
+        "Recorded your report."
+    );
     assert_eq!(replies[&3]["result"]["isError"], false);
     let sent = requests.recv_timeout(Duration::from_secs(5)).unwrap();
-    assert_eq!(sent, json!({ "token": "tok-1", "tool": "report", "args": { "summary": "ok" } }));
+    assert_eq!(
+        sent,
+        json!({ "token": "tok-1", "tool": "report", "args": { "summary": "ok" } })
+    );
 
     drop(stdin);
     let status = child.wait().unwrap();
-    assert!(status.success(), "the shim ends when the agent closes stdin: {status}");
+    assert!(
+        status.success(),
+        "the shim ends when the agent closes stdin: {status}"
+    );
 }
 
 #[test]

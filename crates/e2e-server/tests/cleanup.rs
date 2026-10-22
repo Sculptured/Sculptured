@@ -7,7 +7,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use e2e_server::{alive, Session, HOME_FOLDERS};
+use e2e_server::{HOME_FOLDERS, Session};
 
 /// One copy of `sh` named `sculptured`, made once for every test in this file.
 fn fake_exe() -> &'static Path {
@@ -25,9 +25,17 @@ fn fake_exe() -> &'static Path {
 fn fake_sculptured(dir: &Path) -> Child {
     // A fork in another test thread can briefly hold the fresh copy open for writing (ETXTBSY).
     for _ in 0..100 {
-        match Command::new(fake_exe()).args(["-c", "sleep 60; :", "hostd"]).arg(dir).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        match Command::new(fake_exe())
+            .args(["-c", "sleep 60; :", "hostd"])
+            .arg(dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
             Ok(c) => return c,
-            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => std::thread::sleep(Duration::from_millis(20)),
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(Duration::from_millis(20))
+            }
             Err(e) => panic!("spawn fake hostd: {e}"),
         }
     }
@@ -44,7 +52,12 @@ impl Drop for Reap {
 }
 
 fn sleeper() -> Child {
-    Command::new("sleep").arg("60").stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap()
+    Command::new("sleep")
+        .arg("60")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap()
 }
 
 fn write_pid(session: &Session, pid: u32) {
@@ -66,7 +79,7 @@ fn gone(child: &mut Child) -> bool {
 
 #[test]
 fn a_new_session_has_a_throwaway_home_with_two_project_folders() {
-    let session = Session::new().unwrap();
+    let session = Session::try_new().unwrap();
     for f in HOME_FOLDERS {
         assert!(session.home().join(f).is_dir(), "{f}");
     }
@@ -77,7 +90,7 @@ fn a_new_session_has_a_throwaway_home_with_two_project_folders() {
 
 #[test]
 fn shutdown_stops_serve_then_hostd_and_removes_the_directory() {
-    let mut session = Session::new().unwrap();
+    let mut session = Session::try_new().unwrap();
     let root = session.root().to_path_buf();
     let serve = sleeper();
     let serve_pid = serve.id() as i32;
@@ -87,7 +100,7 @@ fn shutdown_stops_serve_then_hostd_and_removes_the_directory() {
 
     session.shutdown();
 
-    assert!(!alive(serve_pid), "serve is stopped and reaped");
+    assert!(!e2e_server::alive(serve_pid), "serve is stopped and reaped");
     assert!(gone(&mut hostd.0), "hostd is stopped");
     assert!(!root.exists(), "the throwaway directory is removed");
 }
@@ -95,25 +108,31 @@ fn shutdown_stops_serve_then_hostd_and_removes_the_directory() {
 #[test]
 fn a_recorded_pid_that_is_not_this_sessions_sculptured_is_left_alone() {
     let elsewhere = tempfile::tempdir().unwrap();
-    let mut session = Session::new().unwrap();
+    let mut session = Session::try_new().unwrap();
     // Another program, and a sculptured of another data dir: neither is touched.
     let mut other = Reap(sleeper());
     let mut foreign = Reap(fake_sculptured(elsewhere.path()));
     write_pid(&session, other.0.id());
     session.shutdown();
-    let mut session2 = Session::new().unwrap();
+    let mut session2 = Session::try_new().unwrap();
     write_pid(&session2, foreign.0.id());
     session2.shutdown();
 
-    assert!(matches!(other.0.try_wait(), Ok(None)), "an unrelated process keeps running");
-    assert!(matches!(foreign.0.try_wait(), Ok(None)), "another session's sculptured keeps running");
+    assert!(
+        matches!(other.0.try_wait(), Ok(None)),
+        "an unrelated process keeps running"
+    );
+    assert!(
+        matches!(foreign.0.try_wait(), Ok(None)),
+        "another session's sculptured keeps running"
+    );
 }
 
 #[test]
 fn a_session_dropped_early_still_removes_its_directory() {
     // As when the web build fails before serve ever starts.
     let root = {
-        let session = Session::new().unwrap();
+        let session = Session::try_new().unwrap();
         std::fs::write(session.root().join("partial-build"), "x").unwrap();
         session.root().to_path_buf()
     };
@@ -122,10 +141,10 @@ fn a_session_dropped_early_still_removes_its_directory() {
 
 #[test]
 fn shutdown_stops_the_community_stub_too() {
-    let mut session = Session::new().unwrap();
+    let mut session = Session::try_new().unwrap();
     let stub = sleeper();
     let pid = stub.id() as i32;
     session.adopt_stub(stub);
     session.shutdown();
-    assert!(!alive(pid), "the stub is stopped");
+    assert!(!e2e_server::alive(pid), "the stub is stopped");
 }

@@ -21,7 +21,11 @@ pub struct Diagnostic {
 }
 
 pub(crate) fn error(path: impl Into<String>, message: impl Into<String>) -> Diagnostic {
-    Diagnostic { path: path.into(), severity: Severity::Error, message: message.into() }
+    Diagnostic {
+        path: path.into(),
+        severity: Severity::Error,
+        message: message.into(),
+    }
 }
 pub(crate) fn not_enforced(path: impl Into<String>) -> Diagnostic {
     Diagnostic {
@@ -32,8 +36,18 @@ pub(crate) fn not_enforced(path: impl Into<String>) -> Diagnostic {
 }
 
 /// `base.field` (or `field` when `base` is empty) for each field that is present.
-pub(crate) fn present_paths<'a>(base: &'a str, fields: &'a [(&'a str, bool)]) -> impl Iterator<Item = String> + 'a {
-    fields.iter().filter(|(_, present)| *present).map(move |(field, _)| {
-        if base.is_empty() { field.to_string() } else { format!("{base}.{field}") }
-    })
+pub(crate) fn present_paths<'a>(
+    base: &'a str,
+    fields: &'a [(&'a str, bool)],
+) -> impl Iterator<Item = String> + 'a {
+    fields
+        .iter()
+        .filter(|(_, present)| *present)
+        .map(move |(field, _)| {
+            if base.is_empty() {
+                field.to_string()
+            } else {
+                format!("{base}.{field}")
+            }
+        })
 }

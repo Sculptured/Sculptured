@@ -14,18 +14,31 @@ static LAST_MS: AtomicI64 = AtomicI64::new(0);
 
 /// Called every second by the budget loop; looks every `EVERY_MS`.
 pub fn check(st: &AppState) {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
     if now - LAST_MS.load(Ordering::Relaxed) < EVERY_MS {
         return;
     }
     LAST_MS.store(now, Ordering::Relaxed);
-    let found = match st.store.lock().unwrap().silent_seats(now, QUIET_MS) {
+    let found = match st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .silent_seats(now, QUIET_MS)
+    {
         Ok(f) => f,
         Err(e) => return tracing::warn!(error = %e, "cannot look for silent agents"),
     };
     for s in found {
         let body = EventBody::StallSuspected { reason: s.reason() };
-        if let Err(e) = st.local_event(crate::hosts::controld(), Subject::Seat(s.seat.clone()), Provenance::Heuristic, body) {
+        if let Err(e) = st.local_event(
+            crate::hosts::controld(),
+            Subject::Seat(s.seat.clone()),
+            Provenance::Heuristic,
+            body,
+        ) {
             tracing::warn!(seat = %s.seat, error = %e, "cannot flag a silent agent");
         }
     }

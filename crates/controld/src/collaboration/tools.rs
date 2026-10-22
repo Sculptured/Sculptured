@@ -1,4 +1,5 @@
-use crate::{reconciler, state::AppState};
+use crate::reconciler;
+use crate::state::AppState;
 use model::{Actor, Desired, EventBody, MessageIntent, Provenance, SeatLifecycle, Subject};
 use rigspec::{CompiledEdge, EdgeKind};
 use serde_json::{Value, json};
@@ -15,12 +16,11 @@ fn arg<'a>(v: &'a Value, key: &str, max: usize) -> Result<&'a str, String> {
         .ok_or_else(|| format!("{key} must contain 1–{max} bytes"))
 }
 fn active(st: &AppState, seat: &str) -> Result<String, String> {
-    let store = st.store.lock().unwrap();
-    let view = store
-        .seat(seat)
-        .map_err(err)?
-        .ok_or("Unknown agent")?;
-    if store.budget_exhausted(seat).map_err(err)? {return Err("Output budget exhausted".into());}
+    let store = st.store.lock().expect("store mutex must not be poisoned");
+    let view = store.seat(seat).map_err(err)?.ok_or("Unknown agent")?;
+    if store.budget_exhausted(seat).map_err(err)? {
+        return Err("Output budget exhausted".into());
+    }
     if store.control(seat).map_err(err)?.is_some() {
         return Err("This agent is stopping. Finish current work; do not start more work.".into());
     }
@@ -43,14 +43,20 @@ pub async fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result
     let lock = {
         st.request_locks
             .lock()
-            .unwrap()
+            .expect("request_locks mutex must not be poisoned")
             .entry(key.clone())
             .or_default()
             .clone()
     };
     let _guard = lock.lock().await;
     let payload = args.to_string();
-    if let Some((old, result)) = st.store.lock().unwrap().tool_receipt(&key).map_err(err)? {
+    if let Some((old, result)) = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .tool_receipt(&key)
+        .map_err(err)?
+    {
         if old != payload {
             return Err("Use a new request_id for changed arguments".into());
         }
@@ -61,7 +67,11 @@ pub async fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result
         "send_agent_message" => message(st, seat, args, &key).await,
         "spawn_agent" => {
             let result = spawn(st, seat, args, &key).await?;
-            st.store.lock().unwrap().save_tool_receipt(&key, &payload, &result.to_string()).map_err(err)?;
+            st.store
+                .lock()
+                .expect("store mutex must not be poisoned")
+                .save_tool_receipt(&key, &payload, &result.to_string())
+                .map_err(err)?;
             Ok(result)
         }
         _ => Err("Unknown collaboration tool".into()),
@@ -71,24 +81,46 @@ pub async fn call(st: &AppState, seat: &str, tool: &str, args: &Value) -> Result
 /// The team as `team_status` gives it.
 fn team_status(st: &AppState, seat: &str) -> Result<Value, String> {
     let (rig, _) = crate::launch::compiled_seat(st, seat).map_err(|e| e.message)?;
-    let store = st.store.lock().unwrap();
+    let store = st.store.lock().expect("store mutex must not be poisoned");
     let snap = store
         .rig_snapshot(&rig.name)
         .map_err(err)?
         .ok_or("Unknown project")?;
     // Read into the caller's context on every call: one short line per agent, not JSON.
-    let word = |v: serde_json::Result<Value>| v.ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+    let word = |v: serde_json::Result<Value>| {
+        v.ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default()
+    };
     let unique = |m: &str| snap.seats.iter().filter(|o| o.member == m).count() == 1;
-    let address = |id: &str, member: &str| if unique(member) { member.to_string() } else { id.to_string() };
-    let mut lines = vec![format!("Project {} ({}). Agents (send_agent_message takes the first word):", rig.name, word(serde_json::to_value(snap.desired)))];
+    let address = |id: &str, member: &str| {
+        if unique(member) {
+            member.to_string()
+        } else {
+            id.to_string()
+        }
+    };
+    let mut lines = vec![format!(
+        "Project {} ({}). Agents (send_agent_message takes the first word):",
+        rig.name,
+        word(serde_json::to_value(snap.desired))
+    )];
     for a in &snap.seats {
         let state = match a.lifecycle {
             SeatLifecycle::Running => word(serde_json::to_value(a.activity)),
             other => word(serde_json::to_value(other)),
         };
-        let mut line = format!("- {} · {} · {state}", address(&a.id, &a.member), a.label.as_deref().unwrap_or(&a.member));
+        let mut line = format!(
+            "- {} · {} · {state}",
+            address(&a.id, &a.member),
+            a.label.as_deref().unwrap_or(&a.member)
+        );
         if let Some(parent) = store.parent(&a.id).ok().flatten() {
-            let member = snap.seats.iter().find(|o| o.id == parent).map_or(parent.clone(), |o| address(&o.id, &o.member));
+            let member = snap
+                .seats
+                .iter()
+                .find(|o| o.id == parent)
+                .map_or(parent.clone(), |o| address(&o.id, &o.member));
             line.push_str(&format!(" · child of {member}"));
         }
         if let Some(control) = store.control(&a.id).ok().flatten() {
@@ -112,24 +144,25 @@ async fn message(st: &AppState, seat: &str, args: &Value, key: &str) -> Result<V
         return Err("Choose another agent".into());
     }
     {
-        let store = st.store.lock().unwrap();
+        let store = st.store.lock().expect("store mutex must not be poisoned");
         if matches!(
             store.control(seat).map_err(err)?,
-            Some(crate::store::ControlMode::Hard | crate::store::ControlMode::Finished | crate::store::ControlMode::Budget)
+            Some(
+                crate::store::ControlMode::Hard
+                    | crate::store::ControlMode::Finished
+                    | crate::store::ControlMode::Budget
+            )
         ) {
             return Err("Sender is stopped".into());
         }
     }
     {
-        let store = st.store.lock().unwrap();
+        let store = st.store.lock().expect("store mutex must not be poisoned");
         if !store
             .rig_snapshot(&rig.name)
             .map_err(err)?
             .is_some_and(|s| s.desired == Desired::Running)
-            || store
-                .control(&target.id)
-                .map_err(err)?
-                .is_some()
+            || store.control(&target.id).map_err(err)?.is_some()
         {
             return Err("Recipient or project is stopped/stopping".into());
         }
@@ -139,16 +172,34 @@ async fn message(st: &AppState, seat: &str, args: &Value, key: &str) -> Result<V
     // agent re-reads its whole context to answer it). A note to a busy agent rides its current turn.
     let fyi = args.get("fyi").and_then(Value::as_bool).unwrap_or(false);
     let idle = {
-        let view = st.store.lock().unwrap().seat(&target.id).map_err(err)?;
-        view.is_some_and(|v| v.lifecycle == SeatLifecycle::Running && v.activity == model::SeatActivity::Idle)
+        let view = st
+            .store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .seat(&target.id)
+            .map_err(err)?;
+        view.is_some_and(|v| {
+            v.lifecycle == SeatLifecycle::Running && v.activity == model::SeatActivity::Idle
+        })
     };
     if fyi && idle {
         let result = json!({"text":format!("Note {id} held for {}: it is idle, so the note reaches it with its next message.",target.id),"message_id":id});
-        let mut store = st.store.lock().unwrap();
-        store.save_tool_receipt(key, &args.to_string(), &result.to_string()).map_err(err)?;
+        let mut store = st.store.lock().expect("store mutex must not be poisoned");
+        store
+            .save_tool_receipt(key, &args.to_string(), &result.to_string())
+            .map_err(err)?;
         store.hold_note(&id, &target.id, seat, text).map_err(err)?;
         let item = store
-            .append_local(Actor::Seat(seat.into()), Subject::Seat(target.id.clone()), Provenance::AgentReported, EventBody::MessageQueued { message_id: id.clone(), intent: MessageIntent::Inform, text: text.into() })
+            .append_local(
+                Actor::Seat(seat.into()),
+                Subject::Seat(target.id.clone()),
+                Provenance::AgentReported,
+                EventBody::MessageQueued {
+                    message_id: id.clone(),
+                    intent: MessageIntent::Inform,
+                    text: text.into(),
+                },
+            )
             .map_err(err)?;
         st.publish(vec![item]);
         return Ok(result);
@@ -157,8 +208,10 @@ async fn message(st: &AppState, seat: &str, args: &Value, key: &str) -> Result<V
     let result = json!({"text":format!("Message {id} recorded for {}. Inspect its delivery/read status before retrying; this request ID never sends twice.",target.id),"message_id":id});
     // Persist the receipt before dispatch: an uncertain acknowledgement must never duplicate work.
     {
-        let mut store = st.store.lock().unwrap();
-        store.save_tool_receipt(key, &args.to_string(), &result.to_string()).map_err(err)?;
+        let mut store = st.store.lock().expect("store mutex must not be poisoned");
+        store
+            .save_tool_receipt(key, &args.to_string(), &result.to_string())
+            .map_err(err)?;
         let item = store
             .append_local(
                 Actor::Seat(seat.into()),
@@ -205,17 +258,36 @@ async fn spawn(st: &AppState, parent: &str, args: &Value, key: &str) -> Result<V
     let rig_name = active(st, parent)?;
     let name = arg(args, "name", 100)?.trim();
     let task = arg(args, "task", 32768)?;
-    let runtime = st.store.lock().unwrap().rig_snapshot(&rig_name).ok().flatten()
-        .and_then(|s| s.rig.seats.iter().find(|s| s.id == parent).map(|s| s.runtime));
-    let held = runtime.and_then(crate::plan_usage::provider_of).and_then(|p| crate::plan_usage::held(st, p));
-    if let Some(why) = crate::budget::gate::refusal(&st.store.lock().unwrap(), &rig_name).map_err(err)? {
+    let runtime = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .rig_snapshot(&rig_name)
+        .ok()
+        .flatten()
+        .and_then(|s| {
+            s.rig
+                .seats
+                .iter()
+                .find(|s| s.id == parent)
+                .map(|s| s.runtime)
+        });
+    let held = runtime
+        .and_then(crate::plan_usage::provider_of)
+        .and_then(|p| crate::plan_usage::held(st, p));
+    if let Some(why) = crate::budget::gate::refusal(
+        &st.store.lock().expect("store mutex must not be poisoned"),
+        &rig_name,
+    )
+    .map_err(err)?
+    {
         return Err(format!("{why}. Finish with the agents you have."));
     }
     let _claim = st
         .try_begin_boot(&rig_name)
         .ok_or("Project is changing; retry with the same request_id")?;
     let (child, existing) = {
-        let mut store = st.store.lock().unwrap();
+        let mut store = st.store.lock().expect("store mutex must not be poisoned");
         let existing = store.child_for_request(key).map_err(err)?;
         if store.control(parent).map_err(err)?.is_some() {
             return Err("Parent is stopping".into());
@@ -238,7 +310,9 @@ async fn spawn(st: &AppState, parent: &str, args: &Value, key: &str) -> Result<V
             (child, true)
         } else {
             if let Some(why) = held {
-                return Err(format!("{why} Finish with the agents you have, or ask the operator."));
+                return Err(format!(
+                    "{why} Finish with the agents you have, or ask the operator."
+                ));
             }
             check_spawn_limits(&store, &rig_name, parent, snap.rig.seats.len())?;
             let child = new_child_seat(&mut snap.rig, parent, &rig_name, name, task)?;
@@ -293,10 +367,21 @@ async fn spawn(st: &AppState, parent: &str, args: &Value, key: &str) -> Result<V
 }
 
 /// The limits the team set on spawned agents, if any. Sculptured sets none of its own.
-fn check_spawn_limits(store: &crate::store::Store, team: &str, parent: &str, seats: usize) -> Result<(), String> {
-    let limits = store.draft(team).map_err(err)?.map(|d| d.limits).unwrap_or_default();
+fn check_spawn_limits(
+    store: &crate::store::Store,
+    team: &str,
+    parent: &str,
+    seats: usize,
+) -> Result<(), String> {
+    let limits = store
+        .draft(team)
+        .map_err(err)?
+        .map(|d| d.limits)
+        .unwrap_or_default();
     if let Some(max) = limits.max_agents.filter(|&m| seats >= m as usize) {
-        return Err(format!("Team limit you set: {max} agents, children included"));
+        return Err(format!(
+            "Team limit you set: {max} agents, children included"
+        ));
     }
     if let Some(max) = limits.max_child_levels {
         let (mut ancestor, mut levels) = (parent.to_string(), 1);
@@ -312,14 +397,30 @@ fn check_spawn_limits(store: &crate::store::Store, team: &str, parent: &str, sea
 }
 
 /// A copy of the parent's seat as a new child on the board, spawned by the parent and launched after it.
-fn new_child_seat(rig: &mut rigspec::CompiledRig, parent: &str, rig_name: &str, name: &str, task: &str) -> Result<rigspec::CompiledSeat, String> {
-    let mut child = rig.seats.iter().find(|s| s.id == parent).cloned().ok_or("Parent missing")?;
+fn new_child_seat(
+    rig: &mut rigspec::CompiledRig,
+    parent: &str,
+    rig_name: &str,
+    name: &str,
+    task: &str,
+) -> Result<rigspec::CompiledSeat, String> {
+    let mut child = rig
+        .seats
+        .iter()
+        .find(|s| s.id == parent)
+        .cloned()
+        .ok_or("Parent missing")?;
     child.member = format!("child-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
     child.id = format!("{}.{}@{}", child.pod, child.member, rig_name);
     child.label = Some(name.into());
     child.role = Some(task.into());
     rig.seats.push(child.clone());
-    rig.edges.push(CompiledEdge { kind: EdgeKind::SpawnedBy, from: child.id.clone(), to: parent.into(), enforced: true });
+    rig.edges.push(CompiledEdge {
+        kind: EdgeKind::SpawnedBy,
+        from: child.id.clone(),
+        to: parent.into(),
+        enforced: true,
+    });
     rig.launch_layers.push(vec![child.id.clone()]);
     Ok(child)
 }

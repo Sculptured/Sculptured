@@ -14,11 +14,18 @@ fn team_key(team: &str) -> String {
     format!("team:{team}")
 }
 
-fn read<T: serde::de::DeserializeOwned + Default>(conn: &Connection, key: &str) -> rusqlite::Result<T> {
+fn read<T: serde::de::DeserializeOwned + Default>(
+    conn: &Connection,
+    key: &str,
+) -> rusqlite::Result<T> {
     let json: Option<String> = conn
-        .query_row("SELECT json FROM settings WHERE k = ?1", [key], |r| r.get(0))
+        .query_row("SELECT json FROM settings WHERE k = ?1", [key], |r| {
+            r.get(0)
+        })
         .optional()?;
-    Ok(json.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default())
+    Ok(json
+        .and_then(|j| serde_json::from_str(&j).ok())
+        .unwrap_or_default())
 }
 
 fn write<T: serde::Serialize>(conn: &Connection, key: &str, v: &T) -> rusqlite::Result<()> {
@@ -45,6 +52,7 @@ pub(crate) fn settings_in(conn: &Connection) -> rusqlite::Result<Settings> {
 
 /// The old Community address `https://community.X…` becomes the app's `https://app.X…`, which now
 /// serves Community; any other (self-hosted) address is kept.
+#[must_use]
 pub fn migrate_origin(url: &str) -> String {
     match url.strip_prefix("https://community.") {
         Some(rest) => format!("https://app.{rest}"),
@@ -55,13 +63,18 @@ pub fn migrate_origin(url: &str) -> String {
 /// A Sculptured server address: `https://host[:port]`, or `http://127.0.0.1|localhost:port` for
 /// testing on this computer. No user, path or query. Returned without a trailing slash.
 pub fn valid_origin(raw: &str) -> Result<String, crate::ApiError> {
-    let bad = || crate::ApiError::bad_request("community_origin_invalid", "Use an https:// address");
+    let bad =
+        || crate::ApiError::bad_request("community_origin_invalid", "Use an https:// address");
     let trimmed = raw.trim().trim_end_matches('/');
     if trimmed.is_empty() || trimmed.len() > 300 {
         return Err(bad());
     }
     let u = reqwest::Url::parse(trimmed).map_err(|_| bad())?;
-    let plain = u.username().is_empty() && u.password().is_none() && u.query().is_none() && u.fragment().is_none() && u.path() == "/";
+    let plain = u.username().is_empty()
+        && u.password().is_none()
+        && u.query().is_none()
+        && u.fragment().is_none()
+        && u.path() == "/";
     let host = u.host_str().ok_or_else(bad)?;
     let ok = match u.scheme() {
         "https" => true,
@@ -75,11 +88,20 @@ pub fn valid_origin(raw: &str) -> Result<String, crate::ApiError> {
 }
 
 pub(crate) fn team_settings_in(conn: &Connection, team: &str) -> rusqlite::Result<TeamSettings> {
-    let saved: Option<String> = conn.query_row("SELECT json FROM settings WHERE k = ?1", [team_key(team)], |r| r.get(0)).optional()?;
+    let saved: Option<String> = conn
+        .query_row(
+            "SELECT json FROM settings WHERE k = ?1",
+            [team_key(team)],
+            |r| r.get(0),
+        )
+        .optional()?;
     match saved {
         Some(_) => read(conn, &team_key(team)),
         // A team whose settings were never saved runs on the computer chosen last for any team.
-        None => Ok(TeamSettings { host: read::<Option<String>>(conn, LAST_HOST)?, ..Default::default() }),
+        None => Ok(TeamSettings {
+            host: read::<Option<String>>(conn, LAST_HOST)?,
+            ..Default::default()
+        }),
     }
 }
 
@@ -128,7 +150,10 @@ impl Store {
 /// Seam (Task 4): `GET/PUT /api/settings`, `GET/PUT /api/teams/{id}/settings`.
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/settings", axum::routing::get(get_settings).put(put_settings))
+        .route(
+            "/api/settings",
+            axum::routing::get(get_settings).put(put_settings),
+        )
         .route(
             "/api/teams/{id}/settings",
             axum::routing::get(get_team_settings).put(put_team_settings),
@@ -138,7 +163,12 @@ async fn get_team_settings(
     axum::extract::State(st): axum::extract::State<AppState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<crate::extract::Json<TeamSettings>, crate::ApiError> {
-    Ok(crate::extract::Json(st.store.lock().unwrap().team_settings(&id)?))
+    Ok(crate::extract::Json(
+        st.store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .team_settings(&id)?,
+    ))
 }
 #[derive(serde::Deserialize)]
 struct SaveTeamSettings {
@@ -151,13 +181,15 @@ async fn put_team_settings(
     crate::extract::Json(req): crate::extract::Json<SaveTeamSettings>,
 ) -> Result<crate::extract::Json<TeamSettings>, crate::ApiError> {
     let s = req.settings;
-    if s.question_timeout_min.is_some_and(|m| !(1..=1440).contains(&m)) {
+    if s.question_timeout_min
+        .is_some_and(|m| !(1..=1440).contains(&m))
+    {
         return Err(crate::ApiError::bad_request(
             "settings_invalid",
             "Question timeout must be between 1 and 1440 minutes",
         ));
     }
-    let mut store = st.store.lock().unwrap();
+    let mut store = st.store.lock().expect("store mutex must not be poisoned");
     if store.draft(&id)?.is_none() {
         return Err(crate::ApiError::not_found("Project not found"));
     }
@@ -169,8 +201,15 @@ async fn put_team_settings(
     }
     Ok(crate::extract::Json(s))
 }
-async fn get_settings(axum::extract::State(st): axum::extract::State<AppState>) -> Result<crate::extract::Json<Settings>, crate::ApiError> {
-    Ok(crate::extract::Json(st.store.lock().unwrap().settings()?))
+async fn get_settings(
+    axum::extract::State(st): axum::extract::State<AppState>,
+) -> Result<crate::extract::Json<Settings>, crate::ApiError> {
+    Ok(crate::extract::Json(
+        st.store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .settings()?,
+    ))
 }
 #[derive(serde::Deserialize)]
 struct SaveSettings {
@@ -183,7 +222,11 @@ async fn put_settings(
     let mut s = req.settings;
     {
         // Only /api/community-link turns Community on, off or to another server.
-        let stored = st.store.lock().unwrap().settings()?;
+        let stored = st
+            .store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .settings()?;
         s.sculptured_origin = stored.sculptured_origin;
         s.suggested_origin = stored.suggested_origin;
     }
@@ -193,13 +236,16 @@ async fn put_settings(
             "Question timeout must be between 1 and 1440 minutes",
         ));
     }
-    st.store.lock().unwrap().save_settings(&s)?;
+    st.store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .save_settings(&s)?;
     Ok(crate::extract::Json(s))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{migrate_origin, valid_origin};
+
     use crate::store::Store;
     use crate::views::Settings;
 
@@ -209,31 +255,74 @@ mod tests {
         store.connection().execute("INSERT INTO settings (k, json) VALUES ('global', ?1)",
             [r#"{"community_url":"https://community.example.com","posture":"unrestricted","question_timeout_min":10}"#]).unwrap();
         let s = store.settings().unwrap();
-        assert_eq!(s.sculptured_origin, None, "Community stays off until the user turns it on");
-        assert_eq!(s.suggested_origin.as_deref(), Some("https://app.example.com"));
+        assert_eq!(
+            s.sculptured_origin, None,
+            "Community stays off until the user turns it on"
+        );
+        assert_eq!(
+            s.suggested_origin.as_deref(),
+            Some("https://app.example.com")
+        );
     }
 
     #[test]
     fn a_self_hosted_origin_is_kept_as_is() {
-        assert_eq!(migrate_origin("https://sculptured.my.org"), "https://sculptured.my.org");
-        assert_eq!(migrate_origin("http://127.0.0.1:9000"), "http://127.0.0.1:9000");
+        assert_eq!(
+            crate::settings::migrate_origin("https://sculptured.my.org"),
+            "https://sculptured.my.org"
+        );
+        assert_eq!(
+            crate::settings::migrate_origin("http://127.0.0.1:9000"),
+            "http://127.0.0.1:9000"
+        );
     }
 
     #[test]
     fn saving_writes_sculptured_origin_and_never_community_url() {
         let mut store = Store::open_in_memory().unwrap();
-        store.save_settings(&Settings { sculptured_origin: Some("https://app.x".into()), ..Settings::default() }).unwrap();
-        let raw: String = store.connection().query_row("SELECT json FROM settings WHERE k = 'global'", [], |r| r.get(0)).unwrap();
-        assert!(raw.contains("\"sculptured_origin\"") && !raw.contains("community_url"), "{raw}");
+        store
+            .save_settings(&Settings {
+                sculptured_origin: Some("https://app.x".into()),
+                ..Settings::default()
+            })
+            .unwrap();
+        let raw: String = store
+            .connection()
+            .query_row("SELECT json FROM settings WHERE k = 'global'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert!(
+            raw.contains("\"sculptured_origin\"") && !raw.contains("community_url"),
+            "{raw}"
+        );
     }
 
     #[test]
     fn valid_origin_takes_https_and_loopback_http_only() {
-        assert_eq!(valid_origin("https://app.x.com/").unwrap(), "https://app.x.com");
-        assert!(valid_origin("http://127.0.0.1:14411").is_ok() && valid_origin("http://localhost:3000").is_ok());
+        assert_eq!(
+            crate::settings::valid_origin("https://app.x.com/").unwrap(),
+            "https://app.x.com"
+        );
+        assert!(
+            crate::settings::valid_origin("http://127.0.0.1:14411").is_ok()
+                && crate::settings::valid_origin("http://localhost:3000").is_ok()
+        );
         let long = format!("https://{}.com", "a".repeat(300));
-        for bad in ["http://app.x.com", "https://u:p@x.com", "https://x.com/path", "https://x.com?q=1", "ftp://x", "", &long] {
-            assert_eq!(valid_origin(bad).unwrap_err().code, "community_origin_invalid", "{bad}");
+        for bad in [
+            "http://app.x.com",
+            "https://u:p@x.com",
+            "https://x.com/path",
+            "https://x.com?q=1",
+            "ftp://x",
+            "",
+            &long,
+        ] {
+            assert_eq!(
+                crate::settings::valid_origin(bad).unwrap_err().code,
+                "community_origin_invalid",
+                "{bad}"
+            );
         }
     }
 }

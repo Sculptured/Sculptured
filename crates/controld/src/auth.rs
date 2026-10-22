@@ -25,10 +25,21 @@ pub async fn auth(State(st): State<AppState>, req: Request, next: Next) -> Respo
     match &st.auth {
         AuthPolicy::AllowAll => next.run(req).await,
         AuthPolicy::DenyAll if req.uri().path() == HOST_PATH => next.run(req).await,
-        AuthPolicy::DenyAll => ApiError::new(StatusCode::UNAUTHORIZED, "login_required", "sign in to use Sculptured").into_response(),
+        AuthPolicy::DenyAll => ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "login_required",
+            "sign in to use Sculptured",
+        )
+        .into_response(),
         AuthPolicy::Gateway { secret } => {
-            let pq = req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/").to_string();
-            if let Err(e) = crate::hosted::verify(secret, req.method().as_str(), &pq, req.headers()) {
+            let pq = req
+                .uri()
+                .path_and_query()
+                .map(|p| p.as_str())
+                .unwrap_or("/")
+                .to_string();
+            if let Err(e) = crate::hosted::verify(secret, req.method().as_str(), &pq, req.headers())
+            {
                 return e.into_response();
             }
             if crate::hosted::local_only(req.method().as_str(), req.uri().path()) {

@@ -1,7 +1,9 @@
 //! The Codex driver against fake-codex: what the hostd supervisor and the handoff dispatcher rely on.
 use drivers::codex::CodexAppServerDriver;
-use drivers::*;
-use futures::{stream::BoxStream, StreamExt};
+
+use drivers::{Driver, DriverEvent, LaunchSpec, OutboundMessage, SeatToolsLaunch, Session};
+use futures::StreamExt;
+use futures::stream::BoxStream;
 use model::{Answer, MessageIntent, PermissionPosture, QuestionSource, TurnStatus};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -15,21 +17,37 @@ type Events = BoxStream<'static, DriverEvent>;
 const EVENT_WAIT: Duration = Duration::from_secs(30);
 
 fn driver(native_questions: bool) -> CodexAppServerDriver {
-    CodexAppServerDriver { program: PathBuf::from(env!("CARGO_BIN_EXE_fake-codex")), native_questions }
+    CodexAppServerDriver {
+        program: PathBuf::from(env!("CARGO_BIN_EXE_fake-codex")),
+        native_questions,
+    }
 }
 fn spec(dir: &Path) -> LaunchSpec {
     let mut s = LaunchSpec::new("dev.lead@r".parse().unwrap(), dir.to_path_buf());
     s.env = vec![
-        ("FAKE_CODEX_STATE".into(), dir.join("state").display().to_string()),
-        ("FAKE_CODEX_LOG".into(), dir.join("codex.log").display().to_string()),
+        (
+            "FAKE_CODEX_STATE".into(),
+            dir.join("state").display().to_string(),
+        ),
+        (
+            "FAKE_CODEX_LOG".into(),
+            dir.join("codex.log").display().to_string(),
+        ),
     ];
     s
 }
 fn msg(id: &str, text: &str) -> OutboundMessage {
-    OutboundMessage { message_id: id.into(), intent: MessageIntent::Inform, text: text.into() }
+    OutboundMessage {
+        message_id: id.into(),
+        intent: MessageIntent::Inform,
+        text: text.into(),
+    }
 }
 async fn next(ev: &mut Events) -> DriverEvent {
-    tokio::time::timeout(EVENT_WAIT, ev.next()).await.expect("event in time").expect("stream open")
+    tokio::time::timeout(EVENT_WAIT, ev.next())
+        .await
+        .expect("event in time")
+        .expect("stream open")
 }
 async fn until(ev: &mut Events, pred: impl Fn(&DriverEvent) -> bool) -> Vec<DriverEvent> {
     let mut seen = Vec::new();
@@ -71,17 +89,51 @@ async fn a_turn_reads_one_message_and_completes() {
     assert!(thread.starts_with("thr-"), "{thread}");
     s.send(msg("m1", "hello")).await.unwrap();
     let got = until(&mut ev, turn_ended).await;
-    let DriverEvent::TurnStarted { turn_id } = &got[0] else { panic!("{got:?}") };
-    assert_eq!(got[1], DriverEvent::MessageConsumed { message_id: "m1".into(), turn_id: turn_id.clone() });
-    assert!(got.contains(&DriverEvent::Text { turn_id: Some(turn_id.clone()), text: "codex received: hello".into() }));
-    assert!(got.contains(&DriverEvent::Usage { turn_id: Some(turn_id.clone()), input_tokens: 60, output_tokens: 10, cache_read_tokens: 40, cache_write_tokens: 0, cost: None, in_turn: false }), "fake-model is not priced");
-    assert_eq!(got.last(), Some(&DriverEvent::TurnEnded { turn_id: turn_id.clone(), status: TurnStatus::Completed }));
+    let DriverEvent::TurnStarted { turn_id } = &got[0] else {
+        panic!("{got:?}")
+    };
+    assert_eq!(
+        got[1],
+        DriverEvent::MessageConsumed {
+            message_id: "m1".into(),
+            turn_id: turn_id.clone()
+        }
+    );
+    assert!(got.contains(&DriverEvent::Text {
+        turn_id: Some(turn_id.clone()),
+        text: "codex received: hello".into()
+    }));
+    assert!(
+        got.contains(&DriverEvent::Usage {
+            turn_id: Some(turn_id.clone()),
+            input_tokens: 60,
+            output_tokens: 10,
+            cache_read_tokens: 40,
+            cache_write_tokens: 0,
+            cost: None,
+            in_turn: false
+        }),
+        "fake-model is not priced"
+    );
+    assert_eq!(
+        got.last(),
+        Some(&DriverEvent::TurnEnded {
+            turn_id: turn_id.clone(),
+            status: TurnStatus::Completed
+        })
+    );
     let start = &received(dir.path(), "turn/start")[0];
     assert_eq!(start["params"]["threadId"], thread.as_str());
     assert_eq!(start["params"]["input"][0]["text"], "hello");
     // D7 unrestricted (the default): approvals off and no sandbox, exactly the M0 probe.
     let thread_start = &received(dir.path(), "thread/start")[0]["params"];
-    assert_eq!((thread_start["approvalPolicy"].as_str(), thread_start["sandbox"].as_str()), (Some("never"), Some("danger-full-access")));
+    assert_eq!(
+        (
+            thread_start["approvalPolicy"].as_str(),
+            thread_start["sandbox"].as_str()
+        ),
+        (Some("never"), Some("danger-full-access"))
+    );
 }
 
 #[tokio::test]
@@ -96,13 +148,23 @@ async fn queued_messages_each_get_their_own_turn() {
     let consumed: Vec<(String, String)> = got
         .iter()
         .filter_map(|e| match e {
-            DriverEvent::MessageConsumed { message_id, turn_id } => Some((message_id.clone(), turn_id.clone())),
+            DriverEvent::MessageConsumed {
+                message_id,
+                turn_id,
+            } => Some((message_id.clone(), turn_id.clone())),
             _ => None,
         })
         .collect();
-    assert_eq!(consumed.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>(), ["m1", "m2"]);
+    assert_eq!(
+        consumed.iter().map(|(m, _)| m.as_str()).collect::<Vec<_>>(),
+        ["m1", "m2"]
+    );
     assert_ne!(consumed[0].1, consumed[1].1, "one turn per message");
-    assert!(!got.iter().any(|e| matches!(e, DriverEvent::Unrecognized { .. })), "no turn/start was refused: {got:?}");
+    assert!(
+        !got.iter()
+            .any(|e| matches!(e, DriverEvent::Unrecognized { .. })),
+        "no turn/start was refused: {got:?}"
+    );
     assert!(got.iter().any(|e| matches!(e, DriverEvent::ToolCall { name, input, .. } if name == "commandExecution" && input["command"] == "/bin/bash -lc 'ls -1'")));
 }
 
@@ -119,18 +181,42 @@ async fn a_message_sent_during_a_turn_waits_for_turn_completed() {
     s.send(msg("m2", "after the hang")).await.unwrap();
     // Long enough for a wrongly sent turn/start to reach fake-codex and be logged.
     tokio::time::sleep(Duration::from_millis(500)).await;
-    assert_eq!(received(dir.path(), "turn/start").len(), 1, "nothing is sent while the turn runs");
+    assert_eq!(
+        received(dir.path(), "turn/start").len(),
+        1,
+        "nothing is sent while the turn runs"
+    );
     s.interrupt().await.unwrap();
     got.extend(until(&mut ev, turn_ended).await);
-    assert!(matches!(got.last(), Some(DriverEvent::TurnEnded { status: TurnStatus::Interrupted, .. })));
+    assert!(matches!(
+        got.last(),
+        Some(DriverEvent::TurnEnded {
+            status: TurnStatus::Interrupted,
+            ..
+        })
+    ));
     let next_turn = until(&mut ev, turn_ended).await;
-    assert!(next_turn.iter().any(|e| matches!(e, DriverEvent::MessageConsumed { message_id, .. } if message_id == "m2")), "{next_turn:?}");
-    assert!(next_turn.contains(&DriverEvent::Text { turn_id: next_turn.iter().find_map(|e| match e {
-        DriverEvent::TurnStarted { turn_id } => Some(turn_id.clone()),
-        _ => None,
-    }), text: "codex received: after the hang".into() }));
+    assert!(
+        next_turn.iter().any(
+            |e| matches!(e, DriverEvent::MessageConsumed { message_id, .. } if message_id == "m2")
+        ),
+        "{next_turn:?}"
+    );
+    assert!(next_turn.contains(&DriverEvent::Text {
+        turn_id: next_turn.iter().find_map(|e| match e {
+            DriverEvent::TurnStarted { turn_id } => Some(turn_id.clone()),
+            _ => None,
+        }),
+        text: "codex received: after the hang".into()
+    }));
     got.extend(next_turn);
-    assert!(!got.iter().any(|e| matches!(e, DriverEvent::Unrecognized { .. } | DriverEvent::MessageFailed { .. })), "{got:?}");
+    assert!(
+        !got.iter().any(|e| matches!(
+            e,
+            DriverEvent::Unrecognized { .. } | DriverEvent::MessageFailed { .. }
+        )),
+        "{got:?}"
+    );
     let starts = received(dir.path(), "turn/start");
     assert_eq!(starts.len(), 2);
     assert_eq!(starts[1]["params"]["input"][0]["text"], "after the hang");
@@ -148,7 +234,16 @@ async fn an_interrupt_right_after_send_ends_that_turn() {
     s.send(msg("m1", "hang")).await.unwrap();
     s.interrupt().await.unwrap();
     let got = until(&mut ev, turn_ended).await;
-    assert!(matches!(got.last(), Some(DriverEvent::TurnEnded { status: TurnStatus::Interrupted, .. })), "{got:?}");
+    assert!(
+        matches!(
+            got.last(),
+            Some(DriverEvent::TurnEnded {
+                status: TurnStatus::Interrupted,
+                ..
+            })
+        ),
+        "{got:?}"
+    );
     assert_eq!(received(dir.path(), "turn/interrupt").len(), 1);
     s.stop(Duration::from_secs(2)).await.unwrap();
 }
@@ -162,11 +257,27 @@ async fn interrupt_ends_the_turn_and_the_next_one_runs() {
     until(&mut ev, |e| matches!(e, DriverEvent::ToolCall { .. })).await;
     s.interrupt().await.unwrap();
     let got = until(&mut ev, turn_ended).await;
-    assert!(got.iter().any(|e| matches!(e, DriverEvent::ToolResult { is_error: true, .. })), "the open command is closed");
-    assert!(matches!(got.last(), Some(DriverEvent::TurnEnded { status: TurnStatus::Interrupted, .. })));
+    assert!(
+        got.iter()
+            .any(|e| matches!(e, DriverEvent::ToolResult { is_error: true, .. })),
+        "the open command is closed"
+    );
+    assert!(matches!(
+        got.last(),
+        Some(DriverEvent::TurnEnded {
+            status: TurnStatus::Interrupted,
+            ..
+        })
+    ));
     s.send(msg("m2", "after")).await.unwrap();
     let got = until(&mut ev, turn_ended).await;
-    assert!(matches!(got.last(), Some(DriverEvent::TurnEnded { status: TurnStatus::Completed, .. })));
+    assert!(matches!(
+        got.last(),
+        Some(DriverEvent::TurnEnded {
+            status: TurnStatus::Completed,
+            ..
+        })
+    ));
     s.interrupt().await.unwrap();
 }
 
@@ -181,10 +292,18 @@ async fn stop_ends_a_command_the_interrupt_left_running() {
     s.send(msg("m1", "hang-child")).await.unwrap();
     until(&mut ev, |e| matches!(e, DriverEvent::ToolCall { .. })).await;
     let log = std::fs::read_to_string(dir.path().join("codex.log")).unwrap();
-    let pid: i32 = log.lines().find_map(|l| l.strip_prefix("child: ")).expect("the child's pid").parse().unwrap();
+    let pid: i32 = log
+        .lines()
+        .find_map(|l| l.strip_prefix("child: "))
+        .expect("the child's pid")
+        .parse()
+        .unwrap();
     s.interrupt().await.unwrap();
     until(&mut ev, turn_ended).await;
-    assert!(alive(pid), "the interrupt left the command running, as Codex does");
+    assert!(
+        alive(pid),
+        "the interrupt left the command running, as Codex does"
+    );
     s.stop(Duration::from_secs(2)).await.unwrap();
     until(&mut ev, |e| matches!(e, DriverEvent::Exited { .. })).await;
     let deadline = tokio::time::Instant::now() + EVENT_WAIT;
@@ -198,7 +317,10 @@ async fn stop_ends_a_command_the_interrupt_left_running() {
 fn alive(pid: i32) -> bool {
     match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
         // The state follows the parenthesised command name: `<pid> (<comm>) <state> ...`.
-        Ok(stat) => stat.rsplit_once(')').and_then(|(_, rest)| rest.split_whitespace().next()).is_some_and(|st| st != "Z" && st != "X"),
+        Ok(stat) => stat
+            .rsplit_once(')')
+            .and_then(|(_, rest)| rest.split_whitespace().next())
+            .is_some_and(|st| st != "Z" && st != "X"),
         Err(_) => false,
     }
 }
@@ -213,16 +335,36 @@ async fn resume_counts_only_new_usage_and_fork_gets_a_new_thread() {
     s.stop(Duration::from_secs(2)).await.unwrap();
     until(&mut ev, |e| matches!(e, DriverEvent::Exited { .. })).await;
 
-    let mut s = driver(false).resume(spec(dir.path()), &thread).await.unwrap();
+    let mut s = driver(false)
+        .resume(spec(dir.path()), &thread)
+        .await
+        .unwrap();
     let (mut ev, resumed) = ready(&mut s).await;
     assert_eq!(resumed, thread);
     s.send(msg("m2", "again")).await.unwrap();
     let got = until(&mut ev, turn_ended).await;
-    let usage: Vec<&DriverEvent> = got.iter().filter(|e| matches!(e, DriverEvent::Usage { .. })).collect();
+    let usage: Vec<&DriverEvent> = got
+        .iter()
+        .filter(|e| matches!(e, DriverEvent::Usage { .. }))
+        .collect();
     assert_eq!(usage.len(), 1, "the replayed total is a baseline: {got:?}");
-    assert!(matches!(usage[0], DriverEvent::Usage { input_tokens: 60, output_tokens: 10, cache_read_tokens: 40, .. }));
+    assert!(matches!(
+        usage[0],
+        DriverEvent::Usage {
+            input_tokens: 60,
+            output_tokens: 10,
+            cache_read_tokens: 40,
+            ..
+        }
+    ));
     let resume = &received(dir.path(), "thread/resume")[0];
-    assert_eq!((resume["params"]["approvalPolicy"].as_str(), resume["params"]["sandbox"].as_str()), (Some("never"), Some("danger-full-access")));
+    assert_eq!(
+        (
+            resume["params"]["approvalPolicy"].as_str(),
+            resume["params"]["sandbox"].as_str()
+        ),
+        (Some("never"), Some("danger-full-access"))
+    );
     // Carry-forward: `excludeTurns` would change what the first `tokenUsage` replays, and the usage
     // baseline is only proven against full-history resumes (codex-m2-resume@232).
     assert!(resume["params"].get("excludeTurns").is_none(), "{resume}");
@@ -233,7 +375,13 @@ async fn resume_counts_only_new_usage_and_fork_gets_a_new_thread() {
     assert_ne!(forked, thread);
     let fork = &received(dir.path(), "thread/fork")[0];
     assert_eq!(fork["params"]["threadId"], thread.as_str());
-    assert_eq!((fork["params"]["approvalPolicy"].as_str(), fork["params"]["sandbox"].as_str()), (Some("never"), Some("danger-full-access")));
+    assert_eq!(
+        (
+            fork["params"]["approvalPolicy"].as_str(),
+            fork["params"]["sandbox"].as_str()
+        ),
+        (Some("never"), Some("danger-full-access"))
+    );
     s.stop(Duration::from_secs(2)).await.unwrap();
 }
 
@@ -256,21 +404,45 @@ async fn a_restricted_edit_is_a_permission_question_answered_through_the_session
     let (mut ev, _) = ready(&mut s).await;
     s.send(msg("m1", "edit:notes.txt")).await.unwrap();
     let got = until(&mut ev, |e| matches!(e, DriverEvent::QuestionRaised { .. })).await;
-    let Some(DriverEvent::QuestionRaised { question_id, source, prompt, .. }) = got.last() else { unreachable!() };
+    let Some(DriverEvent::QuestionRaised {
+        question_id,
+        source,
+        prompt,
+        ..
+    }) = got.last()
+    else {
+        unreachable!()
+    };
     assert_eq!(*source, QuestionSource::NativePermission);
     assert_eq!(prompt.tool.as_deref(), Some("fileChange"));
     assert_eq!(prompt.text, "Allow Codex to change notes.txt?");
-    s.answer(question_id, Answer::Deny { reason: None }).await.unwrap();
+    s.answer(question_id, Answer::Deny { reason: None })
+        .await
+        .unwrap();
     let got = until(&mut ev, turn_ended).await;
-    assert!(got.contains(&DriverEvent::QuestionResolved { question_id: question_id.clone() }));
+    assert!(got.contains(&DriverEvent::QuestionResolved {
+        question_id: question_id.clone()
+    }));
     assert!(got.iter().any(|e| matches!(e, DriverEvent::Text { text, .. } if text == "codex was not allowed to change notes.txt")));
-    assert!(matches!(got.last(), Some(DriverEvent::TurnEnded { status: TurnStatus::Completed, .. })));
+    assert!(matches!(
+        got.last(),
+        Some(DriverEvent::TurnEnded {
+            status: TurnStatus::Completed,
+            ..
+        })
+    ));
     let err = s.answer(question_id, Answer::Allow).await.unwrap_err();
     assert!(err.to_string().contains("answer"), "{err}");
     // D7 restricted: Codex asks before acting (`untrusted`); posture decides who is asked, not what
     // is reachable, so the sandbox stays `danger-full-access` (plan Task 13; refresh, codex-m2-approval).
     let start = &received(dir.path(), "thread/start")[0];
-    assert_eq!((start["params"]["approvalPolicy"].as_str(), start["params"]["sandbox"].as_str()), (Some("untrusted"), Some("danger-full-access")));
+    assert_eq!(
+        (
+            start["params"]["approvalPolicy"].as_str(),
+            start["params"]["sandbox"].as_str()
+        ),
+        (Some("untrusted"), Some("danger-full-access"))
+    );
 }
 
 /// A restricted command (the shape the real model used, codex-m2-approval) asks with the whole command.
@@ -283,11 +455,26 @@ async fn a_restricted_command_asks_and_runs_when_allowed() {
     let (mut ev, _) = ready(&mut s).await;
     s.send(msg("m1", "run:touch a.txt")).await.unwrap();
     let got = until(&mut ev, |e| matches!(e, DriverEvent::QuestionRaised { .. })).await;
-    let Some(DriverEvent::QuestionRaised { question_id, prompt, .. }) = got.last() else { unreachable!() };
-    assert_eq!(prompt.text, "Allow Codex to run `/bin/bash -lc 'touch a.txt'`?");
+    let Some(DriverEvent::QuestionRaised {
+        question_id,
+        prompt,
+        ..
+    }) = got.last()
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        prompt.text,
+        "Allow Codex to run `/bin/bash -lc 'touch a.txt'`?"
+    );
     s.answer(question_id, Answer::Allow).await.unwrap();
     let got = until(&mut ev, turn_ended).await;
-    assert!(got.iter().any(|e| matches!(e, DriverEvent::Text { text, .. } if text == "codex ran touch a.txt")), "{got:?}");
+    assert!(
+        got.iter().any(
+            |e| matches!(e, DriverEvent::Text { text, .. } if text == "codex ran touch a.txt")
+        ),
+        "{got:?}"
+    );
     s.stop(Duration::from_secs(2)).await.unwrap();
 }
 
@@ -298,16 +485,47 @@ async fn native_questions_ask_through_request_user_input() {
     let dir = tempfile::tempdir().unwrap();
     let mut s = driver(true).launch(spec(dir.path())).await.unwrap();
     let (mut ev, _) = ready(&mut s).await;
-    s.send(msg("m1", "ask:Which colour?|Blue|Green")).await.unwrap();
+    s.send(msg("m1", "ask:Which colour?|Blue|Green"))
+        .await
+        .unwrap();
     let got = until(&mut ev, |e| matches!(e, DriverEvent::QuestionRaised { .. })).await;
-    let Some(DriverEvent::QuestionRaised { question_id, source, prompt, .. }) = got.last() else { unreachable!() };
+    let Some(DriverEvent::QuestionRaised {
+        question_id,
+        source,
+        prompt,
+        ..
+    }) = got.last()
+    else {
+        unreachable!()
+    };
     assert_eq!(*source, QuestionSource::NativeQuestion);
-    assert_eq!(prompt.options.iter().map(|o| o.label.as_str()).collect::<Vec<_>>(), ["Blue", "Green"]);
-    s.answer(question_id, Answer::Text { text: "Green".into() }).await.unwrap();
+    assert_eq!(
+        prompt
+            .options
+            .iter()
+            .map(|o| o.label.as_str())
+            .collect::<Vec<_>>(),
+        ["Blue", "Green"]
+    );
+    s.answer(
+        question_id,
+        Answer::Text {
+            text: "Green".into(),
+        },
+    )
+    .await
+    .unwrap();
     let got = until(&mut ev, turn_ended).await;
-    assert!(got.iter().any(|e| matches!(e, DriverEvent::Text { text, .. } if text == "codex got answer: Green")));
+    assert!(
+        got.iter().any(
+            |e| matches!(e, DriverEvent::Text { text, .. } if text == "codex got answer: Green")
+        )
+    );
     let argv = std::fs::read_to_string(dir.path().join("codex.log")).unwrap();
-    assert!(argv.starts_with("argv: app-server --enable default_mode_request_user_input"), "{argv}");
+    assert!(
+        argv.starts_with("argv: app-server --enable default_mode_request_user_input"),
+        "{argv}"
+    );
 }
 
 /// Carry-forward (seat-tools config): Codex gets the `rig` server through the thread `config`
@@ -326,19 +544,34 @@ async fn seat_tools_reach_codex_as_thread_config() {
         config_file: Some(file.clone()),
     });
     sp.model = Some("fake-model".into());
-    assert!(!driver(false).seat_tools_config_file(), "hostd names no file for Codex");
+    assert!(
+        !driver(false).seat_tools_config_file(),
+        "hostd names no file for Codex"
+    );
     let mut s = driver(false).launch(sp).await.unwrap();
     let (_ev, _) = ready(&mut s).await;
     let start = &received(dir.path(), "thread/start")[0]["params"];
     assert_eq!(start["model"], "fake-model");
-    assert_eq!(start["config"]["mcp_servers.rig.command"], "/opt/sculptured");
+    assert_eq!(
+        start["config"]["mcp_servers.rig.command"],
+        "/opt/sculptured"
+    );
     assert_eq!(start["config"]["mcp_servers.rig.args"][0], "seat-tools");
-    assert_eq!(start["config"]["mcp_servers.rig.env"]["SCULPTURED_SEAT_TOKEN"], "tok-secret");
-    assert_eq!(start["config"]["mcp_servers.rig.tool_timeout_sec"], 86_700, "longer than the longest question timeout");
+    assert_eq!(
+        start["config"]["mcp_servers.rig.env"]["SCULPTURED_SEAT_TOKEN"],
+        "tok-secret"
+    );
+    assert_eq!(
+        start["config"]["mcp_servers.rig.tool_timeout_sec"], 86_700,
+        "longer than the longest question timeout"
+    );
     assert_eq!(start["cwd"], dir.path().display().to_string());
     let argv = std::fs::read_to_string(dir.path().join("codex.log")).unwrap();
     let argv = argv.lines().next().unwrap();
-    assert_eq!(argv, "argv: app-server", "nothing about the seat tools on the command line");
+    assert_eq!(
+        argv, "argv: app-server",
+        "nothing about the seat tools on the command line"
+    );
     assert!(!file.exists(), "Codex needs no config file");
     s.stop(Duration::from_secs(2)).await.unwrap();
 }
@@ -372,13 +605,23 @@ async fn question_ids_differ_after_resume() {
     assert_eq!(resumed, thread, "the resumed session keeps its thread id");
     s.send(msg("m2", "edit:b.txt")).await.unwrap();
     let second = raised(&until(&mut ev, |e| matches!(e, DriverEvent::QuestionRaised { .. })).await);
-    assert!(first.ends_with("-0") && second.ends_with("-0"), "both processes number from 0: {first} {second}");
+    assert!(
+        first.ends_with("-0") && second.ends_with("-0"),
+        "both processes number from 0: {first} {second}"
+    );
     assert_ne!(first, second);
     s.answer(&second, Answer::Allow).await.unwrap();
     until(&mut ev, turn_ended).await;
     s.stop(Duration::from_secs(2)).await.unwrap();
     let resume = &received(dir.path(), "thread/resume")[0]["params"];
-    assert_eq!((resume["approvalPolicy"].as_str(), resume["sandbox"].as_str()), (Some("untrusted"), Some("danger-full-access")), "a resume keeps the posture");
+    assert_eq!(
+        (
+            resume["approvalPolicy"].as_str(),
+            resume["sandbox"].as_str()
+        ),
+        (Some("untrusted"), Some("danger-full-access")),
+        "a resume keeps the posture"
+    );
 }
 
 #[tokio::test]
@@ -388,9 +631,19 @@ async fn a_crash_ends_the_session_with_exited() {
     let (mut ev, _) = ready(&mut s).await;
     s.send(msg("m1", "crash")).await.unwrap();
     let got = until(&mut ev, |e| matches!(e, DriverEvent::Exited { .. })).await;
-    let Some(DriverEvent::Exited { exit_code, stderr_tail, .. }) = got.last() else { unreachable!() };
+    let Some(DriverEvent::Exited {
+        exit_code,
+        stderr_tail,
+        ..
+    }) = got.last()
+    else {
+        unreachable!()
+    };
     assert_eq!(*exit_code, Some(3));
-    assert!(stderr_tail.contains("fake-codex: crash requested"), "{stderr_tail}");
+    assert!(
+        stderr_tail.contains("fake-codex: crash requested"),
+        "{stderr_tail}"
+    );
     assert!(s.send(msg("m2", "too late")).await.is_err());
 }
 
@@ -421,52 +674,93 @@ async fn real_codex_probe() {
         return;
     }
     let dry = std::env::var("RIG_PROBE_DRY").ok();
-    let bin = PathBuf::from(std::env::var("SCULPTURED_BIN").expect("SCULPTURED_BIN: the built sculptured"));
-    let out = PathBuf::from(std::env::var("RIG_PROBE_OUT").expect("RIG_PROBE_OUT: the raw recording dir"));
+    let bin = PathBuf::from(
+        std::env::var("SCULPTURED_BIN").expect("SCULPTURED_BIN: the built sculptured"),
+    );
+    let out = PathBuf::from(
+        std::env::var("RIG_PROBE_OUT").expect("RIG_PROBE_OUT: the raw recording dir"),
+    );
     std::fs::create_dir_all(&out).unwrap();
     // A short /tmp root: a Unix socket path must stay under 108 bytes.
-    let root = tempfile::Builder::new().prefix("rcp").tempdir_in("/tmp").unwrap();
-    std::fs::write(out.join("probe-root.txt"), root.path().display().to_string()).unwrap();
+    let root = tempfile::Builder::new()
+        .prefix("rcp")
+        .tempdir_in("/tmp")
+        .unwrap();
+    std::fs::write(
+        out.join("probe-root.txt"),
+        root.path().display().to_string(),
+    )
+    .unwrap();
     let cwd = root.path().join("cwd");
     std::fs::create_dir_all(&cwd).unwrap();
     let sock = root.path().join("s.sock");
     let began = std::time::SystemTime::now();
-    let nonce = began.duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let nonce = began
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let tokens = [format!("probe-a-{nonce:x}"), format!("probe-b-{nonce:x}")];
 
     // The test socket: one JSON line in, one out, like hostd; every call recorded as the refresh's stub logs.
     let calls: Arc<Mutex<Vec<(String, Value, usize)>>> = Arc::default();
     let listener = UnixListener::bind(&sock).unwrap();
-    let socket_log = Arc::new(Mutex::new(std::fs::File::create(out.join("codex-m2-seat-shim.seat-socket.jsonl")).unwrap()));
+    let socket_log = Arc::new(Mutex::new(
+        std::fs::File::create(out.join("codex-m2-seat-shim.seat-socket.jsonl")).unwrap(),
+    ));
     {
         let (calls, tokens, log) = (calls.clone(), tokens.clone(), socket_log.clone());
         let t0 = std::time::Instant::now();
         std::thread::spawn(move || {
-            for conn in listener.incoming().map_while(Result::ok) {
+            let matching_listener = listener.incoming().map_while(Result::ok);
+            for conn in matching_listener {
                 let mut line = String::new();
                 if BufReader::new(&conn).read_line(&mut line).is_err() {
                     continue;
                 }
                 let rec = |dir: &str, v: Value| {
                     let mut f = log.lock().unwrap();
-                    let _ = writeln!(f, "{}", json!({ "t_ms": t0.elapsed().as_millis() as u64, "dir": dir, "line": v }));
+                    let _ = writeln!(
+                        f,
+                        "{}",
+                        json!({ "t_ms": t0.elapsed().as_millis() as u64, "dir": dir, "line": v })
+                    );
                 };
-                rec("in", serde_json::from_str(line.trim()).unwrap_or(Value::String(line.clone())));
+                rec(
+                    "in",
+                    serde_json::from_str(line.trim()).unwrap_or(Value::String(line.clone())),
+                );
                 let reply = match serde_json::from_str::<ToolRequest>(line.trim()) {
                     Ok(req) => match tokens.iter().position(|t| *t == req.token) {
-                        None => ToolReply { ok: false, result: Value::Null, error: Some("this agent's tool token is not valid".into()) },
+                        None => ToolReply {
+                            ok: false,
+                            result: Value::Null,
+                            error: Some("this agent's tool token is not valid".into()),
+                        },
                         Some(which) => {
-                            calls.lock().unwrap().push((req.tool.clone(), req.args.clone(), which));
+                            calls
+                                .lock()
+                                .unwrap()
+                                .push((req.tool.clone(), req.args.clone(), which));
                             let result = match req.tool.as_str() {
                                 // controld's shape for an answered question (crates/controld/src/seat_tools.rs).
-                                "request_input" => json!({ "text": "Blue", "question_id": "probe-q1", "timed_out": false }),
+                                "request_input" => {
+                                    json!({ "text": "Blue", "question_id": "probe-q1", "timed_out": false })
+                                }
                                 "report" => json!({ "text": "Recorded your report." }),
                                 _ => json!({ "text": "ok" }),
                             };
-                            ToolReply { ok: true, result, error: None }
+                            ToolReply {
+                                ok: true,
+                                result,
+                                error: None,
+                            }
                         }
                     },
-                    Err(e) => ToolReply { ok: false, result: Value::Null, error: Some(e.to_string()) },
+                    Err(e) => ToolReply {
+                        ok: false,
+                        result: Value::Null,
+                        error: Some(e.to_string()),
+                    },
                 };
                 let reply = serde_json::to_value(&reply).unwrap();
                 rec("out", reply.clone());
@@ -479,19 +773,34 @@ async fn real_codex_probe() {
     let launch_spec = |token: &str, rec: &str| {
         let mut sp = LaunchSpec::new("dev.probe@r".parse().unwrap(), cwd.clone());
         let env = host_proto::seat_tools::shim_env(&sock, token, false);
-        sp.seat_tools = Some(SeatToolsLaunch { program: bin.clone(), args: vec!["seat-tools".into()], env, approve: false, config_file: None });
+        sp.seat_tools = Some(SeatToolsLaunch {
+            program: bin.clone(),
+            args: vec!["seat-tools".into()],
+            env,
+            approve: false,
+            config_file: None,
+        });
         sp.program = Some(probe.clone());
-        sp.env = vec![("CODEX_PROBE_REC".into(), out.join(rec).display().to_string())];
+        sp.env = vec![(
+            "CODEX_PROBE_REC".into(),
+            out.join(rec).display().to_string(),
+        )];
         if let Some(fake) = &dry {
             sp.env.push(("CODEX_PROBE_PROGRAM".into(), fake.clone()));
-            sp.env.push(("FAKE_CODEX_STATE".into(), root.path().join("state").display().to_string()));
+            sp.env.push((
+                "FAKE_CODEX_STATE".into(),
+                root.path().join("state").display().to_string(),
+            ));
         }
         sp
     };
     async fn turn(ev: &mut Events) -> Vec<DriverEvent> {
         let mut got = Vec::new();
         loop {
-            let e = tokio::time::timeout(Duration::from_secs(240), ev.next()).await.expect("in time").expect("open");
+            let e = tokio::time::timeout(Duration::from_secs(240), ev.next())
+                .await
+                .expect("in time")
+                .expect("open");
             let end = turn_ended(&e);
             got.push(e);
             if end {
@@ -499,11 +808,17 @@ async fn real_codex_probe() {
             }
         }
     }
-    let tool_calls = |got: &[DriverEvent], name: &str| got.iter().filter(|e| matches!(e, DriverEvent::ToolCall { name: n, .. } if n == name)).count();
+    let tool_calls = |got: &[DriverEvent], name: &str| {
+        got.iter()
+            .filter(|e| matches!(e, DriverEvent::ToolCall { name: n, .. } if n == name))
+            .count()
+    };
     let results = |got: &[DriverEvent]| -> Vec<(String, bool)> {
         got.iter()
             .filter_map(|e| match e {
-                DriverEvent::ToolResult { output, is_error, .. } => Some((output.clone(), *is_error)),
+                DriverEvent::ToolResult {
+                    output, is_error, ..
+                } => Some((output.clone(), *is_error)),
                 _ => None,
             })
             .collect()
@@ -529,7 +844,9 @@ async fn real_codex_probe() {
         let mut sin = shim.stdin.take().unwrap();
         writeln!(sin, r#"{{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{{"name":"request_input","arguments":{{"question":"dry?"}}}}}}"#).unwrap();
         let mut reply = String::new();
-        BufReader::new(shim.stdout.take().unwrap()).read_line(&mut reply).unwrap();
+        BufReader::new(shim.stdout.take().unwrap())
+            .read_line(&mut reply)
+            .unwrap();
         drop(sin);
         let _ = shim.wait();
         println!("DRY SHIM REPLY: {reply}");
@@ -537,7 +854,10 @@ async fn real_codex_probe() {
     }
 
     // Turn 1: thread/start with the seat tools; Codex asks through request_input.
-    let mut s = CodexAppServerDriver::default().launch(launch_spec(&tokens[0], "codex-m2-seat-shim.jsonl")).await.expect("codex app-server starts");
+    let mut s = CodexAppServerDriver::default()
+        .launch(launch_spec(&tokens[0], "codex-m2-seat-shim.jsonl"))
+        .await
+        .expect("codex app-server starts");
     let mut ev = s.take_events().unwrap();
     let thread = match ev.next().await {
         Some(DriverEvent::SessionReady { native_session_id }) => native_session_id,
@@ -549,7 +869,13 @@ async fn real_codex_probe() {
     s.stop(Duration::from_secs(10)).await.unwrap();
 
     // Turn 2: thread/resume with a fresh token (a relaunch mints one); Codex reports.
-    let mut s = CodexAppServerDriver::default().resume(launch_spec(&tokens[1], "codex-m2-seat-shim-resume.jsonl"), &thread).await.expect("resume starts");
+    let mut s = CodexAppServerDriver::default()
+        .resume(
+            launch_spec(&tokens[1], "codex-m2-seat-shim-resume.jsonl"),
+            &thread,
+        )
+        .await
+        .expect("resume starts");
     let mut ev = s.take_events().unwrap();
     ev.next().await;
     s.send(msg("m2", "Call the tool `report` of the MCP server `rig` once with summary \"probe\", then reply with exactly the word: ready")).await.unwrap();
@@ -559,8 +885,18 @@ async fn real_codex_probe() {
 
     let calls = calls.lock().unwrap().clone();
     println!("SOCKET CALLS (tool, args, which token): {calls:?}");
-    println!("TURN 1: request_input calls {}, results {:?}, texts {:?}", tool_calls(&first, "mcp__rig__request_input"), results(&first), texts(&first));
-    println!("TURN 2: report calls {}, results {:?}, texts {:?}", tool_calls(&second, "mcp__rig__report"), results(&second), texts(&second));
+    println!(
+        "TURN 1: request_input calls {}, results {:?}, texts {:?}",
+        tool_calls(&first, "mcp__rig__request_input"),
+        results(&first),
+        texts(&first)
+    );
+    println!(
+        "TURN 2: report calls {}, results {:?}, texts {:?}",
+        tool_calls(&second, "mcp__rig__report"),
+        results(&second),
+        texts(&second)
+    );
 
     // ~/.codex: read only, files changed since the probe began; paths and yes/no, never the token.
     let home = PathBuf::from(std::env::var("HOME").unwrap());
@@ -568,13 +904,22 @@ async fn real_codex_probe() {
     let mut found = Vec::new();
     let mut stack = vec![codex_home.clone()];
     while let Some(dir) = stack.pop() {
-        for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-            let (p, Ok(meta)) = (e.path(), e.metadata()) else { continue };
+        let flattened_items = std::fs::read_dir(&dir).into_iter().flatten().flatten();
+        for e in flattened_items {
+            let (p, Ok(meta)) = (e.path(), e.metadata()) else {
+                continue;
+            };
             if meta.is_dir() {
                 stack.push(p);
-            } else if meta.is_file() && meta.modified().is_ok_and(|m| m >= began) && meta.len() < 1 << 30 {
-                let Ok(bytes) = std::fs::read(&p) else { continue };
-                let has = |needle: &str| bytes.windows(needle.len()).any(|w| w == needle.as_bytes());
+            } else if meta.is_file()
+                && meta.modified().is_ok_and(|m| m >= began)
+                && meta.len() < 1 << 30
+            {
+                let Ok(bytes) = std::fs::read(&p) else {
+                    continue;
+                };
+                let has =
+                    |needle: &str| bytes.windows(needle.len()).any(|w| w == needle.as_bytes());
                 found.push(json!({
                     "path": p.strip_prefix(&home).map(|r| format!("~/{}", r.display())).unwrap_or_default(),
                     "bytes": meta.len(),
@@ -592,11 +937,35 @@ async fn real_codex_probe() {
     std::fs::write(out.join("codex-home-check.json"), format!("{persisted:#}")).unwrap();
 
     if dry.is_none() {
-        assert!(!first.iter().any(|e| matches!(e, DriverEvent::Unrecognized { raw } if raw["name"] == "rig")), "rig failed to start");
-        assert!(tool_calls(&first, "mcp__rig__request_input") >= 1, "Codex called request_input");
-        assert!(calls.iter().any(|(t, _, w)| t == "request_input" && *w == 0), "the call reached the socket with the first token");
-        assert!(results(&first).iter().any(|(o, e)| o.contains("Blue") && !e), "the answer reached Codex");
-        assert!(tool_calls(&second, "mcp__rig__report") >= 1, "after resume Codex called report");
-        assert!(calls.iter().any(|(t, _, w)| t == "report" && *w == 1), "the resumed thread used the fresh token");
+        assert!(
+            !first
+                .iter()
+                .any(|e| matches!(e, DriverEvent::Unrecognized { raw } if raw["name"] == "rig")),
+            "rig failed to start"
+        );
+        assert!(
+            tool_calls(&first, "mcp__rig__request_input") >= 1,
+            "Codex called request_input"
+        );
+        assert!(
+            calls
+                .iter()
+                .any(|(t, _, w)| t == "request_input" && *w == 0),
+            "the call reached the socket with the first token"
+        );
+        assert!(
+            results(&first)
+                .iter()
+                .any(|(o, e)| o.contains("Blue") && !e),
+            "the answer reached Codex"
+        );
+        assert!(
+            tool_calls(&second, "mcp__rig__report") >= 1,
+            "after resume Codex called report"
+        );
+        assert!(
+            calls.iter().any(|(t, _, w)| t == "report" && *w == 1),
+            "the resumed thread used the fresh token"
+        );
     }
 }

@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct Workflow {
     /// Board placement only; changing it does not alter workflow execution.
@@ -34,32 +36,76 @@ pub struct Workflow {
     pub dispatch: Option<crate::WorkflowDispatch>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
-pub enum CopiesMode { #[default] Shared, PerItem }
-impl CopiesMode { pub fn is_shared(&self) -> bool { *self == CopiesMode::Shared } }
+pub enum CopiesMode {
+    #[default]
+    Shared,
+    PerItem,
+}
+impl CopiesMode {
+    #[must_use]
+    pub fn is_shared(&self) -> bool {
+        *self == CopiesMode::Shared
+    }
+}
 
 /// How a review panel decides: every reviewer, or the first approval.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
-pub enum Join { #[default] All, Any }
-impl Join { pub fn is_all(&self) -> bool { *self == Join::All } }
+pub enum Join {
+    #[default]
+    All,
+    Any,
+}
+impl Join {
+    #[must_use]
+    pub fn is_all(&self) -> bool {
+        *self == Join::All
+    }
+}
 
 /// One reviewer's part in a panel stage: their assignment, and their vote once given.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
-pub struct Review { pub agent: String, pub assignment: Option<String>, pub outcome: Option<String>, pub result: Option<String> }
+pub struct Review {
+    pub agent: String,
+    pub assignment: Option<String>,
+    pub outcome: Option<String>,
+    pub result: Option<String>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
 #[ts(export)]
-pub struct BoardPosition { pub x: i32, pub y: i32 }
+pub struct BoardPosition {
+    pub x: i32,
+    pub y: i32,
+}
 
 pub const DEFAULT_CHECK_TIMEOUT_S: u32 = 600;
 
 /// An angle a review-panel reviewer takes, so a panel covers what one reviewer would miss.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+    TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum ReviewPersona {
@@ -73,8 +119,17 @@ pub enum ReviewPersona {
 }
 
 impl ReviewPersona {
-    pub const ALL: [ReviewPersona; 7] = [Self::RedTeam, Self::Adversarial, Self::Simplifier, Self::User, Self::Expert, Self::GoodFriend, Self::Ownership];
+    pub const ALL: [ReviewPersona; 7] = [
+        Self::RedTeam,
+        Self::Adversarial,
+        Self::Simplifier,
+        Self::User,
+        Self::Expert,
+        Self::GoodFriend,
+        Self::Ownership,
+    ];
 
+    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Self::RedTeam => "Red team",
@@ -88,15 +143,30 @@ impl ReviewPersona {
     }
 
     /// What the reviewer looks for, and when the work passes from its angle.
+    #[must_use]
     pub fn brief(self) -> &'static str {
         match self {
-            Self::RedTeam => "Look for ways to break it: untrusted input, injection, data loss, races, anything an attacker or an accident could exploit. It passes when it holds up under attack.",
-            Self::Adversarial => "Assume it is wrong and look for why: false assumptions, missed edge cases, failure modes, broken compatibility. It passes when its reasoning survives a direct challenge.",
-            Self::Simplifier => "Look for needless complexity: parts that could go, concepts that could merge, changes with a wider reach than needed. It passes when a smart newcomer could explain it simply.",
-            Self::User => "Look at it as someone who has never seen it: confusing steps, unclear names, errors that do not say what to do. It passes when they could use it without a guide.",
-            Self::Expert => "Review it as a peer in its field would: domain errors, wrong conventions, claims a specialist would question. It passes when such a peer would sign off.",
-            Self::GoodFriend => "Say what others will not: the cost, the risk at 3 a.m., the thing that will hurt later. It passes when there is nothing you would rather they heard now than later.",
-            Self::Ownership => "Look at who owns each fact and decision: data with two owners, guesses with no way back, parts that disagree about the same value. It passes when every fact has one owner and every guess can be undone.",
+            Self::RedTeam => {
+                "Look for ways to break it: untrusted input, injection, data loss, races, anything an attacker or an accident could exploit. It passes when it holds up under attack."
+            }
+            Self::Adversarial => {
+                "Assume it is wrong and look for why: false assumptions, missed edge cases, failure modes, broken compatibility. It passes when its reasoning survives a direct challenge."
+            }
+            Self::Simplifier => {
+                "Look for needless complexity: parts that could go, concepts that could merge, changes with a wider reach than needed. It passes when a smart newcomer could explain it simply."
+            }
+            Self::User => {
+                "Look at it as someone who has never seen it: confusing steps, unclear names, errors that do not say what to do. It passes when they could use it without a guide."
+            }
+            Self::Expert => {
+                "Review it as a peer in its field would: domain errors, wrong conventions, claims a specialist would question. It passes when such a peer would sign off."
+            }
+            Self::GoodFriend => {
+                "Say what others will not: the cost, the risk at 3 a.m., the thing that will hurt later. It passes when there is nothing you would rather they heard now than later."
+            }
+            Self::Ownership => {
+                "Look at who owns each fact and decision: data with two owners, guesses with no way back, parts that disagree about the same value. It passes when every fact has one owner and every guess can be undone."
+            }
         }
     }
 }
@@ -104,7 +174,10 @@ impl ReviewPersona {
 /// After `after_rounds` rounds at a stage, its items go to `agent` (typically a stronger model's agent).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
 #[ts(export)]
-pub struct Escalation { pub after_rounds: u32, pub agent: String }
+pub struct Escalation {
+    pub after_rounds: u32,
+    pub agent: String,
+}
 
 /// A project check run every `every_minutes` while the team runs; while it fails, no new work goes out.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
@@ -121,26 +194,55 @@ pub struct Guard {
 /// The guard's last result (verified: Sculptured ran the command) and whether a person resumed past a failure.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
 #[ts(export)]
-pub struct GuardState { pub passed: bool, #[ts(type = "number")] pub at_ms: i64, pub evidence: String, pub resumed_by_person: bool }
+pub struct GuardState {
+    pub passed: bool,
+    #[ts(type = "number")]
+    pub at_ms: i64,
+    pub evidence: String,
+    pub resumed_by_person: bool,
+}
 
 /// Who runs a stage: an agent (default), Sculptured running a command, or a person.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
-pub enum StageKind { #[default] Agent, Check, Human, Merge }
-impl StageKind { pub fn is_agent(&self) -> bool { *self == StageKind::Agent } }
+pub enum StageKind {
+    #[default]
+    Agent,
+    Check,
+    Human,
+    Merge,
+}
+impl StageKind {
+    #[must_use]
+    pub fn is_agent(&self) -> bool {
+        *self == StageKind::Agent
+    }
+}
 
 /// Who settled a step: provenance for the Run view.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
-pub enum StepBy { #[default] Agent, Check, Person, Sculptured }
+pub enum StepBy {
+    #[default]
+    Agent,
+    Check,
+    Person,
+    Sculptured,
+}
 
 /// The id of the item that assembles a batch's accepted results.
 pub const ASSEMBLY: &str = "assembly";
 
 /// Where a work item is. Completion of an agent stage is agent-reported.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum TaskStatus {
@@ -156,18 +258,30 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
-        match self { Self::Queued => "queued", Self::Assigned => "assigned", Self::Waiting => "waiting", Self::Complete => "complete", Self::Blocked => "blocked" }
+        match self {
+            Self::Queued => "queued",
+            Self::Assigned => "assigned",
+            Self::Waiting => "waiting",
+            Self::Complete => "complete",
+            Self::Blocked => "blocked",
+        }
     }
 }
-
 
 /// An item parked at a human stage, and since when.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
 #[ts(export)]
-pub struct Waiting { pub stage: String, #[ts(type = "number")] pub since_ms: i64 }
+pub struct Waiting {
+    pub stage: String,
+    #[ts(type = "number")]
+    pub since_ms: i64,
+}
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct WorkflowStage {
     pub id: String,
@@ -210,7 +324,10 @@ pub struct WorkflowStage {
     pub reviewers: Vec<String>,
     /// The angle each panel reviewer takes, by agent id (ideas from Advocate). None: its own judgement.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    #[ts(as = "Option<std::collections::BTreeMap<String, ReviewPersona>>", optional)]
+    #[ts(
+        as = "Option<std::collections::BTreeMap<String, ReviewPersona>>",
+        optional
+    )]
     pub personas: std::collections::BTreeMap<String, ReviewPersona>,
     #[serde(default, skip_serializing_if = "Join::is_all")]
     #[ts(as = "Option<Join>", optional)]
@@ -234,10 +351,16 @@ pub struct WorkflowStage {
     pub into: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
-pub enum TopicMode { #[default] Independent, Dependent }
+pub enum TopicMode {
+    #[default]
+    Independent,
+    Dependent,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
@@ -254,7 +377,9 @@ pub struct DispatchTask {
     pub depends_on: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct WorkflowStep {
     pub assignment: String,
@@ -271,7 +396,7 @@ pub struct WorkflowStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub evidence: Option<String>,
-    /// A panel's votes by reviewer (late ones are keyed "<agent> (late)").
+    /// A panel's votes by reviewer (late ones are keyed `<agent> (late)`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[ts(as = "Option<BTreeMap<String, String>>", optional)]
     pub votes: BTreeMap<String, String>,
@@ -333,6 +458,8 @@ impl WorkflowRun {
     }
 
     pub fn all_tasks_mut(&mut self) -> impl Iterator<Item = &mut WorkflowTask> {
-        self.tasks.iter_mut().chain(std::iter::once(&mut self.assembly))
+        self.tasks
+            .iter_mut()
+            .chain(std::iter::once(&mut self.assembly))
     }
 }

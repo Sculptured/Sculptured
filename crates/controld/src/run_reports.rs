@@ -1,21 +1,25 @@
 //! Where a run's tokens went: MAIS runs on the computer that ran the team, over that run's Claude Code
 //! and Codex session files, and answers a `mais.report/v1` report. The report is kept per run,
 //! refreshed every minute while the run goes and once after it ends.
-use crate::error::{respond, ApiError};
+use crate::error::ApiError;
 use crate::extract::{Path, Query};
 use crate::state::AppState;
 use crate::store::Store;
+use axum::Router;
 use axum::extract::State;
 use axum::response::Response;
-use axum::routing::get;
-use axum::Router;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use ts_rs::TS;
 
 /// The run events MAIS reads: which CLI session each agent ran, handoffs, plan readings, budget changes.
-const LINKS: &[&str] = &["tenure-started", "handed-over", "plan-usage-reported", "budget-state-changed"];
+const LINKS: &[&str] = &[
+    "tenure-started",
+    "handed-over",
+    "plan-usage-reported",
+    "budget-state-changed",
+];
 /// A running run's report is refreshed when it is older than this.
 const FRESH_MS: i64 = 90_000;
 const EVERY: std::time::Duration = std::time::Duration::from_secs(60);
@@ -52,14 +56,18 @@ impl Store {
     fn run_report(&self, rig: &str, start_seq: i64) -> rusqlite::Result<Option<RunReport>> {
         let json: Option<String> = self
             .connection()
-            .query_row("SELECT json FROM run_reports WHERE rig = ?1 AND start_seq = ?2", params![rig, start_seq], |r| r.get(0))
+            .query_row(
+                "SELECT json FROM run_reports WHERE rig = ?1 AND start_seq = ?2",
+                params![rig, start_seq],
+                |r| r.get(0),
+            )
             .optional()?;
         Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
     }
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/teams/{id}/report", get(get_report))
+    Router::new().route("/api/teams/{id}/report", axum::routing::get(get_report))
 }
 
 #[derive(Deserialize)]
@@ -67,8 +75,12 @@ struct ReportQuery {
     start: Option<i64>,
 }
 
-async fn get_report(State(st): State<AppState>, Path(id): Path<String>, Query(q): Query<ReportQuery>) -> Response {
-    respond(report(&st, &id, q.start).await)
+async fn get_report(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<ReportQuery>,
+) -> Response {
+    crate::error::respond(report(&st, &id, q.start).await)
 }
 
 /// The report of `team`'s run starting at `start` (its latest run when None): the kept one while it is
@@ -76,11 +88,20 @@ async fn get_report(State(st): State<AppState>, Path(id): Path<String>, Query(q)
 pub async fn report(st: &AppState, team: &str, start: Option<i64>) -> Result<RunReport, ApiError> {
     let seq = match start {
         Some(s) => s,
-        None => st.store.lock().unwrap().latest_run_start(team)?.ok_or_else(|| ApiError::not_found("This team has not run yet."))?,
+        None => st
+            .store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .latest_run_start(team)?
+            .ok_or_else(|| ApiError::not_found("This team has not run yet."))?,
     };
     let (kept, ended, going) = {
-        let store = st.store.lock().unwrap();
-        (store.run_report(team, seq)?, ended_ms(&store, team, seq)?, live(&store)?.contains(team))
+        let store = st.store.lock().expect("store mutex must not be poisoned");
+        (
+            store.run_report(team, seq)?,
+            ended_ms(&store, team, seq)?,
+            live(&store)?.contains(team),
+        )
     };
     let current = kept.as_ref().is_some_and(|k| match ended {
         Some(e) => k.at_ms >= e,
@@ -93,7 +114,12 @@ pub async fn report(st: &AppState, team: &str, start: Option<i64>) -> Result<Run
     }
     match refresh(st, team, seq).await {
         Ok(r) => Ok(r),
-        Err(e) => kept.map(|k| RunReport { stale: Some(e.message.clone()), ..k }).ok_or(e),
+        Err(e) => kept
+            .map(|k| RunReport {
+                stale: Some(e.message.clone()),
+                ..k
+            })
+            .ok_or(e),
     }
 }
 
@@ -107,13 +133,24 @@ fn ended_ms(store: &Store, team: &str, seq: i64) -> Result<Option<i64>, ApiError
 /// The CLI sessions the run's agents ran, from its `tenure-started` lines.
 fn sessions(export: &str) -> Vec<localops::analyze::RunSession> {
     let mut seen = BTreeSet::new();
-    let lines = export.lines().skip(1).filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok());
+    let lines = export
+        .lines()
+        .skip(1)
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok());
     lines
         .filter_map(|v| {
             let b = &v["event"]["body"];
             let id = b["native_session_id"].as_str()?.to_string();
-            let runtime = if b["driver"].as_str()?.starts_with("codex") { "codex" } else { "claude" };
-            seen.insert(id.clone()).then(|| localops::analyze::RunSession { runtime: runtime.into(), id })
+            let runtime = if b["driver"].as_str()?.starts_with("codex") {
+                "codex"
+            } else {
+                "claude"
+            };
+            seen.insert(id.clone())
+                .then(|| localops::analyze::RunSession {
+                    runtime: runtime.into(),
+                    id,
+                })
         })
         .collect()
 }
@@ -121,16 +158,36 @@ fn sessions(export: &str) -> Vec<localops::analyze::RunSession> {
 /// Makes and keeps a new report of the run.
 pub async fn refresh(st: &AppState, team: &str, seq: i64) -> Result<RunReport, ApiError> {
     let (export, ended) = crate::portable::session::export_events(st, team, seq, Some(LINKS))?;
-    let export = with_team_for_mais(&st.store.lock().unwrap(), team, seq, export)?;
+    let export = with_team_for_mais(
+        &st.store.lock().expect("store mutex must not be poisoned"),
+        team,
+        seq,
+        export,
+    )?;
     let sessions = sessions(&export);
     if sessions.is_empty() {
-        return Err(ApiError::conflict("no_sessions", "No agent of this run has started a Claude Code or Codex session yet."));
+        return Err(ApiError::conflict(
+            "no_sessions",
+            "No agent of this run has started a Claude Code or Codex session yet.",
+        ));
     }
     let op = localops::LocalOp::AnalyzeRun { sessions, export };
-    let report = crate::ops::run(st, crate::ops::Target::Team(team), op).await.map_err(older_runner)?;
-    let going = ended.is_none() && live(&st.store.lock().unwrap())?.contains(team);
-    let r = RunReport { start_seq: seq, at_ms: model::now_ms(), running: going, report, stale: None };
-    st.store.lock().unwrap().put_run_report(team, &r)?;
+    let report = crate::ops::run(st, crate::ops::Target::Team(team), op)
+        .await
+        .map_err(older_runner)?;
+    let going = ended.is_none()
+        && live(&st.store.lock().expect("store mutex must not be poisoned"))?.contains(team);
+    let r = RunReport {
+        start_seq: seq,
+        at_ms: model::now_ms(),
+        running: going,
+        report,
+        stale: None,
+    };
+    st.store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .put_run_report(team, &r)?;
     Ok(r)
 }
 
@@ -139,12 +196,17 @@ fn older_runner(e: ApiError) -> ApiError {
     if e.code != "unknown_op" {
         return e;
     }
-    ApiError::conflict("runner_without_reports", "This computer's Sculptured runner is older than reports of where tokens went. Reinstall it from Computers.")
+    ApiError::conflict(
+        "runner_without_reports",
+        "This computer's Sculptured runner is older than reports of where tokens went. Reinstall it from Computers.",
+    )
 }
 
 /// Teams with an agent running or starting.
 fn live(store: &Store) -> rusqlite::Result<BTreeSet<String>> {
-    let mut q = store.connection().prepare("SELECT DISTINCT rig FROM seats WHERE lifecycle IN ('running', 'launching')")?;
+    let mut q = store
+        .connection()
+        .prepare("SELECT DISTINCT rig FROM seats WHERE lifecycle IN ('running', 'launching')")?;
     let rows = q.query_map([], |r| r.get(0))?;
     rows.collect()
 }
@@ -155,9 +217,19 @@ pub async fn run(st: AppState) {
     let mut was = BTreeSet::new();
     loop {
         tick.tick().await;
-        let Ok(now) = live(&st.store.lock().unwrap()) else { continue };
-        for team in now.union(&was) {
-            let Ok(Some(seq)) = st.store.lock().unwrap().latest_run_start(team) else { continue };
+        let Ok(now) = live(&st.store.lock().expect("store mutex must not be poisoned")) else {
+            continue;
+        };
+        let matching_now = now.union(&was);
+        for team in matching_now {
+            let Ok(Some(seq)) = st
+                .store
+                .lock()
+                .expect("store mutex must not be poisoned")
+                .latest_run_start(team)
+            else {
+                continue;
+            };
             if let Err(e) = refresh(&st, team, seq).await {
                 tracing::debug!(%team, code = %e.code, "no run report: {}", e.message);
             }
@@ -166,16 +238,53 @@ pub async fn run(st: AppState) {
     }
 }
 
+/// MAIS names a run's agents from the header's team in Sculptured's own shape (`team.team`), not
+/// from MADL, so the export the runner analyses carries that shape. Only this message to the runner
+/// does; a run file people download carries the team as MADL.
+fn with_team_for_mais(
+    store: &Store,
+    team: &str,
+    seq: i64,
+    export: String,
+) -> Result<String, ApiError> {
+    let Some((first, rest)) = export.split_once('\n') else {
+        return Ok(export);
+    };
+    let mut header: serde_json::Value =
+        serde_json::from_str(first).map_err(|e| ApiError::internal(e.to_string()))?;
+    let snapshot = store
+        .run_team_snapshot(team, seq)?
+        .and_then(|j| serde_json::from_str::<serde_json::Value>(&j).ok());
+    header["team"] = snapshot.unwrap_or(serde_json::Value::Null);
+    Ok(format!("{header}\n{rest}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn each_session_is_asked_for_once_with_its_cli() {
-        let line = |driver: &str, id: &str| format!(r#"{{"event":{{"body":{{"type":"tenure-started","driver":"{driver}","native_session_id":"{id}"}}}}}}"#);
-        let export = ["{}".to_string(), line("claude-stream", "a"), line("codex-app", "b"), line("claude-stream", "a")].join("\n");
-        let got: Vec<(String, String)> = sessions(&export).into_iter().map(|s| (s.runtime, s.id)).collect();
-        assert_eq!(got, [("claude".into(), "a".into()), ("codex".into(), "b".into())]);
+        let line = |driver: &str, id: &str| {
+            format!(
+                r#"{{"event":{{"body":{{"type":"tenure-started","driver":"{driver}","native_session_id":"{id}"}}}}}}"#
+            )
+        };
+        let export = [
+            "{}".to_string(),
+            line("claude-stream", "a"),
+            line("codex-app", "b"),
+            line("claude-stream", "a"),
+        ]
+        .join("\n");
+        let got: Vec<(String, String)> = sessions(&export)
+            .into_iter()
+            .map(|s| (s.runtime, s.id))
+            .collect();
+        assert_eq!(
+            got,
+            [("claude".into(), "a".into()), ("codex".into(), "b".into())]
+        );
     }
 
     #[test]
@@ -184,15 +293,4 @@ mod tests {
         assert_eq!(older_runner(e).code, "runner_without_reports");
         assert_eq!(older_runner(ApiError::not_found("x")).code, "not_found");
     }
-}
-
-/// MAIS names a run's agents from the header's team in Sculptured's own shape (`team.team`), not
-/// from MADL, so the export the runner analyses carries that shape. Only this message to the runner
-/// does; a run file people download carries the team as MADL.
-fn with_team_for_mais(store: &Store, team: &str, seq: i64, export: String) -> Result<String, ApiError> {
-    let Some((first, rest)) = export.split_once('\n') else { return Ok(export) };
-    let mut header: serde_json::Value = serde_json::from_str(first).map_err(|e| ApiError::internal(e.to_string()))?;
-    let snapshot = store.run_team_snapshot(team, seq)?.and_then(|j| serde_json::from_str::<serde_json::Value>(&j).ok());
-    header["team"] = snapshot.unwrap_or(serde_json::Value::Null);
-    Ok(format!("{header}\n{rest}"))
 }

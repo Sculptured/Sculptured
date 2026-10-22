@@ -1,8 +1,7 @@
 //! Draft → RigSpec, recording where each spec element came from.
-use super::names::{edge_kind_of, restore_of, runtime_of};
 use super::{AGENT_REF, RESTRICTED_POLICY, SPEC_VERSION};
 use crate::{EdgeSpec, MemberSpec, PodSpec, RigSpec};
-use model::{DraftAgent, PermissionPosture, TeamDraft, DEFAULT_GROUP_ID};
+use model::{DEFAULT_GROUP_ID, DraftAgent, PermissionPosture, TeamDraft};
 
 /// Where each spec element came from, so diagnostic paths map back to draft ids.
 pub(super) struct SpecIndex {
@@ -17,14 +16,15 @@ fn member(d: &TeamDraft, a: &DraftAgent) -> MemberSpec {
         id: a.id.clone(),
         agent_ref: AGENT_REF.into(),
         profile: "default".into(),
-        runtime: runtime_of(a.kind).into(),
+        runtime: crate::draft::names::runtime_of(a.kind).into(),
         cwd: d.effective_folder(a).unwrap_or(".").to_string(),
         label: Some(a.name.trim().to_string()).filter(|n| !n.is_empty()),
         model: d.effective_model(a),
         effort: None,
-        permission_policy: (a.advanced.permission == PermissionPosture::Restricted).then(|| RESTRICTED_POLICY.to_string()),
+        permission_policy: (a.advanced.permission == PermissionPosture::Restricted)
+            .then(|| RESTRICTED_POLICY.to_string()),
         role: None,
-        restore_policy: Some(restore_of(a.advanced.resume).to_string()),
+        restore_policy: Some(crate::draft::names::restore_of(a.advanced.resume).to_string()),
         compaction_strategy: None,
         mechanic: None,
         codex_config_profile: None,
@@ -42,7 +42,11 @@ fn pod_ids(d: &TeamDraft) -> Vec<String> {
         pod_ids.push(DEFAULT_GROUP_ID.to_string());
     }
     for g in &d.groups {
-        if !pod_ids.contains(&g.id) && d.agents.iter().any(|a| a.group_id.as_deref() == Some(g.id.as_str())) {
+        if !pod_ids.contains(&g.id)
+            && d.agents
+                .iter()
+                .any(|a| a.group_id.as_deref() == Some(g.id.as_str()))
+        {
             pod_ids.push(g.id.clone());
         }
     }
@@ -67,13 +71,21 @@ fn pod_label(d: &TeamDraft, pid: &str, team_label: &str) -> String {
 
 fn build_pod(d: &TeamDraft, pid: &str, team_label: &str, index: &mut SpecIndex) -> PodSpec {
     let agents: Vec<&DraftAgent> = d.agents.iter().filter(|a| d.pod_of(a) == pid).collect();
-    index.members.push(agents.iter().map(|a| a.id.clone()).collect());
+    index
+        .members
+        .push(agents.iter().map(|a| a.id.clone()).collect());
     let mut edges = Vec::new();
     let mut edge_ids = Vec::new();
     for c in &d.connections {
-        let (Some(f), Some(t)) = (d.agent(&c.from), d.agent(&c.to)) else { continue };
+        let (Some(f), Some(t)) = (d.agent(&c.from), d.agent(&c.to)) else {
+            continue;
+        };
         if d.pod_of(f) == pid && d.pod_of(t) == pid {
-            edges.push(EdgeSpec { kind: edge_kind_of(c.kind).into(), from: f.id.clone(), to: t.id.clone() });
+            edges.push(EdgeSpec {
+                kind: crate::draft::names::edge_kind_of(c.kind).into(),
+                from: f.id.clone(),
+                to: t.id.clone(),
+            });
             edge_ids.push(c.id.clone());
         }
     }
@@ -92,10 +104,12 @@ fn build_pod(d: &TeamDraft, pid: &str, team_label: &str, index: &mut SpecIndex) 
 fn cross_edges(d: &TeamDraft, index: &mut SpecIndex) -> Vec<EdgeSpec> {
     let mut edges = Vec::new();
     for c in &d.connections {
-        let (Some(f), Some(t)) = (d.agent(&c.from), d.agent(&c.to)) else { continue };
+        let (Some(f), Some(t)) = (d.agent(&c.from), d.agent(&c.to)) else {
+            continue;
+        };
         if d.pod_of(f) != d.pod_of(t) {
             edges.push(EdgeSpec {
-                kind: edge_kind_of(c.kind).into(),
+                kind: crate::draft::names::edge_kind_of(c.kind).into(),
                 from: format!("{}.{}", d.pod_of(f), f.id),
                 to: format!("{}.{}", d.pod_of(t), t.id),
             });
@@ -111,8 +125,16 @@ pub(super) fn build(d: &TeamDraft) -> (RigSpec, SpecIndex) {
         "" => "Team".to_string(),
         n => n.to_string(),
     };
-    let mut index = SpecIndex { pods: pod_ids.clone(), members: Vec::new(), pod_edges: Vec::new(), edges: Vec::new() };
-    let pods = pod_ids.iter().map(|pid| build_pod(d, pid, &team_label, &mut index)).collect();
+    let mut index = SpecIndex {
+        pods: pod_ids.clone(),
+        members: Vec::new(),
+        pod_edges: Vec::new(),
+        edges: Vec::new(),
+    };
+    let pods = pod_ids
+        .iter()
+        .map(|pid| build_pod(d, pid, &team_label, &mut index))
+        .collect();
     let edges = cross_edges(d, &mut index);
     let spec = RigSpec {
         version: SPEC_VERSION.into(),

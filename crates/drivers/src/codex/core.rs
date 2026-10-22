@@ -3,7 +3,7 @@
 use super::parser::CodexParser;
 use super::{MAX_START_ATTEMPTS, RESEND_PAUSE};
 use crate::{DriverEvent, OutboundMessage};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
 
@@ -31,7 +31,8 @@ pub(super) struct Core {
 /// Interrupts that stop nothing say so in the transcript, kept as evidence like the driver's other notes.
 const NOT_APPLIED: &str = "interrupt not applied";
 /// Why: the interrupt came while a message Codex refused waited out its pause.
-pub(super) const PAUSED: &str = "no turn was running; the message Codex refused will be sent again after a short pause";
+pub(super) const PAUSED: &str =
+    "no turn was running; the message Codex refused will be sent again after a short pause";
 /// Why: the interrupt waited for a turn that Codex then refused to start.
 pub(super) const REFUSED: &str = "Codex refused to start the turn, so nothing was running";
 /// Why, as `REFUSED`, when that message goes again after a pause.
@@ -39,7 +40,9 @@ pub(super) const REFUSED_RESENT: &str = "Codex refused to start the turn, so not
 
 /// The transcript note for an interrupt that did not stop anything, and why.
 pub(super) fn not_applied(why: &str) -> DriverEvent {
-    DriverEvent::Unrecognized { raw: json!({ "note": format!("{NOT_APPLIED}: {why}") }) }
+    DriverEvent::Unrecognized {
+        raw: json!({ "note": format!("{NOT_APPLIED}: {why}") }),
+    }
 }
 
 /// What became of an interrupt remembered while its turn was starting.
@@ -60,12 +63,22 @@ pub(super) struct Out {
 
 impl Core {
     pub(super) fn new(parser: CodexParser, next_id: u64) -> Self {
-        Self { parser, queue: VecDeque::new(), in_flight: HashMap::new(), next_id, hold_until: None, interrupt_pending: false }
+        Self {
+            parser,
+            queue: VecDeque::new(),
+            in_flight: HashMap::new(),
+            next_id,
+            hold_until: None,
+            interrupt_pending: false,
+        }
     }
 
     fn interrupt_request(&mut self, turn: String) -> String {
         let thread = self.parser.thread_id().unwrap_or_default().to_string();
-        self.request("turn/interrupt", json!({ "threadId": thread, "turnId": turn }))
+        self.request(
+            "turn/interrupt",
+            json!({ "threadId": thread, "turnId": turn }),
+        )
     }
 
     /// `turn/interrupt` for the running turn. While a `turn/start` waits for its answer there is no
@@ -89,13 +102,18 @@ impl Core {
 
     fn request(&mut self, method: &str, params: Value) -> String {
         self.next_id += 1;
-        json!({ "jsonrpc": "2.0", "id": self.next_id, "method": method, "params": params }).to_string()
+        json!({ "jsonrpc": "2.0", "id": self.next_id, "method": method, "params": params })
+            .to_string()
     }
 
     fn turn_start(&mut self, mut q: Queued) -> String {
         let thread = self.parser.thread_id().unwrap_or_default().to_string();
-        let line = self.request("turn/start", json!({ "threadId": thread, "input": [{ "type": "text", "text": q.msg.text }] }));
-        self.parser.on_turn_start_sent(self.next_id, q.msg.message_id.clone());
+        let line = self.request(
+            "turn/start",
+            json!({ "threadId": thread, "input": [{ "type": "text", "text": q.msg.text }] }),
+        );
+        self.parser
+            .on_turn_start_sent(self.next_id, q.msg.message_id.clone());
         q.attempts += 1;
         self.in_flight.insert(q.msg.message_id.clone(), q);
         line
@@ -116,14 +134,22 @@ impl Core {
     /// started, earlier messages wait, or a refused one is pausing).
     pub(super) fn send(&mut self, msg: OutboundMessage, now: Instant) -> Option<String> {
         self.queue.push_back(Queued { msg, attempts: 0 });
-        if self.queue.len() > 1 { None } else { self.next_turn(now) }
+        if self.queue.len() > 1 {
+            None
+        } else {
+            self.next_turn(now)
+        }
     }
 
     /// One stdout line: the events to emit, the lines to write and when to try the queue again.
     pub(super) fn on_line(&mut self, line: &str, now: Instant) -> Out {
         let parsed = self.parser.parse_line(line);
         let writes = parsed.replies.iter().map(Value::to_string).collect();
-        let mut out = Out { events: parsed.events, writes, wake: None };
+        let mut out = Out {
+            events: parsed.events,
+            writes,
+            wake: None,
+        };
         for e in &out.events {
             if let DriverEvent::MessageConsumed { message_id, .. } = e {
                 self.in_flight.remove(message_id);
@@ -140,7 +166,11 @@ impl Core {
             self.on_refused_start(id, now, &mut out);
         }
         if let Held::Dropped = held {
-            out.events.push(not_applied(if out.wake.is_some() { REFUSED_RESENT } else { REFUSED }));
+            out.events.push(not_applied(if out.wake.is_some() {
+                REFUSED_RESENT
+            } else {
+                REFUSED
+            }));
         }
         if parsed.turn_ended || parsed.refused_start.is_some() {
             out.writes.extend(self.next_turn(now));
@@ -168,10 +198,19 @@ impl Core {
     /// A refused message goes back to the front of the queue after a pause, or fails with the
     /// server's words once it has been sent `MAX_START_ATTEMPTS` times.
     fn on_refused_start(&mut self, id: &str, now: Instant, out: &mut Out) {
-        let Some(q) = self.in_flight.remove(id) else { return };
+        let Some(q) = self.in_flight.remove(id) else {
+            return;
+        };
         if q.attempts >= MAX_START_ATTEMPTS {
-            let reason = format!("Codex did not start a turn for this message ({} tries): {}", q.attempts, refusal_words(&out.events));
-            out.events.push(DriverEvent::MessageFailed { message_id: id.to_string(), reason });
+            let reason = format!(
+                "Codex did not start a turn for this message ({} tries): {}",
+                q.attempts,
+                refusal_words(&out.events)
+            );
+            out.events.push(DriverEvent::MessageFailed {
+                message_id: id.to_string(),
+                reason,
+            });
         } else {
             let until = now + RESEND_PAUSE * q.attempts;
             self.hold_until = Some(until);
@@ -187,8 +226,12 @@ fn refusal_words(events: &[DriverEvent]) -> String {
         .iter()
         .rev()
         .find_map(|e| match e {
-            DriverEvent::Unrecognized { raw } if raw["error"]["message"].is_string() => raw["error"]["message"].as_str().map(str::to_string),
-            DriverEvent::Unrecognized { raw } if raw.get("turnStartAnsweredWithEndedTurn").is_some() => {
+            DriverEvent::Unrecognized { raw } if raw["error"]["message"].is_string() => {
+                raw["error"]["message"].as_str().map(str::to_string)
+            }
+            DriverEvent::Unrecognized { raw }
+                if raw.get("turnStartAnsweredWithEndedTurn").is_some() =>
+            {
                 Some("it answered with a turn that had already ended".to_string())
             }
             _ => None,
@@ -202,7 +245,11 @@ mod tests {
     use model::MessageIntent;
 
     fn msg(id: &str) -> OutboundMessage {
-        OutboundMessage { message_id: id.into(), intent: MessageIntent::Inform, text: format!("text of {id}") }
+        OutboundMessage {
+            message_id: id.into(),
+            intent: MessageIntent::Inform,
+            text: format!("text of {id}"),
+        }
     }
 
     fn core() -> Core {
@@ -212,15 +259,23 @@ mod tests {
     }
 
     fn id_of(line: &str) -> u64 {
-        serde_json::from_str::<Value>(line).unwrap()["id"].as_u64().unwrap()
+        serde_json::from_str::<Value>(line).unwrap()["id"]
+            .as_u64()
+            .unwrap()
     }
 
     fn text_of(line: &str) -> String {
-        serde_json::from_str::<Value>(line).unwrap()["params"]["input"][0]["text"].as_str().unwrap().to_string()
+        serde_json::from_str::<Value>(line).unwrap()["params"]["input"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string()
     }
 
     fn method_of(line: &str) -> String {
-        serde_json::from_str::<Value>(line).unwrap()["method"].as_str().unwrap_or_default().to_string()
+        serde_json::from_str::<Value>(line).unwrap()["method"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
     }
 
     fn refuse(c: &mut Core, line: &str, now: Instant) -> Out {
@@ -233,7 +288,9 @@ mod tests {
     }
 
     fn failed(out: &Out) -> bool {
-        out.events.iter().any(|e| matches!(e, DriverEvent::MessageFailed { .. }))
+        out.events
+            .iter()
+            .any(|e| matches!(e, DriverEvent::MessageFailed { .. }))
     }
 
     /// Refuses m1's start, and each re-send once its pause is over, until the message fails.
@@ -245,13 +302,25 @@ mod tests {
             if failed(&out) {
                 return (out, sends);
             }
-            assert!(out.writes.is_empty(), "not re-sent at once: {:?}", out.writes);
+            assert!(
+                out.writes.is_empty(),
+                "not re-sent at once: {:?}",
+                out.writes
+            );
             let wake = out.wake.expect("a re-send is scheduled");
-            assert_eq!(wake, now + RESEND_PAUSE * sends, "a pause of RESEND_PAUSE times the tries so far");
+            assert_eq!(
+                wake,
+                now + RESEND_PAUSE * sends,
+                "a pause of RESEND_PAUSE times the tries so far"
+            );
             assert_eq!(c.next_turn(now), None, "nothing is sent during the pause");
             now = wake;
             line = c.next_turn(now).expect("re-sent once the pause is over");
-            assert_eq!(text_of(&line), "text of m1", "the refused message goes first, before m2");
+            assert_eq!(
+                text_of(&line),
+                "text of m1",
+                "the refused message goes first, before m2"
+            );
             sends += 1;
         }
     }
@@ -276,9 +345,20 @@ mod tests {
             out.events
         );
         assert_eq!(out.writes.len(), 1);
-        assert_eq!(text_of(&out.writes[0]), "text of m2", "the next message is not held up");
+        assert_eq!(
+            text_of(&out.writes[0]),
+            "text of m2",
+            "the next message is not held up"
+        );
         let out = started(&mut c, &out.writes[0], "t1");
-        assert!(out.events.contains(&DriverEvent::MessageConsumed { message_id: "m2".into(), turn_id: "t1".into() }), "{:?}", out.events);
+        assert!(
+            out.events.contains(&DriverEvent::MessageConsumed {
+                message_id: "m2".into(),
+                turn_id: "t1".into()
+            }),
+            "{:?}",
+            out.events
+        );
         assert!(c.in_flight.is_empty());
     }
 
@@ -317,13 +397,26 @@ mod tests {
         let line = c.send(msg("m1"), Instant::now()).unwrap();
         assert_eq!(c.interrupt(), None, "no turn id yet");
         let out = started(&mut c, &line, "t1");
-        let interrupts: Vec<Value> =
-            out.writes.iter().filter(|w| method_of(w) == "turn/interrupt").map(|w| serde_json::from_str(w).unwrap()).collect();
+        let interrupts: Vec<Value> = out
+            .writes
+            .iter()
+            .filter(|w| method_of(w) == "turn/interrupt")
+            .map(|w| serde_json::from_str(w).unwrap())
+            .collect();
         assert_eq!(interrupts.len(), 1, "{:?}", out.writes);
-        assert_eq!(interrupts[0]["params"], json!({ "threadId": "thr-1", "turnId": "t1" }));
-        let later = c.on_line(r#"{"method":"turn/started","params":{"threadId":"thr-1","turn":{"id":"t1"}}}"#, Instant::now());
+        assert_eq!(
+            interrupts[0]["params"],
+            json!({ "threadId": "thr-1", "turnId": "t1" })
+        );
+        let later = c.on_line(
+            r#"{"method":"turn/started","params":{"threadId":"thr-1","turn":{"id":"t1"}}}"#,
+            Instant::now(),
+        );
         assert!(later.writes.is_empty(), "sent once: {:?}", later.writes);
-        assert!(c.interrupt().is_some(), "a running turn is interrupted at once");
+        assert!(
+            c.interrupt().is_some(),
+            "a running turn is interrupted at once"
+        );
     }
 
     /// An interrupt for a start that is then refused interrupts nothing: no turn runs, and the
@@ -338,11 +431,18 @@ mod tests {
         assert!(!out.writes.iter().any(|w| method_of(w) == "turn/interrupt"));
         let line = c.next_turn(out.wake.unwrap()).unwrap();
         let out = started(&mut c, &line, "t1");
-        assert!(!out.writes.iter().any(|w| method_of(w) == "turn/interrupt"), "{:?}", out.writes);
+        assert!(
+            !out.writes.iter().any(|w| method_of(w) == "turn/interrupt"),
+            "{:?}",
+            out.writes
+        );
     }
 
     fn notes(out: &Out) -> Vec<&DriverEvent> {
-        out.events.iter().filter(|e| matches!(e, DriverEvent::Unrecognized { raw } if raw.get("note").is_some())).collect()
+        out.events
+            .iter()
+            .filter(|e| matches!(e, DriverEvent::Unrecognized { raw } if raw.get("note").is_some()))
+            .collect()
     }
 
     /// Task 13 re-review #8: an interrupt during a re-send pause stops nothing, and says so.
@@ -356,7 +456,12 @@ mod tests {
         assert!(out.wake.is_some());
         assert_eq!(c.interrupt(), None, "nothing runs to interrupt");
         let note = c.paused_note().expect("a note during the pause");
-        assert_eq!(note, DriverEvent::Unrecognized { raw: json!({ "note": format!("interrupt not applied: {PAUSED}") }) });
+        assert_eq!(
+            note,
+            DriverEvent::Unrecognized {
+                raw: json!({ "note": format!("interrupt not applied: {PAUSED}") })
+            }
+        );
         let line = c.next_turn(out.wake.unwrap()).unwrap();
         started(&mut c, &line, "t1");
         assert_eq!(c.paused_note(), None, "the pause is over");

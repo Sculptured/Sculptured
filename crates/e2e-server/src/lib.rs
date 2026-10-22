@@ -23,27 +23,42 @@ pub struct Session {
 
 impl Session {
     /// A new throwaway directory holding `data/`, `home/` (with [`HOME_FOLDERS`]) and `web-dist/`.
-    pub fn new() -> std::io::Result<Self> {
-        let tmp = tempfile::Builder::new().prefix("sculptured-e2e-").tempdir()?;
+    pub fn try_new() -> std::io::Result<Self> {
+        let tmp = tempfile::Builder::new()
+            .prefix("sculptured-e2e-")
+            .tempdir()?;
         for f in HOME_FOLDERS {
             std::fs::create_dir_all(tmp.path().join("home").join(f))?;
         }
-        Ok(Self { tmp: Some(tmp), serve: None, stub: None })
+        Ok(Self {
+            tmp: Some(tmp),
+            serve: None,
+            stub: None,
+        })
     }
 
+    /// Returns the throwaway directory.
+    ///
+    /// # Panics
+    /// Panics after [`Self::shutdown`] has removed the directory.
+    #[must_use]
     pub fn root(&self) -> &Path {
         self.tmp.as_ref().expect("session is open").path()
     }
+    #[must_use]
     pub fn data_dir(&self) -> PathBuf {
         self.root().join("data")
     }
+    #[must_use]
     pub fn home(&self) -> PathBuf {
         self.root().join("home")
     }
+    #[must_use]
     pub fn web_dist(&self) -> PathBuf {
         self.root().join("web-dist")
     }
     /// Where hostd records its pid (`{data}/host-local/hostd.pid`).
+    #[must_use]
     pub fn hostd_pidfile(&self) -> PathBuf {
         self.data_dir().join("host-local").join("hostd.pid")
     }
@@ -70,7 +85,10 @@ impl Session {
             stop_child(child, Duration::from_secs(10));
         }
         if let Some(tmp) = self.tmp.as_ref() {
-            stop_hostd(&tmp.path().join("data").join("host-local").join("hostd.pid"), tmp.path());
+            stop_hostd(
+                &tmp.path().join("data").join("host-local").join("hostd.pid"),
+                tmp.path(),
+            );
         }
         if let Some(child) = self.stub.take() {
             stop_child(child, Duration::from_secs(5));
@@ -114,6 +132,7 @@ fn proc_file(pid: i32, name: &str) -> Option<Vec<u8>> {
 }
 
 /// True while `pid` exists and is not a zombie.
+#[must_use]
 pub fn alive(pid: i32) -> bool {
     // SAFETY: signal 0 only checks that the process exists.
     if unsafe { libc::kill(pid, 0) } != 0 {
@@ -123,7 +142,8 @@ pub fn alive(pid: i32) -> bool {
         Some(stat) => {
             let s = String::from_utf8_lossy(&stat);
             // The state follows the parenthesised command name.
-            !s.rsplit_once(')').is_some_and(|(_, rest)| rest.trim_start().starts_with('Z'))
+            !s.rsplit_once(')')
+                .is_some_and(|(_, rest)| rest.trim_start().starts_with('Z'))
         }
         None => true,
     }
@@ -131,16 +151,24 @@ pub fn alive(pid: i32) -> bool {
 
 /// True when `pid` is a `sculptured` process started on `session_dir` (so a reused pid is never
 /// killed). Without `/proc`, the command name alone is checked with `ps`.
+#[must_use]
 pub fn is_session_sculptured(pid: i32, session_dir: &Path) -> bool {
     if let (Some(comm), Some(cmdline)) = (proc_file(pid, "comm"), proc_file(pid, "cmdline")) {
         let comm = String::from_utf8_lossy(&comm);
         let dir = session_dir.to_string_lossy();
-        return comm.trim() == "sculptured" && cmdline.split(|b| *b == 0).any(|arg| String::from_utf8_lossy(arg).contains(dir.as_ref()));
+        return comm.trim() == "sculptured"
+            && cmdline
+                .split(|b| *b == 0)
+                .any(|arg| String::from_utf8_lossy(arg).contains(dir.as_ref()));
     }
     std::process::Command::new("ps")
         .args(["-p", &pid.to_string(), "-o", "comm="])
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().ends_with("sculptured"))
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim()
+                .ends_with("sculptured")
+        })
         .unwrap_or(false)
 }
 

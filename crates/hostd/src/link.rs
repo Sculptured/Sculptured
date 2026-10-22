@@ -1,13 +1,12 @@
 use crate::supervisor::Supervisor;
 use futures::{Sink, SinkExt, Stream, StreamExt};
-use host_proto::{decode, encode, FromHost, ToHost, PROTOCOL_VERSION};
-use host_proto::HostEvent;
+use host_proto::{FromHost, HostEvent, PROTOCOL_VERSION, ToHost};
 use std::collections::HashSet;
-use tokio::sync::broadcast::error::{RecvError, TryRecvError};
 use tokio::sync::broadcast::Receiver;
+use tokio::sync::broadcast::error::{RecvError, TryRecvError};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::http::header::{HeaderValue, AUTHORIZATION};
+use tokio_tungstenite::tungstenite::http::header::{AUTHORIZATION, HeaderValue};
 use tokio_tungstenite::tungstenite::{self, Message};
 
 #[derive(Debug, thiserror::Error)]
@@ -24,13 +23,14 @@ pub enum LinkError {
 
 impl LinkError {
     /// The server refused this runner's key (401): its computer was disconnected from the account.
+    #[must_use]
     pub fn disconnected(&self) -> bool {
         matches!(self, LinkError::Ws(tungstenite::Error::Http(r)) if r.status() == tungstenite::http::StatusCode::UNAUTHORIZED)
     }
 }
 
 fn frame(m: &FromHost) -> Message {
-    Message::text(encode(m))
+    Message::text(host_proto::encode(m))
 }
 
 type Done = (String, Result<(), String>);
@@ -84,7 +84,9 @@ where
     /// turn start), so controld knows which turn the call belongs to. A call already answered, or
     /// already sent on this connection, is skipped.
     async fn forward_call(&mut self, call: FromHost) -> Result<(), LinkError> {
-        let FromHost::SeatTool { call_id, .. } = &call else { return Ok(()) };
+        let FromHost::SeatTool { call_id, .. } = &call else {
+            return Ok(());
+        };
         if !self.sup.tool_call_pending(call_id) || self.forwarded.contains(call_id) {
             return Ok(());
         }
@@ -98,7 +100,8 @@ where
     /// Sends every call still waiting (on connect: those a dropped link left unanswered; after a lag:
     /// those the queue lost). controld answers each call id once, so a repeat is harmless.
     async fn forward_pending(&mut self) -> Result<(), LinkError> {
-        for call in self.sup.pending_tool_calls() {
+        let matching_sup = self.sup.pending_tool_calls();
+        for call in matching_sup {
             self.forward_call(call).await?;
         }
         Ok(())
@@ -108,15 +111,23 @@ where
     /// result, so controld has ingested the seat's new state by the time it reads the result.
     async fn command_done(&mut self, (command_id, r): Done) -> Result<(), LinkError> {
         self.drain_live().await?;
-        let result = FromHost::CommandResult { command_id, ok: r.is_ok(), error: r.err() };
+        let result = FromHost::CommandResult {
+            command_id,
+            ok: r.is_ok(),
+            error: r.err(),
+        };
         self.sink.send(frame(&result)).await?;
         Ok(())
     }
 
     /// A frame from controld. Commands run in spawned tasks; `done` gets their results.
-    fn on_frame(&mut self, msg: Option<Result<Message, tungstenite::Error>>, done: &mpsc::UnboundedSender<Done>) -> Result<(), LinkError> {
+    fn on_frame(
+        &mut self,
+        msg: Option<Result<Message, tungstenite::Error>>,
+        done: &mpsc::UnboundedSender<Done>,
+    ) -> Result<(), LinkError> {
         match msg {
-            Some(Ok(Message::Text(t))) => match decode::<ToHost>(t.as_str()) {
+            Some(Ok(Message::Text(t))) => match host_proto::decode::<ToHost>(t.as_str()) {
                 Ok(m) => self.on_message(m, done)?,
                 Err(e) => tracing::warn!(error = %e, "ignoring undecodable frame from controld"),
             },
@@ -127,12 +138,19 @@ where
         Ok(())
     }
 
-    fn on_message(&mut self, m: ToHost, done: &mpsc::UnboundedSender<Done>) -> Result<(), LinkError> {
+    fn on_message(
+        &mut self,
+        m: ToHost,
+        done: &mpsc::UnboundedSender<Done>,
+    ) -> Result<(), LinkError> {
         match m {
-            ToHost::Command { command_id, command } => {
+            ToHost::Command {
+                command_id,
+                command,
+            } => {
                 let (sup, done) = (self.sup.clone(), done.clone());
                 tokio::spawn(async move {
-                    let r = sup.handle(command).await;
+                    let r = sup.handle(*command).await;
                     let _ = done.send((command_id, r));
                 });
             }
@@ -144,9 +162,21 @@ where
             }
             ToHost::Ack { upto } => self.sup.ack(upto)?,
             ToHost::Welcome { .. } => {}
-            ToHost::SeatToolReply { call_id, ok, result, error } => {
+            ToHost::SeatToolReply {
+                call_id,
+                ok,
+                result,
+                error,
+            } => {
                 self.forwarded.remove(&call_id);
-                self.sup.resolve_tool_call(&call_id, if ok { Ok(result) } else { Err(error.unwrap_or_else(|| "the tool failed".into())) });
+                self.sup.resolve_tool_call(
+                    &call_id,
+                    if ok {
+                        Ok(result)
+                    } else {
+                        Err(error.unwrap_or_else(|| "the tool failed".into()))
+                    },
+                );
             }
         }
         Ok(())
@@ -154,7 +184,13 @@ where
 
     /// Serves the connection until it ends: frames from controld, finished commands, seat-tool
     /// calls and live events.
-    async fn serve<St>(&mut self, mut stream: St, mut tool_calls: Receiver<FromHost>, keepalive: Keepalive, mut op_rx: mpsc::UnboundedReceiver<FromHost>) -> Result<(), LinkError>
+    async fn serve<St>(
+        &mut self,
+        mut stream: St,
+        mut tool_calls: Receiver<FromHost>,
+        keepalive: Keepalive,
+        mut op_rx: mpsc::UnboundedReceiver<FromHost>,
+    ) -> Result<(), LinkError>
     where
         St: Stream<Item = Result<Message, tungstenite::Error>> + Unpin,
     {
@@ -210,9 +246,13 @@ where
 {
     loop {
         match stream.next().await {
-            Some(Ok(Message::Text(t))) => match decode::<ToHost>(t.as_str()) {
+            Some(Ok(Message::Text(t))) => match host_proto::decode::<ToHost>(t.as_str()) {
                 Ok(ToHost::Welcome { resume_after }) => return Ok(resume_after),
-                Ok(other) => return Err(LinkError::Protocol(format!("expected welcome, got {other:?}"))),
+                Ok(other) => {
+                    return Err(LinkError::Protocol(format!(
+                        "expected welcome, got {other:?}"
+                    )));
+                }
                 Err(e) => return Err(LinkError::Protocol(e.to_string())),
             },
             Some(Ok(Message::Close(_))) | None => return Err(LinkError::Closed),
@@ -230,18 +270,32 @@ where
 /// Pings controld every `every`; gives the link up when nothing at all came back for `dead_after`
 /// (a silent drop: sleep, network change, NAT timeout), so the runner reconnects instead of waiting forever.
 #[derive(Clone, Copy, Debug)]
-pub struct Keepalive { pub every: std::time::Duration, pub dead_after: std::time::Duration }
+pub struct Keepalive {
+    pub every: std::time::Duration,
+    pub dead_after: std::time::Duration,
+}
 impl Default for Keepalive {
-    fn default() -> Self { Keepalive { every: std::time::Duration::from_secs(25), dead_after: std::time::Duration::from_secs(75) } }
+    fn default() -> Self {
+        Keepalive {
+            every: std::time::Duration::from_secs(25),
+            dead_after: std::time::Duration::from_secs(75),
+        }
+    }
 }
 
 pub async fn run_link(url: &str, token: &str, sup: &Supervisor) -> Result<(), LinkError> {
     run_link_with(url, token, sup, Keepalive::default()).await
 }
 
-pub async fn run_link_with(url: &str, token: &str, sup: &Supervisor, keepalive: Keepalive) -> Result<(), LinkError> {
+pub async fn run_link_with(
+    url: &str,
+    token: &str,
+    sup: &Supervisor,
+    keepalive: Keepalive,
+) -> Result<(), LinkError> {
     let mut req = url.into_client_request()?;
-    let auth = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|e| LinkError::Protocol(e.to_string()))?;
+    let auth = HeaderValue::from_str(&format!("Bearer {token}"))
+        .map_err(|e| LinkError::Protocol(e.to_string()))?;
     req.headers_mut().insert(AUTHORIZATION, auth);
     let (ws, _) = tokio_tungstenite::connect_async(req).await?;
     let (mut sink, mut stream) = ws.split();
@@ -253,10 +307,21 @@ pub async fn run_link_with(url: &str, token: &str, sup: &Supervisor, keepalive: 
     // controld drops every host_seq at or below its cursor. A journal that is behind
     // it (reset or replaced) would have every new event dropped, so skip ahead.
     if let Some(last) = sup.resume_after(resume_after)? {
-        tracing::warn!(journal_last_seq = last, resume_after, "host journal behind controld cursor; fast-forwarding");
+        tracing::warn!(
+            journal_last_seq = last,
+            resume_after,
+            "host journal behind controld cursor; fast-forwarding"
+        );
     }
     let (op_tx, op_rx) = mpsc::unbounded_channel();
-    let mut conn = Conn { sink, sup, live, last_sent: resume_after, forwarded: HashSet::new(), op_tx };
+    let mut conn = Conn {
+        sink,
+        sup,
+        live,
+        last_sent: resume_after,
+        forwarded: HashSet::new(),
+        op_tx,
+    };
     conn.resend().await?;
     conn.forward_pending().await?;
     conn.serve(stream, tool_calls, keepalive, op_rx).await
@@ -267,7 +332,12 @@ mod refusal_tests {
     use super::*;
     #[test]
     fn only_an_unauthorized_answer_means_this_computer_was_disconnected() {
-        let resp = |code: u16| tungstenite::http::Response::builder().status(code).body(None).unwrap();
+        let resp = |code: u16| {
+            tungstenite::http::Response::builder()
+                .status(code)
+                .body(None)
+                .unwrap()
+        };
         assert!(LinkError::Ws(tungstenite::Error::Http(Box::new(resp(401)))).disconnected());
         assert!(!LinkError::Ws(tungstenite::Error::Http(Box::new(resp(502)))).disconnected());
         assert!(!LinkError::Closed.disconnected());

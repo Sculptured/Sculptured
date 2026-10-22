@@ -15,16 +15,34 @@ fn mac(secret: &[u8], method: &str, path_and_query: &str, user: &str, ts: i64) -
     m
 }
 
+#[must_use]
 pub fn sign(secret: &[u8], method: &str, path_and_query: &str, user: &str, ts: i64) -> String {
-    hex::encode(mac(secret, method, path_and_query, user, ts).finalize().into_bytes())
+    hex::encode(
+        mac(secret, method, path_and_query, user, ts)
+            .finalize()
+            .into_bytes(),
+    )
 }
 
-pub fn verify(secret: &[u8], method: &str, path_and_query: &str, user: &str, ts: i64, sig: &str, now: i64) -> bool {
+#[must_use]
+pub fn verify(
+    secret: &[u8],
+    method: &str,
+    path_and_query: &str,
+    user: &str,
+    ts: i64,
+    sig: &str,
+    now: i64,
+) -> bool {
     if (now - ts).abs() > MAX_SKEW_SECS {
         return false;
     }
-    let Ok(given) = hex::decode(sig) else { return false };
-    let want = mac(secret, method, path_and_query, user, ts).finalize().into_bytes();
+    let Ok(given) = hex::decode(sig) else {
+        return false;
+    };
+    let want = mac(secret, method, path_and_query, user, ts)
+        .finalize()
+        .into_bytes();
     given.len() == want.len() && bool::from(given.as_slice().ct_eq(&want[..]))
 }
 
@@ -38,13 +56,34 @@ mod tests {
         let sig = sign(s, "GET", "/api/teams?x=1", "u1", 1_000);
         assert_eq!(sig.len(), 64);
         assert!(verify(s, "GET", "/api/teams?x=1", "u1", 1_000, &sig, 1_030));
-        assert!(!verify(s, "GET", "/api/teams?x=1", "u2", 1_000, &sig, 1_030), "other user");
-        assert!(!verify(s, "POST", "/api/teams?x=1", "u1", 1_000, &sig, 1_030), "other method");
-        assert!(!verify(s, "GET", "/api/teams", "u1", 1_000, &sig, 1_030), "other path");
-        assert!(!verify(b"other", "GET", "/api/teams?x=1", "u1", 1_000, &sig, 1_030), "other secret");
-        assert!(!verify(s, "GET", "/api/teams?x=1", "u1", 1_000, &sig, 1_061), "too old");
-        assert!(!verify(s, "GET", "/api/teams?x=1", "u1", 1_000, &sig, 939), "from the future");
-        assert!(!verify(s, "GET", "/api/teams?x=1", "u1", 1_000, "zz", 1_000), "malformed");
+        assert!(
+            !verify(s, "GET", "/api/teams?x=1", "u2", 1_000, &sig, 1_030),
+            "other user"
+        );
+        assert!(
+            !verify(s, "POST", "/api/teams?x=1", "u1", 1_000, &sig, 1_030),
+            "other method"
+        );
+        assert!(
+            !verify(s, "GET", "/api/teams", "u1", 1_000, &sig, 1_030),
+            "other path"
+        );
+        assert!(
+            !verify(b"other", "GET", "/api/teams?x=1", "u1", 1_000, &sig, 1_030),
+            "other secret"
+        );
+        assert!(
+            !verify(s, "GET", "/api/teams?x=1", "u1", 1_000, &sig, 1_061),
+            "too old"
+        );
+        assert!(
+            !verify(s, "GET", "/api/teams?x=1", "u1", 1_000, &sig, 939),
+            "from the future"
+        );
+        assert!(
+            !verify(s, "GET", "/api/teams?x=1", "u1", 1_000, "zz", 1_000),
+            "malformed"
+        );
     }
 
     #[test]

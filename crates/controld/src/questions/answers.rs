@@ -1,13 +1,13 @@
 //! Answers, expiries and "Send again": recorded first, then delivered to whoever waits.
-use super::{load, record, record_or_log, timeout_actor, view, human, wait_for_claim, claim};
 use crate::error::ApiError;
-use crate::hosts::{controld, CommandFailure};
-use crate::launch::seat_host;
+use crate::hosts::CommandFailure;
 use crate::projections::questions::QuestionRow;
 use crate::state::AppState;
 use crate::views::QuestionView;
 use host_proto::HostCommand;
-use model::{Answer, DecisionSource, EventBody, MessageIntent, Provenance, QuestionSource, QuestionState};
+use model::{
+    Answer, DecisionSource, EventBody, MessageIntent, Provenance, QuestionSource, QuestionState,
+};
 
 /// Why an answer (or expiry) did not reach the agent.
 enum Undelivered {
@@ -31,20 +31,36 @@ impl Undelivered {
 
 /// Gives the answer to whoever waits: a seat-tool call (`request_input`, `approve`), else the agent's session.
 async fn deliver(st: &AppState, q: &QuestionRow, answer: Answer) -> Result<(), Undelivered> {
-    let waiter = st.seat_waits.lock().unwrap().remove(&q.id);
+    let waiter = st
+        .seat_waits
+        .lock()
+        .expect("seat_waits mutex must not be poisoned")
+        .remove(&q.id);
     if let Some(tx) = waiter {
-        return tx.send(answer).map_err(|_| Undelivered::NotSent("the agent stopped waiting for this answer".to_string()));
+        return tx.send(answer).map_err(|_| {
+            Undelivered::NotSent("the agent stopped waiting for this answer".to_string())
+        });
     }
-    let host = seat_host(st, &q.seat).map_err(|e| Undelivered::NotSent(e.message))?;
+    let host =
+        crate::launch::seat_host(st, &q.seat).map_err(|e| Undelivered::NotSent(e.message))?;
     // An older hostd has no `HostCommand::Answer`: say so plainly, not "unreachable".
-    st.hosts.check_features(&host, &[host_proto::features::ANSWER]).map_err(Undelivered::OlderRunner)?;
-    let command = HostCommand::Answer { seat: q.seat.clone(), question_id: q.id.clone(), answer };
-    st.hosts.command_checked(&host, command).await.map_err(|f| match f {
-        CommandFailure::NotConnected(r) => Undelivered::NotSent(r),
-        CommandFailure::Refused(r) => Undelivered::Refused(r),
-        CommandFailure::NoReply(r) => Undelivered::Unconfirmed(r),
-        CommandFailure::OlderRunner(r) => Undelivered::OlderRunner(r),
-    })
+    st.hosts
+        .check_features(&host, &[host_proto::features::ANSWER])
+        .map_err(Undelivered::OlderRunner)?;
+    let command = HostCommand::Answer {
+        seat: q.seat.clone(),
+        question_id: q.id.clone(),
+        answer,
+    };
+    st.hosts
+        .command_checked(&host, command)
+        .await
+        .map_err(|f| match f {
+            CommandFailure::NotConnected(r) => Undelivered::NotSent(r),
+            CommandFailure::Refused(r) => Undelivered::Refused(r),
+            CommandFailure::NoReply(r) => Undelivered::Unconfirmed(r),
+            CommandFailure::OlderRunner(r) => Undelivered::OlderRunner(r),
+        })
 }
 
 pub(super) fn check_answer(q: &QuestionRow, a: &Answer) -> Result<(), ApiError> {
@@ -53,10 +69,21 @@ pub(super) fn check_answer(q: &QuestionRow, a: &Answer) -> Result<(), ApiError> 
         (QuestionSource::NativePermission, Answer::Allow | Answer::Deny { .. }) => true,
         (QuestionSource::NativePermission, Answer::Text { .. }) => false,
         (_, Answer::Text { text }) if text.trim().is_empty() => false,
-        (_, Answer::Text { text }) => q.prompt.allow_other || q.prompt.options.is_empty() || q.prompt.options.iter().any(|o| &o.label == text),
+        (_, Answer::Text { text }) => {
+            q.prompt.allow_other
+                || q.prompt.options.is_empty()
+                || q.prompt.options.iter().any(|o| &o.label == text)
+        }
         (_, Answer::Allow | Answer::Deny { .. }) => false,
     };
-    if fits { Ok(()) } else { Err(ApiError::bad_request("bad_answer", "the answer does not fit the question")) }
+    if fits {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(
+            "bad_answer",
+            "the answer does not fit the question",
+        ))
+    }
 }
 
 /// The overriding instruction for a late answer; None when there is nothing to override (a late "allow").
@@ -68,25 +95,36 @@ pub(crate) fn late_answer_text(q: &QuestionRow, a: &Answer) -> Option<String> {
         )),
         Answer::Deny { reason } => Some(format!(
             "Late answer from the operator: \"{asked}\" should not have been allowed{}. This overrides the automatic approval; undo what it did if you can.",
-            reason.as_deref().map(|r| format!(" ({r})")).unwrap_or_default()
+            reason
+                .as_deref()
+                .map(|r| format!(" ({r})"))
+                .unwrap_or_default()
         )),
         Answer::Allow | Answer::Expired => None,
     }
 }
 
 fn busy() -> ApiError {
-    ApiError::conflict("question_busy", "Someone else is answering this question right now; try again in a moment.")
+    ApiError::conflict(
+        "question_busy",
+        "Someone else is answering this question right now; try again in a moment.",
+    )
 }
 
 fn closed() -> ApiError {
-    ApiError::conflict("question_closed", "the question was already answered or withdrawn")
+    ApiError::conflict(
+        "question_closed",
+        "the question was already answered or withdrawn",
+    )
 }
 
 /// The 502 for a delivery nobody confirmed. The answer stays recorded, the doubt is in `QuestionView.unconfirmed`.
 fn unconfirmed_error(reason: &str) -> ApiError {
     ApiError::bad_gateway(
         "host_unreachable",
-        format!("{reason}. The answer is recorded, but it may not have reached the agent; Send again re-sends it"),
+        format!(
+            "{reason}. The answer is recorded, but it may not have reached the agent; Send again re-sends it"
+        ),
     )
 }
 
@@ -95,9 +133,11 @@ fn unconfirmed_error(reason: &str) -> ApiError {
 /// expired and becomes a late, overriding instruction (once); one that waited behind a failed answer
 /// finds it open again.
 pub async fn answer(st: &AppState, id: &str, a: Answer) -> Result<QuestionView, ApiError> {
-    check_answer(&load(st, id)?, &a)?;
-    let Some(_held) = wait_for_claim(id).await else { return Err(busy()) };
-    let q = load(st, id)?;
+    check_answer(&crate::questions::load(st, id)?, &a)?;
+    let Some(_held) = crate::questions::wait_for_claim(id).await else {
+        return Err(busy());
+    };
+    let q = crate::questions::load(st, id)?;
     match q.state {
         QuestionState::Open => answer_open(st, q, a).await,
         QuestionState::Expired if q.late_answer.is_none() => answer_late(st, q, a).await,
@@ -109,15 +149,28 @@ pub async fn answer(st: &AppState, id: &str, a: Answer) -> Result<QuestionView, 
 /// and an expiry that comes later finds the question answered. An answer that certainly did not arrive
 /// opens the question again; one whose delivery is unconfirmed stays answered and is recorded as in doubt.
 async fn answer_open(st: &AppState, q: QuestionRow, a: Answer) -> Result<QuestionView, ApiError> {
-    let answered = EventBody::QuestionAnswered { question_id: q.id.clone(), answer: a.clone(), late: false };
-    record(st, &q.seat, human(), Provenance::Operator, answered)?;
+    let answered = EventBody::QuestionAnswered {
+        question_id: q.id.clone(),
+        answer: a.clone(),
+        late: false,
+    };
+    crate::questions::record(
+        st,
+        &q.seat,
+        crate::questions::human(),
+        Provenance::Operator,
+        answered,
+    )?;
     // The projection may have closed it in between (its process ended, its turn was interrupted):
     // then nothing waits for the answer, so nothing is sent.
-    if load(st, &q.id)?.state != QuestionState::Answered {
+    if crate::questions::load(st, &q.id)?.state != QuestionState::Answered {
         return Err(closed());
     }
     match deliver(st, &q, a).await {
-        Ok(()) => Ok(view(st, load(st, &q.id)?)),
+        Ok(()) => Ok(crate::questions::view(
+            st,
+            crate::questions::load(st, &q.id)?,
+        )),
         Err(Undelivered::Unconfirmed(reason)) => {
             note_unconfirmed(st, &q, &reason)?;
             Err(unconfirmed_error(&reason))
@@ -127,10 +180,23 @@ async fn answer_open(st: &AppState, q: QuestionRow, a: Answer) -> Result<Questio
 }
 
 /// An answer that certainly did not arrive: recorded as failed (the question opens again); returns the refusal.
-fn answer_failed(st: &AppState, q: &QuestionRow, failed: Undelivered) -> Result<ApiError, ApiError> {
+fn answer_failed(
+    st: &AppState,
+    q: &QuestionRow,
+    failed: Undelivered,
+) -> Result<ApiError, ApiError> {
     let reason = failed.reason().to_string();
-    let body = EventBody::QuestionAnswerFailed { question_id: q.id.clone(), reason: reason.clone() };
-    record(st, &q.seat, controld(), Provenance::ProtocolObserved, body)?;
+    let body = EventBody::QuestionAnswerFailed {
+        question_id: q.id.clone(),
+        reason: reason.clone(),
+    };
+    crate::questions::record(
+        st,
+        &q.seat,
+        crate::hosts::controld(),
+        Provenance::ProtocolObserved,
+        body,
+    )?;
     Ok(match failed {
         Undelivered::Refused(_) => ApiError::conflict("answer_refused", reason),
         Undelivered::OlderRunner(_) => ApiError::conflict("older_runner", reason),
@@ -140,16 +206,46 @@ fn answer_failed(st: &AppState, q: &QuestionRow, failed: Undelivered) -> Result<
 
 /// Records that what Sculptured sent for `q` may not have reached the agent (`reason`: verbatim).
 fn note_unconfirmed(st: &AppState, q: &QuestionRow, reason: &str) -> Result<(), ApiError> {
-    let body = EventBody::QuestionAnswerUnconfirmed { question_id: q.id.clone(), reason: reason.to_string() };
-    record(st, &q.seat, controld(), Provenance::ProtocolObserved, body)
+    let body = EventBody::QuestionAnswerUnconfirmed {
+        question_id: q.id.clone(),
+        reason: reason.to_string(),
+    };
+    crate::questions::record(
+        st,
+        &q.seat,
+        crate::hosts::controld(),
+        Provenance::ProtocolObserved,
+        body,
+    )
 }
 
 async fn answer_late(st: &AppState, q: QuestionRow, a: Answer) -> Result<QuestionView, ApiError> {
     if let Some(text) = late_answer_text(&q, &a) {
-        crate::reconciler::send_message_as(st, &q.seat, text, MessageIntent::Instruct, false, human()).await?;
+        crate::reconciler::send_message_as(
+            st,
+            &q.seat,
+            text,
+            MessageIntent::Instruct,
+            false,
+            crate::questions::human(),
+        )
+        .await?;
     }
-    record(st, &q.seat, human(), Provenance::Operator, EventBody::QuestionAnswered { question_id: q.id.clone(), answer: a, late: true })?;
-    Ok(view(st, load(st, &q.id)?))
+    crate::questions::record(
+        st,
+        &q.seat,
+        crate::questions::human(),
+        Provenance::Operator,
+        EventBody::QuestionAnswered {
+            question_id: q.id.clone(),
+            answer: a,
+            late: true,
+        },
+    )?;
+    Ok(crate::questions::view(
+        st,
+        crate::questions::load(st, &q.id)?,
+    ))
 }
 
 /// "Send again": re-sends the recorded answer (or, for an expired question, the expiry) whose delivery is
@@ -157,15 +253,28 @@ async fn answer_late(st: &AppState, q: QuestionRow, a: Answer) -> Result<Questio
 /// the question stays answered (never reopened) and the refusal, verbatim, becomes the doubt's reason;
 /// unconfirmed again, the new reason replaces the old.
 pub async fn send_again(st: &AppState, id: &str) -> Result<QuestionView, ApiError> {
-    load(st, id)?;
-    let Some(_held) = wait_for_claim(id).await else { return Err(busy()) };
-    let q = load(st, id)?;
+    crate::questions::load(st, id)?;
+    let Some(_held) = crate::questions::wait_for_claim(id).await else {
+        return Err(busy());
+    };
+    let q = crate::questions::load(st, id)?;
     let resend = answer_to_resend(&q)?;
     match deliver(st, &q, resend).await {
         Ok(()) => {
-            record(st, &q.seat, controld(), Provenance::ProtocolObserved, EventBody::QuestionAnswerConfirmed { question_id: q.id.clone() })?;
+            crate::questions::record(
+                st,
+                &q.seat,
+                crate::hosts::controld(),
+                Provenance::ProtocolObserved,
+                EventBody::QuestionAnswerConfirmed {
+                    question_id: q.id.clone(),
+                },
+            )?;
             allowed_on_timeout(st, &q.id);
-            Ok(view(st, load(st, &q.id)?))
+            Ok(crate::questions::view(
+                st,
+                crate::questions::load(st, &q.id)?,
+            ))
         }
         Err(Undelivered::Unconfirmed(reason)) => {
             note_unconfirmed(st, &q, &reason)?;
@@ -184,9 +293,15 @@ pub async fn send_again(st: &AppState, id: &str) -> Result<QuestionView, ApiErro
 /// and for one the agent already has.
 fn answer_to_resend(q: &QuestionRow) -> Result<Answer, ApiError> {
     match (q.state, &q.answer) {
-        (QuestionState::Open, _) => Err(ApiError::conflict("question_open", "answer the question instead")),
+        (QuestionState::Open, _) => Err(ApiError::conflict(
+            "question_open",
+            "answer the question instead",
+        )),
         (QuestionState::Answered | QuestionState::Expired, _) if q.unconfirmed.is_none() => {
-            Err(ApiError::conflict("answer_confirmed", "the agent has this answer; there is nothing to send again"))
+            Err(ApiError::conflict(
+                "answer_confirmed",
+                "the agent has this answer; there is nothing to send again",
+            ))
         }
         (QuestionState::Answered, Some(a)) => Ok(a.clone()),
         (QuestionState::Expired, _) => Ok(Answer::Expired),
@@ -197,8 +312,13 @@ fn answer_to_resend(q: &QuestionRow) -> Result<Answer, ApiError> {
 /// D8 for an expired permission prompt whose expiry is now known to have reached the program (a "Send
 /// again", or the program's own resolved notice): it was allowed. Only when no decision is recorded yet.
 pub(super) fn allowed_on_timeout(st: &AppState, id: &str) {
-    let Ok(q) = load(st, id) else { return };
-    if q.state != QuestionState::Expired || q.source != QuestionSource::NativePermission || q.decision.is_some() {
+    let Ok(q) = crate::questions::load(st, id) else {
+        return;
+    };
+    if q.state != QuestionState::Expired
+        || q.source != QuestionSource::NativePermission
+        || q.decision.is_some()
+    {
         return;
     }
     let body = EventBody::QuestionDecided {
@@ -207,7 +327,17 @@ pub(super) fn allowed_on_timeout(st: &AppState, id: &str) {
         rationale: None,
         source: DecisionSource::AllowedOnTimeout,
     };
-    record_or_log(st, &q.seat, (timeout_actor(), Provenance::ProtocolObserved), body, id, "cannot record the decision");
+    crate::questions::record_or_log(
+        st,
+        &q.seat,
+        (
+            crate::questions::timeout_actor(),
+            Provenance::ProtocolObserved,
+        ),
+        body,
+        id,
+        "cannot record the decision",
+    );
 }
 
 /// D8: on expiry an agent question is told to decide; a permission prompt is allowed and that is recorded.
@@ -216,15 +346,27 @@ pub(super) fn allowed_on_timeout(st: &AppState, id: &str) {
 /// whose delivery is unconfirmed is recorded as in doubt ("may not have reached the agent") and decides
 /// nothing yet: the agent's own words, a "Send again", or the end of its turn decide it later.
 pub async fn expire(st: &AppState, id: &str) {
-    let Some(_held) = claim(id) else { return };
-    let Ok(q) = load(st, id) else { return };
+    let Some(_held) = crate::questions::claim(id) else {
+        return;
+    };
+    let Ok(q) = crate::questions::load(st, id) else {
+        return;
+    };
     if q.state != QuestionState::Open {
         return;
     }
     #[cfg(feature = "test-seams")]
     crate::seams::run(&crate::seams::IN_EXPIRE_BEFORE_RECORD, id);
-    let expired = EventBody::QuestionExpired { question_id: id.into() };
-    if let Err(e) = record(st, &q.seat, timeout_actor(), Provenance::ProtocolObserved, expired) {
+    let expired = EventBody::QuestionExpired {
+        question_id: id.into(),
+    };
+    if let Err(e) = crate::questions::record(
+        st,
+        &q.seat,
+        crate::questions::timeout_actor(),
+        Provenance::ProtocolObserved,
+        expired,
+    ) {
         tracing::error!(question = %id, error = %e.message, "cannot record the expiry");
         return;
     }
@@ -246,22 +388,42 @@ fn expiry_delivered(st: &AppState, q: &QuestionRow, delivered: Result<(), Undeli
             let body = EventBody::QuestionDecided {
                 question_id: q.id.clone(),
                 decision: "unknown".to_string(),
-                rationale: Some(format!("the timeout could not reach the agent: {}", e.reason())),
+                rationale: Some(format!(
+                    "the timeout could not reach the agent: {}",
+                    e.reason()
+                )),
                 source: DecisionSource::Unknown,
             };
-            record_or_log(st, &q.seat, (timeout_actor(), Provenance::Heuristic), body, &q.id, "cannot record the decision");
+            crate::questions::record_or_log(
+                st,
+                &q.seat,
+                (crate::questions::timeout_actor(), Provenance::Heuristic),
+                body,
+                &q.id,
+                "cannot record the decision",
+            );
         }
     }
 }
 
 pub fn acknowledge(st: &AppState, id: &str) -> Result<QuestionView, ApiError> {
-    let q = load(st, id)?;
+    let q = crate::questions::load(st, id)?;
     if q.state == QuestionState::Open {
-        return Err(ApiError::conflict("question_open", "answer the question instead"));
+        return Err(ApiError::conflict(
+            "question_open",
+            "answer the question instead",
+        ));
     }
     if !q.acknowledged {
-        record(st, &q.seat, human(), Provenance::Operator, EventBody::QuestionAcknowledged { question_id: id.into() })?;
+        crate::questions::record(
+            st,
+            &q.seat,
+            crate::questions::human(),
+            Provenance::Operator,
+            EventBody::QuestionAcknowledged {
+                question_id: id.into(),
+            },
+        )?;
     }
-    Ok(view(st, load(st, id)?))
+    Ok(crate::questions::view(st, crate::questions::load(st, id)?))
 }
-

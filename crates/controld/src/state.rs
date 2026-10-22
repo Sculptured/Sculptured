@@ -8,6 +8,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 
+/// The session and usage restored when a team's next launch resumes an agent.
+pub struct ResumeSession {
+    pub native_session_id: String,
+    pub usage_baseline: [u64; 4],
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub store: Arc<Mutex<Store>>,
@@ -45,7 +51,7 @@ pub struct AppState {
     pub workflow_jobs: Arc<crate::workflow::Jobs>,
     /// Agents a Start asked to resume: seat → (its last session id, that session's usage so far).
     /// `launch_one` takes each entry once.
-    pub start_resumes: Arc<Mutex<HashMap<String, (String, [u64; 4])>>>,
+    pub start_resumes: Arc<Mutex<HashMap<String, ResumeSession>>>,
     /// Hosted beta analytics (None: local mode, which sends nothing).
     pub analytics: Option<Arc<crate::analytics::Analytics>>,
     /// Community on a self-run install (C5); None when hosted, where the gateway serves Community.
@@ -67,7 +73,9 @@ impl AppState {
             request_locks: Arc::default(),
             booting: Arc::default(),
             auth: AuthPolicy::default(),
-            home: std::env::var_os("HOME").filter(|h| !h.is_empty()).map(|h| Arc::new(PathBuf::from(h))),
+            home: std::env::var_os("HOME")
+                .filter(|h| !h.is_empty())
+                .map(|h| Arc::new(PathBuf::from(h))),
             handoffs_started: Arc::default(),
             handoffs_in_flight: Arc::default(),
             context_asked: Arc::default(),
@@ -92,20 +100,28 @@ impl AppState {
         self
     }
 
+    #[must_use]
     pub fn analytics(&self) -> Option<&crate::analytics::Analytics> {
         self.analytics.as_deref()
     }
 
+    #[must_use]
     pub fn with_cli_programs(mut self, claude: Option<PathBuf>, codex: Option<PathBuf>) -> Self {
         let (c, x) = (*self.cli_programs).clone();
         self.cli_programs = Arc::new((claude.unwrap_or(c), codex.unwrap_or(x)));
         self
     }
 
+    #[must_use]
     pub fn cli_program(&self, name: &str) -> PathBuf {
-        if name == "claude" { self.cli_programs.0.clone() } else { self.cli_programs.1.clone() }
+        if name == "claude" {
+            self.cli_programs.0.clone()
+        } else {
+            self.cli_programs.1.clone()
+        }
     }
 
+    #[must_use]
     pub fn with_auth(mut self, auth: AuthPolicy) -> Self {
         self.auth = auth;
         self
@@ -118,17 +134,30 @@ impl AppState {
 
     /// Claims the boot of `rig` synchronously. None when a boot is already in flight.
     /// The claim is released when the returned guard drops.
+    #[must_use]
     pub fn try_begin_boot(&self, rig: &str) -> Option<BootGuard> {
-        if self.booting.lock().unwrap().insert(rig.to_string()) {
-            Some(BootGuard { st: self.clone(), rig: rig.to_string() })
+        if self
+            .booting
+            .lock()
+            .expect("booting mutex must not be poisoned")
+            .insert(rig.to_string())
+        {
+            Some(BootGuard {
+                st: self.clone(),
+                rig: rig.to_string(),
+            })
         } else {
             None
         }
     }
 
     /// True while a boot of `rig` is running (Task 11 answers 409 for a second one).
+    #[must_use]
     pub fn is_booting(&self, rig: &str) -> bool {
-        self.booting.lock().unwrap().contains(rig)
+        self.booting
+            .lock()
+            .expect("booting mutex must not be poisoned")
+            .contains(rig)
     }
 
     /// Appends a controld-originated event and publishes it while still holding the
@@ -140,7 +169,7 @@ impl AppState {
         provenance: Provenance,
         body: EventBody,
     ) -> rusqlite::Result<crate::views::StreamItem> {
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().expect("store mutex must not be poisoned");
         let item = store.append_local(actor, subject, provenance, body)?;
         let _ = self.hub.send(item.clone());
         Ok(item)
@@ -163,6 +192,10 @@ pub struct BootGuard {
 
 impl Drop for BootGuard {
     fn drop(&mut self) {
-        self.st.booting.lock().unwrap().remove(&self.rig);
+        self.st
+            .booting
+            .lock()
+            .expect("booting mutex must not be poisoned")
+            .remove(&self.rig);
     }
 }

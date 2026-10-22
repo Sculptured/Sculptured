@@ -214,7 +214,8 @@ pub(super) fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
             "the store has an invalid schema version ({current}); it was not written by sculptured"
         )));
     }
-    for (i, sql) in MIGRATIONS.iter().enumerate().skip(current as usize) {
+    let matching_migrations = MIGRATIONS.iter().enumerate().skip(current as usize);
+    for (i, sql) in matching_migrations {
         if !already_applied(&tx, i + 1)? {
             tx.execute_batch(sql)?;
         }
@@ -229,13 +230,24 @@ pub(super) fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
 /// would then fail and the store would never open.
 fn already_applied(tx: &Transaction, n: usize) -> rusqlite::Result<bool> {
     let column = |table: &str, column: &str| -> rusqlite::Result<bool> {
-        tx.query_row(&format!("SELECT COUNT(*) > 0 FROM pragma_table_info('{table}') WHERE name = ?1"), [column], |r| r.get(0))
+        tx.query_row(
+            &format!("SELECT COUNT(*) > 0 FROM pragma_table_info('{table}') WHERE name = ?1"),
+            [column],
+            |r| r.get(0),
+        )
     };
     let table = |name: &str| -> rusqlite::Result<bool> {
-        tx.query_row("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = ?1", [name], |r| r.get(0))
+        tx.query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [name],
+            |r| r.get(0),
+        )
     };
     // The knowledge migration, found by what it makes rather than by its number.
-    if MIGRATIONS.get(n - 1).is_some_and(|m| m.contains("project_maps")) {
+    if MIGRATIONS
+        .get(n - 1)
+        .is_some_and(|m| m.contains("project_maps"))
+    {
         return column("team_decisions", "confirmed_ms");
     }
     match n {

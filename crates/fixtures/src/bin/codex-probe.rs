@@ -4,15 +4,19 @@
 //! is run by hand only, with the user's approval, and is never part of a routine test.
 //!
 //! Usage:
+//! ```text
 //!   codex-probe run <scenario> --out <raw dir> --cwd <throwaway dir> [--thread <id>] [--form dotted|nested]
 //!   codex-probe scrub <raw dir> <dest dir> <cwd root>
 //!   codex-probe app-server [args…]   (as a driver's program: records to $CODEX_PROBE_REC; see `tee`)
+//! ```
 //!
 //! Scenarios (model turns in brackets):
+//! ```text
 //!   basic [1], tool [1], approval [1], user-input [1], interrupt [1-2], resume [1, needs --thread],
 //!   mcp-config-dotted [0], mcp-config-nested [0], mcp-cli [0], seat-config [1, --form], seat-cli [1],
 //!   reasoning-summary [1],
 //!   limits [0].
+//! ```
 //!
 //! The raw recordings hold account data (home paths, plan, credits, rate-limit numbers, host
 //! name). Run `scrub` and grep the result before anything is committed; see
@@ -23,7 +27,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -53,7 +57,7 @@ struct Probe {
 
 fn record(rec: &Arc<Mutex<File>>, start: Instant, dir: &str, line: Value) {
     let entry = json!({ "t_ms": start.elapsed().as_millis() as u64, "dir": dir, "line": line });
-    let mut f = rec.lock().unwrap();
+    let mut f = rec.lock().expect("rec mutex must not be poisoned");
     writeln!(f, "{entry}").unwrap();
     f.flush().unwrap();
 }
@@ -74,7 +78,8 @@ fn default_answer(v: &Value) -> Value {
     let m = method(v);
     if m == "item/tool/requestUserInput" {
         let mut answers = Map::new();
-        for q in v["params"]["questions"].as_array().into_iter().flatten() {
+        let flattened_items = v["params"]["questions"].as_array().into_iter().flatten();
+        for q in flattened_items {
             answers.insert(
                 q["id"].as_str().unwrap_or("q").to_string(),
                 json!({ "answers": ["green"] }),
@@ -118,10 +123,11 @@ impl Probe {
             .expect("spawn codex app-server");
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
-        let (tx, rx) = channel();
+        let (tx, rx) = std::sync::mpsc::channel();
         let r = rec.clone();
         thread::spawn(move || {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let matching_items = BufReader::new(stdout).lines().map_while(Result::ok);
+            for line in matching_items {
                 let v = serde_json::from_str::<Value>(&line).unwrap_or(Value::String(line));
                 record(&r, start, "out", v.clone());
                 if tx.send(v).is_err() {
@@ -131,7 +137,8 @@ impl Probe {
         });
         let r = rec.clone();
         thread::spawn(move || {
-            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            let matching_items = BufReader::new(stderr).lines().map_while(Result::ok);
+            for line in matching_items {
                 record(&r, start, "stderr", Value::String(line));
             }
         });
@@ -310,7 +317,8 @@ impl Probe {
 /// Pids whose argv is exactly `argv` (for "is the interrupted command still running?").
 fn procs_with_argv(argv: &[&str]) -> Vec<u32> {
     let mut pids = Vec::new();
-    for e in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+    let flattened_items = std::fs::read_dir("/proc").into_iter().flatten().flatten();
+    for e in flattened_items {
         let Ok(pid) = e.file_name().to_string_lossy().parse::<u32>() else {
             continue;
         };
@@ -574,7 +582,10 @@ fn run(scenario: &str, out: &Path, cwd: &Path, thread_arg: Option<&str>, form: O
             let mut params = base_thread(cwd, "never");
             params["config"] = json!({ "model_reasoning_summary": "auto" });
             let t = p.thread_start(params);
-            let turn = p.turn(&t, "Think it through briefly, then reply with only the number: what is 17 times 23?");
+            let turn = p.turn(
+                &t,
+                "Think it through briefly, then reply with only the number: what is 17 times 23?",
+            );
             p.completed(&turn, TURN);
             p.idle(Duration::from_secs(2));
             p.finish(Duration::from_secs(10));
@@ -592,7 +603,7 @@ fn run(scenario: &str, out: &Path, cwd: &Path, thread_arg: Option<&str>, form: O
 
 // ---------------------------------------------------------------- scrub
 
-/// Keys whose values are account data: replaced by "<redacted>" wherever they appear.
+/// Keys whose values are account data: replaced by `<redacted>` wherever they appear.
 const REDACT_KEYS: [&str; 20] = [
     "accountId",
     "authMode",
@@ -630,13 +641,15 @@ impl Scrub {
 
     fn string(&mut self, s: &str) -> String {
         let mut s = s.to_string();
-        for (needle, with) in self.paths.clone() {
+        let matching_paths = self.paths.clone();
+        for (needle, with) in matching_paths {
             if s.contains(&needle) {
                 s = s.replace(&needle, &with);
                 self.bump(&format!("path {with}"));
             }
         }
-        for name in self.names.clone() {
+        let matching_names = self.names.clone();
+        for name in matching_names {
             let lower = s.to_lowercase();
             if lower.contains(&name) {
                 let mut outp = String::new();
@@ -754,7 +767,8 @@ fn scrub(raw: &Path, dest: &Path, cwd_root: &Path) {
     for path in entries {
         let text = std::fs::read_to_string(&path).unwrap();
         let mut out = String::new();
-        for line in text.lines() {
+        let matching_text = text.lines();
+        for line in matching_text {
             let v: Value =
                 serde_json::from_str(line).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             out.push_str(&s.value(None, &v).to_string());
@@ -774,12 +788,24 @@ fn scrub(raw: &Path, dest: &Path, cwd_root: &Path) {
 /// `$CODEX_PROBE_REC`. It runs `$CODEX_PROBE_PROGRAM` (default `codex`) with the same arguments.
 /// Used by the Task 13 seat-tools probe so the recording shows exactly what the real driver sent.
 fn tee(args: &[String]) -> ! {
-    let rec_path = PathBuf::from(std::env::var_os("CODEX_PROBE_REC").expect("CODEX_PROBE_REC: where to record"));
+    let rec_path = PathBuf::from(
+        std::env::var_os("CODEX_PROBE_REC").expect("CODEX_PROBE_REC: where to record"),
+    );
     let program = std::env::var("CODEX_PROBE_PROGRAM").unwrap_or_else(|_| "codex".into());
-    let rec = Arc::new(Mutex::new(File::create(&rec_path).expect("create recording")));
+    let rec = Arc::new(Mutex::new(
+        File::create(&rec_path).expect("create recording"),
+    ));
     let start = Instant::now();
-    let version = Command::new(&program).arg("--version").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
-    record(&rec, start, "meta", json!({ "program": program, "args": args, "version": version.unwrap_or_default(), "via": "codex-probe app-server (the driver's own lines)" }));
+    let version = Command::new(&program)
+        .arg("--version")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    record(
+        &rec,
+        start,
+        "meta",
+        json!({ "program": program, "args": args, "version": version.unwrap_or_default(), "via": "codex-probe app-server (the driver's own lines)" }),
+    );
     let mut child = Command::new(&program)
         .args(args)
         .stdin(Stdio::piped())
@@ -791,9 +817,18 @@ fn tee(args: &[String]) -> ! {
     let (out, err) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
     let r = rec.clone();
     thread::spawn(move || {
-        for line in std::io::stdin().lock().lines().map_while(Result::ok) {
-            record(&r, start, "in", serde_json::from_str::<Value>(&line).unwrap_or(Value::String(line.clone())));
-            if writeln!(child_in, "{line}").and_then(|_| child_in.flush()).is_err() {
+        let matching_items = std::io::stdin().lock().lines().map_while(Result::ok);
+        for line in matching_items {
+            record(
+                &r,
+                start,
+                "in",
+                serde_json::from_str::<Value>(&line).unwrap_or(Value::String(line.clone())),
+            );
+            if writeln!(child_in, "{line}")
+                .and_then(|_| child_in.flush())
+                .is_err()
+            {
                 break;
             }
         }
@@ -802,15 +837,25 @@ fn tee(args: &[String]) -> ! {
     });
     let r = rec.clone();
     let errs = thread::spawn(move || {
-        for line in BufReader::new(err).lines().map_while(Result::ok) {
+        let matching_items = BufReader::new(err).lines().map_while(Result::ok);
+        for line in matching_items {
             record(&r, start, "stderr", Value::String(line.clone()));
             eprintln!("{line}");
         }
     });
     let mut stdout = std::io::stdout();
-    for line in BufReader::new(out).lines().map_while(Result::ok) {
-        record(&rec, start, "out", serde_json::from_str::<Value>(&line).unwrap_or(Value::String(line.clone())));
-        if writeln!(stdout, "{line}").and_then(|_| stdout.flush()).is_err() {
+    let matching_items = BufReader::new(out).lines().map_while(Result::ok);
+    for line in matching_items {
+        record(
+            &rec,
+            start,
+            "out",
+            serde_json::from_str::<Value>(&line).unwrap_or(Value::String(line.clone())),
+        );
+        if writeln!(stdout, "{line}")
+            .and_then(|_| stdout.flush())
+            .is_err()
+        {
             break;
         }
     }

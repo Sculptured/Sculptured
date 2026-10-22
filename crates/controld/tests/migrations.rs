@@ -1,4 +1,4 @@
-use controld::store::{RigSource, Store, SCHEMA_VERSION};
+use controld::store::{RigSource, SCHEMA_VERSION, Store};
 use model::{Desired, Provenance};
 use rusqlite::Connection;
 
@@ -41,7 +41,10 @@ fn fix_wave_schema() -> String {
 }
 
 fn version(path: &std::path::Path) -> i64 {
-    Connection::open(path).unwrap().query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap()
+    Connection::open(path)
+        .unwrap()
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap()
 }
 
 fn has_column(path: &std::path::Path, table: &str, column: &str) -> bool {
@@ -85,9 +88,17 @@ fn an_m1_store_migrates_and_keeps_its_rigs() {
         .unwrap();
     }
     let s = Store::open(&path).unwrap();
-    assert_eq!(s.rig_source("r").unwrap(), Some(RigSource::File { path: "/specs/r.yaml".into() }));
+    assert_eq!(
+        s.rig_source("r").unwrap(),
+        Some(RigSource::File {
+            path: "/specs/r.yaml".into()
+        })
+    );
     assert_eq!(s.list_rigs().unwrap()[0].name, "r");
-    assert_eq!(s.rig_snapshot("r").unwrap().unwrap().desired, Desired::Running);
+    assert_eq!(
+        s.rig_snapshot("r").unwrap().unwrap().desired,
+        Desired::Running
+    );
     drop(s);
     assert_eq!(version(&path), SCHEMA_VERSION);
     assert!(has_column(&path, "seats", "lifecycle_provenance"));
@@ -118,10 +129,28 @@ fn a_fix_wave_store_at_version_2_migrates_its_spec_path_rigs() {
         .unwrap();
     }
     let mut s = Store::open(&path).unwrap();
-    assert_eq!(s.rig_source("r").unwrap(), Some(RigSource::File { path: "/specs/r.yaml".into() }));
-    assert_eq!(s.rig_snapshot("r").unwrap().unwrap().desired, Desired::Running);
-    assert_eq!(s.seat("dev.a@r").unwrap().unwrap().lifecycle_provenance, Some(Provenance::Heuristic));
-    s.upsert_rig(&rig, &RigSource::File { path: "/specs/r.yaml".into() }, Desired::Running).unwrap();
+    assert_eq!(
+        s.rig_source("r").unwrap(),
+        Some(RigSource::File {
+            path: "/specs/r.yaml".into()
+        })
+    );
+    assert_eq!(
+        s.rig_snapshot("r").unwrap().unwrap().desired,
+        Desired::Running
+    );
+    assert_eq!(
+        s.seat("dev.a@r").unwrap().unwrap().lifecycle_provenance,
+        Some(Provenance::Heuristic)
+    );
+    s.upsert_rig(
+        &rig,
+        &RigSource::File {
+            path: "/specs/r.yaml".into(),
+        },
+        Desired::Running,
+    )
+    .unwrap();
     drop(s);
     assert_eq!(version(&path), SCHEMA_VERSION);
 }
@@ -131,8 +160,13 @@ fn a_store_from_a_newer_build_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("c.sqlite");
     drop(Store::open(&path).unwrap());
-    Connection::open(&path).unwrap().pragma_update(None, "user_version", SCHEMA_VERSION + 1).unwrap();
-    let err = Store::open(&path).err().expect("a newer schema must be refused");
+    Connection::open(&path)
+        .unwrap()
+        .pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+        .unwrap();
+    let err = Store::open(&path)
+        .err()
+        .expect("a newer schema must be refused");
     assert!(err.to_string().contains("newer"), "{err}");
 }
 
@@ -140,14 +174,43 @@ fn a_store_from_a_newer_build_is_refused() {
 fn rig_sources_are_typed_and_round_trip() {
     let mut s = Store::open_in_memory().unwrap();
     let rig = rigspec::compile(SPEC).unwrap();
-    s.upsert_rig(&rig, &RigSource::Team { id: "r".into(), revision: 4 }, Desired::Running).unwrap();
-    assert_eq!(s.rig_source("r").unwrap(), Some(RigSource::Team { id: "r".into(), revision: 4 }));
-    s.upsert_rig(&rig, &RigSource::File { path: "/x.yaml".into() }, Desired::Running).unwrap();
-    assert_eq!(s.rig_source("r").unwrap(), Some(RigSource::File { path: "/x.yaml".into() }));
+    s.upsert_rig(
+        &rig,
+        &RigSource::Team {
+            id: "r".into(),
+            revision: 4,
+        },
+        Desired::Running,
+    )
+    .unwrap();
+    assert_eq!(
+        s.rig_source("r").unwrap(),
+        Some(RigSource::Team {
+            id: "r".into(),
+            revision: 4
+        })
+    );
+    s.upsert_rig(
+        &rig,
+        &RigSource::File {
+            path: "/x.yaml".into(),
+        },
+        Desired::Running,
+    )
+    .unwrap();
+    assert_eq!(
+        s.rig_source("r").unwrap(),
+        Some(RigSource::File {
+            path: "/x.yaml".into()
+        })
+    );
     assert_eq!(s.rig_source("nope").unwrap(), None);
 
     let file = RigSource::File { path: "/a".into() };
-    let team = |id: &str| RigSource::Team { id: id.into(), revision: 1 };
+    let team = |id: &str| RigSource::Team {
+        id: id.into(),
+        revision: 1,
+    };
     assert!(file.same_owner(&RigSource::File { path: "/b".into() }));
     assert!(team("t").same_owner(&team("t")));
     assert!(!team("t").same_owner(&team("u")));
@@ -169,7 +232,11 @@ fn v3_schema() -> String {
 fn has_table(path: &std::path::Path, table: &str) -> bool {
     Connection::open(path)
         .unwrap()
-        .query_row("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = ?1", [table], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [table],
+            |r| r.get(0),
+        )
         .unwrap()
 }
 
@@ -180,8 +247,14 @@ fn m1_and_v3_stores_gain_the_drafts_table() {
     for (label, schema) in [("m1", M1_SCHEMA.to_string()), ("v3", v3_schema())] {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("c.sqlite");
-        Connection::open(&path).unwrap().execute_batch(&schema).unwrap();
-        assert!(!has_table(&path, "drafts"), "{label}: the old schema has no drafts");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(&schema)
+            .unwrap();
+        assert!(
+            !has_table(&path, "drafts"),
+            "{label}: the old schema has no drafts"
+        );
         let mut s = Store::open(&path).unwrap();
         let draft = rigspec::templates::template("solo", "solo-agent", "Solo agent", true).unwrap();
         s.insert_draft(&draft).unwrap();
@@ -189,7 +262,11 @@ fn m1_and_v3_stores_gain_the_drafts_table() {
         assert!(has_table(&path, "drafts"), "{label}");
         assert_eq!(version(&path), SCHEMA_VERSION, "{label}");
         let s = Store::open(&path).unwrap();
-        assert_eq!(s.draft("solo-agent").unwrap(), Some(draft), "{label}: the draft survives a reopen");
+        assert_eq!(
+            s.draft("solo-agent").unwrap(),
+            Some(draft),
+            "{label}: the draft survives a reopen"
+        );
     }
 }
 
@@ -216,19 +293,39 @@ fn a_store_downgraded_to_m1_and_upgraded_again_still_opens_with_its_teams() {
     let draft = rigspec::templates::template("solo", "solo-agent", "Solo agent", true).unwrap();
     {
         let mut s = Store::open(&path).unwrap();
-        s.upsert_rig(&rig, &RigSource::Team { id: "r".into(), revision: 3 }, Desired::Running).unwrap();
+        s.upsert_rig(
+            &rig,
+            &RigSource::Team {
+                id: "r".into(),
+                revision: 3,
+            },
+            Desired::Running,
+        )
+        .unwrap();
         s.insert_draft(&draft).unwrap();
     }
     m1_build_opens(&path);
     assert_eq!(version(&path), 2);
 
     let s = Store::open(&path).expect("the re-upgraded store opens");
-    assert_eq!(s.rig_source("r").unwrap(), Some(RigSource::Team { id: "r".into(), revision: 3 }));
+    assert_eq!(
+        s.rig_source("r").unwrap(),
+        Some(RigSource::Team {
+            id: "r".into(),
+            revision: 3
+        })
+    );
     assert_eq!(s.draft("solo-agent").unwrap(), Some(draft));
     drop(s);
     assert_eq!(version(&path), SCHEMA_VERSION);
-    assert!(has_column(&path, "seats", "waiting_for"), "migration 5 is recognised as applied");
-    assert!(has_table(&path, "handoff_cutoff"), "migration 6 is recognised as applied");
+    assert!(
+        has_column(&path, "seats", "waiting_for"),
+        "migration 5 is recognised as applied"
+    );
+    assert!(
+        has_table(&path, "handoff_cutoff"),
+        "migration 6 is recognised as applied"
+    );
     // And it keeps opening.
     drop(Store::open(&path).unwrap());
 }
@@ -238,7 +335,10 @@ fn a_store_downgraded_to_m1_and_upgraded_again_still_opens_with_its_teams() {
 fn a_v3_store_downgraded_to_m1_skips_only_the_rigs_migration() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("c.sqlite");
-    Connection::open(&path).unwrap().execute_batch(&v3_schema()).unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch(&v3_schema())
+        .unwrap();
     m1_build_opens(&path);
     assert!(!has_table(&path, "drafts"));
     let mut s = Store::open(&path).expect("opens");
@@ -253,7 +353,11 @@ fn a_v3_store_downgraded_to_m1_skips_only_the_rigs_migration() {
 fn has_index(path: &std::path::Path, name: &str) -> bool {
     Connection::open(path)
         .unwrap()
-        .query_row("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'index' AND name = ?1", [name], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            [name],
+            |r| r.get(0),
+        )
         .unwrap()
 }
 
@@ -265,22 +369,38 @@ fn migration_7_indexes_existing_events_by_type_and_is_recognised_as_applied() {
     let path = dir.path().join("c.sqlite");
     {
         let mut s = Store::open(&path).unwrap();
-        s.append_local(model::Actor::Human("local".into()), model::Subject::Rig("r".into()), Provenance::Operator, model::EventBody::RigBooted {
-            spec_hash: "x".into(),
-            seat_count: 1,
-        })
+        s.append_local(
+            model::Actor::Human("local".into()),
+            model::Subject::Rig("r".into()),
+            Provenance::Operator,
+            model::EventBody::RigBooted {
+                spec_hash: "x".into(),
+                seat_count: 1,
+            },
+        )
         .unwrap();
     }
     // As a schema-6 build wrote it: no index.
-    Connection::open(&path).unwrap().execute_batch("DROP INDEX events_by_subject_type; PRAGMA user_version = 6;").unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch("DROP INDEX events_by_subject_type; PRAGMA user_version = 6;")
+        .unwrap();
     assert!(!has_index(&path, "events_by_subject_type"));
     let s = Store::open(&path).expect("upgrades");
-    assert_eq!(s.latest_of_types(&model::Subject::Rig("r".into()), &["rig-booted"], 1).unwrap().len(), 1);
+    assert_eq!(
+        s.latest_of_types(&model::Subject::Rig("r".into()), &["rig-booted"], 1)
+            .unwrap()
+            .len(),
+        1
+    );
     drop(s);
     assert!(has_index(&path, "events_by_subject_type"));
     assert_eq!(version(&path), SCHEMA_VERSION);
     // Set back (an older build opened it) with the index kept: it opens again.
-    Connection::open(&path).unwrap().pragma_update(None, "user_version", 6).unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .pragma_update(None, "user_version", 6)
+        .unwrap();
     drop(Store::open(&path).expect("reopens"));
     assert_eq!(version(&path), SCHEMA_VERSION);
 }
@@ -289,11 +409,28 @@ fn migration_7_indexes_existing_events_by_type_and_is_recognised_as_applied() {
 fn an_m1_store_gains_the_m2_tables_and_columns() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("controld.sqlite");
-    Connection::open(&path).unwrap().execute_batch(M1_SCHEMA).unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch(M1_SCHEMA)
+        .unwrap();
     drop(Store::open(&path).unwrap());
     assert_eq!(version(&path), SCHEMA_VERSION);
     assert_eq!(SCHEMA_VERSION, 29);
-    for (table, column) in [("seats", "open_questions"), ("seats", "restore_offer"), ("seats", "cwd"), ("seats", "limit_hit"), ("questions", "deadline_ms"), ("actions", "turn_id"), ("questions", "unconfirmed_reason"), ("questions", "settled"), ("seats", "model_requested"), ("seats", "model_observed"), ("seats", "stalled"), ("seats", "last_check"), ("team_decisions", "confirmed_ms")] {
+    for (table, column) in [
+        ("seats", "open_questions"),
+        ("seats", "restore_offer"),
+        ("seats", "cwd"),
+        ("seats", "limit_hit"),
+        ("questions", "deadline_ms"),
+        ("actions", "turn_id"),
+        ("questions", "unconfirmed_reason"),
+        ("questions", "settled"),
+        ("seats", "model_requested"),
+        ("seats", "model_observed"),
+        ("seats", "stalled"),
+        ("seats", "last_check"),
+        ("team_decisions", "confirmed_ms"),
+    ] {
         assert!(has_column(&path, table, column), "{table}.{column}");
     }
     assert!(has_table(&path, "project_maps"));
@@ -313,7 +450,10 @@ fn an_m1_store_gains_the_m2_tables_and_columns() {
 fn a_negative_user_version_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("controld.sqlite");
-    Connection::open(&path).unwrap().execute_batch("PRAGMA user_version = -3;").unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .execute_batch("PRAGMA user_version = -3;")
+        .unwrap();
     let err = Store::open(&path).err().expect("refused").to_string();
     assert!(err.contains("invalid schema version (-3)"), "{err}");
 }
@@ -323,7 +463,10 @@ fn a_store_set_back_to_version_7_skips_migration_8() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("controld.sqlite");
     drop(Store::open(&path).unwrap());
-    Connection::open(&path).unwrap().pragma_update(None, "user_version", 7).unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .pragma_update(None, "user_version", 7)
+        .unwrap();
     drop(Store::open(&path).expect("reopens although the M2 tables already exist"));
     assert_eq!(version(&path), SCHEMA_VERSION);
 }
@@ -338,7 +481,11 @@ fn a_version_8_store_gains_the_question_delivery_columns() {
     let has = |col: &str| -> bool {
         Connection::open(&path)
             .unwrap()
-            .query_row("SELECT COUNT(*) > 0 FROM pragma_table_info('questions') WHERE name = ?1", [col], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('questions') WHERE name = ?1",
+                [col],
+                |r| r.get(0),
+            )
             .unwrap()
     };
     // A version-8 store: the columns dropped, the version set back.
@@ -350,7 +497,10 @@ fn a_version_8_store_gains_the_question_delivery_columns() {
     drop(Store::open(&path).unwrap());
     assert!(has("unconfirmed_reason") && has("settled"));
     assert_eq!(version(&path), SCHEMA_VERSION);
-    Connection::open(&path).unwrap().pragma_update(None, "user_version", 8).unwrap();
+    Connection::open(&path)
+        .unwrap()
+        .pragma_update(None, "user_version", 8)
+        .unwrap();
     drop(Store::open(&path).expect("reopens although the columns already exist"));
     assert_eq!(version(&path), SCHEMA_VERSION);
 }

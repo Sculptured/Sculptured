@@ -1,7 +1,5 @@
 //! Start and stop a team.
-use super::{is_error, load, folder_issues};
-use crate::api::{fingerprint, idempotent};
-use crate::error::{to_value, ApiError};
+use crate::error::ApiError;
 use crate::extract::{Json, Path};
 use crate::reconciler;
 use crate::state::AppState;
@@ -17,9 +15,12 @@ use std::path::PathBuf;
 /// True when another agent of the team hands work to `agent`: its Job then arrives
 /// with its first handoff, not at start.
 pub(crate) fn has_upstream(d: &TeamDraft, agent: &str) -> bool {
-    d.connections
-        .iter()
-        .any(|c| c.kind == ConnectionKind::HandsWorkTo && c.to == agent && c.from != agent && d.agent(&c.from).is_some())
+    d.connections.iter().any(|c| {
+        c.kind == ConnectionKind::HandsWorkTo
+            && c.to == agent
+            && c.from != agent
+            && d.agent(&c.from).is_some()
+    })
 }
 
 /// `(seat id, job)` for every agent nobody hands work to with a non-empty Job, or the project's
@@ -37,7 +38,10 @@ fn jobs(d: &TeamDraft) -> Vec<(String, String)> {
 }
 
 fn team_running() -> ApiError {
-    ApiError::conflict("team_running", "This team is already running. Stop it before starting it again.")
+    ApiError::conflict(
+        "team_running",
+        "This team is already running. Stop it before starting it again.",
+    )
 }
 
 #[derive(Deserialize, Serialize)]
@@ -57,12 +61,32 @@ pub(super) struct StartReq {
 
 /// Agents of a stopped team with a last conversation to resume: (seat, name).
 fn resumable_agents(st: &AppState, id: &str) -> Result<Vec<(String, String)>, ApiError> {
-    let store = st.store.lock().unwrap();
-    let Some(snap) = store.rig_snapshot(id)? else { return Ok(vec![]) };
+    let store = st.store.lock().expect("store mutex must not be poisoned");
+    let Some(snap) = store.rig_snapshot(id)? else {
+        return Ok(vec![]);
+    };
     let draft = store.draft(id)?;
-    let name = |member: &str| draft.as_ref().and_then(|d| d.agents.iter().find(|a| a.id == member).map(|a| a.name.clone())).unwrap_or_else(|| member.to_string());
-    Ok(snap.seats.into_iter()
-        .filter(|s| matches!(s.runtime, rigspec::Runtime::ClaudeCode | rigspec::Runtime::Codex) && s.native_session_id.is_some() && store.parent(&s.id).ok().flatten().is_none())
+    let name = |member: &str| {
+        draft
+            .as_ref()
+            .and_then(|d| {
+                d.agents
+                    .iter()
+                    .find(|a| a.id == member)
+                    .map(|a| a.name.clone())
+            })
+            .unwrap_or_else(|| member.to_string())
+    };
+    Ok(snap
+        .seats
+        .into_iter()
+        .filter(|s| {
+            matches!(
+                s.runtime,
+                rigspec::Runtime::ClaudeCode | rigspec::Runtime::Codex
+            ) && s.native_session_id.is_some()
+                && store.parent(&s.id).ok().flatten().is_none()
+        })
         .map(|s| (s.id.clone(), name(&s.member)))
         .collect())
 }
@@ -75,10 +99,24 @@ pub(super) async fn resumable(State(st): State<AppState>, Path(id): Path<String>
 fn plan_resumes(st: &AppState, id: &str) -> Result<usize, ApiError> {
     let agents = resumable_agents(st, id)?;
     for (seat, _) in &agents {
-        let session = st.store.lock().unwrap().seat(seat)?.and_then(|v| v.native_session_id);
+        let session = st
+            .store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .seat(seat)?
+            .and_then(|v| v.native_session_id);
         if let Some(session) = session {
             let baseline = crate::restore::usage_baseline(st, seat)?;
-            st.start_resumes.lock().unwrap().insert(seat.clone(), (session, baseline));
+            st.start_resumes
+                .lock()
+                .expect("start_resumes mutex must not be poisoned")
+                .insert(
+                    seat.clone(),
+                    crate::state::ResumeSession {
+                        native_session_id: session,
+                        usage_baseline: baseline,
+                    },
+                );
         }
     }
     Ok(agents.len())
@@ -86,18 +124,25 @@ fn plan_resumes(st: &AppState, id: &str) -> Result<usize, ApiError> {
 
 /// The draft's build, when it is the revision the client saw (if it said) and it can start:
 /// no issue in the draft, its spec or its folders.
-fn startable(st: &AppState, draft: &TeamDraft, seen: Option<u64>) -> Result<rigspec::DraftBuild, ApiError> {
+fn startable(
+    st: &AppState,
+    draft: &TeamDraft,
+    seen: Option<u64>,
+) -> Result<rigspec::DraftBuild, ApiError> {
     if let Some(rev) = seen
         && rev != draft.revision
     {
         return Err(ApiError::conflict(
             "draft_conflict",
-            format!("This team was changed somewhere else (it is now at version {}). Load the latest version before starting.", draft.revision),
+            format!(
+                "This team was changed somewhere else (it is now at version {}). Load the latest version before starting.",
+                draft.revision
+            ),
         ));
     }
-    let folders = folder_issues(st, draft);
+    let folders = crate::teams::folder_issues(st, draft);
     match rigspec::from_draft(draft) {
-        Ok(b) if !folders.iter().any(is_error) => Ok(b),
+        Ok(b) if !folders.iter().any(crate::teams::is_error) => Ok(b),
         Ok(b) => Err(ApiError::invalid_team([b.warnings, folders].concat())),
         Err(mut issues) => {
             issues.extend(folders);
@@ -106,24 +151,28 @@ fn startable(st: &AppState, draft: &TeamDraft, seen: Option<u64>) -> Result<rigs
     }
 }
 
-pub(super) async fn start_team(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<StartReq>) -> Response {
-    let fp = fingerprint(&format!("start-team:{id}"), &req);
+pub(super) async fn start_team(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<StartReq>,
+) -> Response {
+    let fp = crate::api::fingerprint(&format!("start-team:{id}"), &req);
     let request_id = req.request_id.clone();
     let st2 = st.clone();
-    idempotent(&st, &request_id, fp, move || async move {
+    crate::api::idempotent(&st, &request_id, fp, move || async move {
         // Claim before reading the draft: a save checked before this claim is already
         // stored, and one checked after it sees the team as starting (`team_live_in`).
         let Some(claim) = st2.try_begin_boot(&id) else {
             return Err(team_running());
         };
-        crate::project_visibility::ensure_available(&st2.store.lock().unwrap(), &id)?;
-        let draft = load(&st2, &id)?;
-        if st2.store.lock().unwrap().archived(&id)? { return Err(ApiError::conflict("project_archived","Restore this project before starting it")); }
+        crate::project_visibility::ensure_available(&st2.store.lock().expect("store mutex must not be poisoned"), &id)?;
+        let draft = crate::teams::load(&st2, &id)?;
+        if st2.store.lock().expect("store mutex must not be poisoned").archived(&id)? { return Err(ApiError::conflict("project_archived","Restore this project before starting it")); }
         let mut build = startable(&st2, &draft, req.revision)?;
-        let chosen = st2.store.lock().unwrap().team_settings(&id)?.host.filter(|h| !h.is_empty());
+        let chosen = st2.store.lock().expect("store mutex must not be poisoned").team_settings(&id)?.host.filter(|h| !h.is_empty());
         let host = crate::launch::team_host(&st2, &id);
         let hosted = matches!(st2.auth, crate::auth::AuthPolicy::Gateway { .. });
-        let own = st2.store.lock().unwrap().team_settings(&id)?.agent_hosts;
+        let own = st2.store.lock().expect("store mutex must not be poisoned").team_settings(&id)?.agent_hosts;
         let own_computer = |agent: &str| own.get(agent).is_some_and(|h| !h.is_empty());
         // The project folder is a path on the team's computer: an agent on another computer without
         // a folder of its own works in that computer's own folder (its runner resolves ".").
@@ -157,7 +206,7 @@ pub(super) async fn start_team(State(st): State<AppState>, Path(id): Path<String
         }
         // Practice agents without a folder run in the home folder ("." resolves against it).
         let spec_dir = st2.home.as_deref().cloned().unwrap_or_else(|| PathBuf::from("/"));
-        let after_seq = st2.store.lock().unwrap().last_seq()?;
+        let after_seq = st2.store.lock().expect("store mutex must not be poisoned").last_seq()?;
         let source = RigSource::Team { id: id.clone(), revision: draft.revision };
         // The run's budget is recorded before any agent launches, so the gate never sees an earlier run's.
         crate::budget::begin(&st2, &id, &draft.budget, after_seq)?;
@@ -190,14 +239,24 @@ pub(super) struct StopReq {
     request_id: String,
 }
 
-pub(super) async fn stop_team(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<StopReq>) -> Response {
-    let fp = fingerprint(&format!("stop-team:{id}"), &req);
+pub(super) async fn stop_team(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<StopReq>,
+) -> Response {
+    let fp = crate::api::fingerprint(&format!("stop-team:{id}"), &req);
     let request_id = req.request_id.clone();
     let st2 = st.clone();
-    idempotent(&st, &request_id, fp, move || async move {
-        let started = matches!(st2.store.lock().unwrap().rig_source(&id)?, Some(RigSource::Team { .. }));
+    crate::api::idempotent(&st, &request_id, fp, move || async move {
+        let started = matches!(
+            st2.store.lock().unwrap().rig_source(&id)?,
+            Some(RigSource::Team { .. })
+        );
         if !started {
-            return Err(ApiError::conflict("team_not_started", "This team has not been started yet."));
+            return Err(ApiError::conflict(
+                "team_not_started",
+                "This team has not been started yet.",
+            ));
         }
         // A stop must not interleave with a start: recording "stopped" in the middle of a
         // boot (or of a restart that began after this check) would abandon that boot and
@@ -214,7 +273,7 @@ pub(super) async fn stop_team(State(st): State<AppState>, Path(id): Path<String>
         let analytics = st2.clone();
         let failed = reconciler::stop_rig(st2, id).await?;
         crate::analytics::emit(&analytics, "team.stopped", json!({}));
-        to_value(&StopRigOutcome { failed })
+        crate::error::to_value(&StopRigOutcome { failed })
     })
     .await
 }

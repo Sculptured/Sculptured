@@ -1,10 +1,10 @@
 //! Rigs, their seats, and the team drafts they are started from.
-use super::rows::{enum_parse, enum_text, json_parse, seat_from_row, SEAT_COLS};
 use super::Store;
+use super::rows::SEAT_COLS;
 use crate::views::{RigSnapshot, RigSummary, SeatView};
-use model::{now_ms, Desired, TeamDraft};
+use model::{Desired, TeamDraft};
 use rigspec::CompiledRig;
-use rusqlite::{params, OptionalExtension, Transaction};
+use rusqlite::{OptionalExtension, Transaction, params};
 
 /// Where a rig's spec came from.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +26,7 @@ impl RigSource {
     /// Whether a rig recorded with this source may be restarted from `other`. Any
     /// spec file may replace a file-booted rig (M1 behaviour). A team's rig belongs
     /// to that team only.
+    #[must_use]
     pub fn same_owner(&self, other: &RigSource) -> bool {
         match (self, other) {
             (RigSource::File { .. }, RigSource::File { .. }) => true,
@@ -38,12 +39,17 @@ impl RigSource {
 /// Outcome of an optimistic draft save.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SaveDraft {
-    Saved(TeamDraft),
+    Saved(Box<TeamDraft>),
     Conflict { current: u64 },
     Missing,
 }
 
-fn upsert_rig_row(tx: &Transaction, rig: &CompiledRig, source: &RigSource, desired: Desired) -> rusqlite::Result<()> {
+fn upsert_rig_row(
+    tx: &Transaction,
+    rig: &CompiledRig,
+    source: &RigSource,
+    desired: Desired,
+) -> rusqlite::Result<()> {
     let (kind, reference, revision) = source.columns();
     let compiled = serde_json::to_string(rig).expect("compiled rig serializes");
     tx.execute(
@@ -52,7 +58,7 @@ fn upsert_rig_row(tx: &Transaction, rig: &CompiledRig, source: &RigSource, desir
          ON CONFLICT (name) DO UPDATE SET source_kind = excluded.source_kind, source_ref = excluded.source_ref,
              source_revision = excluded.source_revision, spec_hash = excluded.spec_hash,
              compiled_json = excluded.compiled_json, desired = excluded.desired",
-        params![rig.name, kind, reference, revision, rig.spec_hash, compiled, enum_text(&desired)],
+        params![rig.name, kind, reference, revision, rig.spec_hash, compiled, crate::store::rows::enum_text(&desired)],
     )?;
     Ok(())
 }
@@ -61,17 +67,22 @@ fn upsert_rig_row(tx: &Transaction, rig: &CompiledRig, source: &RigSource, desir
 fn sync_seats(tx: &Transaction, rig: &CompiledRig) -> rusqlite::Result<()> {
     let existing: Vec<String> = {
         let mut st = tx.prepare("SELECT id FROM seats WHERE rig = ?1")?;
-        st.query_map([&rig.name], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?
+        st.query_map([&rig.name], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
     };
-    for id in existing.iter().filter(|id| !rig.seats.iter().any(|s| &s.id == *id)) {
+    let matching_existing = existing
+        .iter()
+        .filter(|id| !rig.seats.iter().any(|s| &s.id == *id));
+    for id in matching_existing {
         tx.execute("DELETE FROM seats WHERE id = ?1", [id])?;
     }
-    for (ord, s) in rig.seats.iter().enumerate() {
+    let indexed_seats = rig.seats.iter().enumerate();
+    for (ord, s) in indexed_seats {
         tx.execute(
             "INSERT INTO seats (id, rig, ord, pod, member, runtime, label, lifecycle, activity)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'planned', 'unknown')
              ON CONFLICT (id) DO UPDATE SET ord = excluded.ord, runtime = excluded.runtime, label = excluded.label",
-            params![s.id, rig.name, ord as i64, s.pod, s.member, enum_text(&s.runtime), s.label],
+            params![s.id, rig.name, ord as i64, s.pod, s.member, crate::store::rows::enum_text(&s.runtime), s.label],
         )?;
     }
     Ok(())
@@ -80,7 +91,12 @@ fn sync_seats(tx: &Transaction, rig: &CompiledRig) -> rusqlite::Result<()> {
 impl Store {
     /// Inserts new seats as planned/unknown, keeps existing seat state, drops seats
     /// no longer in the spec.
-    pub fn upsert_rig(&mut self, rig: &CompiledRig, source: &RigSource, desired: Desired) -> rusqlite::Result<()> {
+    pub fn upsert_rig(
+        &mut self,
+        rig: &CompiledRig,
+        source: &RigSource,
+        desired: Desired,
+    ) -> rusqlite::Result<()> {
         let tx = self.conn.transaction()?;
         upsert_rig_row(&tx, rig, source, desired)?;
         sync_seats(&tx, rig)?;
@@ -88,17 +104,34 @@ impl Store {
         tx.commit()
     }
 
-    pub fn register_child(&mut self, rig: &CompiledRig, source: &RigSource, parent: &str, key: &str, task: &str) -> rusqlite::Result<()> {
-        let child=rig.seats.last().expect("child was appended");
-        let tx=self.conn.transaction()?;
-        upsert_rig_row(&tx,rig,source,Desired::Running)?;
-        sync_seats(&tx,rig)?;
-        tx.execute("INSERT INTO agent_children VALUES (?1,?2,?3,?4,?5,?6)",params![child.id,parent,rig.name,key,task,model::now_ms()])?;
+    /// Registers the last seat in `rig` as a newly appended child.
+    ///
+    /// # Panics
+    /// Panics if `rig` has no seats.
+    pub fn register_child(
+        &mut self,
+        rig: &CompiledRig,
+        source: &RigSource,
+        parent: &str,
+        key: &str,
+        task: &str,
+    ) -> rusqlite::Result<()> {
+        let child = rig.seats.last().expect("child was appended");
+        let tx = self.conn.transaction()?;
+        upsert_rig_row(&tx, rig, source, Desired::Running)?;
+        sync_seats(&tx, rig)?;
+        tx.execute(
+            "INSERT INTO agent_children VALUES (?1,?2,?3,?4,?5,?6)",
+            params![child.id, parent, rig.name, key, task, model::now_ms()],
+        )?;
         tx.commit()
     }
 
     pub fn set_desired(&mut self, name: &str, desired: Desired) -> rusqlite::Result<()> {
-        self.conn.execute("UPDATE rigs SET desired = ?2 WHERE name = ?1", params![name, enum_text(&desired)])?;
+        self.conn.execute(
+            "UPDATE rigs SET desired = ?2 WHERE name = ?1",
+            params![name, crate::store::rows::enum_text(&desired)],
+        )?;
         Ok(())
     }
 
@@ -112,7 +145,10 @@ impl Store {
                     let reference: String = r.get(1)?;
                     let revision: Option<i64> = r.get(2)?;
                     Ok(match kind.as_str() {
-                        "team" => RigSource::Team { id: reference, revision: revision.unwrap_or(0) as u64 },
+                        "team" => RigSource::Team {
+                            id: reference,
+                            revision: revision.unwrap_or(0) as u64,
+                        },
                         _ => RigSource::File { path: reference },
                     })
                 },
@@ -121,22 +157,36 @@ impl Store {
     }
 
     pub(super) fn seats_where(&self, clause: &str, arg: &str) -> rusqlite::Result<Vec<SeatView>> {
-        let mut st = self.conn.prepare(&format!("SELECT {SEAT_COLS} FROM seats WHERE {clause}"))?;
-        st.query_map([arg], seat_from_row)?.collect()
+        let mut st = self
+            .conn
+            .prepare(&format!("SELECT {SEAT_COLS} FROM seats WHERE {clause}"))?;
+        st.query_map([arg], crate::store::rows::seat_from_row)?
+            .collect()
     }
 
     pub fn rig_snapshot(&self, name: &str) -> rusqlite::Result<Option<RigSnapshot>> {
         let row: Option<(String, String)> = self
             .conn
-            .query_row("SELECT compiled_json, desired FROM rigs WHERE name = ?1", [name], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+            .query_row(
+                "SELECT compiled_json, desired FROM rigs WHERE name = ?1",
+                [name],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .optional()?;
-        let Some((json, desired)) = row else { return Ok(None) };
-        let rig: CompiledRig = json_parse(&json)?;
+        let Some((json, desired)) = row else {
+            return Ok(None);
+        };
+        let rig: CompiledRig = crate::store::rows::json_parse(&json)?;
         let seats = self.seats_where("rig = ?1 ORDER BY ord", name)?;
-        let last_seq: i64 = self.conn.query_row("SELECT COALESCE(MAX(seq), 0) FROM events", [], |r| r.get(0))?;
-        Ok(Some(RigSnapshot { rig, desired: enum_parse(&desired)?, seats, last_seq }))
+        let last_seq: i64 =
+            self.conn
+                .query_row("SELECT COALESCE(MAX(seq), 0) FROM events", [], |r| r.get(0))?;
+        Ok(Some(RigSnapshot {
+            rig,
+            desired: crate::store::rows::enum_parse(&desired)?,
+            seats,
+            last_seq,
+        }))
     }
 
     pub fn list_rigs(&self) -> rusqlite::Result<Vec<RigSummary>> {
@@ -150,7 +200,7 @@ impl Store {
         st.query_map([], |r| {
             Ok(RigSummary {
                 name: r.get(0)?,
-                desired: enum_parse(&r.get::<_, String>(1)?)?,
+                desired: crate::store::rows::enum_parse(&r.get::<_, String>(1)?)?,
                 seat_count: r.get::<_, i64>(2)? as u32,
                 running_count: r.get::<_, i64>(3)? as u32,
                 attention_count: r.get::<_, i64>(4)? as u32,
@@ -162,16 +212,23 @@ impl Store {
     pub fn insert_draft(&mut self, d: &TeamDraft) -> rusqlite::Result<()> {
         self.conn.execute(
             "INSERT INTO drafts (id, json, revision, updated_at_ms) VALUES (?1, ?2, ?3, ?4)",
-            params![d.id, serde_json::to_string(d).expect("draft serializes"), d.revision as i64, now_ms()],
+            params![
+                d.id,
+                serde_json::to_string(d).expect("draft serializes"),
+                d.revision as i64,
+                model::now_ms()
+            ],
         )?;
         Ok(())
     }
 
     pub fn draft(&self, id: &str) -> rusqlite::Result<Option<TeamDraft>> {
         self.conn
-            .query_row("SELECT json FROM drafts WHERE id = ?1", [id], |r| r.get::<_, String>(0))
+            .query_row("SELECT json FROM drafts WHERE id = ?1", [id], |r| {
+                r.get::<_, String>(0)
+            })
             .optional()?
-            .map(|j| json_parse(&j))
+            .map(|j| crate::store::rows::json_parse(&j))
             .transpose()
     }
 
@@ -179,27 +236,41 @@ impl Store {
     pub fn drafts(&self) -> rusqlite::Result<Vec<(TeamDraft, i64)>> {
         let mut st = self.conn.prepare("SELECT json, updated_at_ms FROM drafts WHERE NOT EXISTS(SELECT 1 FROM archived_projects a WHERE a.id=drafts.id) ORDER BY updated_at_ms DESC, id")?;
         st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
-            .map(|row| row.and_then(|(j, at)| Ok((json_parse::<TeamDraft>(&j)?, at))))
+            .map(|row| {
+                row.and_then(|(j, at)| Ok((crate::store::rows::json_parse::<TeamDraft>(&j)?, at)))
+            })
             .collect()
     }
 
     /// Saves `d` if the stored revision is still `expected`; the saved draft gets `expected + 1`.
     pub fn save_draft(&mut self, d: &TeamDraft, expected: u64) -> rusqlite::Result<SaveDraft> {
         let tx = self.conn.transaction()?;
-        let current: Option<i64> =
-            tx.query_row("SELECT revision FROM drafts WHERE id = ?1", [&d.id], |r| r.get(0)).optional()?;
-        let Some(current) = current else { return Ok(SaveDraft::Missing) };
+        let current: Option<i64> = tx
+            .query_row("SELECT revision FROM drafts WHERE id = ?1", [&d.id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        let Some(current) = current else {
+            return Ok(SaveDraft::Missing);
+        };
         if current as u64 != expected {
-            return Ok(SaveDraft::Conflict { current: current as u64 });
+            return Ok(SaveDraft::Conflict {
+                current: current as u64,
+            });
         }
         let mut saved = d.clone();
         saved.revision = expected + 1;
         tx.execute(
             "UPDATE drafts SET json = ?2, revision = ?3, updated_at_ms = ?4 WHERE id = ?1",
-            params![saved.id, serde_json::to_string(&saved).expect("draft serializes"), saved.revision as i64, now_ms()],
+            params![
+                saved.id,
+                serde_json::to_string(&saved).expect("draft serializes"),
+                saved.revision as i64,
+                model::now_ms()
+            ],
         )?;
         tx.commit()?;
-        Ok(SaveDraft::Saved(saved))
+        Ok(SaveDraft::Saved(Box::new(saved)))
     }
 
     /// True when a draft or a rig already uses `id`.

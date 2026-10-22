@@ -49,10 +49,14 @@ const OPENAI_PRICES: &[(&str, f64, f64, f64)] = &[
 ];
 
 /// The list-price cost of a Codex turn (input not counting cached input), or None for a model not in the table.
+#[must_use]
 pub fn openai_cost(model: &str, input: u64, cached: u64, output: u64) -> Option<Cost> {
     let (_, i, c, o) = OPENAI_PRICES.iter().find(|(m, ..)| *m == model)?;
     let usd = (input as f64 * i + cached as f64 * c + output as f64 * o) / 1_000_000.0;
-    Some(Cost { usd, source: CostSource::OpenaiListPrices })
+    Some(Cost {
+        usd,
+        source: CostSource::OpenaiListPrices,
+    })
 }
 
 #[cfg(test)]
@@ -63,7 +67,14 @@ mod tests {
     fn a_codex_turn_is_priced_by_its_model_or_not_at_all() {
         let c = openai_cost("gpt-6-astra", 1_000_000, 1_000_000, 1_000_000).unwrap();
         assert!((c.usd - 61.0).abs() < 1e-9 && c.source == CostSource::OpenaiListPrices);
-        assert!((openai_cost("gpt-5-mini", 2_000_000, 0, 500_000).unwrap().usd - 1.5).abs() < 1e-9);
+        assert!(
+            (openai_cost("gpt-5-mini", 2_000_000, 0, 500_000)
+                .unwrap()
+                .usd
+                - 1.5)
+                .abs()
+                < 1e-9
+        );
         assert_eq!(openai_cost("some-future-model", 1, 1, 1), None);
     }
 }

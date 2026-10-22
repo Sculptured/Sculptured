@@ -1,9 +1,8 @@
 //! Seat tools on the supervisor side: the tokens that live while an agent's process runs, the
 //! config files that name them, and the relay of tool calls to controld.
 use super::Supervisor;
-use host_proto::seat_tools::shim_env;
-use host_proto::{FromHost, SeatToolsParams};
 use drivers::SeatToolsLaunch;
+use host_proto::{FromHost, SeatToolsParams};
 use model::EventBody;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -15,6 +14,11 @@ pub(super) struct Grant {
     seat: String,
     approve: bool,
     config_file: Option<PathBuf>,
+}
+
+pub(super) struct PendingToolCall {
+    frame: FromHost,
+    reply: oneshot::Sender<Result<Value, String>>,
 }
 
 /// Where the seat-tools shim reaches this hostd (Task 6 serves the socket).
@@ -32,30 +36,57 @@ pub const CALL_ENDED: &str = "This agent's process ended before Sculptured answe
 
 impl Supervisor {
     /// The seat a seat-tools token belongs to, while that seat's process runs.
+    #[must_use]
     pub fn seat_for_token(&self, token: &str) -> Option<String> {
-        self.inner.tokens.lock().unwrap().get(token).map(|g| g.seat.clone())
+        self.inner
+            .tokens
+            .lock()
+            .expect("tokens mutex must not be poisoned")
+            .get(token)
+            .map(|g| g.seat.clone())
     }
 
     /// The seat a live token belongs to and whether it was launched with the `approve` tool.
+    #[must_use]
     pub fn tool_grant(&self, token: &str) -> Option<(String, bool)> {
-        self.inner.tokens.lock().unwrap().get(token).map(|g| (g.seat.clone(), g.approve))
+        self.inner
+            .tokens
+            .lock()
+            .expect("tokens mutex must not be poisoned")
+            .get(token)
+            .map(|g| (g.seat.clone(), g.approve))
     }
 
     /// Records a seat-tool call hostd refused before it reached controld (`report-rejected` evidence).
     pub fn reject_tool_call(&self, seat: &str, tool: &str, reason: &str, raw: Value) {
-        let body = EventBody::ReportRejected { tool: tool.chars().take(200).collect(), reason: reason.to_string(), raw };
+        let body = EventBody::ReportRejected {
+            tool: tool.chars().take(200).collect(),
+            reason: reason.to_string(),
+            raw,
+        };
         self.emit_system(seat, body);
     }
 
     /// Forgets a token and deletes the config file that names it.
-    pub(super) fn forget_token(&self, token: &Option<String>) {
+    pub(super) fn forget_token(&self, token: Option<&str>) {
         let Some(t) = token else { return };
-        let removed = self.inner.tokens.lock().unwrap().remove(t);
+        let removed = self
+            .inner
+            .tokens
+            .lock()
+            .expect("tokens mutex must not be poisoned")
+            .remove(t);
         // The process is gone: its waiting calls end, and no later link sends them again.
         if let Some(g) = &removed {
-            self.inner.tool_pending.lock().unwrap().retain(|_, (call, _)| !matches!(call, FromHost::SeatTool { seat, .. } if *seat == g.seat));
+            self.inner.tool_pending.lock().expect("tool_pending mutex must not be poisoned").retain(
+                |_, pending| !matches!(&pending.frame, FromHost::SeatTool { seat, .. } if *seat == g.seat),
+            );
         }
-        if let Some(Grant { seat, config_file: Some(file), .. }) = removed
+        if let Some(Grant {
+            seat,
+            config_file: Some(file),
+            ..
+        }) = removed
             && let Err(e) = std::fs::remove_file(&file)
             && e.kind() != std::io::ErrorKind::NotFound
         {
@@ -69,38 +100,72 @@ impl Supervisor {
     pub async fn tool_call(&self, seat: &str, tool: &str, args: Value) -> Result<Value, String> {
         let call_id = uuid::Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
-        let frame = FromHost::SeatTool { call_id: call_id.clone(), seat: seat.to_string(), tool: tool.to_string(), args };
-        self.inner.tool_pending.lock().unwrap().insert(call_id, (frame.clone(), tx));
+        let frame = FromHost::SeatTool {
+            call_id: call_id.clone(),
+            seat: seat.to_string(),
+            tool: tool.to_string(),
+            args,
+        };
+        self.inner
+            .tool_pending
+            .lock()
+            .expect("tool_pending mutex must not be poisoned")
+            .insert(
+                call_id,
+                PendingToolCall {
+                    frame: frame.clone(),
+                    reply: tx,
+                },
+            );
         // No link is subscribed while offline; the next one sends it from `pending_tool_calls`.
         let _ = self.inner.tool_out.send(frame);
         rx.await.unwrap_or_else(|_| Err(CALL_ENDED.to_string()))
     }
 
+    #[must_use]
     pub fn subscribe_tool_calls(&self) -> broadcast::Receiver<FromHost> {
         self.inner.tool_out.subscribe()
     }
 
     /// Every call still waiting for controld's reply (in no particular order).
+    #[must_use]
     pub fn pending_tool_calls(&self) -> Vec<FromHost> {
-        self.inner.tool_pending.lock().unwrap().values().map(|(call, _)| call.clone()).collect()
+        self.inner
+            .tool_pending
+            .lock()
+            .expect("tool_pending mutex must not be poisoned")
+            .values()
+            .map(|pending| pending.frame.clone())
+            .collect()
     }
 
     /// Hands controld's reply to the waiting call; a call already answered (or unknown) ignores it.
     pub fn resolve_tool_call(&self, call_id: &str, reply: Result<Value, String>) {
-        let waiting = self.inner.tool_pending.lock().unwrap().remove(call_id);
-        if let Some((_, tx)) = waiting {
-            let _ = tx.send(reply);
+        let waiting = self
+            .inner
+            .tool_pending
+            .lock()
+            .expect("tool_pending mutex must not be poisoned")
+            .remove(call_id);
+        if let Some(pending) = waiting {
+            let _ = pending.reply.send(reply);
         }
     }
 
     /// True while the call still waits for its reply.
+    #[must_use]
     pub fn tool_call_pending(&self, call_id: &str) -> bool {
-        self.inner.tool_pending.lock().unwrap().contains_key(call_id)
+        self.inner
+            .tool_pending
+            .lock()
+            .expect("tool_pending mutex must not be poisoned")
+            .contains_key(call_id)
     }
 
     /// A new token for an agent launched with seat tools, when this hostd serves them.
     pub(super) fn new_token(&self, params: Option<&SeatToolsParams>) -> Option<String> {
-        (params.is_some() && self.inner.seat_tools.is_some()).then(|| uuid::Uuid::new_v4().simple().to_string())
+        (params.is_some() && self.inner.seat_tools.is_some())
+            .then(|| uuid::Uuid::new_v4().simple().to_string())
     }
 
     /// The seat-tools launch for token `t`, recorded as a live grant. A driver that passes the config
@@ -112,13 +177,28 @@ impl Supervisor {
         if let Some(host) = &self.inner.seat_tools {
             return Some(host.shim.clone());
         }
-        std::env::current_exe().ok().filter(|p| p.file_stem().is_some_and(|n| n == "sculptured"))
+        std::env::current_exe()
+            .ok()
+            .filter(|p| p.file_stem().is_some_and(|n| n == "sculptured"))
     }
 
-    pub(super) fn grant_tools(&self, seat: &str, as_file: bool, p: &SeatToolsParams, t: &str) -> Result<Option<SeatToolsLaunch>, String> {
-        let Some(host) = &self.inner.seat_tools else { return Ok(None) };
+    pub(super) fn grant_tools(
+        &self,
+        seat: &str,
+        as_file: bool,
+        p: &SeatToolsParams,
+        t: &str,
+    ) -> Result<Option<SeatToolsLaunch>, String> {
+        let Some(host) = &self.inner.seat_tools else {
+            return Ok(None);
+        };
         let config_file = if as_file {
-            let f = private_dir(host).map(|d| d.join(format!("{seat}.{}.json", &uuid::Uuid::new_v4().simple().to_string()[..8])));
+            let f = private_dir(host).map(|d| {
+                d.join(format!(
+                    "{seat}.{}.json",
+                    &uuid::Uuid::new_v4().simple().to_string()[..8]
+                ))
+            });
             Some(f.map_err(|e| format!("cannot prepare the agent's tools: {e}"))?)
         } else {
             None
@@ -127,22 +207,39 @@ impl Supervisor {
             program: host.shim.clone(),
             args: vec!["seat-tools".into()],
             env: {
-                let mut env = shim_env(&host.socket, t, p.approve);
+                let mut env = host_proto::seat_tools::shim_env(&host.socket, t, p.approve);
                 if !p.workflow {
-                    env.push((host_proto::seat_tools::WORKFLOW_ENV.to_string(), "0".to_string()));
+                    env.push((
+                        host_proto::seat_tools::WORKFLOW_ENV.to_string(),
+                        "0".to_string(),
+                    ));
                 }
                 env
             },
             approve: p.approve,
             config_file: config_file.clone(),
         };
-        self.inner.tokens.lock().unwrap().insert(t.to_string(), Grant { seat: seat.to_string(), approve: p.approve, config_file });
+        self.inner
+            .tokens
+            .lock()
+            .expect("tokens mutex must not be poisoned")
+            .insert(
+                t.to_string(),
+                Grant {
+                    seat: seat.to_string(),
+                    approve: p.approve,
+                    config_file,
+                },
+            );
         Ok(Some(launch))
     }
 }
 
 fn tools_dir(host: &SeatToolsHost) -> PathBuf {
-    host.socket.parent().unwrap_or_else(|| Path::new(".")).join("seat-tools")
+    host.socket
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("seat-tools")
 }
 
 /// `seat-tools/` next to the socket, created owner-only (0700): the agents' config files name tokens.
@@ -157,8 +254,14 @@ fn private_dir(host: &SeatToolsHost) -> std::io::Result<PathBuf> {
 /// that no longer exist. Called when a supervisor with seat tools starts, before any agent launches.
 pub(super) fn sweep_config_files(host: &SeatToolsHost) {
     let dir = tools_dir(host);
-    let Ok(entries) = std::fs::read_dir(&dir) else { return };
-    for path in entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")) {
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    let matching_entries = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"));
+    for path in matching_entries {
         if let Err(e) = std::fs::remove_file(&path) {
             tracing::warn!(file = %path.display(), error = %e, "cannot delete a leftover seat-tools config file");
         }

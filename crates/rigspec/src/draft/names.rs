@@ -4,10 +4,12 @@ use model::{AgentKind, ConnectionKind, DraftAgent, ResumeBehaviour, TeamDraft};
 const MAX_SLUG: usize = 48;
 
 /// Lowercase ASCII letters and digits, other runs become one `-`. May be empty.
+#[must_use]
 pub fn slug(name: &str) -> String {
     let mut out = String::new();
     let mut dash = false;
-    for c in name.trim().chars() {
+    let matching_name = name.trim().chars();
+    for c in matching_name {
         if c.is_ascii_alphanumeric() {
             out.push(c.to_ascii_lowercase());
             dash = false;
@@ -24,6 +26,9 @@ pub fn slug(name: &str) -> String {
 }
 
 /// `slug(name)` (or `fallback`), suffixed `-2`, `-3`, … until `taken` says it is free.
+///
+/// # Panics
+/// Panics if `taken` rejects the base and every suffix representable by `u32`.
 pub fn unique_slug(name: &str, fallback: &str, taken: impl Fn(&str) -> bool) -> String {
     let base = match slug(name) {
         s if s.is_empty() => fallback.to_string(),
@@ -32,9 +37,13 @@ pub fn unique_slug(name: &str, fallback: &str, taken: impl Fn(&str) -> bool) -> 
     if !taken(&base) {
         return base;
     }
-    (2u32..).map(|n| format!("{base}-{n}")).find(|c| !taken(c)).expect("an unbounded range always finds a free id")
+    (2u32..)
+        .map(|n| format!("{base}-{n}"))
+        .find(|c| !taken(c))
+        .expect("an unbounded range always finds a free id")
 }
 
+#[must_use]
 pub fn verb(kind: ConnectionKind) -> &'static str {
     match kind {
         ConnectionKind::HandsWorkTo => "hands work to",
@@ -68,6 +77,7 @@ pub(super) fn restore_of(r: ResumeBehaviour) -> &'static str {
 }
 
 /// An agent's name for sentences: its trimmed name, else "This agent". `teams::folder_issues` uses it too.
+#[must_use]
 pub fn display_name(a: &DraftAgent) -> String {
     match a.name.trim() {
         "" => "This agent".to_string(),
@@ -76,5 +86,7 @@ pub fn display_name(a: &DraftAgent) -> String {
 }
 
 pub(super) fn name_of(d: &TeamDraft, id: &str) -> String {
-    d.agent(id).map(display_name).unwrap_or_else(|| "An agent".to_string())
+    d.agent(id)
+        .map(display_name)
+        .unwrap_or_else(|| "An agent".to_string())
 }

@@ -6,7 +6,10 @@ use model::{ContinueMode, PlanBudget, PlanPause, RunBudget, SoftHard, TokenCount
 
 fn out<T: Clone>(soft: Option<T>, hard: T) -> m::Limit<T> {
     match soft {
-        Some(s) => m::Limit::SoftHard(m::SoftHard { soft: Some(s), hard }),
+        Some(s) => m::Limit::SoftHard(m::SoftHard {
+            soft: Some(s),
+            hard,
+        }),
         None => m::Limit::Hard(hard),
     }
 }
@@ -21,12 +24,18 @@ fn minutes(text: &str) -> Option<u32> {
 }
 
 fn minutes_in(l: &m::Limit<String>) -> Option<SoftHard<u32>> {
-    Some(SoftHard { soft: l.soft().and_then(|s| minutes(s)), hard: minutes(l.hard())? })
+    Some(SoftHard {
+        soft: l.soft().and_then(|s| minutes(s)),
+        hard: minutes(l.hard())?,
+    })
 }
 
 fn whole_in(l: &m::Limit<u64>) -> SoftHard<u32> {
     let n = |v: u64| v.min(u64::from(u32::MAX)) as u32;
-    SoftHard { soft: l.soft().map(|s| n(*s)), hard: n(*l.hard()) }
+    SoftHard {
+        soft: l.soft().map(|s| n(*s)),
+        hard: n(*l.hard()),
+    }
 }
 
 fn pause_out(p: PlanPause) -> m::PlanPause {
@@ -34,7 +43,10 @@ fn pause_out(p: PlanPause) -> m::PlanPause {
         ContinueMode::Notes => m::ContinueWith::Notes,
         ContinueMode::Resume => m::ContinueWith::Resume,
     };
-    m::PlanPause { continue_with: Some(with), max_windows: Some(p.max_windows) }
+    m::PlanPause {
+        continue_with: Some(with),
+        max_windows: Some(p.max_windows),
+    }
 }
 
 fn pause_in(p: m::PlanPause) -> PlanPause {
@@ -42,7 +54,10 @@ fn pause_in(p: m::PlanPause) -> PlanPause {
         Some(m::ContinueWith::Resume) => ContinueMode::Resume,
         Some(m::ContinueWith::Notes) | None => ContinueMode::Notes,
     };
-    PlanPause { continue_with, max_windows: p.max_windows.unwrap_or(3) }
+    PlanPause {
+        continue_with,
+        max_windows: p.max_windows.unwrap_or(3),
+    }
 }
 
 pub fn run_out(b: &RunBudget, max_agents: Option<u32>) -> Option<m::RunBudget> {
@@ -50,7 +65,17 @@ pub fn run_out(b: &RunBudget, max_agents: Option<u32>) -> Option<m::RunBudget> {
         return None;
     }
     Some(m::RunBudget {
-        plan: b.plan.iter().map(|p| m::PlanShare { provider: p.provider.clone(), window: p.window.clone(), soft: p.soft, hard: p.hard, pause: p.pause.map(pause_out) }).collect(),
+        plan: b
+            .plan
+            .iter()
+            .map(|p| m::PlanShare {
+                provider: p.provider.clone(),
+                window: p.window.clone(),
+                soft: p.soft,
+                hard: p.hard,
+                pause: p.pause.map(pause_out),
+            })
+            .collect(),
         tokens: b.tokens.map(|t| out(t.soft, t.hard)),
         cost_usd: None,
         wall_clock: b.minutes.map(minutes_out),
@@ -61,14 +86,29 @@ pub fn run_out(b: &RunBudget, max_agents: Option<u32>) -> Option<m::RunBudget> {
 
 /// The run budget, and the parts Sculptured cannot keep (path, why).
 pub fn run_in(b: Option<&m::RunBudget>) -> (RunBudget, Vec<(String, String)>) {
-    let Some(b) = b else { return (RunBudget::default(), vec![]) };
+    let Some(b) = b else {
+        return (RunBudget::default(), vec![]);
+    };
     let mut dropped = vec![];
     if b.cost_usd.is_some() {
         dropped.push(("/system/budget/cost_usd".into(), "Sculptured budgets plan shares, tokens and time, not money; the cost limit was not kept".into()));
     }
     let budget = RunBudget {
-        plan: b.plan.iter().map(|p| PlanBudget { provider: p.provider.clone(), window: p.window.clone(), soft: p.soft, hard: p.hard, pause: p.pause.map(pause_in) }).collect(),
-        tokens: b.tokens.as_ref().map(|t| SoftHard { soft: t.soft().copied(), hard: *t.hard() }),
+        plan: b
+            .plan
+            .iter()
+            .map(|p| PlanBudget {
+                provider: p.provider.clone(),
+                window: p.window.clone(),
+                soft: p.soft,
+                hard: p.hard,
+                pause: p.pause.map(pause_in),
+            })
+            .collect(),
+        tokens: b.tokens.as_ref().map(|t| SoftHard {
+            soft: t.soft().copied(),
+            hard: *t.hard(),
+        }),
         minutes: b.wall_clock.as_ref().and_then(minutes_in),
         max_working: b.max_working,
     };
@@ -80,15 +120,26 @@ pub fn agent_out(adv: &model::AgentAdvanced) -> Option<m::Budget> {
     if t.is_none() && adv.turn_limit.is_none() && adv.minute_limit.is_none() {
         return None;
     }
-    let scope = t.map(|t| if t.include_subagents { m::BudgetScope::Shared } else { m::BudgetScope::Own });
-    let counts = t.map(|t| t.counts).filter(|c| *c != TokenCount::All).map(|c| match c {
-        TokenCount::All => m::TokenCount::All,
-        TokenCount::New => m::TokenCount::New,
-        TokenCount::Output => m::TokenCount::Output,
+    let scope = t.map(|t| {
+        if t.include_subagents {
+            m::BudgetScope::Shared
+        } else {
+            m::BudgetScope::Own
+        }
     });
+    let counts = t
+        .map(|t| t.counts)
+        .filter(|c| *c != TokenCount::All)
+        .map(|c| match c {
+            TokenCount::All => m::TokenCount::All,
+            TokenCount::New => m::TokenCount::New,
+            TokenCount::Output => m::TokenCount::Output,
+        });
     Some(m::Budget {
         tokens: t.map(|t| out(t.soft, t.tokens)),
-        turns: adv.turn_limit.map(|v| out(v.soft.map(u64::from), u64::from(v.hard))),
+        turns: adv
+            .turn_limit
+            .map(|v| out(v.soft.map(u64::from), u64::from(v.hard))),
         working_time: adv.minute_limit.map(minutes_out),
         scope,
         counts,
@@ -97,14 +148,31 @@ pub fn agent_out(adv: &model::AgentAdvanced) -> Option<m::Budget> {
 }
 
 /// An agent's (token, turn, minute) limits from its effective budget.
-pub fn agent_in(b: Option<&m::Budget>) -> (Option<TokenLimit>, Option<SoftHard<u32>>, Option<SoftHard<u32>>) {
-    let Some(b) = b else { return (None, None, None) };
+pub fn agent_in(
+    b: Option<&m::Budget>,
+) -> (
+    Option<TokenLimit>,
+    Option<SoftHard<u32>>,
+    Option<SoftHard<u32>>,
+) {
+    let Some(b) = b else {
+        return (None, None, None);
+    };
     let include_subagents = b.scope != Some(m::BudgetScope::Own);
     let counts = match b.counts {
         Some(m::TokenCount::New) => TokenCount::New,
         Some(m::TokenCount::Output) => TokenCount::Output,
         Some(m::TokenCount::All) | None => TokenCount::All,
     };
-    let tokens = b.tokens.as_ref().map(|t| TokenLimit { soft: t.soft().copied(), tokens: *t.hard(), counts, include_subagents });
-    (tokens, b.turns.as_ref().map(whole_in), b.working_time.as_ref().and_then(minutes_in))
+    let tokens = b.tokens.as_ref().map(|t| TokenLimit {
+        soft: t.soft().copied(),
+        tokens: *t.hard(),
+        counts,
+        include_subagents,
+    });
+    (
+        tokens,
+        b.turns.as_ref().map(whole_in),
+        b.working_time.as_ref().and_then(minutes_in),
+    )
 }

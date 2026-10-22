@@ -1,26 +1,41 @@
 //! `/api/community-link` (C5): whether Community is on, as whom, and turning it on or off.
 use super::{CommunityLinkView, creds};
+use crate::ApiError;
 use crate::extract::Json;
 use crate::state::AppState;
-use crate::ApiError;
 use axum::Router;
 use axum::extract::State;
-use axum::routing::{get, post};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/community-link", get(get_link).delete(turn_off))
-        .route("/api/community-link/key-left", axum::routing::delete(dismiss_key_left))
-        .route("/api/community-link/enable", post(enable))
+        .route(
+            "/api/community-link",
+            axum::routing::get(get_link).delete(turn_off),
+        )
+        .route(
+            "/api/community-link/key-left",
+            axum::routing::delete(dismiss_key_left),
+        )
+        .route("/api/community-link/enable", axum::routing::post(enable))
 }
 
 async fn get_link(State(st): State<AppState>) -> Result<Json<CommunityLinkView>, ApiError> {
-    let Some(link) = st.community.clone() else { return Ok(Json(CommunityLinkView::off())) };
-    let s = st.store.lock().unwrap().settings()?;
+    let Some(link) = st.community.clone() else {
+        return Ok(Json(CommunityLinkView::off()));
+    };
+    let s = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .settings()?;
     if s.sculptured_origin.is_none() {
-        return Ok(Json(CommunityLinkView { suggested_origin: s.suggested_origin, key_left_on: link.key_left_on(), ..CommunityLinkView::off() }));
+        return Ok(Json(CommunityLinkView {
+            suggested_origin: s.suggested_origin,
+            key_left_on: link.key_left_on(),
+            ..CommunityLinkView::off()
+        }));
     }
     Ok(Json(link.view(s.sculptured_origin).await))
 }
@@ -32,9 +47,15 @@ struct Enable {
 
 /// Turns Community on for `origin` (default: the Sculptured server this install was built for).
 /// A key for another server is forgotten. Nothing is sent.
-async fn enable(State(st): State<AppState>, Json(req): Json<Enable>) -> Result<Json<CommunityLinkView>, ApiError> {
-    let Some(link) = st.community.clone() else { return Err(ApiError::not_found("Community is not available here")) };
-    let origin = crate::settings::valid_origin(req.origin.as_deref().unwrap_or(link.default_origin()))?;
+async fn enable(
+    State(st): State<AppState>,
+    Json(req): Json<Enable>,
+) -> Result<Json<CommunityLinkView>, ApiError> {
+    let Some(link) = st.community.clone() else {
+        return Err(ApiError::not_found("Community is not available here"));
+    };
+    let origin =
+        crate::settings::valid_origin(req.origin.as_deref().unwrap_or(link.default_origin()))?;
     if let Some(old) = creds::load(link.data_dir()).filter(|c| c.origin != origin) {
         link.cancel_pairing();
         link.revoke(&old).await;
@@ -68,7 +89,7 @@ async fn dismiss_key_left(State(st): State<AppState>) -> Result<Json<CommunityLi
 }
 
 fn set_origin(st: &AppState, origin: Option<String>) -> Result<(), ApiError> {
-    let mut store = st.store.lock().unwrap();
+    let mut store = st.store.lock().expect("store mutex must not be poisoned");
     let mut s = store.settings()?;
     if origin.is_some() {
         s.suggested_origin = None;

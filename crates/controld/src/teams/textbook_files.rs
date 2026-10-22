@@ -1,29 +1,107 @@
 //! Bundled local starter; no downloads or process execution.
 pub const FILES: &[(&str, &str)] = &[
-    ("src/engine/EnginePreview.tsx", include_str!("../../../../examples/textbook-kit/src/engine/EnginePreview.tsx")),
-    ("src/engine/README.md", include_str!("../../../../examples/textbook-kit/src/engine/README.md")),
-    ("src/engine/geometry.ts", include_str!("../../../../examples/textbook-kit/src/engine/geometry.ts")),
-    ("src/engine/geometry.test.ts", include_str!("../../../../examples/textbook-kit/src/engine/geometry.test.ts")),
-    ("src/engine/WebGPUEngine.ts", include_str!("../../../../examples/textbook-kit/src/engine/WebGPUEngine.ts")),
-    (".gitignore", include_str!("../../../../examples/textbook-kit/.gitignore")),
-    (".gitignore", include_str!("../../../../examples/textbook-kit/.gitignore")),
-    ("AGENTS.md", include_str!("../../../../examples/textbook-kit/AGENTS.md")),
-    ("FRAMEWORK.md", include_str!("../../../../examples/textbook-kit/FRAMEWORK.md")),
-    ("curriculum/interface-contract.md", include_str!("../../../../examples/textbook-kit/curriculum/interface-contract.md")),
-    ("curriculum/manifest.json", include_str!("../../../../examples/textbook-kit/curriculum/manifest.json")),
-    ("curriculum/source-map.json", include_str!("../../../../examples/textbook-kit/curriculum/source-map.json")),
-    ("index.html", include_str!("../../../../examples/textbook-kit/index.html")),
-    ("package-lock.json", include_str!("../../../../examples/textbook-kit/package-lock.json")),
-    ("package.json", include_str!("../../../../examples/textbook-kit/package.json")),
-    ("src/contract.test.ts", include_str!("../../../../examples/textbook-kit/src/contract.test.ts")),
-    ("src/contract.ts", include_str!("../../../../examples/textbook-kit/src/contract.ts")),
-    ("src/env.d.ts", include_str!("../../../../examples/textbook-kit/src/env.d.ts")),
-    ("src/interactions/Controls.tsx", include_str!("../../../../examples/textbook-kit/src/interactions/Controls.tsx")),
-    ("src/interactions/ToolkitPreview.tsx", include_str!("../../../../examples/textbook-kit/src/interactions/ToolkitPreview.tsx")),
-    ("src/main.tsx", include_str!("../../../../examples/textbook-kit/src/main.tsx")),
-    ("src/math/sampling.test.ts", include_str!("../../../../examples/textbook-kit/src/math/sampling.test.ts")),
-    ("src/math/sampling.ts", include_str!("../../../../examples/textbook-kit/src/math/sampling.ts")),
-    ("src/registry.ts", include_str!("../../../../examples/textbook-kit/src/registry.ts")),
-    ("src/style.css", include_str!("../../../../examples/textbook-kit/src/style.css")),
-    ("tsconfig.json", include_str!("../../../../examples/textbook-kit/tsconfig.json")),
+    (
+        "src/engine/EnginePreview.tsx",
+        include_str!("../../../../examples/textbook-kit/src/engine/EnginePreview.tsx"),
+    ),
+    (
+        "src/engine/README.md",
+        include_str!("../../../../examples/textbook-kit/src/engine/README.md"),
+    ),
+    (
+        "src/engine/geometry.ts",
+        include_str!("../../../../examples/textbook-kit/src/engine/geometry.ts"),
+    ),
+    (
+        "src/engine/geometry.test.ts",
+        include_str!("../../../../examples/textbook-kit/src/engine/geometry.test.ts"),
+    ),
+    (
+        "src/engine/WebGPUEngine.ts",
+        include_str!("../../../../examples/textbook-kit/src/engine/WebGPUEngine.ts"),
+    ),
+    (
+        ".gitignore",
+        include_str!("../../../../examples/textbook-kit/.gitignore"),
+    ),
+    (
+        ".gitignore",
+        include_str!("../../../../examples/textbook-kit/.gitignore"),
+    ),
+    (
+        "AGENTS.md",
+        include_str!("../../../../examples/textbook-kit/AGENTS.md"),
+    ),
+    (
+        "FRAMEWORK.md",
+        include_str!("../../../../examples/textbook-kit/FRAMEWORK.md"),
+    ),
+    (
+        "curriculum/interface-contract.md",
+        include_str!("../../../../examples/textbook-kit/curriculum/interface-contract.md"),
+    ),
+    (
+        "curriculum/manifest.json",
+        include_str!("../../../../examples/textbook-kit/curriculum/manifest.json"),
+    ),
+    (
+        "curriculum/source-map.json",
+        include_str!("../../../../examples/textbook-kit/curriculum/source-map.json"),
+    ),
+    (
+        "index.html",
+        include_str!("../../../../examples/textbook-kit/index.html"),
+    ),
+    (
+        "package-lock.json",
+        include_str!("../../../../examples/textbook-kit/package-lock.json"),
+    ),
+    (
+        "package.json",
+        include_str!("../../../../examples/textbook-kit/package.json"),
+    ),
+    (
+        "src/contract.test.ts",
+        include_str!("../../../../examples/textbook-kit/src/contract.test.ts"),
+    ),
+    (
+        "src/contract.ts",
+        include_str!("../../../../examples/textbook-kit/src/contract.ts"),
+    ),
+    (
+        "src/env.d.ts",
+        include_str!("../../../../examples/textbook-kit/src/env.d.ts"),
+    ),
+    (
+        "src/interactions/Controls.tsx",
+        include_str!("../../../../examples/textbook-kit/src/interactions/Controls.tsx"),
+    ),
+    (
+        "src/interactions/ToolkitPreview.tsx",
+        include_str!("../../../../examples/textbook-kit/src/interactions/ToolkitPreview.tsx"),
+    ),
+    (
+        "src/main.tsx",
+        include_str!("../../../../examples/textbook-kit/src/main.tsx"),
+    ),
+    (
+        "src/math/sampling.test.ts",
+        include_str!("../../../../examples/textbook-kit/src/math/sampling.test.ts"),
+    ),
+    (
+        "src/math/sampling.ts",
+        include_str!("../../../../examples/textbook-kit/src/math/sampling.ts"),
+    ),
+    (
+        "src/registry.ts",
+        include_str!("../../../../examples/textbook-kit/src/registry.ts"),
+    ),
+    (
+        "src/style.css",
+        include_str!("../../../../examples/textbook-kit/src/style.css"),
+    ),
+    (
+        "tsconfig.json",
+        include_str!("../../../../examples/textbook-kit/tsconfig.json"),
+    ),
 ];

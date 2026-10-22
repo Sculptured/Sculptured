@@ -5,9 +5,17 @@ use ts_rs::TS;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
-pub enum Runtime { ClaudeCode, Codex, Pi, Omp, Terminal, Stub }
+pub enum Runtime {
+    ClaudeCode,
+    Codex,
+    Pi,
+    Omp,
+    Terminal,
+    Stub,
+}
 
 impl Runtime {
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
             "claude-code" => Self::ClaudeCode,
@@ -19,6 +27,7 @@ impl Runtime {
             _ => return None,
         })
     }
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude-code",
@@ -34,9 +43,16 @@ impl Runtime {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
-pub enum EdgeKind { DelegatesTo, SpawnedBy, CanObserve, CollaboratesWith, EscalatesTo }
+pub enum EdgeKind {
+    DelegatesTo,
+    SpawnedBy,
+    CanObserve,
+    CollaboratesWith,
+    EscalatesTo,
+}
 
 impl EdgeKind {
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
             "delegates_to" => Self::DelegatesTo,
@@ -48,6 +64,7 @@ impl EdgeKind {
         })
     }
     /// Only these two have runtime effect in M1: they order launches.
+    #[must_use]
     pub fn orders_launch(self) -> bool {
         matches!(self, Self::DelegatesTo | Self::SpawnedBy)
     }
@@ -56,9 +73,14 @@ impl EdgeKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
-pub enum RestorePolicy { ResumeIfPossible, RelaunchFresh, CheckpointOnly }
+pub enum RestorePolicy {
+    ResumeIfPossible,
+    RelaunchFresh,
+    CheckpointOnly,
+}
 
 impl RestorePolicy {
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
             "resume_if_possible" => Self::ResumeIfPossible,
@@ -71,7 +93,10 @@ impl RestorePolicy {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct CompiledPod { pub id: String, pub label: String }
+pub struct CompiledPod {
+    pub id: String,
+    pub label: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]

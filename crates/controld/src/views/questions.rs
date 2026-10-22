@@ -1,8 +1,11 @@
 //! Questions, decisions and Needs you.
 use super::SeatView;
+use model::{
+    Answer, DecisionSource, LimitKind, Provenance, QuestionPrompt, QuestionSource, QuestionState,
+    RiskFlag,
+};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use model::{Answer, DecisionSource, LimitKind, Provenance, QuestionPrompt, QuestionSource, QuestionState, RiskFlag};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -148,4 +151,3 @@ pub struct WaitingDecision {
     /// The last three steps, oldest first.
     pub recent: Vec<model::WorkflowStep>,
 }
-

@@ -4,39 +4,73 @@
 use axum::http::Method;
 
 const ALLOWED: &[(&str, &str)] = &[
-    ("GET", "me"), ("PATCH", "me"), ("PUT", "me/avatar"), ("DELETE", "me/avatar"),
-    ("GET", "people"), ("GET", "users/*"), ("GET", "users/*/avatar"), ("POST", "users/*/report"), ("POST", "users/*/moderate"),
-    ("GET", "blocks"), ("POST", "blocks"), ("GET", "blocks/*"), ("DELETE", "blocks/*"),
-    ("POST", "blocks/*/save"), ("DELETE", "blocks/*/save"), ("POST", "blocks/*/report"), ("POST", "blocks/*/moderate"),
-    ("GET", "saved"), ("GET", "mine"), ("GET", "reports"),
+    ("GET", "me"),
+    ("PATCH", "me"),
+    ("PUT", "me/avatar"),
+    ("DELETE", "me/avatar"),
+    ("GET", "people"),
+    ("GET", "users/*"),
+    ("GET", "users/*/avatar"),
+    ("POST", "users/*/report"),
+    ("POST", "users/*/moderate"),
+    ("GET", "blocks"),
+    ("POST", "blocks"),
+    ("GET", "blocks/*"),
+    ("DELETE", "blocks/*"),
+    ("POST", "blocks/*/save"),
+    ("DELETE", "blocks/*/save"),
+    ("POST", "blocks/*/report"),
+    ("POST", "blocks/*/moderate"),
+    ("GET", "saved"),
+    ("GET", "mine"),
+    ("GET", "reports"),
 ];
 
 fn segment(s: &str) -> bool {
-    (1..=100).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    (1..=100).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// `path` is what follows `/api/community/`, still percent-encoded and without the query, so an
 /// encoded slash, a dot segment or an empty segment never matches.
+#[must_use]
 pub fn allowed(method: &Method, path: &str) -> bool {
     let parts: Vec<&str> = path.split('/').collect();
     parts.iter().all(|p| segment(p))
         && ALLOWED.iter().any(|(m, pattern)| {
             let want: Vec<&str> = pattern.split('/').collect();
-            *m == method.as_str() && want.len() == parts.len() && want.iter().zip(&parts).all(|(w, p)| *w == "*" || w == p)
+            *m == method.as_str()
+                && want.len() == parts.len()
+                && want.iter().zip(&parts).all(|(w, p)| *w == "*" || w == p)
         })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::allowed;
+
     use axum::http::Method;
 
     #[test]
     fn segments_match_exactly() {
-        assert!(allowed(&Method::GET, "users/ana-lee/avatar") && allowed(&Method::DELETE, "blocks/b_1/save"));
-        for p in ["users/a%2Fb", "users/..", "users/", "", "blocks/a/b/c", "users/a.b", &"x".repeat(101)] {
-            assert!(!allowed(&Method::GET, p), "{p}");
+        assert!(
+            crate::community::allow::allowed(&Method::GET, "users/ana-lee/avatar")
+                && crate::community::allow::allowed(&Method::DELETE, "blocks/b_1/save")
+        );
+        for p in [
+            "users/a%2Fb",
+            "users/..",
+            "users/",
+            "",
+            "blocks/a/b/c",
+            "users/a.b",
+            &"x".repeat(101),
+        ] {
+            assert!(!crate::community::allow::allowed(&Method::GET, p), "{p}");
         }
-        assert!(!allowed(&Method::HEAD, "me") && !allowed(&Method::POST, "me"));
+        assert!(
+            !crate::community::allow::allowed(&Method::HEAD, "me")
+                && !crate::community::allow::allowed(&Method::POST, "me")
+        );
     }
 }

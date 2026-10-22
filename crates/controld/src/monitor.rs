@@ -1,6 +1,7 @@
 //! One bounded machine sampler shared by all browser clients. No process arguments or secrets.
-use crate::{extract::Json, state::AppState};
-use axum::{Router, routing::get};
+use crate::extract::Json;
+use crate::state::AppState;
+use axum::Router;
 use serde::Serialize;
 use std::sync::{Mutex, OnceLock};
 use ts_rs::TS;
@@ -19,7 +20,7 @@ pub struct MachineSample {
 }
 static SAMPLES: OnceLock<Mutex<Vec<MachineSample>>> = OnceLock::new();
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/system/metrics", get(metrics))
+    Router::new().route("/api/system/metrics", axum::routing::get(metrics))
 }
 async fn metrics() -> Json<Vec<MachineSample>> {
     let samples = SAMPLES.get_or_init(|| {
@@ -57,13 +58,13 @@ async fn metrics() -> Json<Vec<MachineSample>> {
                     memory_total: system.total_memory() as f64,
                     disk_available,
                     disk_total,
-                    received_bytes: networks.iter().map(|(_, n)| n.received() as f64).sum(),
-                    transmitted_bytes: networks.iter().map(|(_, n)| n.transmitted() as f64).sum(),
+                    received_bytes: networks.values().map(|n| n.received() as f64).sum(),
+                    transmitted_bytes: networks.values().map(|n| n.transmitted() as f64).sum(),
                     interval_ms: interval,
                 };
                 first = false;
                 if let Some(s) = SAMPLES.get() {
-                    let mut s = s.lock().unwrap();
+                    let mut s = s.lock().expect("s mutex must not be poisoned");
                     s.push(sample);
                     if s.len() > 120 {
                         s.remove(0);
@@ -74,7 +75,12 @@ async fn metrics() -> Json<Vec<MachineSample>> {
         });
         Mutex::new(vec![])
     });
-    Json(samples.lock().unwrap().clone())
+    Json(
+        samples
+            .lock()
+            .expect("samples mutex must not be poisoned")
+            .clone(),
+    )
 }
 
 // Bind mounts repeat a device; counting each mount invents storage capacity.

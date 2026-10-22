@@ -55,18 +55,30 @@ impl Store {
 
     /// Team names by id, from the saved designs.
     pub fn team_names(&self) -> rusqlite::Result<Vec<(String, String)>> {
-        let mut stmt = self.conn.prepare("SELECT id, COALESCE(json_extract(json, '$.name'), id) FROM drafts")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, COALESCE(json_extract(json, '$.name'), id) FROM drafts")?;
         let rows = stmt.query_map(params![], |r| Ok((r.get(0)?, r.get(1)?)))?;
         rows.collect()
     }
 
     pub fn activity_counts(&self) -> rusqlite::Result<ActivityCounts> {
-        let count = |sql: &str| self.conn.query_row(sql, params![], |r| r.get::<_, i64>(0)).map(|n| n.max(0) as u64);
+        let count = |sql: &str| {
+            self.conn
+                .query_row(sql, params![], |r| r.get::<_, i64>(0))
+                .map(|n| n.max(0) as u64)
+        };
         Ok(ActivityCounts {
             teams: count("SELECT COUNT(*) FROM drafts")?,
-            turns_completed: count("SELECT COUNT(*) FROM events WHERE json_extract(json, '$.body.type') = 'turn-ended' AND json_extract(json, '$.body.status') = 'completed'")?,
-            agent_sessions: count("SELECT COUNT(*) FROM events WHERE json_extract(json, '$.body.type') = 'tenure-started'")?,
-            messages_you_sent: count("SELECT COUNT(*) FROM events WHERE json_extract(json, '$.body.type') = 'message-queued' AND json_extract(json, '$.actor.kind') = 'human'")?,
+            turns_completed: count(
+                "SELECT COUNT(*) FROM events WHERE json_extract(json, '$.body.type') = 'turn-ended' AND json_extract(json, '$.body.status') = 'completed'",
+            )?,
+            agent_sessions: count(
+                "SELECT COUNT(*) FROM events WHERE json_extract(json, '$.body.type') = 'tenure-started'",
+            )?,
+            messages_you_sent: count(
+                "SELECT COUNT(*) FROM events WHERE json_extract(json, '$.body.type') = 'message-queued' AND json_extract(json, '$.actor.kind') = 'human'",
+            )?,
         })
     }
 }

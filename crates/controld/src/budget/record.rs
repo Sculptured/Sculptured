@@ -1,7 +1,7 @@
 //! One run's budget, as recorded at Start, and what has been measured against it since.
 use crate::store::Store;
 use model::RunBudget;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 /// A plan reading during the run: the window's percent and the run's tokens on that plan when it came.
@@ -37,12 +37,28 @@ pub enum BudgetState {
     #[default]
     Normal,
     /// The soft value was reached: no new work, every agent wraps up.
-    WrapUp { reason: String, #[ts(type = "number")] at_ms: i64 },
+    WrapUp {
+        reason: String,
+        #[ts(type = "number")]
+        at_ms: i64,
+    },
     /// The hard value was reached: every agent was stopped at once.
-    Stopped { reason: String, #[ts(type = "number")] at_ms: i64 },
+    Stopped {
+        reason: String,
+        #[ts(type = "number")]
+        at_ms: i64,
+    },
     /// A plan budget's hard value was reached: every agent was stopped, and the run continues by itself
     /// at `until_ms`, after the window resets, in window `window + 1` of `max_windows`.
-    Paused { reason: String, #[ts(type = "number")] at_ms: i64, #[ts(type = "number")] until_ms: i64, window: u32, max_windows: u32 },
+    Paused {
+        reason: String,
+        #[ts(type = "number")]
+        at_ms: i64,
+        #[ts(type = "number")]
+        until_ms: i64,
+        window: u32,
+        max_windows: u32,
+    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -90,7 +106,11 @@ impl Store {
         self.connection().execute(
             "INSERT INTO run_budgets (rig, start_seq, json) VALUES (?1, ?2, ?3)
              ON CONFLICT (rig, start_seq) DO UPDATE SET json = excluded.json",
-            params![rig, r.start_seq, serde_json::to_string(r).expect("budget record serializes")],
+            params![
+                rig,
+                r.start_seq,
+                serde_json::to_string(r).expect("budget record serializes")
+            ],
         )?;
         Ok(())
     }
@@ -98,7 +118,14 @@ impl Store {
     /// The latest run's budget record of `rig`, if that run had a budget.
     /// The cap a computer's owner set: most agents working at once on it, across its teams.
     pub fn host_limit(&self, host: &str) -> rusqlite::Result<Option<u32>> {
-        self.connection().query_row("SELECT max_working FROM host_limits WHERE host = ?1", [host], |r| r.get::<_, i64>(0)).optional().map(|n| n.map(|n| n.max(1) as u32))
+        self.connection()
+            .query_row(
+                "SELECT max_working FROM host_limits WHERE host = ?1",
+                [host],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()
+            .map(|n| n.map(|n| n.max(1) as u32))
     }
 
     /// Sets or clears (`None`) a computer's cap.
@@ -113,14 +140,20 @@ impl Store {
     pub fn run_budget(&self, rig: &str) -> rusqlite::Result<Option<Record>> {
         let json: Option<String> = self
             .connection()
-            .query_row("SELECT json FROM run_budgets WHERE rig = ?1 ORDER BY start_seq DESC LIMIT 1", [rig], |r| r.get(0))
+            .query_row(
+                "SELECT json FROM run_budgets WHERE rig = ?1 ORDER BY start_seq DESC LIMIT 1",
+                [rig],
+                |r| r.get(0),
+            )
             .optional()?;
         Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
     }
 
     /// Every rig whose latest run has a budget.
     pub fn budgeted_rigs(&self) -> rusqlite::Result<Vec<String>> {
-        let mut q = self.connection().prepare("SELECT DISTINCT rig FROM run_budgets")?;
+        let mut q = self
+            .connection()
+            .prepare("SELECT DISTINCT rig FROM run_budgets")?;
         let rows = q.query_map([], |r| r.get(0))?;
         rows.collect()
     }

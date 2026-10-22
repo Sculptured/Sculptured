@@ -14,7 +14,9 @@ pub(crate) fn reflink(from: &Path, to: &Path) -> io::Result<()> {
 
 /// True when files under `src` can be cloned into `dst_dir` (one real file tried, then removed).
 pub(crate) fn can_clone(src: &Path, dst_dir: &Path, clone: Cloner) -> bool {
-    let Some(sample) = first_file(src, 0) else { return false };
+    let Some(sample) = first_file(src, 0) else {
+        return false;
+    };
     let probe = dst_dir.join(".sculptured-clone-probe");
     let ok = clone(&sample, &probe).is_ok();
     let _ = std::fs::remove_file(&probe);
@@ -29,7 +31,10 @@ fn first_file(dir: &Path, depth: u32) -> Option<std::path::PathBuf> {
             return Some(e.path());
         }
     }
-    entries.iter().filter(|e| depth < 3 && e.file_name() != ".git" && e.file_type().is_ok_and(|t| t.is_dir())).find_map(|e| first_file(&e.path(), depth + 1))
+    entries
+        .iter()
+        .filter(|e| depth < 3 && e.file_name() != ".git" && e.file_type().is_ok_and(|t| t.is_dir()))
+        .find_map(|e| first_file(&e.path(), depth + 1))
 }
 
 /// Clones the tree at `src` into `dst`, leaving out every `.git` and `skip` (the copies folder, when it
@@ -39,7 +44,8 @@ pub(crate) fn clone_tree(src: &Path, dst: &Path, skip: &Path, clone: Cloner) -> 
     let mut stack = vec![std::path::PathBuf::new()];
     while let Some(rel) = stack.pop() {
         std::fs::create_dir_all(dst.join(&rel))?;
-        for e in std::fs::read_dir(src.join(&rel))?.flatten() {
+        let flattened_items = std::fs::read_dir(src.join(&rel))?.flatten();
+        for e in flattened_items {
             let (name, from) = (e.file_name(), e.path());
             if name == ".git" || from == skip {
                 continue;

@@ -1,28 +1,39 @@
 //! RigSpec YAML → draft. What the builder cannot represent is listed as dropped.
-use super::layout::auto_layout;
-use super::meta::{read_meta, AgentMeta, GroupMeta, Meta};
-use super::{dropped, dropped_with, Imported};
-use crate::compile::seat_id;
-use crate::diag::present_paths;
-use crate::draft::{spec_yaml, AGENT_REF, RESTRICTED_POLICY};
-use crate::{compile, parse, CompiledRig, CompiledSeat, Diagnostic, MemberSpec, PodSpec, RestorePolicy, RigSpec, Runtime, Severity};
+use super::Imported;
+use super::meta::{AgentMeta, GroupMeta, Meta};
+use crate::draft::{AGENT_REF, RESTRICTED_POLICY};
+use crate::{
+    CompiledRig, CompiledSeat, Diagnostic, MemberSpec, PodSpec, RestorePolicy, RigSpec, Runtime,
+    Severity,
+};
 use model::{
-    AgentAdvanced, AgentKind, ConnectionKind, DraftAgent, DraftConnection, DraftGroup, ModelDefaults, PermissionPosture,
-    ResumeBehaviour, TeamDraft, DEFAULT_GROUP_ID,
+    AgentAdvanced, AgentKind, ConnectionKind, DEFAULT_GROUP_ID, DraftAgent, DraftConnection,
+    DraftGroup, ModelDefaults, PermissionPosture, ResumeBehaviour, TeamDraft,
 };
 use std::collections::HashMap;
 
 /// Validates `yaml` with the normal compiler, then converts it. `id_for` receives the
 /// spec's name and returns the new team's id. A blank `cwd` (how export writes a Claude or
 /// Codex agent with no folder) imports as "no folder"; the draft's own checks then ask for one.
-pub fn import_yaml(yaml: &str, id_for: impl FnOnce(&str) -> String) -> Result<Imported, Vec<Diagnostic>> {
-    let spec = parse(yaml)?;
+pub fn import_yaml(
+    yaml: &str,
+    id_for: impl FnOnce(&str) -> String,
+) -> Result<Imported, Vec<Diagnostic>> {
+    let spec = crate::parse(yaml)?;
     let rig = compile_import(yaml, &spec)?;
     let mut lost = Vec::new();
-    let meta = read_meta(yaml, &mut lost);
+    let meta = crate::exchange::meta::read_meta(yaml, &mut lost);
     spec_drops(&spec, &mut lost);
     let id = id_for(&spec.name);
-    let mut im = Importer { spec: &spec, rig: &rig, meta, lost, agents: Vec::new(), keys: Vec::new(), agent_of: HashMap::new() };
+    let mut im = Importer {
+        spec: &spec,
+        rig: &rig,
+        meta,
+        lost,
+        agents: Vec::new(),
+        keys: Vec::new(),
+        agent_of: HashMap::new(),
+    };
     im.import_agents()?;
     let connections = im.connections();
     Ok(im.finish(id, connections))
@@ -37,23 +48,31 @@ pub fn import_yaml(yaml: &str, id_for: impl FnOnce(&str) -> String) -> Result<Im
 fn compile_import(yaml: &str, spec: &RigSpec) -> Result<CompiledRig, Vec<Diagnostic>> {
     let mut compilable = spec.clone();
     let mut blank_cwd = false;
-    for m in compilable.pods.iter_mut().flat_map(|p| p.members.iter_mut()) {
+    let flattened_pods = compilable
+        .pods
+        .iter_mut()
+        .flat_map(|p| p.members.iter_mut());
+    for m in flattened_pods {
         if m.cwd.trim().is_empty() {
             m.cwd = ".".into();
             blank_cwd = true;
         }
     }
-    if blank_cwd { compile(&spec_yaml(&compilable)) } else { compile(yaml) }
+    if blank_cwd {
+        crate::compile(&crate::draft::spec_yaml(&compilable))
+    } else {
+        crate::compile(yaml)
+    }
 }
 
 /// The builder holds only "restricted" (exported as RESTRICTED_POLICY) or "unrestricted".
-fn custom_policy(p: &Option<String>) -> bool {
-    p.as_deref().is_some_and(|p| p != "none" && p != RESTRICTED_POLICY)
+fn custom_policy(p: Option<&str>) -> bool {
+    p.is_some_and(|p| p != "none" && p != RESTRICTED_POLICY)
 }
 
 fn spec_drops(spec: &RigSpec, lost: &mut Vec<Diagnostic>) {
-    if custom_policy(&spec.permission_policy) {
-        lost.push(dropped("permission_policy".into()));
+    if custom_policy(spec.permission_policy.as_deref()) {
+        lost.push(crate::exchange::dropped("permission_policy".into()));
     }
     let fields = [
         ("summary", spec.summary.is_some()),
@@ -64,7 +83,7 @@ fn spec_drops(spec: &RigSpec, lost: &mut Vec<Diagnostic>) {
         ("startup", spec.startup.is_some()),
         ("services", spec.services.is_some()),
     ];
-    lost.extend(present_paths("", &fields).map(dropped));
+    lost.extend(crate::diag::present_paths("", &fields).map(crate::exchange::dropped));
 }
 
 fn member_drops(path: &str, m: &MemberSpec, seat: &CompiledSeat, lost: &mut Vec<Diagnostic>) {
@@ -80,15 +99,17 @@ fn member_drops(path: &str, m: &MemberSpec, seat: &CompiledSeat, lost: &mut Vec<
         ("starter_ref", m.starter_ref.is_some()),
         ("startup", m.startup.is_some()),
     ];
-    lost.extend(present_paths(path, &fields).map(dropped));
+    lost.extend(crate::diag::present_paths(path, &fields).map(crate::exchange::dropped));
     // Only full paths are folders the builder can hold. `.` (and a blank `cwd`, already
     // `.` here) is the default working folder, so nothing is lost; any other relative
     // folder is.
     if !seat.cwd.starts_with('/') && !matches!(seat.cwd.trim(), "." | "./") {
-        lost.push(dropped(format!("{path}.cwd")));
+        lost.push(crate::exchange::dropped(format!("{path}.cwd")));
     }
-    if custom_policy(&m.permission_policy) {
-        lost.push(dropped(format!("{path}.permission_policy")));
+    if custom_policy(m.permission_policy.as_deref()) {
+        lost.push(crate::exchange::dropped(format!(
+            "{path}.permission_policy"
+        )));
     }
 }
 
@@ -100,7 +121,10 @@ fn kind_of(runtime: Runtime, path: &str) -> Result<AgentKind, Diagnostic> {
         other => Err(Diagnostic {
             path: format!("{path}.runtime"),
             severity: Severity::Error,
-            message: format!("{} agents are not supported by the team builder", other.as_str()),
+            message: format!(
+                "{} agents are not supported by the team builder",
+                other.as_str()
+            ),
         }),
     }
 }
@@ -122,20 +146,42 @@ fn connection_of(kind: &str) -> Option<ConnectionKind> {
     }
 }
 
-fn draft_agent(id: String, pod: &PodSpec, m: &MemberSpec, seat: &CompiledSeat, kind: AgentKind, am: Option<&AgentMeta>) -> DraftAgent {
-    let restricted = seat.permission_policy.as_deref().is_some_and(|p| p != "none");
+fn draft_agent(
+    id: String,
+    pod: &PodSpec,
+    m: &MemberSpec,
+    seat: &CompiledSeat,
+    kind: AgentKind,
+    am: Option<&AgentMeta>,
+) -> DraftAgent {
+    let restricted = seat
+        .permission_policy
+        .as_deref()
+        .is_some_and(|p| p != "none");
     DraftAgent {
         id,
         group_id: Some(pod.id.clone()),
         name: seat.label.clone().unwrap_or_else(|| m.id.clone()),
         kind,
         job: am.map(|a| a.job.clone()).unwrap_or_default(),
-        folder: (seat.cwd.starts_with('/') && !am.is_some_and(|a| a.inherits_folder)).then(|| seat.cwd.clone()),
+        folder: (seat.cwd.starts_with('/') && !am.is_some_and(|a| a.inherits_folder))
+            .then(|| seat.cwd.clone()),
         x: am.map_or(0, |a| a.x),
         y: am.map_or(0, |a| a.y),
-        advanced: AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None, briefing: None,
+        advanced: AgentAdvanced {
+            data_access: None,
+            authority: None,
+            skills: vec![],
+            integrations: vec![],
+            turn_limit: None,
+            minute_limit: None,
+            briefing: None,
             model: seat.model.clone(),
-            permission: if restricted { PermissionPosture::Restricted } else { PermissionPosture::Unrestricted },
+            permission: if restricted {
+                PermissionPosture::Restricted
+            } else {
+                PermissionPosture::Unrestricted
+            },
             resume: resume_of(seat.restore_policy),
             token_limit: None,
             check: None,
@@ -173,31 +219,54 @@ impl Importer<'_> {
     fn import_agents(&mut self) -> Result<(), Vec<Diagnostic>> {
         let spec = self.spec;
         let mut errors = Vec::new();
-        for (pi, pod) in spec.pods.iter().enumerate() {
+        let indexed_pods = spec.pods.iter().enumerate();
+        for (pi, pod) in indexed_pods {
             let base = format!("pods[{pi}]");
             let fields = [
                 ("summary", pod.summary.is_some()),
                 ("continuity_policy", pod.continuity_policy.is_some()),
                 ("startup", pod.startup.is_some()),
             ];
-            self.lost.extend(present_paths(&base, &fields).map(dropped));
-            for (mi, m) in pod.members.iter().enumerate() {
+            self.lost
+                .extend(crate::diag::present_paths(&base, &fields).map(crate::exchange::dropped));
+            let indexed_members = pod.members.iter().enumerate();
+            for (mi, m) in indexed_members {
                 if let Err(e) = self.import_member(&format!("{base}.members[{mi}]"), pod, m) {
                     errors.push(e);
                 }
             }
         }
-        if errors.is_empty() { Ok(()) } else { Err(errors) }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 
-    fn import_member(&mut self, path: &str, pod: &PodSpec, m: &MemberSpec) -> Result<(), Diagnostic> {
+    fn import_member(
+        &mut self,
+        path: &str,
+        pod: &PodSpec,
+        m: &MemberSpec,
+    ) -> Result<(), Diagnostic> {
         let rig = self.rig;
-        let seat = rig.seats.iter().find(|s| s.pod == pod.id && s.member == m.id).expect("every member compiles to a seat");
+        let seat = rig
+            .seats
+            .iter()
+            .find(|s| s.pod == pod.id && s.member == m.id)
+            .expect("every member compiles to a seat");
         let kind = kind_of(seat.runtime, path)?;
         member_drops(path, m, seat, &mut self.lost);
         let id = self.free_id(path, pod, m);
         let key = format!("{}.{}", pod.id, m.id);
-        let agent = draft_agent(id, pod, m, seat, kind, self.meta.as_ref().and_then(|x| x.agents.get(&key)));
+        let agent = draft_agent(
+            id,
+            pod,
+            m,
+            seat,
+            kind,
+            self.meta.as_ref().and_then(|x| x.agents.get(&key)),
+        );
         self.agent_of.insert(seat.id.clone(), agent.id.clone());
         self.agents.push(agent);
         self.keys.push(key);
@@ -211,15 +280,27 @@ impl Importer<'_> {
             return m.id.clone();
         }
         let taken = |id: &str| {
-            self.agents.iter().any(|a| a.id == id) || self.spec.pods.iter().flat_map(|p| &p.members).any(|x| x.id == id && x.id != m.id)
+            self.agents.iter().any(|a| a.id == id)
+                || self
+                    .spec
+                    .pods
+                    .iter()
+                    .flat_map(|p| &p.members)
+                    .any(|x| x.id == id && x.id != m.id)
         };
         let base = format!("{}-{}", m.id, pod.id);
         let id = std::iter::once(base.clone())
             .chain((2u32..).map(|n| format!("{base}-{n}")))
             .find(|c| !taken(c))
             .expect("an unbounded range always finds a free id");
-        let message = format!("renamed to {id}: another agent already uses the id {}", m.id);
-        self.lost.push(dropped_with(format!("{path}.id"), &message));
+        let message = format!(
+            "renamed to {id}: another agent already uses the id {}",
+            m.id
+        );
+        self.lost.push(crate::exchange::dropped_with(
+            format!("{path}.id"),
+            &message,
+        ));
         id
     }
 
@@ -227,37 +308,77 @@ impl Importer<'_> {
     fn connections(&mut self) -> Vec<DraftConnection> {
         let spec = self.spec;
         let mut out = Vec::new();
-        for (pi, pod) in spec.pods.iter().enumerate() {
-            for (ei, e) in pod.edges.iter().enumerate() {
-                let (from, to) = (seat_id(spec, &pod.id, &e.from), seat_id(spec, &pod.id, &e.to));
-                self.connect(&mut out, format!("pods[{pi}].edges[{ei}]"), &e.kind, &from, &to);
+        let indexed_pods = spec.pods.iter().enumerate();
+        for (pi, pod) in indexed_pods {
+            let indexed_edges = pod.edges.iter().enumerate();
+            for (ei, e) in indexed_edges {
+                let (from, to) = (
+                    crate::compile::seat_id(spec, &pod.id, &e.from),
+                    crate::compile::seat_id(spec, &pod.id, &e.to),
+                );
+                self.connect(
+                    &mut out,
+                    format!("pods[{pi}].edges[{ei}]"),
+                    &e.kind,
+                    &from,
+                    &to,
+                );
             }
         }
-        for (ei, e) in spec.edges.iter().enumerate() {
+        let indexed_edges = spec.edges.iter().enumerate();
+        for (ei, e) in indexed_edges {
             let (fp, fm) = e.from.split_once('.').expect("validated cross-pod edge");
             let (tp, tm) = e.to.split_once('.').expect("validated cross-pod edge");
-            self.connect(&mut out, format!("edges[{ei}]"), &e.kind, &seat_id(spec, fp, fm), &seat_id(spec, tp, tm));
+            self.connect(
+                &mut out,
+                format!("edges[{ei}]"),
+                &e.kind,
+                &crate::compile::seat_id(spec, fp, fm),
+                &crate::compile::seat_id(spec, tp, tm),
+            );
         }
         out
     }
 
-    fn connect(&mut self, out: &mut Vec<DraftConnection>, path: String, kind: &str, from: &str, to: &str) {
-        let (Some(kind), Some(f), Some(t)) = (connection_of(kind), self.agent_of.get(from), self.agent_of.get(to)) else {
-            self.lost.push(dropped(path));
+    fn connect(
+        &mut self,
+        out: &mut Vec<DraftConnection>,
+        path: String,
+        kind: &str,
+        from: &str,
+        to: &str,
+    ) {
+        let (Some(kind), Some(f), Some(t)) = (
+            connection_of(kind),
+            self.agent_of.get(from),
+            self.agent_of.get(to),
+        ) else {
+            self.lost.push(crate::exchange::dropped(path));
             return;
         };
-        out.push(DraftConnection { id: format!("c{}", out.len() + 1), from: f.clone(), to: t.clone(), kind });
+        out.push(DraftConnection {
+            id: format!("c{}", out.len() + 1),
+            from: f.clone(),
+            to: t.clone(),
+            kind,
+        });
     }
 
     fn meta_group(&self, id: &str) -> Option<&GroupMeta> {
-        self.meta.as_ref().and_then(|m| m.groups.iter().find(|g| g.id == id))
+        self.meta
+            .as_ref()
+            .and_then(|m| m.groups.iter().find(|g| g.id == id))
     }
 
     /// The comment's layout is used only when it covers every agent and every drawn group.
     fn positioned(&self) -> bool {
         self.meta.as_ref().is_some_and(|m| {
             self.keys.iter().all(|k| m.agents.contains_key(k))
-                && self.spec.pods.iter().all(|p| p.id == DEFAULT_GROUP_ID || self.meta_group(&p.id).is_some())
+                && self
+                    .spec
+                    .pods
+                    .iter()
+                    .all(|p| p.id == DEFAULT_GROUP_ID || self.meta_group(&p.id).is_some())
         })
     }
 
@@ -277,20 +398,34 @@ impl Importer<'_> {
                     groups.push(draft_group(&g.id, &g.label, Some(g)));
                 }
             }
-            let order = |id: &str| m.groups.iter().position(|g| g.id == id).unwrap_or(usize::MAX);
+            let order = |id: &str| {
+                m.groups
+                    .iter()
+                    .position(|g| g.id == id)
+                    .unwrap_or(usize::MAX)
+            };
             groups.sort_by_key(|g| order(&g.id));
         }
         groups
     }
 
     fn finish(mut self, id: String, connections: Vec<DraftConnection>) -> Imported {
-        let name = self.meta.as_ref().map(|m| m.name.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| self.spec.name.clone());
+        let name = self
+            .meta
+            .as_ref()
+            .map(|m| m.name.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| self.spec.name.clone());
         let positioned = self.positioned();
         // A `team` pod that the layout does not list as a drawn group holds the agents that were
         // outside every group: they stay ungrouped rather than gaining a box.
         let ungrouped_team = positioned && self.meta_group(DEFAULT_GROUP_ID).is_none();
         if ungrouped_team {
-            for a in self.agents.iter_mut().filter(|a| a.group_id.as_deref() == Some(DEFAULT_GROUP_ID)) {
+            let matching_agents = self
+                .agents
+                .iter_mut()
+                .filter(|a| a.group_id.as_deref() == Some(DEFAULT_GROUP_ID));
+            for a in matching_agents {
                 a.group_id = None;
             }
         }
@@ -298,11 +433,37 @@ impl Importer<'_> {
         let agents = std::mem::take(&mut self.agents);
         let folder = self.meta.as_ref().and_then(|m| m.folder.clone());
         let workflow = self.meta.as_ref().and_then(|m| m.workflow.clone());
-        let mut draft = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(), workflow, folder, id, name, groups, agents, connections, models: ModelDefaults::default(), revision: 0 };
+        let mut draft = TeamDraft {
+            claude_setup: Default::default(),
+            protection: Default::default(),
+            safety: vec![],
+            components: vec![],
+            budget: Default::default(),
+            input: None,
+            schedules: vec![],
+            decision_log: false,
+            limits: Default::default(),
+            workflow,
+            folder,
+            id,
+            name,
+            groups,
+            agents,
+            connections,
+            models: ModelDefaults::default(),
+            revision: 0,
+        };
         if !positioned {
-            let seat_ids: HashMap<String, String> = self.agent_of.iter().map(|(seat, agent)| (agent.clone(), seat.clone())).collect();
-            auto_layout(&mut draft, self.rig, &seat_ids);
+            let seat_ids: HashMap<String, String> = self
+                .agent_of
+                .iter()
+                .map(|(seat, agent)| (agent.clone(), seat.clone()))
+                .collect();
+            crate::exchange::layout::auto_layout(&mut draft, self.rig, &seat_ids);
         }
-        Imported { draft, dropped: self.lost }
+        Imported {
+            draft,
+            dropped: self.lost,
+        }
     }
 }

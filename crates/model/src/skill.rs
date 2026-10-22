@@ -9,7 +9,9 @@ pub const MAX_DESCRIPTION: usize = 1024;
 /// A skill's body, at most; a longer one belongs in files the skill points to.
 pub const MAX_BODY: usize = 100_000;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct Skill {
     /// Lowercase letters, digits and hyphens.
@@ -26,10 +28,19 @@ pub struct Skill {
 
 impl Skill {
     /// What is wrong with it, in plain words; empty when it is valid.
+    #[must_use]
     pub fn problems(&self) -> Vec<String> {
         let mut out = Vec::new();
         let n = &self.name;
-        if n.is_empty() || n.len() > MAX_NAME || !n.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') || n.starts_with('-') || n.ends_with('-') || n.contains("--") {
+        if n.is_empty()
+            || n.len() > MAX_NAME
+            || !n
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            || n.starts_with('-')
+            || n.ends_with('-')
+            || n.contains("--")
+        {
             out.push(format!("Skill name {n:?} must be 1–{MAX_NAME} lowercase letters, digits and single hyphens."));
         }
         let d = self.description.trim();
@@ -37,7 +48,10 @@ impl Skill {
             out.push(format!("Skill {n:?} needs a description of 1–{MAX_DESCRIPTION} characters saying when to use it."));
         }
         if self.body.trim().is_empty() || self.body.len() > MAX_BODY {
-            out.push(format!("Skill {n:?} needs instructions (at most {} KB).", MAX_BODY / 1000));
+            out.push(format!(
+                "Skill {n:?} needs instructions (at most {} KB).",
+                MAX_BODY / 1000
+            ));
         }
         out
     }
@@ -45,23 +59,36 @@ impl Skill {
     /// A `SKILL.md`: its frontmatter gives the name and description, the rest is the body.
     pub fn from_skill_md(text: &str) -> Result<Skill, String> {
         let text = text.trim_start_matches('\u{feff}');
-        let rest = text.strip_prefix("---").ok_or("A SKILL.md starts with a --- frontmatter block naming the skill.")?;
-        let (front, body) = rest.split_once("\n---").ok_or("The SKILL.md frontmatter has no closing ---.")?;
+        let rest = text
+            .strip_prefix("---")
+            .ok_or("A SKILL.md starts with a --- frontmatter block naming the skill.")?;
+        let (front, body) = rest
+            .split_once("\n---")
+            .ok_or("The SKILL.md frontmatter has no closing ---.")?;
         let field = |key: &str| {
-            front.lines().find_map(|l| l.strip_prefix(key).and_then(|v| v.strip_prefix(':'))).map(|v| v.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
+            front
+                .lines()
+                .find_map(|l| l.strip_prefix(key).and_then(|v| v.strip_prefix(':')))
+                .map(|v| v.trim().trim_matches(|c| c == '"' || c == '\'').to_string())
         };
         let body = body.split_once('\n').map_or("", |(_, b)| b);
         Ok(Skill {
             name: field("name").ok_or("The SKILL.md frontmatter has no name.")?,
-            description: field("description").ok_or("The SKILL.md frontmatter has no description.")?,
+            description: field("description")
+                .ok_or("The SKILL.md frontmatter has no description.")?,
             body: body.trim_start_matches('\n').to_string(),
             source: None,
         })
     }
 
+    #[must_use]
     pub fn to_skill_md(&self) -> String {
         let quoted = serde_json::to_string(self.description.trim()).expect("a string serializes");
-        format!("---\nname: {}\ndescription: {quoted}\n---\n\n{}", self.name, self.body.trim_start())
+        format!(
+            "---\nname: {}\ndescription: {quoted}\n---\n\n{}",
+            self.name,
+            self.body.trim_start()
+        )
     }
 }
 
@@ -85,12 +112,27 @@ mod tests {
     fn a_skill_md_round_trips_and_bad_names_are_named() {
         let md = "---\nname: money-rules\ndescription: \"Use when handling amounts: Decimal only.\"\n---\n\n# Money\n\nAlways use Decimal.\n";
         let s = Skill::from_skill_md(md).unwrap();
-        assert_eq!((s.name.as_str(), s.description.as_str(), s.body.as_str()), ("money-rules", "Use when handling amounts: Decimal only.", "# Money\n\nAlways use Decimal.\n"));
+        assert_eq!(
+            (s.name.as_str(), s.description.as_str(), s.body.as_str()),
+            (
+                "money-rules",
+                "Use when handling amounts: Decimal only.",
+                "# Money\n\nAlways use Decimal.\n"
+            )
+        );
         assert!(s.problems().is_empty());
         assert_eq!(Skill::from_skill_md(&s.to_skill_md()).unwrap(), s);
-        let bad = Skill { name: "Money Rules".into(), description: String::new(), body: "x".into(), ..Default::default() };
+        let bad = Skill {
+            name: "Money Rules".into(),
+            description: String::new(),
+            body: "x".into(),
+            ..Default::default()
+        };
         assert_eq!(bad.problems().len(), 2);
-        assert_eq!(skills_problems(&[s.clone(), s]).last().unwrap(), "Two skills are named \"money-rules\".");
+        assert_eq!(
+            skills_problems(&[s.clone(), s]).last().unwrap(),
+            "Two skills are named \"money-rules\"."
+        );
         assert!(Skill::from_skill_md("no frontmatter").is_err());
     }
 }

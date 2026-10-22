@@ -1,9 +1,9 @@
 //! Turn endings and token usage.
-use super::{s, CodexParser, Parsed};
-use crate::codex::TOOL_UNFINISHED;
+use super::{CodexParser, Parsed};
 use crate::DriverEvent;
+use crate::codex::TOOL_UNFINISHED;
 use model::{LimitKind, TurnStatus};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Cumulative token counts of one thread.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -17,7 +17,12 @@ pub(super) struct Totals {
 impl Totals {
     fn from(v: &Value) -> Self {
         let n = |k: &str| v[k].as_u64().unwrap_or(0);
-        Self { input: n("inputTokens"), cached: n("cachedInputTokens"), cache_write: n("cacheWriteInputTokens"), output: n("outputTokens") }
+        Self {
+            input: n("inputTokens"),
+            cached: n("cachedInputTokens"),
+            cache_write: n("cacheWriteInputTokens"),
+            output: n("outputTokens"),
+        }
     }
     fn since(self, b: Self) -> Self {
         Self {
@@ -69,7 +74,9 @@ fn turn_status(turn: &Value) -> TurnStatus {
 
 impl CodexParser {
     pub(super) fn token_usage(&mut self, p: &Value, turn: String, out: &mut Parsed) {
-        let thread = s(&p["threadId"]).or_else(|| self.thread.clone()).unwrap_or_default();
+        let thread = crate::codex::parser::s(&p["threadId"])
+            .or_else(|| self.thread.clone())
+            .unwrap_or_default();
         let total = Totals::from(&p["tokenUsage"]["total"]);
         let ours = self.started.contains(&(thread.clone(), turn.clone()));
         let before = self.seen.insert(thread, total).unwrap_or_default();
@@ -77,8 +84,12 @@ impl CodexParser {
         // `last` is the latest model call: its input (cached part included) is the context it read.
         let last = Totals::from(&p["tokenUsage"]["last"]);
         if ours && last.input > 0 {
-            out.events.push(DriverEvent::Context { turn_id: Some(turn.clone()), used_tokens: last.input,
-                window_tokens: p["tokenUsage"]["modelContextWindow"].as_u64(), basis: model::ContextBasis::Reported });
+            out.events.push(DriverEvent::Context {
+                turn_id: Some(turn.clone()),
+                used_tokens: last.input,
+                window_tokens: p["tokenUsage"]["modelContextWindow"].as_u64(),
+                basis: model::ContextBasis::Reported,
+            });
         }
         if ours && d != Totals::default() {
             out.events.push(DriverEvent::Usage {
@@ -87,41 +98,62 @@ impl CodexParser {
                 output_tokens: d.output,
                 cache_read_tokens: d.cached,
                 cache_write_tokens: d.cache_write,
-                cost: self.model.as_deref().and_then(|m| model::pricing::openai_cost(m, d.input.saturating_sub(d.cached), d.cached, d.output)),
+                cost: self.model.as_deref().and_then(|m| {
+                    model::pricing::openai_cost(
+                        m,
+                        d.input.saturating_sub(d.cached),
+                        d.cached,
+                        d.output,
+                    )
+                }),
                 in_turn: false,
             });
         }
     }
 
     pub(super) fn turn_completed(&mut self, p: &Value, turn: String, out: &mut Parsed) {
-        let t = s(&p["turn"]["id"]).unwrap_or(turn);
+        let t = crate::codex::parser::s(&p["turn"]["id"]).unwrap_or(turn);
         self.close_open_calls(&t, out);
         let status = turn_status(&p["turn"]);
         let error = &p["turn"]["error"];
         if !error.is_null() {
-            out.events.push(DriverEvent::Unrecognized { raw: json!({ "turnError": error }) });
+            out.events.push(DriverEvent::Unrecognized {
+                raw: json!({ "turnError": error }),
+            });
             if status == TurnStatus::Failed
                 && let Some(kind) = limit_of(error)
             {
                 let text = error["message"].as_str().unwrap_or("").to_string();
-                out.events.push(DriverEvent::LimitReached { turn_id: Some(t.clone()), kind, resets: model::limit_resets(&text), text });
+                out.events.push(DriverEvent::LimitReached {
+                    turn_id: Some(t.clone()),
+                    kind,
+                    resets: model::limit_resets(&text),
+                    text,
+                });
             }
         }
         self.unknown_items.retain(|_, item_turn| *item_turn != t);
         if self.current.as_deref() == Some(t.as_str()) {
             self.current = None;
         }
-        out.events.push(DriverEvent::TurnEnded { turn_id: t, status });
+        out.events
+            .push(DriverEvent::TurnEnded { turn_id: t, status });
         out.turn_ended = true;
     }
 
     /// Tool calls of turn `t` that never finished get an error result.
     fn close_open_calls(&mut self, t: &str, out: &mut Parsed) {
-        let (closing, open): (Vec<_>, Vec<_>) = self.open_calls.drain(..).partition(|(_, ct)| ct == t);
+        let (closing, open): (Vec<_>, Vec<_>) =
+            self.open_calls.drain(..).partition(|(_, ct)| ct == t);
         self.open_calls = open;
         for (call_id, _) in closing {
             self.items.remove(&call_id);
-            out.events.push(DriverEvent::ToolResult { turn_id: Some(t.to_string()), call_id, output: TOOL_UNFINISHED.into(), is_error: true });
+            out.events.push(DriverEvent::ToolResult {
+                turn_id: Some(t.to_string()),
+                call_id,
+                output: TOOL_UNFINISHED.into(),
+                is_error: true,
+            });
         }
     }
 }

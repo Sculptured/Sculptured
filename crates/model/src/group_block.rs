@@ -1,7 +1,7 @@
 //! A reusable board fragment stored independently from projects and runs.
+use crate::TeamDraft;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use crate::TeamDraft;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
 #[ts(export)]

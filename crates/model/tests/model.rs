@@ -1,4 +1,7 @@
-use model::*;
+use model::{
+    Actor, EventBody, EventRecord, OutcomeEvidence, Provenance, SeatActivity, SeatId,
+    SeatLifecycle, Subject, TurnStatus,
+};
 use serde_json::json;
 
 #[test]
@@ -14,17 +17,37 @@ fn seat_id_round_trips() {
 
 #[test]
 fn seat_id_rejects_bad_shapes() {
-    for bad in ["dev.impl", "dev@r", "a.b.c@r", "dev.im pl@r", ".impl@r", "dev.impl@", "dev.impl@r@x"] {
+    for bad in [
+        "dev.impl",
+        "dev@r",
+        "a.b.c@r",
+        "dev.im pl@r",
+        ".impl@r",
+        "dev.impl@",
+        "dev.impl@r@x",
+    ] {
         assert!(bad.parse::<SeatId>().is_err(), "{bad} should be rejected");
     }
 }
 
 #[test]
 fn status_values_are_kebab_case() {
-    assert_eq!(serde_json::to_value(SeatActivity::WaitingInput).unwrap(), json!("waiting-input"));
-    assert_eq!(serde_json::to_value(OutcomeEvidence::ReportedComplete).unwrap(), json!("reported-complete"));
-    assert_eq!(serde_json::to_value(SeatLifecycle::Attention).unwrap(), json!("attention"));
-    assert_eq!(serde_json::to_value(Provenance::ProtocolObserved).unwrap(), json!("protocol-observed"));
+    assert_eq!(
+        serde_json::to_value(SeatActivity::WaitingInput).unwrap(),
+        json!("waiting-input")
+    );
+    assert_eq!(
+        serde_json::to_value(OutcomeEvidence::ReportedComplete).unwrap(),
+        json!("reported-complete")
+    );
+    assert_eq!(
+        serde_json::to_value(SeatLifecycle::Attention).unwrap(),
+        json!("attention")
+    );
+    assert_eq!(
+        serde_json::to_value(Provenance::ProtocolObserved).unwrap(),
+        json!("protocol-observed")
+    );
 }
 
 #[test]
@@ -37,7 +60,10 @@ fn event_record_wire_shape() {
         actor: Actor::Seat("dev.impl@r".into()),
         subject: Subject::Seat("dev.impl@r".into()),
         provenance: Provenance::ProtocolObserved,
-        body: EventBody::TurnEnded { turn_id: "turn-1".into(), status: TurnStatus::Interrupted },
+        body: EventBody::TurnEnded {
+            turn_id: "turn-1".into(),
+            status: TurnStatus::Interrupted,
+        },
     };
     let v = serde_json::to_value(&ev).unwrap();
     assert_eq!(v["body"]["type"], "turn-ended");

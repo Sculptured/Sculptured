@@ -1,4 +1,8 @@
-use model::*;
+use model::{
+    AgentAdvanced, AgentKind, ConnectionKind, DEFAULT_GROUP_ID, DraftAgent, DraftConnection,
+    DraftIssue, ElementKind, ElementRef, IssueSeverity, ModelDefaults, PermissionPosture,
+    ResumeBehaviour, TeamDraft, TeamInput,
+};
 use serde_json::json;
 
 fn builder() -> DraftAgent {
@@ -25,19 +29,46 @@ fn reviewer() -> DraftAgent {
         folder: Some("/home/u/repo".into()),
         x: 300,
         y: 40,
-        advanced: AgentAdvanced { data_access: None, authority: None, skills: vec![], integrations: vec![], turn_limit: None, minute_limit: None, model: Some("opus".into()), permission: PermissionPosture::Restricted, resume: ResumeBehaviour::RelaunchFresh, token_limit: None, check: None, briefing: None },
+        advanced: AgentAdvanced {
+            data_access: None,
+            authority: None,
+            skills: vec![],
+            integrations: vec![],
+            turn_limit: None,
+            minute_limit: None,
+            model: Some("opus".into()),
+            permission: PermissionPosture::Restricted,
+            resume: ResumeBehaviour::RelaunchFresh,
+            token_limit: None,
+            check: None,
+            briefing: None,
+        },
     }
 }
 
 fn draft() -> TeamDraft {
-    TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(),
+    TeamDraft {
+        claude_setup: Default::default(),
+        protection: Default::default(),
+        safety: vec![],
+        components: vec![],
+        budget: Default::default(),
+        input: None,
+        schedules: vec![],
+        decision_log: false,
+        limits: Default::default(),
         workflow: None,
         folder: None,
         id: "my-team".into(),
         name: "My team".into(),
         groups: vec![],
         agents: vec![builder(), reviewer()],
-        connections: vec![DraftConnection { id: "c1".into(), from: "builder".into(), to: "reviewer".into(), kind: ConnectionKind::HandsWorkTo }],
+        connections: vec![DraftConnection {
+            id: "c1".into(),
+            from: "builder".into(),
+            to: "reviewer".into(),
+            kind: ConnectionKind::HandsWorkTo,
+        }],
         models: ModelDefaults::default(),
         revision: 3,
     }
@@ -48,7 +79,10 @@ fn draft_wire_shape_round_trips() {
     let d = draft();
     let v = serde_json::to_value(&d).unwrap();
     assert_eq!(v["agents"][0]["kind"], "practice");
-    assert_eq!(v["agents"][0]["advanced"], json!({ "model": null, "permission": "unrestricted", "resume": "resume-if-possible" }));
+    assert_eq!(
+        v["agents"][0]["advanced"],
+        json!({ "model": null, "permission": "unrestricted", "resume": "resume-if-possible" })
+    );
     assert_eq!(v["agents"][1]["advanced"]["resume"], "relaunch-fresh");
     assert_eq!(v["connections"][0]["kind"], "hands-work-to");
     assert_eq!(v["revision"], 3);
@@ -70,11 +104,20 @@ fn optional_parts_take_defaults() {
 #[test]
 fn seat_ids_come_from_immutable_ids_not_names() {
     let mut d = draft();
-    assert_eq!(d.seat_id("builder").as_deref(), Some("team.builder@my-team"));
-    assert_eq!(d.seat_id("reviewer").as_deref(), Some("review.reviewer@my-team"));
+    assert_eq!(
+        d.seat_id("builder").as_deref(),
+        Some("team.builder@my-team")
+    );
+    assert_eq!(
+        d.seat_id("reviewer").as_deref(),
+        Some("review.reviewer@my-team")
+    );
     d.agents[0].name = "Lead builder".into();
     d.name = "Renamed team".into();
-    assert_eq!(d.seat_id("builder").as_deref(), Some("team.builder@my-team"));
+    assert_eq!(
+        d.seat_id("builder").as_deref(),
+        Some("team.builder@my-team")
+    );
     assert_eq!(d.seat_id("nobody"), None);
     assert_eq!(DEFAULT_GROUP_ID, "team");
 }
@@ -82,7 +125,10 @@ fn seat_ids_come_from_immutable_ids_not_names() {
 #[test]
 fn issue_wire_shape() {
     let i = DraftIssue {
-        element: ElementRef { kind: ElementKind::Agent, id: "reviewer".into() },
+        element: ElementRef {
+            kind: ElementKind::Agent,
+            id: "reviewer".into(),
+        },
         severity: IssueSeverity::Error,
         code: "folder-missing".into(),
         message: "Reviewer needs a folder to work in".into(),
@@ -107,18 +153,37 @@ fn model_defaults_are_optional_and_omitted_when_empty() {
     assert!(d.models.is_empty());
     assert!(d.groups[0].models.is_empty());
     assert_eq!(d.models, ModelDefaults::default());
-    assert_eq!(serde_json::to_value(&d).unwrap(), old, "empty defaults are not written");
+    assert_eq!(
+        serde_json::to_value(&d).unwrap(),
+        old,
+        "empty defaults are not written"
+    );
 
     let mut d = d;
-    d.models = ModelDefaults { claude: Some("sonnet".into()), codex: None };
-    d.groups[0].models = ModelDefaults { claude: None, codex: Some("gpt-6-sol".into()) };
+    d.models = ModelDefaults {
+        claude: Some("sonnet".into()),
+        codex: None,
+    };
+    d.groups[0].models = ModelDefaults {
+        claude: None,
+        codex: Some("gpt-6-sol".into()),
+    };
     let v = serde_json::to_value(&d).unwrap();
     assert_eq!(v["models"], json!({ "claude": "sonnet", "codex": null }));
-    assert_eq!(v["groups"][0]["models"], json!({ "claude": null, "codex": "gpt-6-sol" }));
+    assert_eq!(
+        v["groups"][0]["models"],
+        json!({ "claude": null, "codex": "gpt-6-sol" })
+    );
     assert_eq!(serde_json::from_value::<TeamDraft>(v).unwrap(), d);
     // A defaults object naming one provider only loads the other as inherit.
     let one: ModelDefaults = serde_json::from_value(json!({ "codex": "gpt-6-luna" })).unwrap();
-    assert_eq!(one, ModelDefaults { claude: None, codex: Some("gpt-6-luna".into()) });
+    assert_eq!(
+        one,
+        ModelDefaults {
+            claude: None,
+            codex: Some("gpt-6-luna".into())
+        }
+    );
     assert!(!one.is_empty());
 }
 
@@ -126,13 +191,35 @@ fn model_defaults_are_optional_and_omitted_when_empty() {
 fn the_input_reaches_the_agents_it_points_to_with_their_job() {
     let mut d = draft();
     assert_eq!(d.job_with_input(&d.agents[0]), "Build it");
-    d.input = Some(TeamInput { text: " Ship the landing page.\nLinks: example.test ".into(), x: 0, y: 0, to: vec!["builder".into(), "reviewer".into()] });
-    assert_eq!(d.job_with_input(&d.agents[0]), "Build it\n\n--- Input ---\nShip the landing page.\nLinks: example.test");
-    assert_eq!(d.job_with_input(&d.agents[1]), "Ship the landing page.\nLinks: example.test", "no Job: the Input is the work");
+    d.input = Some(TeamInput {
+        text: " Ship the landing page.\nLinks: example.test ".into(),
+        x: 0,
+        y: 0,
+        to: vec!["builder".into(), "reviewer".into()],
+    });
+    assert_eq!(
+        d.job_with_input(&d.agents[0]),
+        "Build it\n\n--- Input ---\nShip the landing page.\nLinks: example.test"
+    );
+    assert_eq!(
+        d.job_with_input(&d.agents[1]),
+        "Ship the landing page.\nLinks: example.test",
+        "no Job: the Input is the work"
+    );
     d.input.as_mut().unwrap().to = vec![];
     assert_eq!(d.job_with_input(&d.agents[1]), "");
     let json = serde_json::to_value(&d).unwrap();
     assert_eq!(json["input"]["to"], json!([]));
-    assert_eq!(serde_json::from_value::<TeamDraft>(json).unwrap(), d, "round-trips");
-    assert!(serde_json::to_value(draft()).unwrap().get("input").is_none(), "no Input, no field");
+    assert_eq!(
+        serde_json::from_value::<TeamDraft>(json).unwrap(),
+        d,
+        "round-trips"
+    );
+    assert!(
+        serde_json::to_value(draft())
+            .unwrap()
+            .get("input")
+            .is_none(),
+        "no Input, no field"
+    );
 }

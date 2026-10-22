@@ -3,7 +3,12 @@
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let port = args.iter().position(|a| a == "--port").and_then(|i| args.get(i + 1)).and_then(|p| p.parse::<u16>().ok()).unwrap_or(14411);
+    let port = args
+        .iter()
+        .position(|a| a == "--port")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(14411);
     let stub = match fixtures::community_stub::spawn_on(port).await {
         Ok(s) => s,
         Err(e) => {

@@ -21,14 +21,17 @@ macro_rules! soft_hard_int {
         impl SoftHard<$t> {
             /// The soft value; absent, 85% of hard rounded down, but at least 1 when hard is.
             pub fn soft_value(&self) -> $t {
-                self.soft.unwrap_or_else(|| ((self.hard as f64 * SOFT_SHARE).floor() as $t).max(self.hard.min(1)))
+                self.soft.unwrap_or_else(|| {
+                    ((self.hard as f64 * SOFT_SHARE).floor() as $t).max(self.hard.min(1))
+                })
             }
             /// What is wrong with it, in words naming `what`; None when it is usable.
             pub fn problem(&self, what: &str) -> Option<String> {
                 if self.hard == 0 {
                     return Some(format!("{what}: the hard value must be above 0"));
                 }
-                (self.soft_value() > self.hard).then(|| format!("{what}: the soft value is above the hard value"))
+                (self.soft_value() > self.hard)
+                    .then(|| format!("{what}: the soft value is above the hard value"))
             }
         }
     };
@@ -56,7 +59,9 @@ pub struct PlanBudget {
 }
 
 /// How a run paused at a plan budget continues after its window resets.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum ContinueMode {
@@ -85,6 +90,7 @@ fn three_windows() -> u32 {
 impl Eq for PlanBudget {}
 
 impl PlanBudget {
+    #[must_use]
     pub fn soft_value(&self) -> f64 {
         self.soft.unwrap_or(self.hard * SOFT_SHARE)
     }
@@ -92,23 +98,35 @@ impl PlanBudget {
     fn problem(&self) -> Option<String> {
         let ok = |p: f64| p.is_finite() && p > 0.0 && p <= 100.0;
         if !matches!(self.provider.as_str(), "claude" | "codex") {
-            return Some(format!("Plan budget: unknown plan {:?} (use claude or codex)", self.provider));
+            return Some(format!(
+                "Plan budget: unknown plan {:?} (use claude or codex)",
+                self.provider
+            ));
         }
         if !matches!(self.window.as_str(), "five_hour" | "seven_day") {
-            return Some(format!("Plan budget: unknown window {:?} (use five_hour or seven_day)", self.window));
+            return Some(format!(
+                "Plan budget: unknown window {:?} (use five_hour or seven_day)",
+                self.window
+            ));
         }
         if !ok(self.hard) || self.soft.is_some_and(|s| !ok(s)) {
-            return Some(format!("Plan budget: {} is not a percent between 0 and 100", self.soft.filter(|s| !ok(*s)).unwrap_or(self.hard)));
+            return Some(format!(
+                "Plan budget: {} is not a percent between 0 and 100",
+                self.soft.filter(|s| !ok(*s)).unwrap_or(self.hard)
+            ));
         }
         if self.pause.is_some_and(|p| p.max_windows == 0) {
             return Some("Plan budget: a paused run needs at least 1 window".to_string());
         }
-        (self.soft_value() > self.hard).then(|| "Plan budget: the soft value is above the hard value".to_string())
+        (self.soft_value() > self.hard)
+            .then(|| "Plan budget: the soft value is above the hard value".to_string())
     }
 }
 
 /// What one run of a team may use, all agents and their children together.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct RunBudget {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -129,8 +147,12 @@ pub struct RunBudget {
 }
 
 impl RunBudget {
+    #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.plan.is_empty() && self.tokens.is_none() && self.minutes.is_none() && self.max_working.is_none()
+        self.plan.is_empty()
+            && self.tokens.is_none()
+            && self.minutes.is_none()
+            && self.max_working.is_none()
     }
 
     /// Everything wrong with it, in words; empty when it is usable.
@@ -164,17 +186,22 @@ fn on() -> bool {
 
 impl Default for ClaudeSetup {
     fn default() -> Self {
-        Self { global: false, project: true }
+        Self {
+            global: false,
+            project: true,
+        }
     }
 }
 
 impl ClaudeSetup {
+    #[must_use]
     pub fn is_default(&self) -> bool {
         *self == Self::default()
     }
 
     /// The Claude Code flags for this setup: which setting files load, and (without the person's
     /// global setup) only the MCP servers Sculptured passes.
+    #[must_use]
     pub fn claude_args(&self) -> Vec<String> {
         let mut sources = Vec::new();
         if self.global {

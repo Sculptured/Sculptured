@@ -1,7 +1,11 @@
-use controld::store::{RigSource, Store, LOCAL_EVENT_HOST};
+use controld::store::{LOCAL_EVENT_HOST, RigSource, Store};
 use controld::views::Receipt;
 use host_proto::HostEvent;
-use model::*;
+
+use model::{
+    Actor, Caps, Desired, EventBody, MessageIntent, MessageState, Provenance, SeatActivity,
+    SeatLifecycle, Subject, TenureCause, TurnStatus,
+};
 use serde_json::json;
 
 const SPEC: &str = r#"
@@ -31,7 +35,14 @@ const B: &str = "dev.b@r";
 
 fn store() -> Store {
     let mut s = Store::open_in_memory().unwrap();
-    s.upsert_rig(&rigspec::compile(SPEC).unwrap(), &RigSource::File { path: "/specs/r.yaml".into() }, Desired::Running).unwrap();
+    s.upsert_rig(
+        &rigspec::compile(SPEC).unwrap(),
+        &RigSource::File {
+            path: "/specs/r.yaml".into(),
+        },
+        Desired::Running,
+    )
+    .unwrap();
     s
 }
 
@@ -47,7 +58,10 @@ fn ev(seq: u64, seat: &str, body: EventBody) -> HostEvent {
 }
 
 fn running() -> EventBody {
-    EventBody::SeatLifecycleChanged { lifecycle: SeatLifecycle::Running, reason: None }
+    EventBody::SeatLifecycleChanged {
+        lifecycle: SeatLifecycle::Running,
+        reason: None,
+    }
 }
 
 #[test]
@@ -56,8 +70,17 @@ fn new_seats_start_planned_in_declaration_order() {
     let snap = s.rig_snapshot("r").unwrap().unwrap();
     let ids: Vec<_> = snap.seats.iter().map(|x| x.id.as_str()).collect();
     assert_eq!(ids, [A, B]);
-    assert!(snap.seats.iter().all(|x| x.lifecycle == SeatLifecycle::Planned && x.activity == SeatActivity::Unknown));
-    assert!(snap.seats.iter().all(|x| x.tokens_in.is_none() && x.tokens_out.is_none()), "usage is unknown, not 0");
+    assert!(
+        snap.seats
+            .iter()
+            .all(|x| x.lifecycle == SeatLifecycle::Planned && x.activity == SeatActivity::Unknown)
+    );
+    assert!(
+        snap.seats
+            .iter()
+            .all(|x| x.tokens_in.is_none() && x.tokens_out.is_none()),
+        "usage is unknown, not 0"
+    );
     assert_eq!(snap.desired, Desired::Running);
     assert_eq!(snap.last_seq, 0);
     assert_eq!(snap.rig.name, "r");
@@ -71,36 +94,64 @@ fn ingest_projects_the_seat_view() {
     s.ingest("local", ev(1, A, running())).unwrap();
     s.ingest(
         "local",
-        ev(2, A, EventBody::TenureStarted {
-            tenure: 1,
-            cause: TenureCause::Fresh,
-            driver: "stub".into(),
-            native_session_id: Some("n1".into()),
-            caps: Caps { interrupt: true, ..Caps::default() },
-        }),
+        ev(
+            2,
+            A,
+            EventBody::TenureStarted {
+                tenure: 1,
+                cause: TenureCause::Fresh,
+                driver: "stub".into(),
+                native_session_id: Some("n1".into()),
+                caps: Caps {
+                    interrupt: true,
+                    ..Caps::default()
+                },
+            },
+        ),
     )
     .unwrap();
-    s.ingest("local", ev(3, A, EventBody::TurnStarted { turn_id: "turn-1".into() })).unwrap();
     s.ingest(
         "local",
-        ev(4, A, EventBody::ToolCalled {
-            turn_id: Some("turn-1".into()),
-            call_id: "c1".into(),
-            name: "Bash".into(),
-            input: json!({ "command": "ls" }),
-            parent_call_id: None,
-        }),
+        ev(
+            3,
+            A,
+            EventBody::TurnStarted {
+                turn_id: "turn-1".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            4,
+            A,
+            EventBody::ToolCalled {
+                turn_id: Some("turn-1".into()),
+                call_id: "c1".into(),
+                name: "Bash".into(),
+                input: json!({ "command": "ls" }),
+                parent_call_id: None,
+            },
+        ),
     )
     .unwrap();
     let items = s
         .ingest(
             "local",
-            ev(5, A, EventBody::UsageReported { in_turn: false,
-                turn_id: Some("turn-1".into()),
-                input_tokens: 10,
-                output_tokens: 5,
-                cache_read_tokens: 0,
-                cache_write_tokens: 0, cost: None }),
+            ev(
+                5,
+                A,
+                EventBody::UsageReported {
+                    in_turn: false,
+                    turn_id: Some("turn-1".into()),
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                    cost: None,
+                },
+            ),
         )
         .unwrap();
     assert_eq!(items.len(), 1);
@@ -116,7 +167,18 @@ fn ingest_projects_the_seat_view() {
     assert_eq!(seat.last_event_ms, Some(1005));
     assert_eq!(items[0].event.seq, 5);
 
-    s.ingest("local", ev(6, A, EventBody::TurnEnded { turn_id: "turn-1".into(), status: TurnStatus::Completed })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            6,
+            A,
+            EventBody::TurnEnded {
+                turn_id: "turn-1".into(),
+                status: TurnStatus::Completed,
+            },
+        ),
+    )
+    .unwrap();
     let seat = s.seat(A).unwrap().unwrap();
     assert_eq!(seat.current_turn, None);
     assert_eq!(seat.current_tool, None);
@@ -126,18 +188,25 @@ fn ingest_projects_the_seat_view() {
 fn subagent_tool_calls_do_not_replace_current_tool() {
     let mut s = store();
     let call = |seq, name: &str, parent: Option<&str>| {
-        ev(seq, A, EventBody::ToolCalled {
-            turn_id: None,
-            call_id: format!("c{seq}"),
-            name: name.into(),
-            input: json!({}),
-            parent_call_id: parent.map(str::to_string),
-        })
+        ev(
+            seq,
+            A,
+            EventBody::ToolCalled {
+                turn_id: None,
+                call_id: format!("c{seq}"),
+                name: name.into(),
+                input: json!({}),
+                parent_call_id: parent.map(str::to_string),
+            },
+        )
     };
     // The subagent tool is `Agent` on the wire (M0: claude-subagent@3265).
     s.ingest("local", call(1, "Agent", None)).unwrap();
     s.ingest("local", call(2, "Bash", Some("c1"))).unwrap();
-    assert_eq!(s.seat(A).unwrap().unwrap().current_tool.as_deref(), Some("Agent"));
+    assert_eq!(
+        s.seat(A).unwrap().unwrap().current_tool.as_deref(),
+        Some("Agent")
+    );
 }
 
 #[test]
@@ -171,15 +240,51 @@ fn message_state_only_moves_forward() {
         Actor::Human("local".into()),
         Subject::Seat(A.into()),
         Provenance::Operator,
-        EventBody::MessageQueued { message_id: "m1".into(), intent: MessageIntent::Inform, text: "hi".into() },
+        EventBody::MessageQueued {
+            message_id: "m1".into(),
+            intent: MessageIntent::Inform,
+            text: "hi".into(),
+        },
     )
     .unwrap();
     assert_eq!(s.message_state("m1").unwrap(), Some(MessageState::Queued));
     // Consumed can be observed before Delivered (the driver races the command reply).
-    s.ingest("local", ev(1, A, EventBody::MessageConsumed { message_id: "m1".into(), turn_id: "turn-1".into() })).unwrap();
-    s.ingest("local", ev(2, A, EventBody::MessageDelivered { message_id: "m1".into() })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            1,
+            A,
+            EventBody::MessageConsumed {
+                message_id: "m1".into(),
+                turn_id: "turn-1".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            2,
+            A,
+            EventBody::MessageDelivered {
+                message_id: "m1".into(),
+            },
+        ),
+    )
+    .unwrap();
     assert_eq!(s.message_state("m1").unwrap(), Some(MessageState::Consumed));
-    s.ingest("local", ev(3, A, EventBody::MessageFailed { message_id: "m1".into(), reason: "late".into() })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            3,
+            A,
+            EventBody::MessageFailed {
+                message_id: "m1".into(),
+                reason: "late".into(),
+            },
+        ),
+    )
+    .unwrap();
     assert_eq!(s.message_state("m1").unwrap(), Some(MessageState::Consumed));
     assert_eq!(s.message_state("unknown").unwrap(), None);
 }
@@ -192,7 +297,9 @@ fn local_events_get_their_own_sequence() {
             Actor::Human("local".into()),
             Subject::Rig("r".into()),
             Provenance::Operator,
-            EventBody::RigDesiredChanged { desired: Desired::Stopped },
+            EventBody::RigDesiredChanged {
+                desired: Desired::Stopped,
+            },
         )
         .unwrap();
     let b = s
@@ -200,13 +307,20 @@ fn local_events_get_their_own_sequence() {
             Actor::Human("local".into()),
             Subject::Rig("r".into()),
             Provenance::Operator,
-            EventBody::RigDesiredChanged { desired: Desired::Running },
+            EventBody::RigDesiredChanged {
+                desired: Desired::Running,
+            },
         )
         .unwrap();
-    assert_eq!((a.event.host.as_str(), a.event.host_seq), (LOCAL_EVENT_HOST, 1));
+    assert_eq!(
+        (a.event.host.as_str(), a.event.host_seq),
+        (LOCAL_EVENT_HOST, 1)
+    );
     assert_eq!(b.event.host_seq, 2);
     assert!(a.seat.is_none());
-    let rig_events = s.events_for_subject(&Subject::Rig("r".into()), 0, 10).unwrap();
+    let rig_events = s
+        .events_for_subject(&Subject::Rig("r".into()), 0, 10)
+        .unwrap();
     assert_eq!(rig_events.len(), 2);
 }
 
@@ -222,14 +336,25 @@ fn events_for_seat_filters_and_pages() {
     assert_eq!(s.events_for_seat(A, all[0].seq, 10).unwrap().len(), 2);
     assert_eq!(s.events_for_seat(A, 0, 1).unwrap().len(), 1);
     let tail = s.latest_events_for_seat(A, 2).unwrap();
-    assert_eq!(tail.iter().map(|e| e.host_seq).collect::<Vec<_>>(), [2, 3], "newest two, oldest first");
+    assert_eq!(
+        tail.iter().map(|e| e.host_seq).collect::<Vec<_>>(),
+        [2, 3],
+        "newest two, oldest first"
+    );
 }
 
 #[test]
 fn upsert_keeps_state_and_drops_removed_seats() {
     let mut s = store();
     s.ingest("local", ev(1, A, running())).unwrap();
-    s.upsert_rig(&rigspec::compile(SPEC_A_ONLY).unwrap(), &RigSource::File { path: "/specs/r.yaml".into() }, Desired::Running).unwrap();
+    s.upsert_rig(
+        &rigspec::compile(SPEC_A_ONLY).unwrap(),
+        &RigSource::File {
+            path: "/specs/r.yaml".into(),
+        },
+        Desired::Running,
+    )
+    .unwrap();
     let snap = s.rig_snapshot("r").unwrap().unwrap();
     assert_eq!(snap.seats.len(), 1);
     assert_eq!(snap.seats[0].lifecycle, SeatLifecycle::Running);
@@ -242,13 +367,27 @@ fn list_rigs_counts_running_and_attention() {
     s.ingest("local", ev(1, A, running())).unwrap();
     s.ingest(
         "local",
-        ev(2, B, EventBody::SeatLifecycleChanged { lifecycle: SeatLifecycle::Attention, reason: Some("x".into()) }),
+        ev(
+            2,
+            B,
+            EventBody::SeatLifecycleChanged {
+                lifecycle: SeatLifecycle::Attention,
+                reason: Some("x".into()),
+            },
+        ),
     )
     .unwrap();
     s.set_desired("r", Desired::Stopped).unwrap();
     let rigs = s.list_rigs().unwrap();
     assert_eq!(rigs.len(), 1);
-    assert_eq!((rigs[0].seat_count, rigs[0].running_count, rigs[0].attention_count), (2, 1, 1));
+    assert_eq!(
+        (
+            rigs[0].seat_count,
+            rigs[0].running_count,
+            rigs[0].attention_count
+        ),
+        (2, 1, 1)
+    );
     assert_eq!(rigs[0].desired, Desired::Stopped);
     assert_eq!(s.seats_on_host("local").unwrap().len(), 2);
 }
@@ -257,7 +396,11 @@ fn list_rigs_counts_running_and_attention() {
 fn receipts_round_trip() {
     let mut s = store();
     assert!(s.receipt("req-1").unwrap().is_none());
-    let r = Receipt { fingerprint: "send:{}".into(), status: 502, body: "{\"error\":{}}".into() };
+    let r = Receipt {
+        fingerprint: "send:{}".into(),
+        status: 502,
+        body: "{\"error\":{}}".into(),
+    };
     s.save_receipt("req-1", &r).unwrap();
     assert_eq!(s.receipt("req-1").unwrap(), Some(r));
 }
@@ -268,37 +411,127 @@ fn store_survives_reopen() {
     let path = dir.path().join("controld.sqlite");
     {
         let mut s = Store::open(&path).unwrap();
-        s.upsert_rig(&rigspec::compile(SPEC).unwrap(), &RigSource::File { path: "/specs/r.yaml".into() }, Desired::Running).unwrap();
+        s.upsert_rig(
+            &rigspec::compile(SPEC).unwrap(),
+            &RigSource::File {
+                path: "/specs/r.yaml".into(),
+            },
+            Desired::Running,
+        )
+        .unwrap();
         s.ingest("local", ev(1, A, running())).unwrap();
     }
     let s = Store::open(&path).unwrap();
     assert_eq!(s.host_cursor("local").unwrap(), 1);
-    assert_eq!(s.seat(A).unwrap().unwrap().lifecycle, SeatLifecycle::Running);
+    assert_eq!(
+        s.seat(A).unwrap().unwrap().lifecycle,
+        SeatLifecycle::Running
+    );
 }
 
 #[test]
 fn tenure_end_and_start_clear_turn_and_tool() {
     let mut s = store();
-    s.ingest("local", ev(1, A, EventBody::TurnStarted { turn_id: "t1".into() })).unwrap();
-    s.ingest("local", ev(2, A, EventBody::ToolCalled {
-        turn_id: Some("t1".into()), call_id: "c1".into(), name: "Bash".into(), input: json!({}), parent_call_id: None,
-    }))
+    s.ingest(
+        "local",
+        ev(
+            1,
+            A,
+            EventBody::TurnStarted {
+                turn_id: "t1".into(),
+            },
+        ),
+    )
     .unwrap();
-    s.ingest("local", ev(3, A, EventBody::TenureEnded { tenure: 1, exit_code: None, signal: Some(9), stderr_tail: String::new() })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            2,
+            A,
+            EventBody::ToolCalled {
+                turn_id: Some("t1".into()),
+                call_id: "c1".into(),
+                name: "Bash".into(),
+                input: json!({}),
+                parent_call_id: None,
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            3,
+            A,
+            EventBody::TenureEnded {
+                tenure: 1,
+                exit_code: None,
+                signal: Some(9),
+                stderr_tail: String::new(),
+            },
+        ),
+    )
+    .unwrap();
     let v = s.seat(A).unwrap().unwrap();
     assert_eq!((v.current_turn, v.current_tool), (None, None));
 
-    s.ingest("local", ev(4, A, EventBody::TurnStarted { turn_id: "t2".into() })).unwrap();
-    s.ingest("local", ev(5, A, EventBody::ToolCalled {
-        turn_id: Some("t2".into()), call_id: "c2".into(), name: "Bash".into(), input: json!({}), parent_call_id: None,
-    }))
+    s.ingest(
+        "local",
+        ev(
+            4,
+            A,
+            EventBody::TurnStarted {
+                turn_id: "t2".into(),
+            },
+        ),
+    )
     .unwrap();
-    s.ingest("local", ev(6, A, EventBody::TurnStarted { turn_id: "t3".into() })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            5,
+            A,
+            EventBody::ToolCalled {
+                turn_id: Some("t2".into()),
+                call_id: "c2".into(),
+                name: "Bash".into(),
+                input: json!({}),
+                parent_call_id: None,
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            6,
+            A,
+            EventBody::TurnStarted {
+                turn_id: "t3".into(),
+            },
+        ),
+    )
+    .unwrap();
     let v = s.seat(A).unwrap().unwrap();
-    assert_eq!((v.current_turn.as_deref(), v.current_tool), (Some("t3"), None), "new turn clears the old tool");
-    s.ingest("local", ev(7, A, EventBody::TenureStarted {
-        tenure: 2, cause: TenureCause::Fresh, driver: "stub".into(), native_session_id: None, caps: Caps::default(),
-    }))
+    assert_eq!(
+        (v.current_turn.as_deref(), v.current_tool),
+        (Some("t3"), None),
+        "new turn clears the old tool"
+    );
+    s.ingest(
+        "local",
+        ev(
+            7,
+            A,
+            EventBody::TenureStarted {
+                tenure: 2,
+                cause: TenureCause::Fresh,
+                driver: "stub".into(),
+                native_session_id: None,
+                caps: Caps::default(),
+            },
+        ),
+    )
     .unwrap();
     assert_eq!(s.seat(A).unwrap().unwrap().current_turn, None);
 }
@@ -309,10 +542,18 @@ fn bad_stored_enum_is_an_error_not_a_panic() {
     let path = dir.path().join("c.sqlite");
     {
         let mut s = Store::open(&path).unwrap();
-        s.upsert_rig(&rigspec::compile(SPEC).unwrap(), &RigSource::File { path: "/specs/r.yaml".into() }, Desired::Running).unwrap();
+        s.upsert_rig(
+            &rigspec::compile(SPEC).unwrap(),
+            &RigSource::File {
+                path: "/specs/r.yaml".into(),
+            },
+            Desired::Running,
+        )
+        .unwrap();
     }
     let raw = rusqlite::Connection::open(&path).unwrap();
-    raw.execute("UPDATE seats SET lifecycle = 'bogus' WHERE id = ?1", [A]).unwrap();
+    raw.execute("UPDATE seats SET lifecycle = 'bogus' WHERE id = ?1", [A])
+        .unwrap();
     drop(raw);
     let s = Store::open(&path).unwrap();
     assert!(s.seat(A).is_err());
@@ -323,8 +564,22 @@ fn bad_stored_enum_is_an_error_not_a_panic() {
 fn usage_sums_across_reports() {
     let mut s = store();
     for (seq, i, o) in [(1, 10, 5), (2, 7, 3)] {
-        s.ingest("local", ev(seq, A, EventBody::UsageReported { in_turn: false,
-            turn_id: None, input_tokens: i, output_tokens: o, cache_read_tokens: 0, cache_write_tokens: 0, cost: None }))
+        s.ingest(
+            "local",
+            ev(
+                seq,
+                A,
+                EventBody::UsageReported {
+                    in_turn: false,
+                    turn_id: None,
+                    input_tokens: i,
+                    output_tokens: o,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                    cost: None,
+                },
+            ),
+        )
         .unwrap();
     }
     let v = s.seat(A).unwrap().unwrap();
@@ -335,20 +590,68 @@ fn usage_sums_across_reports() {
 fn failed_message_stays_failed() {
     let mut s = store();
     s.append_local(
-        Actor::Human("local".into()), Subject::Seat(A.into()), Provenance::Operator,
-        EventBody::MessageQueued { message_id: "m1".into(), intent: MessageIntent::Inform, text: "hi".into() },
+        Actor::Human("local".into()),
+        Subject::Seat(A.into()),
+        Provenance::Operator,
+        EventBody::MessageQueued {
+            message_id: "m1".into(),
+            intent: MessageIntent::Inform,
+            text: "hi".into(),
+        },
     )
     .unwrap();
-    s.ingest("local", ev(1, A, EventBody::MessageFailed { message_id: "m1".into(), reason: "x".into() })).unwrap();
-    s.ingest("local", ev(2, A, EventBody::MessageDelivered { message_id: "m1".into() })).unwrap();
-    s.ingest("local", ev(3, A, EventBody::MessageConsumed { message_id: "m1".into(), turn_id: "t".into() })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            1,
+            A,
+            EventBody::MessageFailed {
+                message_id: "m1".into(),
+                reason: "x".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            2,
+            A,
+            EventBody::MessageDelivered {
+                message_id: "m1".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            3,
+            A,
+            EventBody::MessageConsumed {
+                message_id: "m1".into(),
+                turn_id: "t".into(),
+            },
+        ),
+    )
+    .unwrap();
     assert_eq!(s.message_state("m1").unwrap(), Some(MessageState::Failed));
 }
 
 #[test]
 fn activity_projects() {
     let mut s = store();
-    s.ingest("local", ev(1, A, EventBody::SeatActivityChanged { activity: SeatActivity::Working })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            1,
+            A,
+            EventBody::SeatActivityChanged {
+                activity: SeatActivity::Working,
+            },
+        ),
+    )
+    .unwrap();
     assert_eq!(s.seat(A).unwrap().unwrap().activity, SeatActivity::Working);
 }
 
@@ -357,8 +660,13 @@ fn local_lifecycle_does_not_overwrite_host() {
     let mut s = store();
     s.ingest("local", ev(1, A, running())).unwrap();
     s.append_local(
-        Actor::Human("local".into()), Subject::Seat(A.into()), Provenance::Operator,
-        EventBody::SeatLifecycleChanged { lifecycle: SeatLifecycle::Stopping, reason: None },
+        Actor::Human("local".into()),
+        Subject::Seat(A.into()),
+        Provenance::Operator,
+        EventBody::SeatLifecycleChanged {
+            lifecycle: SeatLifecycle::Stopping,
+            reason: None,
+        },
     )
     .unwrap();
     let v = s.seat(A).unwrap().unwrap();
@@ -377,19 +685,55 @@ fn ingest_rejects_the_reserved_local_host() {
 
 fn local_lifecycle(s: &mut Store, seat: &str, provenance: Provenance, lifecycle: SeatLifecycle) {
     s.append_local(
-        Actor::System("controld".into()), Subject::Seat(seat.into()), provenance,
-        EventBody::SeatLifecycleChanged { lifecycle, reason: Some("test".into()) },
+        Actor::System("controld".into()),
+        Subject::Seat(seat.into()),
+        provenance,
+        EventBody::SeatLifecycleChanged {
+            lifecycle,
+            reason: Some("test".into()),
+        },
     )
     .unwrap();
 }
 
 fn mid_turn(s: &mut Store, seat: &str) {
     s.ingest("local", ev(1, seat, running())).unwrap();
-    s.ingest("local", ev(2, seat, EventBody::SeatActivityChanged { activity: SeatActivity::Working })).unwrap();
-    s.ingest("local", ev(3, seat, EventBody::TurnStarted { turn_id: "t1".into() })).unwrap();
-    s.ingest("local", ev(4, seat, EventBody::ToolCalled {
-        turn_id: Some("t1".into()), call_id: "c1".into(), name: "Bash".into(), input: json!({}), parent_call_id: None,
-    }))
+    s.ingest(
+        "local",
+        ev(
+            2,
+            seat,
+            EventBody::SeatActivityChanged {
+                activity: SeatActivity::Working,
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            3,
+            seat,
+            EventBody::TurnStarted {
+                turn_id: "t1".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            4,
+            seat,
+            EventBody::ToolCalled {
+                turn_id: Some("t1".into()),
+                call_id: "c1".into(),
+                name: "Bash".into(),
+                input: json!({}),
+                parent_call_id: None,
+            },
+        ),
+    )
     .unwrap();
 }
 
@@ -397,12 +741,20 @@ fn mid_turn(s: &mut Store, seat: &str) {
 /// activity looking current.
 #[test]
 fn attention_clears_turn_tool_and_activity() {
-    for l in [SeatLifecycle::Attention, SeatLifecycle::Failed, SeatLifecycle::Stopped] {
+    for l in [
+        SeatLifecycle::Attention,
+        SeatLifecycle::Failed,
+        SeatLifecycle::Stopped,
+    ] {
         let mut s = store();
         mid_turn(&mut s, A);
         local_lifecycle(&mut s, A, Provenance::Heuristic, l);
         let v = s.seat(A).unwrap().unwrap();
-        assert_eq!((v.current_turn, v.current_tool, v.activity), (None, None, SeatActivity::Unknown), "{l:?}");
+        assert_eq!(
+            (v.current_turn, v.current_tool, v.activity),
+            (None, None, SeatActivity::Unknown),
+            "{l:?}"
+        );
     }
 }
 
@@ -414,13 +766,26 @@ fn stale_keeps_last_known_turn_tool_and_activity() {
     mid_turn(&mut s, A);
     local_lifecycle(&mut s, A, Provenance::Heuristic, SeatLifecycle::Stale);
     let v = s.seat(A).unwrap().unwrap();
-    assert_eq!((v.current_turn.as_deref(), v.current_tool.as_deref(), v.activity), (Some("t1"), Some("Bash"), SeatActivity::Working));
+    assert_eq!(
+        (
+            v.current_turn.as_deref(),
+            v.current_tool.as_deref(),
+            v.activity
+        ),
+        (Some("t1"), Some("Bash"), SeatActivity::Working)
+    );
 }
 
 fn queue(s: &mut Store, seat: &str, id: &str) {
     s.append_local(
-        Actor::Human("local".into()), Subject::Seat(seat.into()), Provenance::Operator,
-        EventBody::MessageQueued { message_id: id.into(), intent: MessageIntent::Inform, text: "hi".into() },
+        Actor::Human("local".into()),
+        Subject::Seat(seat.into()),
+        Provenance::Operator,
+        EventBody::MessageQueued {
+            message_id: id.into(),
+            intent: MessageIntent::Inform,
+            text: "hi".into(),
+        },
     )
     .unwrap();
 }
@@ -433,38 +798,135 @@ fn tenure_end_fails_unread_messages_with_a_reason() {
         queue(&mut s, A, id);
     }
     queue(&mut s, B, "other-seat");
-    s.ingest("local", ev(1, A, EventBody::MessageDelivered { message_id: "delivered".into() })).unwrap();
-    s.ingest("local", ev(2, A, EventBody::MessageDelivered { message_id: "consumed".into() })).unwrap();
-    s.ingest("local", ev(3, A, EventBody::MessageConsumed { message_id: "consumed".into(), turn_id: "t".into() })).unwrap();
-    s.ingest("local", ev(4, A, EventBody::TenureEnded { tenure: 1, exit_code: Some(1), signal: None, stderr_tail: String::new() })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            1,
+            A,
+            EventBody::MessageDelivered {
+                message_id: "delivered".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            2,
+            A,
+            EventBody::MessageDelivered {
+                message_id: "consumed".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            3,
+            A,
+            EventBody::MessageConsumed {
+                message_id: "consumed".into(),
+                turn_id: "t".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            4,
+            A,
+            EventBody::TenureEnded {
+                tenure: 1,
+                exit_code: Some(1),
+                signal: None,
+                stderr_tail: String::new(),
+            },
+        ),
+    )
+    .unwrap();
     for id in ["queued", "delivered"] {
-        assert_eq!(s.message_state(id).unwrap(), Some(MessageState::Failed), "{id}");
-        assert_eq!(s.message_reason(id).unwrap().as_deref(), Some("the agent stopped before reading this message"), "{id}");
+        assert_eq!(
+            s.message_state(id).unwrap(),
+            Some(MessageState::Failed),
+            "{id}"
+        );
+        assert_eq!(
+            s.message_reason(id).unwrap().as_deref(),
+            Some("the agent stopped before reading this message"),
+            "{id}"
+        );
     }
-    assert_eq!(s.message_state("consumed").unwrap(), Some(MessageState::Consumed));
+    assert_eq!(
+        s.message_state("consumed").unwrap(),
+        Some(MessageState::Consumed)
+    );
     assert_eq!(s.message_reason("consumed").unwrap(), None);
-    assert_eq!(s.message_state("other-seat").unwrap(), Some(MessageState::Queued), "only that seat's messages");
+    assert_eq!(
+        s.message_state("other-seat").unwrap(),
+        Some(MessageState::Queued),
+        "only that seat's messages"
+    );
 }
 
 #[test]
 fn message_failed_stores_its_reason() {
     let mut s = store();
     queue(&mut s, A, "m1");
-    s.ingest("local", ev(1, A, EventBody::MessageFailed { message_id: "m1".into(), reason: "host gone".into() })).unwrap();
-    assert_eq!(s.message_reason("m1").unwrap().as_deref(), Some("host gone"));
+    s.ingest(
+        "local",
+        ev(
+            1,
+            A,
+            EventBody::MessageFailed {
+                message_id: "m1".into(),
+                reason: "host gone".into(),
+            },
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        s.message_reason("m1").unwrap().as_deref(),
+        Some("host gone")
+    );
 }
 
 /// M1: the seat view carries the provenance of its latest lifecycle event.
 #[test]
 fn lifecycle_provenance_follows_the_latest_lifecycle_event() {
     let mut s = store();
-    assert_eq!(s.seat(A).unwrap().unwrap().lifecycle_provenance, None, "planned: no lifecycle event yet");
+    assert_eq!(
+        s.seat(A).unwrap().unwrap().lifecycle_provenance,
+        None,
+        "planned: no lifecycle event yet"
+    );
     s.ingest("local", ev(1, A, running())).unwrap();
-    assert_eq!(s.seat(A).unwrap().unwrap().lifecycle_provenance, Some(Provenance::ProtocolObserved));
+    assert_eq!(
+        s.seat(A).unwrap().unwrap().lifecycle_provenance,
+        Some(Provenance::ProtocolObserved)
+    );
     local_lifecycle(&mut s, A, Provenance::Heuristic, SeatLifecycle::Attention);
-    assert_eq!(s.seat(A).unwrap().unwrap().lifecycle_provenance, Some(Provenance::Heuristic));
-    s.ingest("local", ev(2, A, EventBody::SeatActivityChanged { activity: SeatActivity::Idle })).unwrap();
-    assert_eq!(s.seat(A).unwrap().unwrap().lifecycle_provenance, Some(Provenance::Heuristic), "only lifecycle events set it");
+    assert_eq!(
+        s.seat(A).unwrap().unwrap().lifecycle_provenance,
+        Some(Provenance::Heuristic)
+    );
+    s.ingest(
+        "local",
+        ev(
+            2,
+            A,
+            EventBody::SeatActivityChanged {
+                activity: SeatActivity::Idle,
+            },
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        s.seat(A).unwrap().unwrap().lifecycle_provenance,
+        Some(Provenance::Heuristic),
+        "only lifecycle events set it"
+    );
 }
 
 /// A store written by the previous schema (no lifecycle_provenance, no message reason)
@@ -499,7 +961,18 @@ fn opens_a_store_created_before_the_added_columns() {
     let mut s = Store::open(&path).unwrap();
     assert_eq!(s.seat(A).unwrap().unwrap().lifecycle_provenance, None);
     queue(&mut s, A, "m1");
-    s.ingest("local", ev(1, A, EventBody::MessageFailed { message_id: "m1".into(), reason: "x".into() })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            1,
+            A,
+            EventBody::MessageFailed {
+                message_id: "m1".into(),
+                reason: "x".into(),
+            },
+        ),
+    )
+    .unwrap();
     assert_eq!(s.message_reason("m1").unwrap().as_deref(), Some("x"));
     drop(s);
     Store::open(&path).expect("reopening a migrated store is a no-op");
@@ -515,8 +988,16 @@ fn stopped_or_failed_without_a_tenure_end_fails_unread_messages() {
     local_lifecycle(&mut s, A, Provenance::Heuristic, SeatLifecycle::Stopped);
     local_lifecycle(&mut s, B, Provenance::Heuristic, SeatLifecycle::Failed);
     for id in ["a1", "b1"] {
-        assert_eq!(s.message_state(id).unwrap(), Some(MessageState::Failed), "{id}");
-        assert_eq!(s.message_reason(id).unwrap().as_deref(), Some("the agent stopped before reading this message"), "{id}");
+        assert_eq!(
+            s.message_state(id).unwrap(),
+            Some(MessageState::Failed),
+            "{id}"
+        );
+        assert_eq!(
+            s.message_reason(id).unwrap().as_deref(),
+            Some("the agent stopped before reading this message"),
+            "{id}"
+        );
     }
 }
 
@@ -528,9 +1009,18 @@ fn stale_or_stopping_keeps_unread_messages_queued() {
     queue(&mut s, A, "a1");
     queue(&mut s, B, "b1");
     local_lifecycle(&mut s, A, Provenance::Heuristic, SeatLifecycle::Stale);
-    local_lifecycle(&mut s, B, Provenance::ProtocolObserved, SeatLifecycle::Stopping);
+    local_lifecycle(
+        &mut s,
+        B,
+        Provenance::ProtocolObserved,
+        SeatLifecycle::Stopping,
+    );
     for id in ["a1", "b1"] {
-        assert_eq!(s.message_state(id).unwrap(), Some(MessageState::Queued), "{id}");
+        assert_eq!(
+            s.message_state(id).unwrap(),
+            Some(MessageState::Queued),
+            "{id}"
+        );
         assert_eq!(s.message_reason(id).unwrap(), None, "{id}");
     }
 }
@@ -543,11 +1033,29 @@ fn attention_keeps_unread_messages_queued() {
     queue(&mut s, A, "a1");
     queue(&mut s, B, "b1");
     s.ingest("local", ev(1, B, running())).unwrap();
-    s.ingest("local", ev(2, B, EventBody::MessageDelivered { message_id: "b1".into() })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            2,
+            B,
+            EventBody::MessageDelivered {
+                message_id: "b1".into(),
+            },
+        ),
+    )
+    .unwrap();
     local_lifecycle(&mut s, A, Provenance::Heuristic, SeatLifecycle::Attention);
-    local_lifecycle(&mut s, B, Provenance::ProtocolObserved, SeatLifecycle::Attention);
+    local_lifecycle(
+        &mut s,
+        B,
+        Provenance::ProtocolObserved,
+        SeatLifecycle::Attention,
+    );
     assert_eq!(s.message_state("a1").unwrap(), Some(MessageState::Queued));
-    assert_eq!(s.message_state("b1").unwrap(), Some(MessageState::Delivered));
+    assert_eq!(
+        s.message_state("b1").unwrap(),
+        Some(MessageState::Delivered)
+    );
     for id in ["a1", "b1"] {
         assert_eq!(s.message_reason(id).unwrap(), None, "{id}");
     }
@@ -560,23 +1068,109 @@ fn an_agent_silent_in_its_turn_is_flagged_once_and_its_next_output_clears_it() {
     let mut s = store();
     s.ingest("local", ev(1, A, running())).unwrap();
     s.ingest("local", ev(2, B, running())).unwrap();
-    s.ingest("local", ev(3, A, EventBody::TurnStarted { turn_id: "t1".into() })).unwrap();
-    s.ingest("local", ev(4, A, EventBody::ToolCalled { turn_id: None, call_id: "c1".into(), name: "Bash".into(), input: json!({}), parent_call_id: None })).unwrap();
-    s.ingest("local", ev(5, B, EventBody::TurnStarted { turn_id: "t2".into() })).unwrap();
-    s.ingest("local", ev(6, B, EventBody::ToolCalled { turn_id: None, call_id: "c2".into(), name: "mcp__rig__request_input".into(), input: json!({}), parent_call_id: None })).unwrap();
+    s.ingest(
+        "local",
+        ev(
+            3,
+            A,
+            EventBody::TurnStarted {
+                turn_id: "t1".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            4,
+            A,
+            EventBody::ToolCalled {
+                turn_id: None,
+                call_id: "c1".into(),
+                name: "Bash".into(),
+                input: json!({}),
+                parent_call_id: None,
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            5,
+            B,
+            EventBody::TurnStarted {
+                turn_id: "t2".into(),
+            },
+        ),
+    )
+    .unwrap();
+    s.ingest(
+        "local",
+        ev(
+            6,
+            B,
+            EventBody::ToolCalled {
+                turn_id: None,
+                call_id: "c2".into(),
+                name: "mcp__rig__request_input".into(),
+                input: json!({}),
+                parent_call_id: None,
+            },
+        ),
+    )
+    .unwrap();
     let quiet = 30 * 60_000;
-    assert!(s.silent_seats(1004 + quiet - 1, quiet).unwrap().is_empty(), "not yet");
+    assert!(
+        s.silent_seats(1004 + quiet - 1, quiet).unwrap().is_empty(),
+        "not yet"
+    );
     let found = s.silent_seats(1006 + 31 * 60_000, quiet).unwrap();
-    assert_eq!(found.len(), 1, "an agent waiting for a person's answer is not silent: {found:?}");
+    assert_eq!(
+        found.len(),
+        1,
+        "an agent waiting for a person's answer is not silent: {found:?}"
+    );
     assert_eq!(found[0].seat, A);
-    assert!(found[0].reason().contains("31 minutes") && found[0].reason().contains("Bash"), "{}", found[0].reason());
+    assert!(
+        found[0].reason().contains("31 minutes") && found[0].reason().contains("Bash"),
+        "{}",
+        found[0].reason()
+    );
 
-    s.append_local(Actor::System("controld".into()), Subject::Seat(A.into()), Provenance::Heuristic, EventBody::StallSuspected { reason: found[0].reason() }).unwrap();
+    s.append_local(
+        Actor::System("controld".into()),
+        Subject::Seat(A.into()),
+        Provenance::Heuristic,
+        EventBody::StallSuspected {
+            reason: found[0].reason(),
+        },
+    )
+    .unwrap();
     let stall = s.seat(A).unwrap().unwrap().stalled.expect("flagged");
     assert!(stall.silent, "{stall:?}");
-    assert!(s.silent_seats(1006 + 90 * 60_000, quiet).unwrap().is_empty(), "flagged once");
-    s.ingest("local", ev(7, A, EventBody::AgentText { turn_id: None, text: "still building".into() })).unwrap();
-    assert!(s.seat(A).unwrap().unwrap().stalled.is_none(), "its next output clears it");
+    assert!(
+        s.silent_seats(1006 + 90 * 60_000, quiet)
+            .unwrap()
+            .is_empty(),
+        "flagged once"
+    );
+    s.ingest(
+        "local",
+        ev(
+            7,
+            A,
+            EventBody::AgentText {
+                turn_id: None,
+                text: "still building".into(),
+            },
+        ),
+    )
+    .unwrap();
+    assert!(
+        s.seat(A).unwrap().unwrap().stalled.is_none(),
+        "its next output clears it"
+    );
 }
 
 /// Stall flags: the same tool error three times in a row flags the agent (heuristic); a success clears it.
@@ -585,15 +1179,36 @@ fn the_same_tool_error_three_times_in_a_row_flags_a_stall_and_a_success_clears_i
     let mut s = store();
     s.ingest("local", ev(1, A, running())).unwrap();
     let result = |seq, is_error, output: &str| {
-        ev(seq, A, EventBody::ToolResulted { turn_id: None, call_id: format!("c{seq}"), output: output.into(), is_error })
+        ev(
+            seq,
+            A,
+            EventBody::ToolResulted {
+                turn_id: None,
+                call_id: format!("c{seq}"),
+                output: output.into(),
+                is_error,
+            },
+        )
     };
     let stalled = |s: &Store| s.seat(A).unwrap().unwrap().stalled;
-    s.ingest("local", result(2, true, "error: cannot find module 'x'\nstack")).unwrap();
-    s.ingest("local", result(3, true, "error: cannot find module 'x'")).unwrap();
+    s.ingest(
+        "local",
+        result(2, true, "error: cannot find module 'x'\nstack"),
+    )
+    .unwrap();
+    s.ingest("local", result(3, true, "error: cannot find module 'x'"))
+        .unwrap();
     assert!(stalled(&s).is_none(), "two repeats are not a stall yet");
-    s.ingest("local", result(4, true, "error: cannot find module 'x'")).unwrap();
+    s.ingest("local", result(4, true, "error: cannot find module 'x'"))
+        .unwrap();
     let stall = stalled(&s).expect("stalled");
-    assert!(stall.reason.ends_with("3 times in a row: error: cannot find module 'x'"), "{}", stall.reason);
+    assert!(
+        stall
+            .reason
+            .ends_with("3 times in a row: error: cannot find module 'x'"),
+        "{}",
+        stall.reason
+    );
     s.ingest("local", result(5, false, "ok")).unwrap();
     assert!(stalled(&s).is_none());
 }

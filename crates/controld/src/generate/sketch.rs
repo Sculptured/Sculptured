@@ -1,8 +1,11 @@
 //! What the AI fills in (a strict, small "sketch"), and how a sketch becomes a laid-out team draft.
 //! The AI never writes ids or coordinates.
-use model::{AgentAdvanced, AgentKind, ConnectionKind, DraftAgent, DraftConnection, DraftGroup, ModelDefaults, TeamDraft};
+use model::{
+    AgentAdvanced, AgentKind, ConnectionKind, DraftAgent, DraftConnection, DraftGroup,
+    ModelDefaults, TeamDraft,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -32,7 +35,12 @@ pub struct SketchArrow {
 }
 
 fn strict(properties: Value) -> Value {
-    let required: Vec<String> = properties.as_object().unwrap().keys().cloned().collect();
+    let required: Vec<String> = properties
+        .as_object()
+        .expect("built-in schema properties are JSON objects")
+        .keys()
+        .cloned()
+        .collect();
     json!({ "type": "object", "additionalProperties": false, "properties": properties, "required": required })
 }
 
@@ -56,23 +64,29 @@ fn sketch_schema() -> Value {
 }
 
 /// `{questions: [{question, suggestions}]}`, 2–4 questions of 2–4 suggestions.
+#[must_use]
 pub fn questions_schema() -> Value {
     // Counts are asked for in the prompt and enforced by the server: structured-output modes may
     // refuse item limits.
-    strict(json!({ "questions": { "type": "array", "items": strict(json!({
+    strict(
+        json!({ "questions": { "type": "array", "items": strict(json!({
         "question": { "type": "string" },
         "suggestions": { "type": "array", "items": { "type": "string" } },
-    })) } }))
+    })) } }),
+    )
 }
 
 /// `{alternatives: [{label, rationale, team}]}`, exactly `count` of them.
+#[must_use]
 pub fn teams_schema(count: usize) -> Value {
     let _ = count;
-    strict(json!({ "alternatives": { "type": "array", "items": strict(json!({
+    strict(
+        json!({ "alternatives": { "type": "array", "items": strict(json!({
         "label": { "type": "string", "enum": ["lean", "balanced", "thorough", "team"] },
         "rationale": { "type": "string" },
         "team": sketch_schema(),
-    })) } }))
+    })) } }),
+    )
 }
 
 /// Which kinds the created agents have.
@@ -84,6 +98,7 @@ pub enum Kinds {
 }
 
 impl Kinds {
+    #[must_use]
     pub fn from_option(o: Option<&str>) -> Kinds {
         match o {
             Some("claude") => Kinds::All(AgentKind::Claude),
@@ -124,7 +139,9 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
         if group_ids.contains_key(&g.name) {
             continue;
         }
-        let id = rigspec::draft::unique_slug(&g.name, "group", |c| taken.contains(c) || c == model::DEFAULT_GROUP_ID);
+        let id = rigspec::draft::unique_slug(&g.name, "group", |c| {
+            taken.contains(c) || c == model::DEFAULT_GROUP_ID
+        });
         taken.insert(id.clone());
         group_ids.insert(g.name.clone(), id);
     }
@@ -162,8 +179,25 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
             Kinds::All(k) => k,
             Kinds::AsSketched => kind_of(&a.kind),
         };
-        let advanced = AgentAdvanced { check: a.check.clone().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()), ..Default::default() };
-        agents.push(DraftAgent { id, group_id, name, kind, job: a.job.clone(), folder: None, x: 0, y: 0, advanced });
+        let advanced = AgentAdvanced {
+            check: a
+                .check
+                .clone()
+                .map(|c| c.trim().to_string())
+                .filter(|c| !c.is_empty()),
+            ..Default::default()
+        };
+        agents.push(DraftAgent {
+            id,
+            group_id,
+            name,
+            kind,
+            job: a.job.clone(),
+            folder: None,
+            x: 0,
+            y: 0,
+            advanced,
+        });
     }
     // Arrows: only between known, different agents; no duplicates.
     let mut connections = Vec::new();
@@ -171,7 +205,10 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
     let mut connection_ids = HashSet::new();
     for r in &s.arrows {
         let (Some(from), Some(to)) = (by_name.get(&key(&r.from)), by_name.get(&key(&r.to))) else {
-            dropped.push(format!("The arrow from \"{}\" to \"{}\" names an agent that isn't in the team", r.from, r.to));
+            dropped.push(format!(
+                "The arrow from \"{}\" to \"{}\" names an agent that isn't in the team",
+                r.from, r.to
+            ));
             continue;
         };
         let kind = match r.kind.as_str() {
@@ -184,17 +221,37 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
             continue;
         }
         // Unique even for two arrows between the same agents, or ids that join into the same text.
-        let base = if kind == ConnectionKind::HandsWorkTo { format!("c-{from}-{to}") } else { format!("c-{from}-{}-{to}", r.kind) };
+        let base = if kind == ConnectionKind::HandsWorkTo {
+            format!("c-{from}-{to}")
+        } else {
+            format!("c-{from}-{}-{to}", r.kind)
+        };
         let id = rigspec::draft::unique_slug(&base, "c", |c| connection_ids.contains(c));
         connection_ids.insert(id.clone());
-        connections.push(DraftConnection { id, from: from.clone(), to: to.clone(), kind });
+        connections.push(DraftConnection {
+            id,
+            from: from.clone(),
+            to: to.clone(),
+            kind,
+        });
     }
     lay_out(&mut agents, &connections);
     let groups = group_boxes(&s.groups, &group_ids, &agents);
-    let team = TeamDraft { claude_setup: Default::default(), protection: Default::default(), safety: vec![], components: vec![], budget: Default::default(), input: None, schedules: vec![], decision_log: false, limits: Default::default(),
+    let team = TeamDraft {
+        claude_setup: Default::default(),
+        protection: Default::default(),
+        safety: vec![],
+        components: vec![],
+        budget: Default::default(),
+        input: None,
+        schedules: vec![],
+        decision_log: false,
+        limits: Default::default(),
         workflow: None,
         folder: folder.map(str::to_string),
-        id: Some(rigspec::draft::slug(&s.name)).filter(|x| !x.is_empty()).unwrap_or_else(|| "generated-team".into()),
+        id: Some(rigspec::draft::slug(&s.name))
+            .filter(|x| !x.is_empty())
+            .unwrap_or_else(|| "generated-team".into()),
         name: s.name.clone(),
         groups,
         agents,
@@ -208,12 +265,19 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
 /// Columns follow "hands work to": an agent sits one column right of the furthest agent that hands
 /// it work (cycles are cut). Within a column, agents are stacked by group, in sketch order.
 fn lay_out(agents: &mut [DraftAgent], connections: &[DraftConnection]) {
-    let index: BTreeMap<&str, usize> = agents.iter().enumerate().map(|(i, a)| (a.id.as_str(), i)).collect();
+    let index: BTreeMap<&str, usize> = agents
+        .iter()
+        .enumerate()
+        .map(|(i, a)| (a.id.as_str(), i))
+        .collect();
     let mut column = vec![0i32; agents.len()];
     // Longest path by relaxation, at most n rounds, so a cycle can't loop forever.
     for _ in 0..agents.len() {
         let mut changed = false;
-        for c in connections.iter().filter(|c| c.kind == ConnectionKind::HandsWorkTo) {
+        let matching_connections = connections
+            .iter()
+            .filter(|c| c.kind == ConnectionKind::HandsWorkTo);
+        for c in matching_connections {
             let (f, t) = (index[c.from.as_str()], index[c.to.as_str()]);
             if column[t] < column[f] + 1 && column[f] + 1 < agents.len() as i32 {
                 column[t] = column[f] + 1;
@@ -236,18 +300,38 @@ fn lay_out(agents: &mut [DraftAgent], connections: &[DraftConnection]) {
 }
 
 /// A box around each named group's agents; groups without agents are left out.
-fn group_boxes(groups: &[SketchGroup], ids: &BTreeMap<String, String>, agents: &[DraftAgent]) -> Vec<DraftGroup> {
+fn group_boxes(
+    groups: &[SketchGroup],
+    ids: &BTreeMap<String, String>,
+    agents: &[DraftAgent],
+) -> Vec<DraftGroup> {
     let mut out = Vec::new();
     for g in groups {
         let Some(id) = ids.get(&g.name) else { continue };
         if out.iter().any(|x: &DraftGroup| &x.id == id) {
             continue;
         }
-        let members: Vec<&DraftAgent> = agents.iter().filter(|a| a.group_id.as_deref() == Some(id)).collect();
-        let (Some(x0), Some(y0)) = (members.iter().map(|a| a.x).min(), members.iter().map(|a| a.y).min()) else { continue };
-        let x1 = members.iter().map(|a| a.x + CARD).max().unwrap();
-        let y1 = members.iter().map(|a| a.y + CARD).max().unwrap();
-        out.push(DraftGroup { id: id.clone(), label: g.name.clone(), x: x0 - PAD, y: y0 - PAD - HEAD, w: x1 - x0 + 2 * PAD, h: y1 - y0 + 2 * PAD + HEAD, models: ModelDefaults::default() });
+        let members: Vec<&DraftAgent> = agents
+            .iter()
+            .filter(|a| a.group_id.as_deref() == Some(id))
+            .collect();
+        let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
+            members.iter().map(|a| a.x).min(),
+            members.iter().map(|a| a.y).min(),
+            members.iter().map(|a| a.x + CARD).max(),
+            members.iter().map(|a| a.y + CARD).max(),
+        ) else {
+            continue;
+        };
+        out.push(DraftGroup {
+            id: id.clone(),
+            label: g.name.clone(),
+            x: x0 - PAD,
+            y: y0 - PAD - HEAD,
+            w: x1 - x0 + 2 * PAD,
+            h: y1 - y0 + 2 * PAD + HEAD,
+            models: ModelDefaults::default(),
+        });
     }
     out
 }

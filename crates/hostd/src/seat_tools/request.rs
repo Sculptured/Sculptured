@@ -15,9 +15,15 @@ pub(super) enum Request {
 }
 
 /// The request line (without its newline), reading at most `max` bytes of it into memory.
-pub(super) async fn read_request(r: &mut (impl AsyncBufReadExt + Unpin), max: usize) -> std::io::Result<Request> {
+pub(super) async fn read_request(
+    r: &mut (impl AsyncBufReadExt + Unpin),
+    max: usize,
+) -> std::io::Result<Request> {
     let mut line = Vec::new();
-    (&mut *r).take(max as u64 + 1).read_until(b'\n', &mut line).await?;
+    (&mut *r)
+        .take(max as u64 + 1)
+        .read_until(b'\n', &mut line)
+        .await?;
     if line.last() == Some(&b'\n') {
         line.pop();
         return Ok(Request::Line(line));
@@ -28,7 +34,11 @@ pub(super) async fn read_request(r: &mut (impl AsyncBufReadExt + Unpin), max: us
         return Ok(Request::TooLarge(line));
     }
     // The caller closed its end: a request without a final newline still counts.
-    Ok(if line.is_empty() { Request::Closed } else { Request::Line(line) })
+    Ok(if line.is_empty() {
+        Request::Closed
+    } else {
+        Request::Line(line)
+    })
 }
 
 /// Reads up to the end of the line (or of the stream) without keeping it, so the caller is not cut off
@@ -62,7 +72,11 @@ pub(super) fn field_in_prefix(prefix: &[u8], name: &str) -> Option<String> {
 /// A refused request as evidence: its first bytes as text.
 pub(super) fn evidence(bytes: &[u8]) -> Value {
     let s = String::from_utf8_lossy(&bytes[..bytes.len().min(EVIDENCE_BYTES)]);
-    Value::String(if bytes.len() > EVIDENCE_BYTES { format!("{s}…") } else { s.into_owned() })
+    Value::String(if bytes.len() > EVIDENCE_BYTES {
+        format!("{s}…")
+    } else {
+        s.into_owned()
+    })
 }
 
 #[cfg(test)]
@@ -80,7 +94,9 @@ mod tests {
     #[tokio::test]
     async fn a_line_over_the_limit_is_cut_to_its_start_and_the_rest_is_read() {
         let mut input: &[u8] = b"0123456789abcdef\nnext";
-        let Request::TooLarge(start) = read_request(&mut input, 8).await.unwrap() else { panic!("too large") };
+        let Request::TooLarge(start) = read_request(&mut input, 8).await.unwrap() else {
+            panic!("too large")
+        };
         assert_eq!(start, b"012345678");
         assert_eq!(input, b"next", "read up to the end of the long line");
     }

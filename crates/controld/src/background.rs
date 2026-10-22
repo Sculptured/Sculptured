@@ -3,7 +3,9 @@ use crate::state::AppState;
 use std::sync::atomic::Ordering;
 
 pub fn ensure_running(st: &AppState) {
-    let Ok(rt) = tokio::runtime::Handle::try_current() else { return };
+    let Ok(rt) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
     if st.background_started.swap(true, Ordering::SeqCst) {
         return;
     }

@@ -5,12 +5,15 @@ mod common;
 mod knobbed;
 
 use axum::http::StatusCode;
-use common::m2::*;
-use knobbed::*;
-use model::*;
-use serde_json::{json, Value};
-use std::sync::atomic::{AtomicBool, Ordering};
+
+use common::m2::{Served, rid};
+
+use knobbed::{AnswerPlan, Knobbed, REFUSAL};
+
+use model::EventBody;
+use serde_json::{Value, json};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const REPLY_MS: u64 = 300;
@@ -28,8 +31,13 @@ fn tune() {
 }
 
 async fn raised(s: &Served, seat: &str) -> String {
-    let e = wait_event(&s.st, seat, "a question", |b| matches!(b, EventBody::QuestionRaised { .. })).await;
-    let EventBody::QuestionRaised { question_id, .. } = e.body else { unreachable!() };
+    let e = crate::common::m2::wait_event(&s.st, seat, "a question", |b| {
+        matches!(b, EventBody::QuestionRaised { .. })
+    })
+    .await;
+    let EventBody::QuestionRaised { question_id, .. } = e.body else {
+        unreachable!()
+    };
     question_id
 }
 
@@ -38,26 +46,49 @@ fn answer_body(text: &str) -> Value {
 }
 
 async fn view_of(s: &Served, seat: &str, q: &str) -> Value {
-    let (_, all) = get(&s.router, &format!("/api/seats/{seat}/questions")).await;
-    all.as_array().unwrap().iter().find(|v| v["id"] == q).unwrap().clone()
+    let (_, all) = crate::common::m2::get(&s.router, &format!("/api/seats/{seat}/questions")).await;
+    all.as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["id"] == q)
+        .unwrap()
+        .clone()
 }
 
 async fn send_again(s: &Served, q: &str, body: Value) -> (StatusCode, Value) {
-    call(&s.router, "POST", &format!("/api/questions/{q}/send-again"), body).await
+    crate::common::m2::call(
+        &s.router,
+        "POST",
+        &format!("/api/questions/{q}/send-again"),
+        body,
+    )
+    .await
 }
 
 fn count(s: &Served, seat: &str, pred: impl Fn(&EventBody) -> bool) -> usize {
-    events(&s.st, seat).into_iter().filter(|e| pred(&e.body)).count()
+    crate::common::m2::events(&s.st, seat)
+        .into_iter()
+        .filter(|e| pred(&e.body))
+        .count()
 }
 
-async fn wait_view(s: &Served, seat: &str, q: &str, what: &str, pred: impl Fn(&Value) -> bool) -> Value {
+async fn wait_view(
+    s: &Served,
+    seat: &str,
+    q: &str,
+    what: &str,
+    pred: impl Fn(&Value) -> bool,
+) -> Value {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     loop {
         let v = view_of(s, seat, q).await;
         if pred(&v) {
             return v;
         }
-        assert!(tokio::time::Instant::now() < deadline, "timed out waiting for {what}: {v}");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}: {v}"
+        );
         tokio::time::sleep(ms(20)).await;
     }
 }
@@ -68,38 +99,132 @@ async fn wait_view(s: &Served, seat: &str, q: &str, what: &str, pred: impl Fn(&V
 #[tokio::test]
 async fn a_lost_answer_shows_in_needs_you_and_is_sent_again_once() {
     tune();
-    let knobs = Knobbed { plan: vec![AnswerPlan::Drop(ms(700))], ..Knobbed::default() };
+    let knobs = Knobbed {
+        plan: vec![AnswerPlan::Drop(ms(700))],
+        ..Knobbed::default()
+    };
     let calls = knobs.calls.clone();
-    let (s, agent) = ready_with(knobs).await;
-    say(&s, &agent, "ask:Pick|A|B").await;
+    let (s, agent) = crate::knobbed::ready_with(knobs).await;
+    crate::common::m2::say(&s, &agent, "ask:Pick|A|B").await;
     let q = raised(&s, &agent).await;
 
-    let (status, err) = call(&s.router, "POST", &format!("/api/questions/{q}/answer"), answer_body("A")).await;
-    assert_eq!((status, err["error"]["code"].as_str()), (StatusCode::BAD_GATEWAY, Some("host_unreachable")), "{err}");
-    assert!(err["error"]["message"].as_str().unwrap().contains("may not have reached the agent"), "{err}");
+    let (status, err) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        &format!("/api/questions/{q}/answer"),
+        answer_body("A"),
+    )
+    .await;
+    assert_eq!(
+        (status, err["error"]["code"].as_str()),
+        (StatusCode::BAD_GATEWAY, Some("host_unreachable")),
+        "{err}"
+    );
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("may not have reached the agent"),
+        "{err}"
+    );
     let v = view_of(&s, &agent, &q).await;
-    assert_eq!((v["state"].as_str(), v["answer"]["text"].as_str()), (Some("answered"), Some("A")), "{v}");
-    assert!(v["unconfirmed"].as_str().unwrap().contains("did not reply within 300 ms"), "the host's words: {v}");
-    assert_eq!(count(&s, &agent, |b| matches!(b, EventBody::QuestionAnswerUnconfirmed { .. })), 1);
-    assert_eq!(count(&s, &agent, |b| matches!(b, EventBody::QuestionAnswerFailed { .. })), 0, "never reopened");
-    let (_, inbox) = get(&s.router, "/api/inbox").await;
-    assert_eq!((inbox[0]["id"].as_str(), inbox[0]["kind"].as_str()), (Some(format!("q:{q}").as_str()), Some("unconfirmed")), "{inbox}");
+    assert_eq!(
+        (v["state"].as_str(), v["answer"]["text"].as_str()),
+        (Some("answered"), Some("A")),
+        "{v}"
+    );
+    assert!(
+        v["unconfirmed"]
+            .as_str()
+            .unwrap()
+            .contains("did not reply within 300 ms"),
+        "the host's words: {v}"
+    );
+    assert_eq!(
+        count(&s, &agent, |b| matches!(
+            b,
+            EventBody::QuestionAnswerUnconfirmed { .. }
+        )),
+        1
+    );
+    assert_eq!(
+        count(&s, &agent, |b| matches!(
+            b,
+            EventBody::QuestionAnswerFailed { .. }
+        )),
+        0,
+        "never reopened"
+    );
+    let (_, inbox) = crate::common::m2::get(&s.router, "/api/inbox").await;
+    assert_eq!(
+        (inbox[0]["id"].as_str(), inbox[0]["kind"].as_str()),
+        (Some(format!("q:{q}").as_str()), Some("unconfirmed")),
+        "{inbox}"
+    );
 
     // The lost delivery finishes on the runner's side; then the operator sends it again.
     tokio::time::sleep(ms(600)).await;
     let body = json!({ "request_id": rid() });
     let (status, v) = send_again(&s, &q, body.clone()).await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    assert_eq!((v["state"].as_str(), v["unconfirmed"].as_str()), (Some("answered"), None), "{v}");
-    wait_event(&s.st, &agent, "the reply", |b| matches!(b, EventBody::AgentText { text, .. } if text == "stub got answer: A")).await;
-    assert_eq!(send_again(&s, &q, body).await.0, StatusCode::OK, "the same request id replays");
-    assert_eq!(calls.load(Ordering::SeqCst), 2, "the lost delivery and one Send again; the replay sent nothing");
-    assert_eq!(count(&s, &agent, |b| matches!(b, EventBody::QuestionAnswered { .. })), 1, "no second answer is recorded");
-    assert_eq!(count(&s, &agent, |b| matches!(b, EventBody::QuestionAnswerConfirmed { .. })), 1);
-    assert_eq!(agent_texts(&s.st, &agent).iter().filter(|t| t.starts_with("stub got answer")).count(), 1);
-    assert!(get(&s.router, "/api/inbox").await.1.as_array().unwrap().is_empty());
+    assert_eq!(
+        (v["state"].as_str(), v["unconfirmed"].as_str()),
+        (Some("answered"), None),
+        "{v}"
+    );
+    crate::common::m2::wait_event(
+        &s.st,
+        &agent,
+        "the reply",
+        |b| matches!(b, EventBody::AgentText { text, .. } if text == "stub got answer: A"),
+    )
+    .await;
+    assert_eq!(
+        send_again(&s, &q, body).await.0,
+        StatusCode::OK,
+        "the same request id replays"
+    );
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        2,
+        "the lost delivery and one Send again; the replay sent nothing"
+    );
+    assert_eq!(
+        count(&s, &agent, |b| matches!(
+            b,
+            EventBody::QuestionAnswered { .. }
+        )),
+        1,
+        "no second answer is recorded"
+    );
+    assert_eq!(
+        count(&s, &agent, |b| matches!(
+            b,
+            EventBody::QuestionAnswerConfirmed { .. }
+        )),
+        1
+    );
+    assert_eq!(
+        crate::common::m2::agent_texts(&s.st, &agent)
+            .iter()
+            .filter(|t| t.starts_with("stub got answer"))
+            .count(),
+        1
+    );
+    assert!(
+        crate::common::m2::get(&s.router, "/api/inbox")
+            .await
+            .1
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     let (status, err) = send_again(&s, &q, json!({ "request_id": rid() })).await;
-    assert_eq!((status, err["error"]["code"].as_str()), (StatusCode::CONFLICT, Some("answer_confirmed")), "{err}");
+    assert_eq!(
+        (status, err["error"]["code"].as_str()),
+        (StatusCode::CONFLICT, Some("answer_confirmed")),
+        "{err}"
+    );
 }
 
 /// A refused "Send again" keeps the question answered (never reopened) and records the refusal verbatim
@@ -107,45 +232,135 @@ async fn a_lost_answer_shows_in_needs_you_and_is_sent_again_once() {
 #[tokio::test]
 async fn a_refused_send_again_keeps_the_answer_and_records_why() {
     tune();
-    let knobs = Knobbed { plan: vec![AnswerPlan::Drop(ms(700)), AnswerPlan::Refuse(ms(0))], ..Knobbed::default() };
-    let (s, agent) = ready_with(knobs).await;
-    say(&s, &agent, "ask:Pick|A|B").await;
+    let knobs = Knobbed {
+        plan: vec![AnswerPlan::Drop(ms(700)), AnswerPlan::Refuse(ms(0))],
+        ..Knobbed::default()
+    };
+    let (s, agent) = crate::knobbed::ready_with(knobs).await;
+    crate::common::m2::say(&s, &agent, "ask:Pick|A|B").await;
     let q = raised(&s, &agent).await;
-    assert_eq!(call(&s.router, "POST", &format!("/api/questions/{q}/answer"), answer_body("B")).await.0, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        crate::common::m2::call(
+            &s.router,
+            "POST",
+            &format!("/api/questions/{q}/answer"),
+            answer_body("B")
+        )
+        .await
+        .0,
+        StatusCode::BAD_GATEWAY
+    );
     tokio::time::sleep(ms(600)).await;
 
     let (status, err) = send_again(&s, &q, json!({ "request_id": rid() })).await;
-    assert_eq!((status, err["error"]["code"].as_str()), (StatusCode::CONFLICT, Some("answer_refused")), "{err}");
-    assert!(err["error"]["message"].as_str().unwrap().contains(REFUSAL), "{err}");
+    assert_eq!(
+        (status, err["error"]["code"].as_str()),
+        (StatusCode::CONFLICT, Some("answer_refused")),
+        "{err}"
+    );
+    assert!(
+        err["error"]["message"].as_str().unwrap().contains(REFUSAL),
+        "{err}"
+    );
     let v = view_of(&s, &agent, &q).await;
-    assert_eq!((v["state"].as_str(), v["answer"]["text"].as_str()), (Some("answered"), Some("B")), "{v}");
-    assert!(v["unconfirmed"].as_str().unwrap().contains(REFUSAL), "the refusal, verbatim: {v}");
-    assert_eq!(count(&s, &agent, |b| matches!(b, EventBody::QuestionAnswerFailed { .. })), 0, "never reopened");
-    assert_eq!(s.st.store.lock().unwrap().seat(&agent).unwrap().unwrap().open_questions, 0);
-    let (_, inbox) = get(&s.router, "/api/inbox").await;
-    assert_eq!(inbox[0]["kind"], "unconfirmed", "still in Needs you: {inbox}");
+    assert_eq!(
+        (v["state"].as_str(), v["answer"]["text"].as_str()),
+        (Some("answered"), Some("B")),
+        "{v}"
+    );
+    assert!(
+        v["unconfirmed"].as_str().unwrap().contains(REFUSAL),
+        "the refusal, verbatim: {v}"
+    );
+    assert_eq!(
+        count(&s, &agent, |b| matches!(
+            b,
+            EventBody::QuestionAnswerFailed { .. }
+        )),
+        0,
+        "never reopened"
+    );
+    assert_eq!(
+        s.st.store
+            .lock()
+            .unwrap()
+            .seat(&agent)
+            .unwrap()
+            .unwrap()
+            .open_questions,
+        0
+    );
+    let (_, inbox) = crate::common::m2::get(&s.router, "/api/inbox").await;
+    assert_eq!(
+        inbox[0]["kind"], "unconfirmed",
+        "still in Needs you: {inbox}"
+    );
 
     let (status, v) = send_again(&s, &q, json!({ "request_id": rid() })).await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    wait_event(&s.st, &agent, "the reply", |b| matches!(b, EventBody::AgentText { text, .. } if text == "stub got answer: B")).await;
-    assert!(get(&s.router, "/api/inbox").await.1.as_array().unwrap().is_empty());
+    crate::common::m2::wait_event(
+        &s.st,
+        &agent,
+        "the reply",
+        |b| matches!(b, EventBody::AgentText { text, .. } if text == "stub got answer: B"),
+    )
+    .await;
+    assert!(
+        crate::common::m2::get(&s.router, "/api/inbox")
+            .await
+            .1
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// The program's own "resolved" notice for an answered question confirms it: the doubt clears by itself.
 #[tokio::test]
 async fn the_programs_resolved_notice_confirms_a_doubtful_answer() {
     tune();
-    let (s, agent) = ready_with(Knobbed { plan: vec![AnswerPlan::Delay(ms(700))], ..Knobbed::default() }).await;
-    say(&s, &agent, "ask:Pick|A|B").await;
+    let (s, agent) = crate::knobbed::ready_with(Knobbed {
+        plan: vec![AnswerPlan::Delay(ms(700))],
+        ..Knobbed::default()
+    })
+    .await;
+    crate::common::m2::say(&s, &agent, "ask:Pick|A|B").await;
     let q = raised(&s, &agent).await;
-    assert_eq!(call(&s.router, "POST", &format!("/api/questions/{q}/answer"), answer_body("A")).await.0, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        crate::common::m2::call(
+            &s.router,
+            "POST",
+            &format!("/api/questions/{q}/answer"),
+            answer_body("A")
+        )
+        .await
+        .0,
+        StatusCode::BAD_GATEWAY
+    );
     assert!(view_of(&s, &agent, &q).await["unconfirmed"].is_string());
-    wait_event(&s.st, &agent, "the late delivery", |b| matches!(b, EventBody::QuestionResolved { .. })).await;
-    let v = wait_view(&s, &agent, &q, "the doubt to clear", |v| v["unconfirmed"].is_null()).await;
+    crate::common::m2::wait_event(&s.st, &agent, "the late delivery", |b| {
+        matches!(b, EventBody::QuestionResolved { .. })
+    })
+    .await;
+    let v = wait_view(&s, &agent, &q, "the doubt to clear", |v| {
+        v["unconfirmed"].is_null()
+    })
+    .await;
     assert_eq!(v["state"], "answered");
-    assert!(get(&s.router, "/api/inbox").await.1.as_array().unwrap().is_empty());
+    assert!(
+        crate::common::m2::get(&s.router, "/api/inbox")
+            .await
+            .1
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     let (status, err) = send_again(&s, &q, json!({ "request_id": rid() })).await;
-    assert_eq!((status, err["error"]["code"].as_str()), (StatusCode::CONFLICT, Some("answer_confirmed")), "{err}");
+    assert_eq!(
+        (status, err["error"]["code"].as_str()),
+        (StatusCode::CONFLICT, Some("answer_confirmed")),
+        "{err}"
+    );
 }
 
 /// Minor 4: an expiry whose delivery is unconfirmed says it may not have reached the agent and records no
@@ -153,20 +368,40 @@ async fn the_programs_resolved_notice_confirms_a_doubtful_answer() {
 #[tokio::test]
 async fn an_expiry_that_may_be_lost_waits_for_the_agents_words() {
     tune();
-    let (s, agent) = ready_with(Knobbed { plan: vec![AnswerPlan::Drop(ms(700))], ..Knobbed::default() }).await;
-    s.st.store.lock().unwrap().set_question_timeout_override(Some(300)).unwrap();
-    say(&s, &agent, "ask:Pick one|Red|Blue").await;
+    let (s, agent) = crate::knobbed::ready_with(Knobbed {
+        plan: vec![AnswerPlan::Drop(ms(700))],
+        ..Knobbed::default()
+    })
+    .await;
+    s.st.store
+        .lock()
+        .unwrap()
+        .set_question_timeout_override(Some(300))
+        .unwrap();
+    crate::common::m2::say(&s, &agent, "ask:Pick one|Red|Blue").await;
     let q = raised(&s, &agent).await;
-    wait_event(&s.st, &agent, "the doubt", |b| matches!(b, EventBody::QuestionAnswerUnconfirmed { .. })).await;
+    crate::common::m2::wait_event(&s.st, &agent, "the doubt", |b| {
+        matches!(b, EventBody::QuestionAnswerUnconfirmed { .. })
+    })
+    .await;
     tokio::time::sleep(ms(600)).await;
     let v = view_of(&s, &agent, &q).await;
     assert_eq!(v["state"], "expired");
-    assert!(v["unconfirmed"].as_str().unwrap().contains("did not reply"), "{v}");
-    assert!(v["decision"].is_null(), "no unknown decision while the expiry may still arrive: {v}");
+    assert!(
+        v["unconfirmed"].as_str().unwrap().contains("did not reply"),
+        "{v}"
+    );
+    assert!(
+        v["decision"].is_null(),
+        "no unknown decision while the expiry may still arrive: {v}"
+    );
 
     let (status, v) = send_again(&s, &q, json!({ "request_id": rid() })).await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    let v = wait_view(&s, &agent, &q, "the decision", |v| v["decision"].is_object()).await;
+    let v = wait_view(&s, &agent, &q, "the decision", |v| {
+        v["decision"].is_object()
+    })
+    .await;
     assert_eq!(v["decision"]["text"], "No answer came, so I decided: Red");
     assert_eq!(v["decision"]["source"], "next-message");
     assert!(v["unconfirmed"].is_null());
@@ -176,8 +411,8 @@ async fn an_expiry_that_may_be_lost_waits_for_the_agents_words() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn an_answer_gives_up_when_the_question_stays_busy() {
     tune();
-    let (s, agent) = ready_with(Knobbed::default()).await;
-    say(&s, &agent, "ask:Pick|A|B").await;
+    let (s, agent) = crate::knobbed::ready_with(Knobbed::default()).await;
+    crate::common::m2::say(&s, &agent, "ask:Pick|A|B").await;
     let q = raised(&s, &agent).await;
     let inside = Arc::new(AtomicBool::new(false));
     let (hook_q, hook_inside) = (q.clone(), inside.clone());
@@ -189,15 +424,44 @@ async fn an_answer_gives_up_when_the_question_stays_busy() {
     }));
     let (st, id) = (s.st.clone(), q.clone());
     let expiry = tokio::spawn(async move { controld::questions::expire(&st, &id).await });
-    common::wait_for("the expiry to hold the question", || inside.load(Ordering::SeqCst)).await;
+    common::wait_for("the expiry to hold the question", || {
+        inside.load(Ordering::SeqCst)
+    })
+    .await;
     let started = tokio::time::Instant::now();
-    let (status, err) = call(&s.router, "POST", &format!("/api/questions/{q}/answer"), answer_body("A")).await;
+    let (status, err) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        &format!("/api/questions/{q}/answer"),
+        answer_body("A"),
+    )
+    .await;
     let waited = started.elapsed();
-    assert_eq!((status, err["error"]["code"].as_str()), (StatusCode::CONFLICT, Some("question_busy")), "{err}");
-    assert_eq!(err["error"]["message"], "Someone else is answering this question right now; try again in a moment.");
-    assert!(waited >= ms(CLAIM_MS) && waited < ms(1400), "waited {waited:?}");
+    assert_eq!(
+        (status, err["error"]["code"].as_str()),
+        (StatusCode::CONFLICT, Some("question_busy")),
+        "{err}"
+    );
+    assert_eq!(
+        err["error"]["message"],
+        "Someone else is answering this question right now; try again in a moment."
+    );
+    assert!(
+        waited >= ms(CLAIM_MS) && waited < ms(1400),
+        "waited {waited:?}"
+    );
     expiry.await.unwrap();
     *controld::seams::IN_EXPIRE_BEFORE_RECORD.lock().unwrap() = None;
-    let (status, v) = call(&s.router, "POST", &format!("/api/questions/{q}/answer"), answer_body("A")).await;
-    assert_eq!((status, v["state"].as_str()), (StatusCode::OK, Some("expired")), "once free, the answer is late: {v}");
+    let (status, v) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        &format!("/api/questions/{q}/answer"),
+        answer_body("A"),
+    )
+    .await;
+    assert_eq!(
+        (status, v["state"].as_str()),
+        (StatusCode::OK, Some("expired")),
+        "once free, the answer is late: {v}"
+    );
 }

@@ -37,7 +37,17 @@ pub struct TraceExport {
 
 impl Default for TraceExport {
     fn default() -> Self {
-        TraceExport { enabled: false, endpoint: LAMINAR.into(), key: None, content: Content::Metadata, last_error: None, last_sent_ms: None, sent_run: None, sent_through: None, run_sent: false }
+        TraceExport {
+            enabled: false,
+            endpoint: LAMINAR.into(),
+            key: None,
+            content: Content::Metadata,
+            last_error: None,
+            last_sent_ms: None,
+            sent_run: None,
+            sent_through: None,
+            run_sent: false,
+        }
     }
 }
 
@@ -54,7 +64,14 @@ pub struct TraceExportView {
 
 impl From<&TraceExport> for TraceExportView {
     fn from(t: &TraceExport) -> Self {
-        TraceExportView { enabled: t.enabled, endpoint: t.endpoint.clone(), key_saved: t.key.is_some(), content: t.content, last_error: t.last_error.clone(), last_sent_ms: t.last_sent_ms }
+        TraceExportView {
+            enabled: t.enabled,
+            endpoint: t.endpoint.clone(),
+            key_saved: t.key.is_some(),
+            content: t.content,
+            last_error: t.last_error.clone(),
+            last_sent_ms: t.last_sent_ms,
+        }
     }
 }
 
@@ -64,8 +81,15 @@ fn key(team: &str) -> String {
 
 impl Store {
     pub fn trace_export(&self, team: &str) -> rusqlite::Result<TraceExport> {
-        let json: Option<String> = self.connection().query_row("SELECT json FROM settings WHERE k = ?1", [key(team)], |r| r.get(0)).optional()?;
-        Ok(json.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default())
+        let json: Option<String> = self
+            .connection()
+            .query_row("SELECT json FROM settings WHERE k = ?1", [key(team)], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        Ok(json
+            .and_then(|j| serde_json::from_str(&j).ok())
+            .unwrap_or_default())
     }
     pub fn save_trace_export(&mut self, team: &str, t: &TraceExport) -> rusqlite::Result<()> {
         self.connection().execute(
@@ -77,39 +101,64 @@ impl Store {
     /// Teams with export on.
     pub fn trace_export_teams(&self) -> rusqlite::Result<Vec<String>> {
         let mut q = self.connection().prepare("SELECT substr(k, 8) FROM settings WHERE k LIKE 'traces:%' AND json_extract(json, '$.enabled') = 1")?;
-        let rows = q.query_map([], |r| r.get(0))?.collect();
-        rows
+
+        q.query_map([], |r| r.get(0))?.collect()
     }
 }
 
 /// `https://`, or `http://` to this computer (a local collector, tests). The hosted server sends only
 /// to public `https://` addresses: never to itself, its private network or a bare service name.
+#[must_use]
 pub fn endpoint_ok(endpoint: &str, hosted: bool) -> bool {
-    let Ok(u) = reqwest::Url::parse(endpoint) else { return false };
+    let Ok(u) = reqwest::Url::parse(endpoint) else {
+        return false;
+    };
     if endpoint.len() > 500 || !u.username().is_empty() || u.password().is_some() {
         return false;
     }
-    let Some(host) = u.host_str() else { return false };
-    let ip: Option<std::net::IpAddr> = host.trim_start_matches('[').trim_end_matches(']').parse().ok();
+    let Some(host) = u.host_str() else {
+        return false;
+    };
+    let ip: Option<std::net::IpAddr> = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse()
+        .ok();
     let local = host.eq_ignore_ascii_case("localhost") || ip.is_some_and(|ip| ip.is_loopback());
     match u.scheme() {
         "http" => !hosted && local,
         "https" if !hosted => true,
         "https" => match ip {
             Some(ip) => is_public(ip),
-            None => host.contains('.') && !local && !host.ends_with(".localhost") && !host.ends_with(".internal"),
+            None => {
+                host.contains('.')
+                    && !local
+                    && !host.ends_with(".localhost")
+                    && !host.ends_with(".internal")
+            }
         },
         _ => false,
     }
 }
 
 /// An address on the public internet (not loopback, private, link-local, shared, multicast or reserved).
+#[must_use]
 pub fn is_public(ip: std::net::IpAddr) -> bool {
     match ip {
         std::net::IpAddr::V4(v4) => {
             let [a, b, ..] = v4.octets();
-            !(v4.is_private() || v4.is_loopback() || v4.is_link_local() || v4.is_broadcast() || v4.is_documentation() || v4.is_unspecified() || v4.is_multicast()
-                || a == 0 || a >= 240 || (a == 100 && (64..128).contains(&b)) || (a == 192 && b == 0) || (a == 198 && (b == 18 || b == 19)))
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.is_unspecified()
+                || v4.is_multicast()
+                || a == 0
+                || a >= 240
+                || (a == 100 && (64..128).contains(&b))
+                || (a == 192 && b == 0)
+                || (a == 198 && (b == 18 || b == 19)))
         }
         std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
             Some(v4) => is_public(v4.into()),
@@ -117,26 +166,41 @@ pub fn is_public(ip: std::net::IpAddr) -> bool {
                 let seg = v6.segments();
                 // Forms that carry an IPv4 address inside: IPv4-compatible (::a.b.c.d), NAT64 (64:ff9b::/96,
                 // 64:ff9b:1::/48), 6to4 (2002::/16) and Teredo (2001::/32); refused rather than unpacked.
-                let embeds_v4 = seg[..6] == [0; 6] || (seg[0] == 0x64 && seg[1] == 0xff9b) || seg[0] == 0x2002 || (seg[0] == 0x2001 && seg[1] == 0);
-                !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || embeds_v4 || (seg[0] & 0xfe00) == 0xfc00 || (seg[0] & 0xffc0) == 0xfe80 || (seg[0] == 0x2001 && seg[1] == 0x0db8))
+                let embeds_v4 = seg[..6] == [0; 6]
+                    || (seg[0] == 0x64 && seg[1] == 0xff9b)
+                    || seg[0] == 0x2002
+                    || (seg[0] == 0x2001 && seg[1] == 0);
+                !(v6.is_loopback()
+                    || v6.is_unspecified()
+                    || v6.is_multicast()
+                    || embeds_v4
+                    || (seg[0] & 0xfe00) == 0xfc00
+                    || (seg[0] & 0xffc0) == 0xfe80
+                    || (seg[0] == 0x2001 && seg[1] == 0x0db8))
             }
         },
     }
 }
 
 fn host_of(endpoint: &str) -> Option<String> {
-    reqwest::Url::parse(endpoint).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)).map(|h| h.to_string())
+    reqwest::Url::parse(endpoint)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
+        .map(|h| h.to_string())
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/teams/{id}/traces", axum::routing::get(get_traces).put(put_traces))
+    Router::new().route(
+        "/api/teams/{id}/traces",
+        axum::routing::get(get_traces).put(put_traces),
+    )
 }
 
 async fn get_traces(
     axum::extract::State(st): axum::extract::State<AppState>,
     crate::extract::Path(id): crate::extract::Path<String>,
 ) -> Result<crate::extract::Json<TraceExportView>, crate::ApiError> {
-    let store = st.store.lock().unwrap();
+    let store = st.store.lock().expect("store mutex must not be poisoned");
     if store.draft(&id)?.is_none() {
         return Err(crate::ApiError::not_found("Project not found"));
     }
@@ -160,13 +224,24 @@ async fn put_traces(
     let endpoint = req.endpoint.trim().to_string();
     let hosted = matches!(st.auth, crate::auth::AuthPolicy::Gateway { .. });
     if !endpoint_ok(&endpoint, hosted) {
-        let why = if hosted { "Use a public https:// address" } else { "Use an https:// address, or http:// to this computer" };
+        let why = if hosted {
+            "Use a public https:// address"
+        } else {
+            "Use an https:// address, or http:// to this computer"
+        };
         return Err(crate::ApiError::bad_request("trace_endpoint_invalid", why));
     }
-    if req.key.as_ref().is_some_and(|k| k.len() > 1000 || k.chars().any(|c| c.is_control())) {
-        return Err(crate::ApiError::bad_request("trace_key_invalid", "That API key cannot be used"));
+    if req
+        .key
+        .as_ref()
+        .is_some_and(|k| k.len() > 1000 || k.chars().any(|c| c.is_control()))
+    {
+        return Err(crate::ApiError::bad_request(
+            "trace_key_invalid",
+            "That API key cannot be used",
+        ));
     }
-    let mut store = st.store.lock().unwrap();
+    let mut store = st.store.lock().expect("store mutex must not be poisoned");
     if store.draft(&id)?.is_none() {
         return Err(crate::ApiError::not_found("Project not found"));
     }
@@ -200,7 +275,10 @@ mod tests {
         assert!(endpoint_ok("http://127.0.0.1:4318/v1/traces", false));
         assert!(endpoint_ok("http://localhost:4318/v1/traces", false));
         assert!(!endpoint_ok("http://otel.example.com/v1/traces", false));
-        assert!(!endpoint_ok("https://user:pw@otel.example.com/v1/traces", false));
+        assert!(!endpoint_ok(
+            "https://user:pw@otel.example.com/v1/traces",
+            false
+        ));
     }
 
     #[test]
@@ -208,10 +286,20 @@ mod tests {
         assert!(endpoint_ok(LAMINAR, true));
         assert!(endpoint_ok("https://otel.example.com/v1/traces", true));
         for bad in [
-            "http://127.0.0.1:4318/v1/traces", "https://localhost/v1/traces", "https://127.0.0.1/v1/traces", "https://10.0.0.5/v1/traces",
-            "https://169.254.169.254/latest", "https://[::1]/v1/traces", "https://[fd00::1]/v1/traces", "https://gateway:8443/v1/traces",
-            "https://100.64.0.1/v1/traces", "https://[::ffff:10.0.0.1]/v1/traces", "https://[64:ff9b::a00:1]/v1/traces", "https://[2002:a00:1::1]/v1/traces",
-            "https://[::10.0.0.1]/v1/traces", "https://198.18.0.1/v1/traces",
+            "http://127.0.0.1:4318/v1/traces",
+            "https://localhost/v1/traces",
+            "https://127.0.0.1/v1/traces",
+            "https://10.0.0.5/v1/traces",
+            "https://169.254.169.254/latest",
+            "https://[::1]/v1/traces",
+            "https://[fd00::1]/v1/traces",
+            "https://gateway:8443/v1/traces",
+            "https://100.64.0.1/v1/traces",
+            "https://[::ffff:10.0.0.1]/v1/traces",
+            "https://[64:ff9b::a00:1]/v1/traces",
+            "https://[2002:a00:1::1]/v1/traces",
+            "https://[::10.0.0.1]/v1/traces",
+            "https://198.18.0.1/v1/traces",
         ] {
             assert!(!endpoint_ok(bad, true), "{bad}");
         }
@@ -222,7 +310,20 @@ mod tests {
         for ok in ["1.1.1.1", "2606:4700::1111"] {
             assert!(is_public(ok.parse().unwrap()), "{ok}");
         }
-        for bad in ["10.1.2.3", "172.16.0.1", "192.168.1.1", "127.0.0.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "224.0.0.1", "::1", "fe80::1", "fc00::1", "::ffff:192.168.0.1"] {
+        for bad in [
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "127.0.0.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "224.0.0.1",
+            "::1",
+            "fe80::1",
+            "fc00::1",
+            "::ffff:192.168.0.1",
+        ] {
             assert!(!is_public(bad.parse().unwrap()), "{bad}");
         }
     }

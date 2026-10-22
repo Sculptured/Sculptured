@@ -21,7 +21,10 @@ const USAGE_LIMIT_STARTS: [&str; 11] = [
 /// The CLI's "<model> [version] requires usage credits." words.
 fn requires_credits(line: &str) -> bool {
     let head: String = line.chars().take(80).collect();
-    ["fable", "haiku", "mythos", "opus", "sonnet"].iter().any(|m| line.starts_with(m)) && head.contains(" requires usage credits")
+    ["fable", "haiku", "mythos", "opus", "sonnet"]
+        .iter()
+        .any(|m| line.starts_with(m))
+        && head.contains(" requires usage credits")
 }
 
 /// Which limit the CLI's words name, if any. Read only on a turn that failed, so an agent that merely
@@ -31,9 +34,14 @@ fn requires_credits(line: &str) -> bool {
 /// The CLI's own usage-limit message, when an agent text starts with it (and only then): the CLI's
 /// limit words reach the stream as the turn's last agent text. Substring rules never apply to agent
 /// text, which may be the agent writing about limits.
+#[must_use]
 pub fn cli_limit_message(text: &str) -> Option<LimitKind> {
-    let t = text.trim_start().to_ascii_lowercase().replace('\u{2019}', "'");
-    (USAGE_LIMIT_STARTS.iter().any(|s| t.starts_with(s)) || requires_credits(&t)).then_some(LimitKind::Usage)
+    let t = text
+        .trim_start()
+        .to_ascii_lowercase()
+        .replace('\u{2019}', "'");
+    (USAGE_LIMIT_STARTS.iter().any(|s| t.starts_with(s)) || requires_credits(&t))
+        .then_some(LimitKind::Usage)
 }
 
 pub fn limit_kind(text: &str) -> Option<LimitKind> {
@@ -41,6 +49,9 @@ pub fn limit_kind(text: &str) -> Option<LimitKind> {
     if t.contains("rate limit") {
         return Some(LimitKind::Rate);
     }
-    let named = t.lines().map(str::trim_start).any(|l| USAGE_LIMIT_STARTS.iter().any(|s| l.starts_with(s)) || requires_credits(l));
+    let named = t
+        .lines()
+        .map(str::trim_start)
+        .any(|l| USAGE_LIMIT_STARTS.iter().any(|s| l.starts_with(s)) || requires_credits(l));
     (named || (t.contains("limit") && t.contains("resets"))).then_some(LimitKind::Usage)
 }

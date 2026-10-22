@@ -1,5 +1,4 @@
 //! stream-json lines → driver events. Pure, so it is unit-tested against real M0 recordings.
-use super::limits::{cli_limit_message, limit_kind};
 use crate::DriverEvent;
 use model::{LimitKind, TurnStatus};
 use serde_json::Value;
@@ -37,15 +36,33 @@ impl UsageTotals {
     /// Usage of one API message, from `message.usage` (no cost).
     fn from_message_usage(u: &Value) -> Option<Self> {
         let n = |k: &str| u[k].as_u64().unwrap_or(0);
-        u.is_object().then(|| Self { input: n("input_tokens"), output: n("output_tokens"), cache_read: n("cache_read_input_tokens"), cache_write: n("cache_creation_input_tokens"), cost: None })
+        u.is_object().then(|| Self {
+            input: n("input_tokens"),
+            output: n("output_tokens"),
+            cache_read: n("cache_read_input_tokens"),
+            cache_write: n("cache_creation_input_tokens"),
+            cost: None,
+        })
     }
 
     fn max(self, o: Self) -> Self {
-        Self { input: self.input.max(o.input), output: self.output.max(o.output), cache_read: self.cache_read.max(o.cache_read), cache_write: self.cache_write.max(o.cache_write), cost: None }
+        Self {
+            input: self.input.max(o.input),
+            output: self.output.max(o.output),
+            cache_read: self.cache_read.max(o.cache_read),
+            cache_write: self.cache_write.max(o.cache_write),
+            cost: None,
+        }
     }
 
     fn plus(self, o: Self) -> Self {
-        Self { input: self.input + o.input, output: self.output + o.output, cache_read: self.cache_read + o.cache_read, cache_write: self.cache_write + o.cache_write, cost: None }
+        Self {
+            input: self.input + o.input,
+            output: self.output + o.output,
+            cache_read: self.cache_read + o.cache_read,
+            cache_write: self.cache_write + o.cache_write,
+            cost: None,
+        }
     }
 
     fn is_zero(&self) -> bool {
@@ -89,7 +106,11 @@ pub struct ClaudeParser {
 fn result_text(content: &Value) -> String {
     match content {
         Value::String(s) => s.clone(),
-        Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join("\n"),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|p| p["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
         Value::Null => String::new(),
         other => other.to_string(),
     }
@@ -102,18 +123,38 @@ fn result_text(content: &Value) -> String {
 /// writing about rate limits is never taken for one. Kept verbatim; nothing retries the turn.
 fn limit_words(v: &Value, last_text: Option<String>) -> Option<(LimitKind, String)> {
     std::iter::once(v["result"].as_str().unwrap_or(""))
-        .chain(v["errors"].as_array().into_iter().flatten().filter_map(Value::as_str))
-        .find_map(|t| limit_kind(t).map(|kind| (kind, t.to_string())))
-        .or_else(|| last_text.and_then(|t| cli_limit_message(&t).map(|kind| (kind, t))))
+        .chain(
+            v["errors"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str),
+        )
+        .find_map(|t| crate::claude::limits::limit_kind(t).map(|kind| (kind, t.to_string())))
+        .or_else(|| {
+            last_text
+                .and_then(|t| crate::claude::limits::cli_limit_message(&t).map(|kind| (kind, t)))
+        })
 }
 
 impl ClaudeParser {
     /// A parser for a resumed session whose cumulative usage so far is `b` (input, output, cache read,
     /// cache write). `modelUsage` carries across `--resume` (claude-resume-2), so without this the first
     /// turn after a resume would count the whole session again.
+    #[must_use]
     pub fn with_usage_baseline(b: [u64; 4]) -> Self {
         // The cost so far isn't known, so the first turn's cost is unknown rather than the whole session's.
-        Self { usage_seen: UsageTotals { input: b[0], output: b[1], cache_read: b[2], cache_write: b[3], cost: None }, cost_unknown: true, ..Self::default() }
+        Self {
+            usage_seen: UsageTotals {
+                input: b[0],
+                output: b[1],
+                cache_read: b[2],
+                cache_write: b[3],
+                cost: None,
+            },
+            cost_unknown: true,
+            ..Self::default()
+        }
     }
 
     pub fn on_sent(&mut self, message_id: String) {
@@ -142,13 +183,19 @@ impl ClaudeParser {
         let mut out = Vec::new();
         let v: Value = match serde_json::from_str(line) {
             Ok(v) => v,
-            Err(_) => return vec![DriverEvent::Unrecognized { raw: Value::String(line.to_string()) }],
+            Err(_) => {
+                return vec![DriverEvent::Unrecognized {
+                    raw: Value::String(line.to_string()),
+                }];
+            }
         };
         match v["type"].as_str().unwrap_or("") {
             "system" => Self::system(v, &mut out),
             // control_response is nested `response.response` (claude-interrupt@2355);
             // nothing in M1 reads it.
-            "rate_limit_event" => out.extend(model::PlanUsage::from_claude(&v["rate_limit_info"]).map(DriverEvent::PlanUsage)),
+            "rate_limit_event" => out.extend(
+                model::PlanUsage::from_claude(&v["rate_limit_info"]).map(DriverEvent::PlanUsage),
+            ),
             "control_response" => {}
             "user" => self.user(&v, &mut out),
             "assistant" => self.assistant(&v, &mut out),
@@ -176,7 +223,10 @@ impl ClaudeParser {
             // A replayed operator message: the agent has taken it in.
             let turn = self.ensure_turn(out);
             if let Some(id) = self.pending.pop_front() {
-                out.push(DriverEvent::MessageConsumed { message_id: id, turn_id: turn });
+                out.push(DriverEvent::MessageConsumed {
+                    message_id: id,
+                    turn_id: turn,
+                });
             }
             return;
         }
@@ -185,7 +235,12 @@ impl ClaudeParser {
         // interrupt marker (claude-interrupt@2431) and a subagent's prompt
         // (claude-subagent@3277), consume nothing and yield nothing.
         let content = &v["message"]["content"];
-        for b in content.as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result") {
+        let matching_content = content
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|b| b["type"] == "tool_result");
+        for b in matching_content {
             out.push(DriverEvent::ToolResult {
                 turn_id: self.current_turn.clone(),
                 call_id: b["tool_use_id"].as_str().unwrap_or_default().to_string(),
@@ -200,15 +255,23 @@ impl ClaudeParser {
         let turn = self.ensure_turn(out);
         // A native subagent's calls count as they happen too (`modelUsage` at the end includes them).
         self.message_usage(&v["message"], &turn, parent.is_none(), out);
-        for b in v["message"]["content"].as_array().cloned().unwrap_or_default() {
+        let matching_items = v["message"]["content"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        for b in matching_items {
             match b["type"].as_str().unwrap_or("") {
                 "text" => {
                     let text = b["text"].as_str().unwrap_or_default().to_string();
                     if parent.is_none() {
                         // Kept for a failed ending: the CLI may say its limit words as agent text.
-                        self.last_text = Some(model::cap::truncate(text.clone(), model::cap::MAX_TEXT));
+                        self.last_text =
+                            Some(model::cap::truncate(text.clone(), model::cap::MAX_TEXT));
                     }
-                    out.push(DriverEvent::Text { turn_id: Some(turn.clone()), text });
+                    out.push(DriverEvent::Text {
+                        turn_id: Some(turn.clone()),
+                        text,
+                    });
                 }
                 "tool_use" => out.push(DriverEvent::ToolCall {
                     turn_id: Some(turn.clone()),
@@ -227,10 +290,19 @@ impl ClaudeParser {
     /// so each message's largest values are kept and only their growth is reported, while the turn runs.
     /// The first line of each of the main conversation's calls also reports that call's context size.
     fn message_usage(&mut self, m: &Value, turn: &str, main: bool, out: &mut Vec<DriverEvent>) {
-        let (Some(id), Some(now)) = (m["id"].as_str(), UsageTotals::from_message_usage(&m["usage"])) else { return };
+        let (Some(id), Some(now)) = (
+            m["id"].as_str(),
+            UsageTotals::from_message_usage(&m["usage"]),
+        ) else {
+            return;
+        };
         if main && !self.messages.contains_key(id) {
-            out.push(DriverEvent::Context { turn_id: Some(turn.to_string()), used_tokens: now.input + now.cache_read + now.cache_write,
-                window_tokens: None, basis: model::ContextBasis::Reported });
+            out.push(DriverEvent::Context {
+                turn_id: Some(turn.to_string()),
+                used_tokens: now.input + now.cache_read + now.cache_write,
+                window_tokens: None,
+                basis: model::ContextBasis::Reported,
+            });
         }
         let was = self.messages.get(id).copied().unwrap_or_default();
         let top = was.max(now);
@@ -240,8 +312,15 @@ impl ClaudeParser {
             return;
         }
         self.in_turn = self.in_turn.plus(d);
-        out.push(DriverEvent::Usage { turn_id: Some(turn.to_string()), input_tokens: d.input, output_tokens: d.output,
-            cache_read_tokens: d.cache_read, cache_write_tokens: d.cache_write, cost: None, in_turn: true });
+        out.push(DriverEvent::Usage {
+            turn_id: Some(turn.to_string()),
+            input_tokens: d.input,
+            output_tokens: d.output,
+            cache_read_tokens: d.cache_read,
+            cache_write_tokens: d.cache_write,
+            cost: None,
+            in_turn: true,
+        });
     }
 
     fn result(&mut self, v: &Value, out: &mut Vec<DriverEvent>) {
@@ -253,9 +332,17 @@ impl ClaudeParser {
             && let Some((kind, text)) = limit_words(v, last_text)
         {
             let resets = model::limit_resets(&text);
-            out.push(DriverEvent::LimitReached { turn_id: Some(turn.clone()), kind, resets, text });
+            out.push(DriverEvent::LimitReached {
+                turn_id: Some(turn.clone()),
+                kind,
+                resets,
+                text,
+            });
         }
-        out.push(DriverEvent::TurnEnded { turn_id: turn, status });
+        out.push(DriverEvent::TurnEnded {
+            turn_id: turn,
+            status,
+        });
         self.current_turn = None;
         self.interrupt_requested = false;
     }
@@ -267,10 +354,15 @@ impl ClaudeParser {
     fn usage(&mut self, v: &Value, turn: &str, out: &mut Vec<DriverEvent>) {
         let counted = std::mem::take(&mut self.in_turn);
         self.messages.clear();
-        let Some(totals) = UsageTotals::from_model_usage(&v["modelUsage"]) else { return };
+        let Some(totals) = UsageTotals::from_model_usage(&v["modelUsage"]) else {
+            return;
+        };
         let turn_total = totals.since(self.usage_seen);
         // What the in-turn reports have not covered yet (a field they over-counted adds nothing).
-        let d = UsageTotals { cost: turn_total.cost, ..turn_total.since(counted) };
+        let d = UsageTotals {
+            cost: turn_total.cost,
+            ..turn_total.since(counted)
+        };
         let known = !std::mem::replace(&mut self.cost_unknown, false);
         self.usage_seen = totals;
         if d.is_zero() && (d.cost.is_none() || !known) {
@@ -282,7 +374,10 @@ impl ClaudeParser {
             output_tokens: d.output,
             cache_read_tokens: d.cache_read,
             cache_write_tokens: d.cache_write,
-            cost: d.cost.filter(|_| known).map(|usd| model::Cost { usd, source: model::CostSource::ClaudeCode }),
+            cost: d.cost.filter(|_| known).map(|usd| model::Cost {
+                usd,
+                source: model::CostSource::ClaudeCode,
+            }),
             in_turn: false,
         });
     }
@@ -312,7 +407,13 @@ mod tests {
     }
 
     fn costs(p: &mut ClaudeParser, line: &str) -> Vec<Option<model::Cost>> {
-        p.parse_line(line).into_iter().filter_map(|e| match e { DriverEvent::Usage { cost, .. } => Some(cost), _ => None }).collect()
+        p.parse_line(line)
+            .into_iter()
+            .filter_map(|e| match e {
+                DriverEvent::Usage { cost, .. } => Some(cost),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
@@ -339,8 +440,19 @@ mod tests {
         let replay = json!({ "type": "user", "isReplay": true, "parent_tool_use_id": null,
                              "message": { "role": "user", "content": [{ "type": "text", "text": "hi" }] } });
         let ev = p.parse_line(&replay.to_string());
-        assert_eq!(ev[0], DriverEvent::TurnStarted { turn_id: "turn-1".into() });
-        assert_eq!(ev[1], DriverEvent::MessageConsumed { message_id: "m1".into(), turn_id: "turn-1".into() });
+        assert_eq!(
+            ev[0],
+            DriverEvent::TurnStarted {
+                turn_id: "turn-1".into()
+            }
+        );
+        assert_eq!(
+            ev[1],
+            DriverEvent::MessageConsumed {
+                message_id: "m1".into(),
+                turn_id: "turn-1".into()
+            }
+        );
     }
 
     #[test]
@@ -353,6 +465,9 @@ mod tests {
         let replay = json!({ "type": "user", "isReplay": true, "parent_tool_use_id": null,
                              "message": { "role": "user", "content": [{ "type": "text", "text": "hi" }] } });
         let ev = p.parse_line(&replay.to_string());
-        assert!(ev.contains(&DriverEvent::MessageConsumed { message_id: "m1".into(), turn_id: "turn-1".into() }));
+        assert!(ev.contains(&DriverEvent::MessageConsumed {
+            message_id: "m1".into(),
+            turn_id: "turn-1".into()
+        }));
     }
 }

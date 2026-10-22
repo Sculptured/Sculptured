@@ -14,6 +14,6 @@ pub mod seat_tools;
 pub mod supervisor;
 
 pub use journal::Journal;
-pub use link::{run_link, LinkError};
-pub use run::{run_hostd, HostdOptions, ALREADY_RUNNING, DISCONNECTED};
+pub use link::{LinkError, run_link};
+pub use run::{ALREADY_RUNNING, DISCONNECTED, HostdOptions, run_hostd};
 pub use supervisor::Supervisor;

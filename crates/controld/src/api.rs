@@ -1,19 +1,17 @@
 use crate::error::ApiError;
+use crate::extract::{Json, Path, Query};
+pub(crate) use crate::idempotent::{fingerprint, idempotent};
 use crate::state::AppState;
 use crate::store::RigSource;
 use crate::views::StopRigOutcome;
-pub(crate) use crate::idempotent::{fingerprint, idempotent};
 use crate::{guard, hosts, reconciler, stream};
-use crate::extract::{Json, Path, Query};
 use axum::extract::State;
 use axum::http::Uri;
-use axum::middleware;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get, post};
-use axum::Router;
+use axum::{Router, middleware};
 use model::MessageIntent;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 
 /// `fallback` serves every unmatched non-API path (Task 12: the web UI). It is
@@ -28,7 +26,10 @@ pub fn app(st: AppState, fallback: Option<Router>) -> Router {
     }
     // Order matters: the guard (outermost) rejects foreign hosts first, then the auth seam.
     router
-        .layer(middleware::from_fn_with_state(st.clone(), crate::auth::auth))
+        .layer(middleware::from_fn_with_state(
+            st.clone(),
+            crate::auth::auth,
+        ))
         .layer(middleware::from_fn_with_state(st.clone(), guard::guard))
         .with_state(st)
 }
@@ -36,17 +37,23 @@ pub fn app(st: AppState, fallback: Option<Router>) -> Router {
 /// Every API route, the host link, and the API's own 404 and 405.
 fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/rigs", get(list_rigs).post(boot_rig))
-        .route("/api/rigs/{name}", get(get_rig))
-        .route("/api/rigs/{name}/stop", post(stop_rig))
-        .route("/api/seats/{id}/events", get(seat_events))
-        .route("/api/seats/{id}/send", post(send))
-        .route("/api/seats/{id}/interrupt", post(interrupt))
-        .route("/api/seats/{id}/stop", post(stop_seat))
-        .route("/api/seats/{id}/restart", post(restart_seat))
-        .route("/api/seats/{id}/handover", post(hand_over_again))
-        .route("/api/seats/{id}/resend", post(resend_handoffs))
-        .route("/api/stream", get(stream::stream))
+        .route("/api/rigs", axum::routing::get(list_rigs).post(boot_rig))
+        .route("/api/rigs/{name}", axum::routing::get(get_rig))
+        .route("/api/rigs/{name}/stop", axum::routing::post(stop_rig))
+        .route("/api/seats/{id}/events", axum::routing::get(seat_events))
+        .route("/api/seats/{id}/send", axum::routing::post(send))
+        .route("/api/seats/{id}/interrupt", axum::routing::post(interrupt))
+        .route("/api/seats/{id}/stop", axum::routing::post(stop_seat))
+        .route("/api/seats/{id}/restart", axum::routing::post(restart_seat))
+        .route(
+            "/api/seats/{id}/handover",
+            axum::routing::post(hand_over_again),
+        )
+        .route(
+            "/api/seats/{id}/resend",
+            axum::routing::post(resend_handoffs),
+        )
+        .route("/api/stream", axum::routing::get(stream::stream))
         .merge(crate::teams::routes())
         .merge(crate::group_blocks::routes())
         .merge(crate::project_visibility::routes())
@@ -75,11 +82,11 @@ fn routes() -> Router<AppState> {
         .merge(crate::portable::routes())
         .merge(crate::generate::routes())
         .merge(crate::community::routes())
-        .route("/api", any(api_not_found))
-        .route("/api/", any(api_not_found))
-        .route("/api/{*rest}", any(api_not_found))
-        .route("/host", get(hosts::host_ws))
-        .route("/api/hosts", get(list_hosts))
+        .route("/api", axum::routing::any(api_not_found))
+        .route("/api/", axum::routing::any(api_not_found))
+        .route("/api/{*rest}", axum::routing::any(api_not_found))
+        .route("/host", axum::routing::get(hosts::host_ws))
+        .route("/api/hosts", axum::routing::get(list_hosts))
         .route("/api/hosts/{id}/limit", axum::routing::put(set_host_limit))
         .method_not_allowed_fallback(crate::extract::method_not_allowed)
 }
@@ -119,9 +126,12 @@ struct EventsQuery {
     tail: Option<usize>,
 }
 
-
 async fn list_rigs(State(st): State<AppState>) -> Response {
-    let rigs = st.store.lock().unwrap().list_rigs();
+    let rigs = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .list_rigs();
     match rigs {
         Ok(r) => Json(r).into_response(),
         Err(e) => ApiError::from(e).into_response(),
@@ -129,7 +139,11 @@ async fn list_rigs(State(st): State<AppState>) -> Response {
 }
 
 async fn get_rig(State(st): State<AppState>, Path(name): Path<String>) -> Response {
-    let snap = st.store.lock().unwrap().rig_snapshot(&name);
+    let snap = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .rig_snapshot(&name);
     match snap {
         Ok(Some(s)) => Json(s).into_response(),
         Ok(None) => ApiError::not_found(format!("no rig {name:?}")).into_response(),
@@ -138,40 +152,64 @@ async fn get_rig(State(st): State<AppState>, Path(name): Path<String>) -> Respon
 }
 
 async fn boot_rig(State(st): State<AppState>, Json(req): Json<BootReq>) -> Response {
-    let fp = fingerprint("boot", &req);
+    let fp = crate::idempotent::fingerprint("boot", &req);
     let request_id = req.request_id.clone();
     let st2 = st.clone();
-    idempotent(&st, &request_id, fp, move || async move {
+    crate::idempotent::idempotent(&st, &request_id, fp, move || async move {
         let path = PathBuf::from(&req.spec_path);
-        let yaml = std::fs::read_to_string(&path)
-            .map_err(|e| ApiError::bad_request("spec_unreadable", format!("cannot read {}: {e}", path.display())))?;
-        let rig = rigspec::compile(&yaml).map_err(|d| ApiError::unprocessable("spec_invalid", "the rig spec has errors", d))?;
+        let yaml = std::fs::read_to_string(&path).map_err(|e| {
+            ApiError::bad_request(
+                "spec_unreadable",
+                format!("cannot read {}: {e}", path.display()),
+            )
+        })?;
+        let rig = rigspec::compile(&yaml)
+            .map_err(|d| ApiError::unprocessable("spec_invalid", "the rig spec has errors", d))?;
         let spec_dir = path
             .canonicalize()
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| PathBuf::from("."));
-        reconciler::start_rig(&st2, rig, RigSource::File { path: req.spec_path.clone() }, spec_dir)
+        reconciler::start_rig(
+            &st2,
+            rig,
+            RigSource::File {
+                path: req.spec_path.clone(),
+            },
+            spec_dir,
+        )
     })
     .await
 }
 
-async fn stop_rig(State(st): State<AppState>, Path(name): Path<String>, Json(req): Json<IdOnly>) -> Response {
-    let fp = fingerprint(&format!("stop-rig:{name}"), &req);
+async fn stop_rig(
+    State(st): State<AppState>,
+    Path(name): Path<String>,
+    Json(req): Json<IdOnly>,
+) -> Response {
+    let fp = crate::idempotent::fingerprint(&format!("stop-rig:{name}"), &req);
     let st2 = st.clone();
-    idempotent(&st, &req.request_id, fp, move || async move {
+    crate::idempotent::idempotent(&st, &req.request_id, fp, move || async move {
         let failed = reconciler::stop_rig(st2, name).await?;
-        Ok::<Value, ApiError>(serde_json::to_value(StopRigOutcome { failed }).expect("outcome serializes"))
+        Ok::<Value, ApiError>(
+            serde_json::to_value(StopRigOutcome { failed }).expect("outcome serializes"),
+        )
     })
     .await
 }
 
-async fn seat_events(State(st): State<AppState>, Path(id): Path<String>, Query(q): Query<EventsQuery>) -> Response {
+async fn seat_events(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<EventsQuery>,
+) -> Response {
     let events = {
-        let store = st.store.lock().unwrap();
+        let store = st.store.lock().expect("store mutex must not be poisoned");
         match q.tail {
             Some(n) => store.latest_events_for_seat(&id, n.min(2000)),
-            None => store.events_for_seat(&id, q.after.unwrap_or(0), q.limit.unwrap_or(500).min(2000)),
+            None => {
+                store.events_for_seat(&id, q.after.unwrap_or(0), q.limit.unwrap_or(500).min(2000))
+            }
         }
     };
     match events {
@@ -180,21 +218,30 @@ async fn seat_events(State(st): State<AppState>, Path(id): Path<String>, Query(q
     }
 }
 
-async fn send(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<SendReq>) -> Response {
-    let fp = fingerprint(&format!("send:{id}"), &req);
+async fn send(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<SendReq>,
+) -> Response {
+    let fp = crate::idempotent::fingerprint(&format!("send:{id}"), &req);
     let request_id = req.request_id.clone();
     let st2 = st.clone();
-    idempotent(&st, &request_id, fp, move || async move {
-        let message_id = reconciler::send_message(&st2, &id, req.text, req.intent, req.interrupt).await?;
+    crate::idempotent::idempotent(&st, &request_id, fp, move || async move {
+        let message_id =
+            reconciler::send_message(&st2, &id, req.text, req.intent, req.interrupt).await?;
         Ok::<Value, ApiError>(json!({ "message_id": message_id }))
     })
     .await
 }
 
-async fn interrupt(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<IdOnly>) -> Response {
-    let fp = fingerprint(&format!("interrupt:{id}"), &req);
+async fn interrupt(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<IdOnly>,
+) -> Response {
+    let fp = crate::idempotent::fingerprint(&format!("interrupt:{id}"), &req);
     let st2 = st.clone();
-    idempotent(&st, &req.request_id, fp, move || async move {
+    crate::idempotent::idempotent(&st, &req.request_id, fp, move || async move {
         reconciler::interrupt_seat(&st2, &id).await?;
         Ok::<Value, ApiError>(json!({}))
     })
@@ -202,10 +249,14 @@ async fn interrupt(State(st): State<AppState>, Path(id): Path<String>, Json(req)
 }
 
 /// "Restart this agent": relaunch one agent of a running team, then send what it is owed.
-async fn restart_seat(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<IdOnly>) -> Response {
-    let fp = fingerprint(&format!("restart-seat:{id}"), &req);
+async fn restart_seat(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<IdOnly>,
+) -> Response {
+    let fp = crate::idempotent::fingerprint(&format!("restart-seat:{id}"), &req);
     let st2 = st.clone();
-    idempotent(&st, &req.request_id, fp, move || async move {
+    crate::idempotent::idempotent(&st, &req.request_id, fp, move || async move {
         reconciler::restart_seat(&st2, &id).await?;
         Ok::<Value, ApiError>(json!({}))
     })
@@ -213,10 +264,14 @@ async fn restart_seat(State(st): State<AppState>, Path(id): Path<String>, Json(r
 }
 
 /// "Hand over again": pass the agent's latest finished turn to its downstream agents once.
-async fn hand_over_again(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<IdOnly>) -> Response {
-    let fp = fingerprint(&format!("handover:{id}"), &req);
+async fn hand_over_again(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<IdOnly>,
+) -> Response {
+    let fp = crate::idempotent::fingerprint(&format!("handover:{id}"), &req);
     let st2 = st.clone();
-    idempotent(&st, &req.request_id, fp, move || async move {
+    crate::idempotent::idempotent(&st, &req.request_id, fp, move || async move {
         crate::handoffs::request_handover(&st2, &id)?;
         Ok::<Value, ApiError>(json!({}))
     })
@@ -224,20 +279,28 @@ async fn hand_over_again(State(st): State<AppState>, Path(id): Path<String>, Jso
 }
 
 /// Re-send the agent's handoffs that never reached it.
-async fn resend_handoffs(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<IdOnly>) -> Response {
-    let fp = fingerprint(&format!("resend:{id}"), &req);
+async fn resend_handoffs(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<IdOnly>,
+) -> Response {
+    let fp = crate::idempotent::fingerprint(&format!("resend:{id}"), &req);
     let st2 = st.clone();
-    idempotent(&st, &req.request_id, fp, move || async move {
+    crate::idempotent::idempotent(&st, &req.request_id, fp, move || async move {
         let resent = crate::handoffs::resend(&st2, &id).await?;
         Ok::<Value, ApiError>(json!({ "resent": resent }))
     })
     .await
 }
 
-async fn stop_seat(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<IdOnly>) -> Response {
-    let fp = fingerprint(&format!("stop-seat:{id}"), &req);
+async fn stop_seat(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<IdOnly>,
+) -> Response {
+    let fp = crate::idempotent::fingerprint(&format!("stop-seat:{id}"), &req);
     let st2 = st.clone();
-    idempotent(&st, &req.request_id, fp, move || async move {
+    crate::idempotent::idempotent(&st, &req.request_id, fp, move || async move {
         reconciler::stop_seat(&st2, &id).await?;
         Ok::<Value, ApiError>(json!({}))
     })
@@ -246,7 +309,14 @@ async fn stop_seat(State(st): State<AppState>, Path(id): Path<String>, Json(req)
 
 /// Connected computers (agent runners) and what each can run.
 async fn list_hosts(State(st): State<AppState>) -> axum::Json<serde_json::Value> {
-    let limit = |id: &str| st.store.lock().unwrap().host_limit(id).ok().flatten();
+    let limit = |id: &str| {
+        st.store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .host_limit(id)
+            .ok()
+            .flatten()
+    };
     axum::Json(serde_json::Value::Array(st.hosts.connected().into_iter().map(|id| serde_json::json!({"drivers": st.hosts.drivers(&id), "policy": st.hosts.policy(&id), "max_working": limit(&id), "id": id})).collect()))
 }
 
@@ -257,10 +327,22 @@ struct HostLimit {
 
 /// `PUT /api/hosts/{id}/limit`: most agents working at once on that computer, across its teams (none
 /// = no cap). Held work waits for a slot, as with a team's own cap.
-async fn set_host_limit(State(st): State<AppState>, Path(id): Path<String>, Json(req): Json<HostLimit>) -> Result<axum::Json<serde_json::Value>, ApiError> {
+async fn set_host_limit(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<HostLimit>,
+) -> Result<axum::Json<serde_json::Value>, ApiError> {
     if req.max_working == Some(0) || req.max_working.is_some_and(|n| n > 100) {
-        return Err(ApiError::bad_request("bad_limit", "The cap is 1 to 100 agents, or none."));
+        return Err(ApiError::bad_request(
+            "bad_limit",
+            "The cap is 1 to 100 agents, or none.",
+        ));
     }
-    st.store.lock().unwrap().set_host_limit(&id, req.max_working)?;
-    Ok(axum::Json(serde_json::json!({ "id": id, "max_working": req.max_working })))
+    st.store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .set_host_limit(&id, req.max_working)?;
+    Ok(axum::Json(
+        serde_json::json!({ "id": id, "max_working": req.max_working }),
+    ))
 }

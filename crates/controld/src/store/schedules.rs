@@ -1,9 +1,9 @@
 use super::Store;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 use ts_rs::TS;
 
-/// One time a team's schedule came due: "sent", "not delivered: <why>" or "skipped: busy".
+/// One time a team's schedule came due: `sent`, `not delivered: <why>` or `skipped: busy`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct ScheduleRun {
@@ -15,17 +15,37 @@ pub struct ScheduleRun {
 
 impl Store {
     pub fn last_schedule_run(&self, team: &str, schedule: &str) -> rusqlite::Result<Option<i64>> {
-        self.conn.query_row("SELECT MAX(at_ms) FROM schedule_runs WHERE team=?1 AND schedule=?2", params![team, schedule], |r| r.get(0)).optional().map(Option::flatten)
+        self.conn
+            .query_row(
+                "SELECT MAX(at_ms) FROM schedule_runs WHERE team=?1 AND schedule=?2",
+                params![team, schedule],
+                |r| r.get(0),
+            )
+            .optional()
+            .map(Option::flatten)
     }
 
     /// Records a run and answers its row, for `set_schedule_outcome`.
-    pub fn record_schedule_run(&self, team: &str, schedule: &str, outcome: &str) -> rusqlite::Result<i64> {
-        self.conn.execute("INSERT INTO schedule_runs(team, schedule, at_ms, outcome) VALUES (?1,?2,?3,?4)", params![team, schedule, model::now_ms(), outcome])?;
+    pub fn record_schedule_run(
+        &self,
+        team: &str,
+        schedule: &str,
+        outcome: &str,
+    ) -> rusqlite::Result<i64> {
+        self.conn.execute(
+            "INSERT INTO schedule_runs(team, schedule, at_ms, outcome) VALUES (?1,?2,?3,?4)",
+            params![team, schedule, model::now_ms(), outcome],
+        )?;
         Ok(self.conn.last_insert_rowid())
     }
 
     pub fn set_schedule_outcome(&self, run: i64, outcome: &str) -> rusqlite::Result<()> {
-        self.conn.execute("UPDATE schedule_runs SET outcome=?2 WHERE rowid=?1", params![run, outcome]).map(|_| ())
+        self.conn
+            .execute(
+                "UPDATE schedule_runs SET outcome=?2 WHERE rowid=?1",
+                params![run, outcome],
+            )
+            .map(|_| ())
     }
 
     /// The team's latest schedule runs, newest first.

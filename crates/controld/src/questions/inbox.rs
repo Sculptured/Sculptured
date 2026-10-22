@@ -1,7 +1,6 @@
 //! Needs you: the questions and agents waiting for the operator, oldest first.
-use super::view;
 use crate::error::ApiError;
-use crate::projections::questions::{questions_where, QuestionRow};
+use crate::projections::questions::QuestionRow;
 use crate::state::AppState;
 use crate::store::Store;
 use crate::views::{InboxItem, InboxKind, SeatView};
@@ -30,20 +29,27 @@ fn seat_kind(s: &SeatView) -> InboxKind {
 fn needs_rule(kind: InboxKind) -> Option<(&'static [&'static str], Classify)> {
     Some(match kind {
         InboxKind::Limit | InboxKind::Stalled => return None,
-        InboxKind::Restore => (&["restore-needed", "tenure-started", "seat-lifecycle-changed"], |b| match b {
-            EventBody::RestoreNeeded { .. } => Some(true),
-            EventBody::TenureStarted { .. } => Some(false),
-            EventBody::SeatLifecycleChanged { lifecycle: SeatLifecycle::Stopped | SeatLifecycle::Failed, .. } => Some(false),
-            _ => None,
-        }),
+        InboxKind::Restore => (
+            &["restore-needed", "tenure-started", "seat-lifecycle-changed"],
+            |b| match b {
+                EventBody::RestoreNeeded { .. } => Some(true),
+                EventBody::TenureStarted { .. } => Some(false),
+                EventBody::SeatLifecycleChanged {
+                    lifecycle: SeatLifecycle::Stopped | SeatLifecycle::Failed,
+                    ..
+                } => Some(false),
+                _ => None,
+            },
+        ),
         InboxKind::Stuck => (&["handoff-waiting"], |b| match b {
             EventBody::HandoffWaiting { stuck, .. } => Some(stuck.is_some()),
             _ => None,
         }),
         _ => (&["seat-lifecycle-changed"], |b| match b {
-            EventBody::SeatLifecycleChanged { lifecycle, .. } => {
-                Some(matches!(lifecycle, SeatLifecycle::Attention | SeatLifecycle::Failed | SeatLifecycle::Stale))
-            }
+            EventBody::SeatLifecycleChanged { lifecycle, .. } => Some(matches!(
+                lifecycle,
+                SeatLifecycle::Attention | SeatLifecycle::Failed | SeatLifecycle::Stale
+            )),
             _ => None,
         }),
     })
@@ -54,7 +60,14 @@ fn needs_rule(kind: InboxKind) -> Option<(&'static [&'static str], Classify)> {
 /// stable. Falls back to the agent's latest event when the history does not say.
 fn needs_since(store: &Store, s: &SeatView, kind: InboxKind) -> i64 {
     let fallback = s.last_event_ms.unwrap_or(0);
-    let Some((types, classify)) = needs_rule(kind) else { return s.stalled.as_ref().map(|x| x.at_ms).or(s.limit_hit.as_ref().map(|h| h.at_ms)).unwrap_or(fallback) };
+    let Some((types, classify)) = needs_rule(kind) else {
+        return s
+            .stalled
+            .as_ref()
+            .map(|x| x.at_ms)
+            .or(s.limit_hit.as_ref().map(|h| h.at_ms))
+            .unwrap_or(fallback);
+    };
     let recent = match store.latest_of_types(&Subject::Seat(s.id.clone()), types, 500) {
         Ok(r) => r,
         Err(e) => {
@@ -85,7 +98,8 @@ fn waiting_seats(store: &Store) -> rusqlite::Result<Vec<(SeatView, InboxKind, i6
             "SELECT id FROM seats WHERE lifecycle IN ('attention', 'failed', 'stale')
                 OR (lifecycle = 'running' AND (handoff_stuck IS NOT NULL OR limit_hit IS NOT NULL OR stalled IS NOT NULL)) ORDER BY rig, ord",
         )?;
-        q.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?
+        q.query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
     };
     Ok(ids
         .iter()
@@ -111,7 +125,7 @@ fn question_item(st: &AppState, q: QuestionRow) -> InboxItem {
         rig: q.rig.clone(),
         seat: Some(q.seat.clone()),
         opened_at_ms: q.opened_at_ms,
-        question: Some(view(st, q)),
+        question: Some(crate::questions::view(st, q)),
         seat_view: None,
         decision: None,
     }
@@ -138,8 +152,16 @@ fn seat_item((s, kind, since): (SeatView, InboxKind, i64)) -> InboxItem {
 /// nothing in Needs you.
 pub fn inbox(st: &AppState) -> Result<Vec<InboxItem>, ApiError> {
     let (rows, seats, decisions) = {
-        let store = st.store.lock().unwrap();
-        (questions_where(store.connection(), WAITING_QUESTIONS, [])?, waiting_seats(&store)?, crate::workflow::decisions(&store))
+        let store = st.store.lock().expect("store mutex must not be poisoned");
+        (
+            crate::projections::questions::questions_where(
+                store.connection(),
+                WAITING_QUESTIONS,
+                [],
+            )?,
+            waiting_seats(&store)?,
+            crate::workflow::decisions(&store),
+        )
     };
     let mut items: Vec<InboxItem> = rows.into_iter().map(|q| question_item(st, q)).collect();
     items.extend(seats.into_iter().map(seat_item));
@@ -150,6 +172,11 @@ pub fn inbox(st: &AppState) -> Result<Vec<InboxItem>, ApiError> {
         Some(model::Urgency::Low) => 2,
         _ => 1,
     };
-    items.sort_by(|a, b| rank(a).cmp(&rank(b)).then(a.opened_at_ms.cmp(&b.opened_at_ms)).then_with(|| a.id.cmp(&b.id)));
+    items.sort_by(|a, b| {
+        rank(a)
+            .cmp(&rank(b))
+            .then(a.opened_at_ms.cmp(&b.opened_at_ms))
+            .then_with(|| a.id.cmp(&b.id))
+    });
     Ok(items)
 }

@@ -1,10 +1,10 @@
 //! A Practice driver with test knobs, for the question tests (`questions.rs`, `question_delivery.rs`).
 //! Not part of `common/mod.rs`: each test file that uses it says `#[path = "common/knobbed.rs"] mod knobbed;`.
 #![allow(dead_code)]
-use crate::common::m2::{connect, practice_team, seat, serve, Served};
+use crate::common::m2::Served;
 use model::{Answer, Caps, PermissionPosture};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 /// What one answer call does once it reaches the agent's program.
@@ -48,16 +48,29 @@ impl drivers::Driver for Knobbed {
     fn capabilities(&self) -> Caps {
         drivers::stub::StubDriver.capabilities()
     }
-    async fn launch(&self, mut spec: drivers::LaunchSpec) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
+    async fn launch(
+        &self,
+        mut spec: drivers::LaunchSpec,
+    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
         if self.restricted {
             spec.posture = PermissionPosture::Restricted;
         }
         let inner = drivers::stub::StubDriver.launch(spec).await?;
-        Ok(Box::new(KnobbedSession { inner, knobs: self.clone() }))
+        Ok(Box::new(KnobbedSession {
+            inner,
+            knobs: self.clone(),
+        }))
     }
-    async fn resume(&self, spec: drivers::LaunchSpec, native_id: &str) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
+    async fn resume(
+        &self,
+        spec: drivers::LaunchSpec,
+        native_id: &str,
+    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
         let inner = drivers::stub::StubDriver.resume(spec, native_id).await?;
-        Ok(Box::new(KnobbedSession { inner, knobs: self.clone() }))
+        Ok(Box::new(KnobbedSession {
+            inner,
+            knobs: self.clone(),
+        }))
     }
 }
 
@@ -72,7 +85,11 @@ impl drivers::Session for KnobbedSession {
     async fn stop(&mut self, grace: Duration) -> Result<(), drivers::DriverError> {
         self.inner.stop(grace).await
     }
-    async fn answer(&mut self, question_id: &str, answer: Answer) -> Result<(), drivers::DriverError> {
+    async fn answer(
+        &mut self,
+        question_id: &str,
+        answer: Answer,
+    ) -> Result<(), drivers::DriverError> {
         let n = self.knobs.calls.fetch_add(1, Ordering::SeqCst);
         match self.knobs.plan.get(n).copied().unwrap_or(self.knobs.then) {
             AnswerPlan::Pass => self.inner.answer(question_id, answer).await,
@@ -97,9 +114,9 @@ impl drivers::Session for KnobbedSession {
 
 /// A served controld with a `Knobbed` host and a started Practice "solo" team; returns its agent.
 pub async fn ready_with(knobs: Knobbed) -> (Served, String) {
-    let s = serve().await;
-    connect(&s, vec![Arc::new(knobs)], None).await;
-    let id = practice_team(&s, "solo").await;
-    let agent = seat(&id, "claude");
+    let s = crate::common::m2::serve().await;
+    crate::common::m2::connect(&s, vec![Arc::new(knobs)], None).await;
+    let id = crate::common::m2::practice_team(&s, "solo").await;
+    let agent = crate::common::m2::seat(&id, "claude");
     (s, agent)
 }

@@ -21,7 +21,9 @@ pub enum Gate {
 
 fn seat_of(cmd: &HostCommand) -> Option<&str> {
     match cmd {
-        HostCommand::Launch { seat, .. } | HostCommand::Restart { seat, .. } | HostCommand::Send { seat, .. } => Some(seat),
+        HostCommand::Launch { seat, .. }
+        | HostCommand::Restart { seat, .. }
+        | HostCommand::Send { seat, .. } => Some(seat),
         _ => None,
     }
 }
@@ -47,14 +49,21 @@ pub fn busy_on_host(store: &Store, host: &str, except: &str) -> rusqlite::Result
 }
 
 /// The cap of the computer `seat` runs on, when it has one: (host, cap).
-fn host_cap(store: &Store, view: &crate::views::SeatView) -> rusqlite::Result<Option<(String, u32)>> {
-    let Some(host) = view.host.clone() else { return Ok(None) };
+fn host_cap(
+    store: &Store,
+    view: &crate::views::SeatView,
+) -> rusqlite::Result<Option<(String, u32)>> {
+    let Some(host) = view.host.clone() else {
+        return Ok(None);
+    };
     Ok(store.host_limit(&host)?.map(|n| (host, n)))
 }
 
 /// True when the computer `seat` runs on has a free slot (or no cap).
 fn host_free(store: &Store, seat: &str) -> rusqlite::Result<bool> {
-    let Some(view) = store.seat(seat)? else { return Ok(true) };
+    let Some(view) = store.seat(seat)? else {
+        return Ok(true);
+    };
     Ok(match host_cap(store, &view)? {
         Some((host, max)) => busy_on_host(store, &host, seat)? < max,
         None => true,
@@ -62,7 +71,9 @@ fn host_free(store: &Store, seat: &str) -> rusqlite::Result<bool> {
 }
 
 fn queue(store: &Store, seat: &str, cmd: &HostCommand) -> rusqlite::Result<()> {
-    let HostCommand::Send { message_id, .. } = cmd else { return Ok(()) };
+    let HostCommand::Send { message_id, .. } = cmd else {
+        return Ok(());
+    };
     store.connection().execute(
         "INSERT OR IGNORE INTO budget_queue (seat, message_id, json, at_ms) VALUES (?1, ?2, ?3, ?4)",
         params![seat, message_id, serde_json::to_string(cmd).expect("command serializes"), model::now_ms()],
@@ -73,23 +84,35 @@ fn queue(store: &Store, seat: &str, cmd: &HostCommand) -> rusqlite::Result<()> {
 /// Why `rig` takes no new work now (its run is past a soft value), or None.
 pub fn refusal(store: &Store, rig: &str) -> rusqlite::Result<Option<String>> {
     Ok(store.run_budget(rig)?.and_then(|r| match r.state {
-        BudgetState::WrapUp { reason, .. } | BudgetState::Stopped { reason, .. } | BudgetState::Paused { reason, .. } => Some(format!("Run budget: {reason}")),
+        BudgetState::WrapUp { reason, .. }
+        | BudgetState::Stopped { reason, .. }
+        | BudgetState::Paused { reason, .. } => Some(format!("Run budget: {reason}")),
         BudgetState::Normal => None,
     }))
 }
 
 /// The gate's answer for `cmd`, from the store alone (it runs inside every command).
 pub fn decide(store: &Store, cmd: &HostCommand) -> rusqlite::Result<Gate> {
-    let Some(seat) = seat_of(cmd) else { return Ok(Gate::Pass) };
-    let Some(view) = store.seat(seat)? else { return Ok(Gate::Pass) };
+    let Some(seat) = seat_of(cmd) else {
+        return Ok(Gate::Pass);
+    };
+    let Some(view) = store.seat(seat)? else {
+        return Ok(Gate::Pass);
+    };
     let sending = matches!(cmd, HostCommand::Send { .. });
     let budget = store.run_budget(&view.rig)?;
     if let Some(r) = &budget {
         match &r.state {
-            BudgetState::Stopped { reason, .. } | BudgetState::Paused { reason, .. } => return Ok(Gate::Refuse(format!("Run budget: {reason}"))),
+            BudgetState::Stopped { reason, .. } | BudgetState::Paused { reason, .. } => {
+                return Ok(Gate::Refuse(format!("Run budget: {reason}")));
+            }
             // The wrap-up instruction itself goes to agents that are wrapping up; nothing else does.
-            BudgetState::WrapUp { .. } if sending && store.control(seat)?.is_some() => return Ok(Gate::Pass),
-            BudgetState::WrapUp { reason, .. } => return Ok(Gate::Refuse(format!("Run budget: {reason}"))),
+            BudgetState::WrapUp { .. } if sending && store.control(seat)?.is_some() => {
+                return Ok(Gate::Pass);
+            }
+            BudgetState::WrapUp { reason, .. } => {
+                return Ok(Gate::Refuse(format!("Run budget: {reason}")));
+            }
             BudgetState::Normal => {}
         }
     }
@@ -111,7 +134,7 @@ pub fn decide(store: &Store, cmd: &HostCommand) -> rusqlite::Result<Gate> {
 /// says the agent waits for a slot.
 pub fn hook(store: Arc<Mutex<Store>>, hub: Hub) -> crate::hosts::GateFn {
     Arc::new(move |cmd: &HostCommand| {
-        let mut store = store.lock().unwrap();
+        let mut store = store.lock().expect("store mutex must not be poisoned");
         match decide(&store, cmd) {
             Ok(Gate::Queued) => {
                 held(&mut store, &hub, cmd);
@@ -129,19 +152,45 @@ pub fn hook(store: Arc<Mutex<Store>>, hub: Hub) -> crate::hosts::GateFn {
 type Hub = tokio::sync::broadcast::Sender<crate::views::StreamItem>;
 
 fn held(store: &mut Store, hub: &Hub, cmd: &HostCommand) {
-    let HostCommand::Send { seat, message_id, .. } = cmd else { return };
+    let HostCommand::Send {
+        seat, message_id, ..
+    } = cmd
+    else {
+        return;
+    };
     let view = store.seat(seat).ok().flatten();
-    let team = view.as_ref().and_then(|v| store.run_budget(&v.rig).ok().flatten()).and_then(|r| r.budget.max_working);
-    let team_full = team.zip(view.as_ref()).is_some_and(|(max, v)| busy(store, &v.rig, seat).is_ok_and(|n| n >= max));
-    let host = view.as_ref().and_then(|v| host_cap(store, v).ok().flatten());
+    let team = view
+        .as_ref()
+        .and_then(|v| store.run_budget(&v.rig).ok().flatten())
+        .and_then(|r| r.budget.max_working);
+    let team_full = team
+        .zip(view.as_ref())
+        .is_some_and(|(max, v)| busy(store, &v.rig, seat).is_ok_and(|n| n >= max));
+    let host = view
+        .as_ref()
+        .and_then(|v| host_cap(store, v).ok().flatten());
     let reason = match (team, host) {
-        (Some(n), _) if team_full => format!("waiting for a slot: at most {n} agents of this run work at once"),
-        (_, Some((_, n))) => format!("waiting for a slot: at most {n} agents work at once on this computer"),
-        (Some(n), None) => format!("waiting for a slot: at most {n} agents of this run work at once"),
+        (Some(n), _) if team_full => {
+            format!("waiting for a slot: at most {n} agents of this run work at once")
+        }
+        (_, Some((_, n))) => {
+            format!("waiting for a slot: at most {n} agents work at once on this computer")
+        }
+        (Some(n), None) => {
+            format!("waiting for a slot: at most {n} agents of this run work at once")
+        }
         (None, None) => "waiting for a slot".to_string(),
     };
-    let body = model::EventBody::MessageHeld { message_id: message_id.clone(), reason };
-    match store.append_local(crate::hosts::controld(), model::Subject::Seat(seat.clone()), model::Provenance::Operator, body) {
+    let body = model::EventBody::MessageHeld {
+        message_id: message_id.clone(),
+        reason,
+    };
+    match store.append_local(
+        crate::hosts::controld(),
+        model::Subject::Seat(seat.clone()),
+        model::Provenance::Operator,
+        body,
+    ) {
         Ok(item) => {
             let _ = hub.send(item);
         }
@@ -156,21 +205,53 @@ fn waiting(store: &Store, rig: &str) -> rusqlite::Result<Vec<Waiting>> {
     let mut q = store.connection().prepare(
         "SELECT q.seat, q.message_id, q.json FROM budget_queue q JOIN seats s ON s.id = q.seat WHERE s.rig = ?1 ORDER BY q.at_ms, q.rowid",
     )?;
-    let rows = q.query_map([rig], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
-    Ok(rows.filter_map(Result::ok).filter_map(|(s, m, j)| Some((s, m, serde_json::from_str(&j).ok()?))).collect())
+    let rows = q.query_map([rig], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+        ))
+    })?;
+    Ok(rows
+        .filter_map(Result::ok)
+        .filter_map(|(s, m, j)| Some((s, m, serde_json::from_str(&j).ok()?)))
+        .collect())
 }
 
 fn unqueue(store: &Store, message_id: &str) -> rusqlite::Result<()> {
-    store.connection().execute("DELETE FROM budget_queue WHERE message_id = ?1", [message_id]).map(|_| ())
+    store
+        .connection()
+        .execute(
+            "DELETE FROM budget_queue WHERE message_id = ?1",
+            [message_id],
+        )
+        .map(|_| ())
 }
 
 fn still_queued(store: &Store, message_id: &str) -> rusqlite::Result<bool> {
-    let state: Option<String> = store.connection().query_row("SELECT state FROM messages WHERE id = ?1", [message_id], |r| r.get(0)).ok();
+    let state: Option<String> = store
+        .connection()
+        .query_row(
+            "SELECT state FROM messages WHERE id = ?1",
+            [message_id],
+            |r| r.get(0),
+        )
+        .ok();
     Ok(state.as_deref() == Some("queued"))
 }
 
-fn not_sent(st: &crate::state::AppState, seat: String, message_id: String, reason: String) -> rusqlite::Result<()> {
-    st.local_event(crate::hosts::controld(), model::Subject::Seat(seat), model::Provenance::Operator, model::EventBody::MessageFailed { message_id, reason })?;
+fn not_sent(
+    st: &crate::state::AppState,
+    seat: String,
+    message_id: String,
+    reason: String,
+) -> rusqlite::Result<()> {
+    st.local_event(
+        crate::hosts::controld(),
+        model::Subject::Seat(seat),
+        model::Provenance::Operator,
+        model::EventBody::MessageFailed { message_id, reason },
+    )?;
     Ok(())
 }
 
@@ -179,26 +260,62 @@ fn not_sent(st: &crate::state::AppState, seat: String, message_id: String, reaso
 /// and recorded as not sent.
 pub async fn deliver(st: &crate::state::AppState, rig: &str) -> rusqlite::Result<()> {
     let (list, record) = {
-        let store = st.store.lock().unwrap();
+        let store = st.store.lock().expect("store mutex must not be poisoned");
         (waiting(&store, rig)?, store.run_budget(rig)?)
     };
     for (seat, message_id, cmd) in list {
-        let queued = still_queued(&st.store.lock().unwrap(), &message_id)?;
-        if !queued || record.as_ref().is_some_and(|r| !matches!(r.state, BudgetState::Normal)) {
-            unqueue(&st.store.lock().unwrap(), &message_id)?;
+        let queued = still_queued(
+            &st.store.lock().expect("store mutex must not be poisoned"),
+            &message_id,
+        )?;
+        if !queued
+            || record
+                .as_ref()
+                .is_some_and(|r| !matches!(r.state, BudgetState::Normal))
+        {
+            unqueue(
+                &st.store.lock().expect("store mutex must not be poisoned"),
+                &message_id,
+            )?;
             if queued {
-                not_sent(st, seat, message_id, "Not sent: the run's budget stopped new work".into())?;
+                not_sent(
+                    st,
+                    seat,
+                    message_id,
+                    "Not sent: the run's budget stopped new work".into(),
+                )?;
             }
             continue;
         }
-        let team_free = record.as_ref().and_then(|r| r.budget.max_working).is_none_or(|max| busy(&st.store.lock().unwrap(), rig, &seat).is_ok_and(|n| n < max));
-        let free = team_free && host_free(&st.store.lock().unwrap(), &seat)?;
+        let team_free = record
+            .as_ref()
+            .and_then(|r| r.budget.max_working)
+            .is_none_or(|max| {
+                busy(
+                    &st.store.lock().expect("store mutex must not be poisoned"),
+                    rig,
+                    &seat,
+                )
+                .is_ok_and(|n| n < max)
+            });
+        let free = team_free
+            && host_free(
+                &st.store.lock().expect("store mutex must not be poisoned"),
+                &seat,
+            )?;
         if !free {
             return Ok(());
         }
-        unqueue(&st.store.lock().unwrap(), &message_id)?;
+        unqueue(
+            &st.store.lock().expect("store mutex must not be poisoned"),
+            &message_id,
+        )?;
         let sent = match crate::launch::seat_host(st, &seat) {
-            Ok(host) => st.hosts.command_ungated(&host, cmd).await.map_err(|e| e.into_message()),
+            Ok(host) => st
+                .hosts
+                .command_ungated(&host, cmd)
+                .await
+                .map_err(|e| e.into_message()),
             Err(e) => Err(e.message.to_string()),
         };
         if let Err(reason) = sent {
@@ -210,7 +327,9 @@ pub async fn deliver(st: &crate::state::AppState, rig: &str) -> rusqlite::Result
 
 /// Every team with messages waiting.
 pub fn rigs_waiting(store: &Store) -> rusqlite::Result<Vec<String>> {
-    let mut q = store.connection().prepare("SELECT DISTINCT s.rig FROM budget_queue q JOIN seats s ON s.id = q.seat")?;
+    let mut q = store
+        .connection()
+        .prepare("SELECT DISTINCT s.rig FROM budget_queue q JOIN seats s ON s.id = q.seat")?;
     let rows = q.query_map([], |r| r.get(0))?;
     rows.collect()
 }

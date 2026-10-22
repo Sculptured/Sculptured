@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum QuestionSource {
@@ -15,7 +17,9 @@ pub enum QuestionSource {
     NativePermission,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum QuestionState {
@@ -54,7 +58,19 @@ pub struct QuestionPrompt {
 }
 
 /// An agent's own word on how much a question holds up (an idea from Gas Town's escalation severity).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+    TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum Urgency {
@@ -90,7 +106,11 @@ impl QuestionPrompt {
             header: self.header.map(|h| cut(h, Self::MAX_LABEL)),
             text: if !permission {
                 cut(self.text, Self::MAX_TEXT)
-            } else if self.tool_input.as_ref().is_some_and(crate::cap::approval_input_kept_whole) {
+            } else if self
+                .tool_input
+                .as_ref()
+                .is_some_and(crate::cap::approval_input_kept_whole)
+            {
                 // The whole command is kept in `tool_input`, so the marker can point to it.
                 crate::cap::approval_cut(self.text, Self::MAX_TEXT)
             } else {
@@ -127,7 +147,9 @@ pub enum Answer {
     Expired,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum DecisionSource {
@@ -142,7 +164,9 @@ pub enum DecisionSource {
 }
 
 /// How a new session for an agent starts (spec §6.8 "handover"; "New session" in the UI).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum SessionMode {
@@ -152,7 +176,9 @@ pub enum SessionMode {
     Fork,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum RestoreDecision {
@@ -165,7 +191,14 @@ pub enum RestoreDecision {
 }
 
 /// The message an agent question gets when nobody answered in time (spec §6.5, D8).
+#[must_use]
 pub fn timeout_instruction(timeout_ms: u64) -> String {
-    let after = if timeout_ms >= 60_000 { format!("{}m", timeout_ms / 60_000) } else { format!("{}s", timeout_ms.div_ceil(1000)) };
-    format!("No operator answer within {after}. Proceed with your best judgment and state the decision you made.")
+    let after = if timeout_ms >= 60_000 {
+        format!("{}m", timeout_ms / 60_000)
+    } else {
+        format!("{}s", timeout_ms.div_ceil(1000))
+    };
+    format!(
+        "No operator answer within {after}. Proceed with your best judgment and state the decision you made."
+    )
 }

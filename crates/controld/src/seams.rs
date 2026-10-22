@@ -13,7 +13,10 @@ pub static BETWEEN_SAVE_CHECK_AND_WRITE: Mutex<Option<Hook>> = Mutex::new(None);
 pub static AFTER_IMPORT_PARSE: Mutex<Option<Hook>> = Mutex::new(None);
 
 pub(crate) fn run(seam: &Mutex<Option<Hook>>, team: &str) {
-    let hook = seam.lock().unwrap().clone();
+    let hook = seam
+        .lock()
+        .expect("seam mutex must not be poisoned")
+        .clone();
     if let Some(hook) = hook {
         hook(team);
     }
@@ -27,10 +30,12 @@ pub static IN_EXPIRE_BEFORE_RECORD: Mutex<Option<Hook>> = Mutex::new(None);
 pub static CLAIM_WAIT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// When non-zero, how long (ms) controld waits for a host to reply to a command (default 30 s).
-pub static HOST_REPLY_TIMEOUT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static HOST_REPLY_TIMEOUT_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 /// When non-zero, how long (ms) work waits for a host whose link just dropped (default 45 s).
-pub static HOST_RECONNECT_GRACE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static HOST_RECONNECT_GRACE_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 /// A duration override from one of the statics above, if set.
 pub(crate) fn override_ms(v: &std::sync::atomic::AtomicU64) -> Option<std::time::Duration> {

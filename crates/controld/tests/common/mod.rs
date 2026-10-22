@@ -1,7 +1,7 @@
 //! Helpers shared by the controld integration tests.
 #![allow(dead_code)]
-pub mod m2;
 pub mod community;
+pub mod m2;
 pub mod seat_tools;
 use controld::AppState;
 use model::SeatLifecycle;

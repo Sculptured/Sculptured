@@ -59,13 +59,24 @@ pub struct Home {
 impl Home {
     /// The home folder from HOME as configured; `home_unknown` when it can't be resolved.
     pub fn of(given: &Path) -> Result<Home, LocalError> {
-        let real = plain(given.canonicalize().map_err(|e| LocalError::failed("home_unknown", format!("Your home folder can't be read: {e}")))?);
-        Ok(Home { real, given: given.to_path_buf() })
+        let real = plain(given.canonicalize().map_err(|e| {
+            LocalError::failed(
+                "home_unknown",
+                format!("Your home folder can't be read: {e}"),
+            )
+        })?);
+        Ok(Home {
+            real,
+            given: given.to_path_buf(),
+        })
     }
 }
 
 fn outside_home() -> LocalError {
-    LocalError::forbidden("outside_home", "Only folders inside your home folder can be chosen here")
+    LocalError::forbidden(
+        "outside_home",
+        "Only folders inside your home folder can be chosen here",
+    )
 }
 
 fn bad_path(message: impl Into<String>) -> LocalError {
@@ -123,7 +134,9 @@ fn may_look_up(home: &Home, p: &Path) -> bool {
 
 fn lookup_error(e: &std::io::Error) -> LocalError {
     match e.kind() {
-        ErrorKind::NotFound => LocalError::not_found("folder_missing", "That folder does not exist"),
+        ErrorKind::NotFound => {
+            LocalError::not_found("folder_missing", "That folder does not exist")
+        }
         ErrorKind::PermissionDenied => unreadable(),
         ErrorKind::NotADirectory => LocalError::bad("not_a_folder", "That is a file, not a folder"),
         // NUL bytes, names that are too long, …
@@ -143,7 +156,10 @@ fn lookup_error(e: &std::io::Error) -> LocalError {
 #[cfg(unix)]
 pub fn resolve_inside(home: &Home, requested: &Path) -> Result<PathBuf, LocalError> {
     if !requested.is_absolute() {
-        return Err(LocalError::bad("path_not_absolute", "Folder paths must be full paths"));
+        return Err(LocalError::bad(
+            "path_not_absolute",
+            "Folder paths must be full paths",
+        ));
     }
     refuse_dot_segments(home, requested)?;
     let cur = walk(home, requested)?;
@@ -152,7 +168,10 @@ pub fn resolve_inside(home: &Home, requested: &Path) -> Result<PathBuf, LocalErr
     }
     let meta = std::fs::metadata(&cur).map_err(|e| lookup_error(&e))?;
     if !meta.is_dir() {
-        return Err(LocalError::bad("not_a_folder", "That is a file, not a folder"));
+        return Err(LocalError::bad(
+            "not_a_folder",
+            "That is a file, not a folder",
+        ));
     }
     Ok(cur)
 }
@@ -164,25 +183,41 @@ pub fn resolve_inside(home: &Home, requested: &Path) -> Result<PathBuf, LocalErr
 pub fn resolve_inside(home: &Home, requested: &Path) -> Result<PathBuf, LocalError> {
     use std::path::Component;
     if !requested.is_absolute() {
-        return Err(LocalError::bad("path_not_absolute", "Folder paths must be full paths"));
+        return Err(LocalError::bad(
+            "path_not_absolute",
+            "Folder paths must be full paths",
+        ));
     }
-    if requested.components().any(|c| matches!(c, Component::CurDir | Component::ParentDir)) {
+    if requested
+        .components()
+        .any(|c| matches!(c, Component::CurDir | Component::ParentDir))
+    {
         return Err(bad_path("Use a folder path without . or .."));
     }
     let inside = requested.starts_with(&home.real) || requested.starts_with(&home.given);
-    let cur = plain(requested.canonicalize().map_err(|e| if inside { lookup_error(&e) } else { outside_home() })?);
+    let cur = plain(requested.canonicalize().map_err(|e| {
+        if inside {
+            lookup_error(&e)
+        } else {
+            outside_home()
+        }
+    })?);
     if !cur.starts_with(&home.real) {
         return Err(outside_home());
     }
     let meta = std::fs::metadata(&cur).map_err(|e| lookup_error(&e))?;
     if !meta.is_dir() {
-        return Err(LocalError::bad("not_a_folder", "That is a file, not a folder"));
+        return Err(LocalError::bad(
+            "not_a_folder",
+            "That is a file, not a folder",
+        ));
     }
     Ok(cur)
 }
 
 /// `\\?\C:\Users\a` → `C:\Users\a`: Windows' canonical form, as people and tools write it. Other
 /// verbatim paths (network shares) and every Unix path are kept as they are.
+#[must_use]
 pub fn plain(p: PathBuf) -> PathBuf {
     match p.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
         Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
@@ -193,7 +228,9 @@ pub fn plain(p: PathBuf) -> PathBuf {
 #[cfg(unix)]
 /// The path's non-empty parts.
 fn parts(p: &Path) -> impl Iterator<Item = OsString> + '_ {
-    segments(p).filter(|s| !s.is_empty()).map(|s| OsStr::from_bytes(s).to_owned())
+    segments(p)
+        .filter(|s| !s.is_empty())
+        .map(|s| OsStr::from_bytes(s).to_owned())
 }
 
 #[cfg(unix)]
@@ -225,7 +262,8 @@ fn walk(home: &Home, requested: &Path) -> Result<PathBuf, LocalError> {
         if target.is_absolute() {
             cur = PathBuf::from("/");
         }
-        for s in parts(&target).collect::<Vec<_>>().into_iter().rev() {
+        let reversed_items = parts(&target).collect::<Vec<_>>().into_iter().rev();
+        for s in reversed_items {
             rest.push_front(s);
         }
     }
@@ -243,12 +281,17 @@ fn is_link(home: &Home, next: &Path) -> Result<bool, LocalError> {
 }
 
 fn text(p: &Path) -> Result<String, LocalError> {
-    p.to_str().map(str::to_string).ok_or_else(|| bad_path("That folder's name can't be shown"))
+    p.to_str()
+        .map(str::to_string)
+        .ok_or_else(|| bad_path("That folder's name can't be shown"))
 }
 
 /// Case-insensitive, then byte order so the result is total and stable.
 fn by_name(a: &FolderEntry, b: &FolderEntry) -> std::cmp::Ordering {
-    a.name.to_lowercase().cmp(&b.name.to_lowercase()).then_with(|| a.name.cmp(&b.name))
+    a.name
+        .to_lowercase()
+        .cmp(&b.name.to_lowercase())
+        .then_with(|| a.name.cmp(&b.name))
 }
 
 /// A folder the picker can show: not hidden, a directory or a link to one inside home. None otherwise.
@@ -278,8 +321,15 @@ fn file_entries(dir: &Path) -> Result<Vec<FolderEntry>, LocalError> {
         .flatten()
         .filter(|e| e.file_type().is_ok_and(|k| k.is_file()))
         .filter_map(|e| {
-            let name = e.file_name().into_string().ok().filter(|n| !n.starts_with('.'))?;
-            Some(FolderEntry { path: e.path().to_str()?.to_string(), name })
+            let name = e
+                .file_name()
+                .into_string()
+                .ok()
+                .filter(|n| !n.starts_with('.'))?;
+            Some(FolderEntry {
+                path: e.path().to_str()?.to_string(),
+                name,
+            })
         })
         .collect();
     files.sort_by(by_name);
@@ -287,20 +337,42 @@ fn file_entries(dir: &Path) -> Result<Vec<FolderEntry>, LocalError> {
     Ok(files)
 }
 
-pub fn listing(home: &Home, requested: Option<&str>, with_files: bool) -> Result<FolderListing, LocalError> {
+pub fn listing(
+    home: &Home,
+    requested: Option<&str>,
+    with_files: bool,
+) -> Result<FolderListing, LocalError> {
     // Only an empty or all-blank `path` means home; a real path is used exactly as sent.
     let dir = match requested.filter(|p| !p.trim().is_empty()) {
         Some(p) => resolve_inside(home, Path::new(p))?,
         None => home.real.clone(),
     };
     let read = std::fs::read_dir(&dir).map_err(|_| unreadable())?;
-    let mut entries: Vec<FolderEntry> = read.flatten().filter_map(|entry| folder_entry(home, &entry)).collect();
+    let mut entries: Vec<FolderEntry> = read
+        .flatten()
+        .filter_map(|entry| folder_entry(home, &entry))
+        .collect();
     entries.sort_by(by_name);
     let truncated = entries.len() > MAX_ENTRIES;
     entries.truncate(MAX_ENTRIES);
-    let parent = if dir == home.real { None } else { dir.parent().map(text).transpose()? };
-    let files = if with_files { Some(file_entries(&dir)?) } else { None };
-    Ok(FolderListing { path: text(&dir)?, parent, home: text(&home.real)?, entries, truncated, files })
+    let parent = if dir == home.real {
+        None
+    } else {
+        dir.parent().map(text).transpose()?
+    };
+    let files = if with_files {
+        Some(file_entries(&dir)?)
+    } else {
+        None
+    };
+    Ok(FolderListing {
+        path: text(&dir)?,
+        parent,
+        home: text(&home.real)?,
+        entries,
+        truncated,
+        files,
+    })
 }
 
 /// Unicode general category Cf (format characters, Unicode 16): invisible characters
@@ -336,8 +408,12 @@ fn is_format_char(c: char) -> bool {
 
 fn valid_name(name: &str) -> Result<&str, LocalError> {
     let n = name.trim();
-    let unsafe_char =
-        |c: char| c == '/' || c.is_control() || is_format_char(c) || matches!(c, '\u{2028}' | '\u{2029}' | '\u{85}');
+    let unsafe_char = |c: char| {
+        c == '/'
+            || c.is_control()
+            || is_format_char(c)
+            || matches!(c, '\u{2028}' | '\u{2029}' | '\u{85}')
+    };
     if n.is_empty() || n.starts_with('.') || n.chars().any(unsafe_char) || n.len() > 255 {
         return Err(LocalError::bad(
             "bad_folder_name",
@@ -353,12 +429,23 @@ pub fn create(home: &Home, parent: &str, name: &str) -> Result<FolderEntry, Loca
     let name = valid_name(name)?;
     let target = parent.join(name);
     std::fs::create_dir(&target).map_err(|e| match e.kind() {
-        ErrorKind::AlreadyExists => LocalError::conflict("folder_exists", format!("A folder called {name} already exists here")),
-        ErrorKind::PermissionDenied => LocalError::forbidden("folder_unwritable", "Sculptured can't create a folder here"),
-        _ => LocalError::bad("folder_not_created", format!("The folder could not be created: {e}")),
+        ErrorKind::AlreadyExists => LocalError::conflict(
+            "folder_exists",
+            format!("A folder called {name} already exists here"),
+        ),
+        ErrorKind::PermissionDenied => {
+            LocalError::forbidden("folder_unwritable", "Sculptured can't create a folder here")
+        }
+        _ => LocalError::bad(
+            "folder_not_created",
+            format!("The folder could not be created: {e}"),
+        ),
     })?;
     let real = resolve_inside(home, &target)?;
-    Ok(FolderEntry { name: name.to_string(), path: text(&real)? })
+    Ok(FolderEntry {
+        name: name.to_string(),
+        path: text(&real)?,
+    })
 }
 
 #[cfg(test)]
@@ -373,7 +460,11 @@ mod tests {
         std::fs::write(root.path().join("docs/spec.pdf"), "x").unwrap();
         std::fs::write(root.path().join("docs/.env"), "secret").unwrap();
         let docs = root.path().join("docs").display().to_string();
-        assert_eq!(listing(&home, Some(&docs), false).unwrap().files, None, "folders only unless files are asked for");
+        assert_eq!(
+            listing(&home, Some(&docs), false).unwrap().files,
+            None,
+            "folders only unless files are asked for"
+        );
         let files = listing(&home, Some(&docs), true).unwrap().files.unwrap();
         let names: Vec<&str> = files.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, ["spec.pdf"]);
@@ -394,9 +485,21 @@ mod tests {
         assert_eq!(names, ["proj"], "no files, no dot folders, no links out");
         assert!(l.parent.is_none());
         assert!(listing(&home, Some(outside.path().to_str().unwrap()), false).is_err());
-        assert!(listing(&home, Some(&format!("{}/proj/../..", root.path().display())), false).is_err());
+        assert!(
+            listing(
+                &home,
+                Some(&format!("{}/proj/../..", root.path().display())),
+                false
+            )
+            .is_err()
+        );
         let made = create(&home, root.path().join("proj").to_str().unwrap(), "new").unwrap();
         assert!(Path::new(&made.path).is_dir());
-        assert_eq!(create(&home, root.path().join("proj").to_str().unwrap(), "../x").unwrap_err().code, "bad_folder_name");
+        assert_eq!(
+            create(&home, root.path().join("proj").to_str().unwrap(), "../x")
+                .unwrap_err()
+                .code,
+            "bad_folder_name"
+        );
     }
 }

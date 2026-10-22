@@ -14,12 +14,14 @@ pub struct Credentials {
 
 impl Credentials {
     /// What goes after `Bearer `: `<device_id>.<key>`.
+    #[must_use]
     pub fn bearer(&self) -> String {
         format!("{}.{}", self.device_id, self.key)
     }
 }
 
 /// The saved key; an unreadable or invalid file counts as none.
+#[must_use]
 pub fn load(dir: &Path) -> Option<Credentials> {
     serde_json::from_str(&std::fs::read_to_string(dir.join(FILE)).ok()?).ok()
 }
@@ -36,7 +38,11 @@ pub fn save(dir: &Path, c: &Credentials) -> std::io::Result<()> {
     // `mode` applies only on create; a leftover file is narrowed too.
     #[cfg(unix)]
     f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
-    f.write_all(serde_json::to_string(c).expect("credentials serialize").as_bytes())?;
+    f.write_all(
+        serde_json::to_string(c)
+            .expect("credentials serialize")
+            .as_bytes(),
+    )?;
     f.sync_all()?;
     std::fs::rename(&tmp, dir.join(FILE))
 }

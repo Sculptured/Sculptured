@@ -1,6 +1,5 @@
 //! Compiler diagnostics → the draft element they concern, in plain words.
 use super::build::SpecIndex;
-use super::names::display_name;
 use super::{GENERIC_AGENT, GENERIC_CONNECTION, GENERIC_GROUP, GENERIC_TEAM};
 use crate::{Diagnostic, Severity};
 use model::{DraftIssue, ElementKind, ElementRef, IssueSeverity, TeamDraft};
@@ -12,7 +11,10 @@ fn bracket<'p>(path: &'p str, prefix: &str) -> Option<(usize, &'p str)> {
 }
 
 fn at(kind: ElementKind, id: &str) -> ElementRef {
-    ElementRef { kind, id: id.to_string() }
+    ElementRef {
+        kind,
+        id: id.to_string(),
+    }
 }
 
 /// `pods[p]…` paths: a member, a pod-local edge, or the pod itself.
@@ -27,7 +29,10 @@ fn locate_in_pod(index: &SpecIndex, p: usize, rest: &str) -> Option<(ElementRef,
     {
         return Some((at(ElementKind::Connection, id), field.to_string()));
     }
-    index.pods.get(p).map(|id| (at(ElementKind::Group, id), rest.to_string()))
+    index
+        .pods
+        .get(p)
+        .map(|id| (at(ElementKind::Group, id), rest.to_string()))
 }
 
 fn locate(d: &TeamDraft, index: &SpecIndex, path: &str) -> (ElementRef, String) {
@@ -46,10 +51,19 @@ fn locate(d: &TeamDraft, index: &SpecIndex, path: &str) -> (ElementRef, String) 
 
 pub(super) fn map_with(d: &TeamDraft, index: &SpecIndex, diag: &Diagnostic) -> DraftIssue {
     let (element, field) = locate(d, index, &diag.path);
-    let severity = if diag.severity == Severity::Error { IssueSeverity::Error } else { IssueSeverity::Warning };
-    let who = d.agent(&element.id).map(display_name).unwrap_or_else(|| "This agent".to_string());
+    let severity = if diag.severity == Severity::Error {
+        IssueSeverity::Error
+    } else {
+        IssueSeverity::Warning
+    };
+    let who = d
+        .agent(&element.id)
+        .map(crate::draft::names::display_name)
+        .unwrap_or_else(|| "This agent".to_string());
     let (code, message) = match (element.kind, field.as_str()) {
-        (ElementKind::Agent, ".cwd") => ("folder-missing", format!("{who} needs a folder to work in")),
+        (ElementKind::Agent, ".cwd") => {
+            ("folder-missing", format!("{who} needs a folder to work in"))
+        }
         (ElementKind::Agent, _) => ("agent-config", GENERIC_AGENT.to_string()),
         (ElementKind::Connection, _) => ("connection-config", GENERIC_CONNECTION.to_string()),
         (ElementKind::Group, _) => ("group-config", GENERIC_GROUP.to_string()),

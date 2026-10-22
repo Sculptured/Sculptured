@@ -3,11 +3,11 @@ use super::core::Core;
 use super::parser::CodexParser;
 use super::{CodexAppServerDriver, Open};
 use crate::process::{self, StderrTail};
-use crate::{check_cwd, DriverError, DriverEvent, LaunchSpec, OutboundMessage, Session};
+use crate::{DriverError, DriverEvent, LaunchSpec, OutboundMessage, Session};
 use async_trait::async_trait;
 use futures::stream::{BoxStream, StreamExt};
 use model::Answer;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
@@ -22,11 +22,16 @@ type StdoutLines = Lines<BufReader<ChildStdout>>;
 type Writer = mpsc::UnboundedSender<Option<String>>;
 
 fn startup_error(msg: impl std::fmt::Display) -> DriverError {
-    DriverError::Io(std::io::Error::other(format!("codex app-server did not start: {msg}")))
+    DriverError::Io(std::io::Error::other(format!(
+        "codex app-server did not start: {msg}"
+    )))
 }
 
 async fn write_line(stdin: &mut ChildStdin, v: &Value) -> Result<(), String> {
-    stdin.write_all(format!("{v}\n").as_bytes()).await.map_err(|e| e.to_string())?;
+    stdin
+        .write_all(format!("{v}\n").as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
     stdin.flush().await.map_err(|e| e.to_string())
 }
 
@@ -44,13 +49,21 @@ impl Handshake<'_> {
     /// replies are written at once and its events are kept for after `SessionReady`.
     async fn await_response(&mut self, want: u64) -> Result<Value, String> {
         loop {
-            let line = self.lines.next_line().await.map_err(|e| e.to_string())?.ok_or_else(|| "it exited".to_string())?;
+            let line = self
+                .lines
+                .next_line()
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "it exited".to_string())?;
             if let Ok(v) = serde_json::from_str::<Value>(&line)
                 && v["id"].as_u64() == Some(want)
                 && v.get("method").is_none()
             {
                 return match v.get("error") {
-                    Some(e) => Err(e["message"].as_str().unwrap_or("it answered with an error").to_string()),
+                    Some(e) => Err(e["message"]
+                        .as_str()
+                        .unwrap_or("it answered with an error")
+                        .to_string()),
                     None => Ok(v),
                 };
             }
@@ -68,11 +81,22 @@ impl Handshake<'_> {
                            "params": { "clientInfo": { "name": "sculptured", "version": env!("CARGO_PKG_VERSION") } } });
         write_line(self.stdin, &init).await?;
         self.await_response(1).await?;
-        write_line(self.stdin, &json!({ "jsonrpc": "2.0", "method": "initialized" })).await?;
-        write_line(self.stdin, &json!({ "jsonrpc": "2.0", "id": 2, "method": method, "params": params })).await?;
+        write_line(
+            self.stdin,
+            &json!({ "jsonrpc": "2.0", "method": "initialized" }),
+        )
+        .await?;
+        write_line(
+            self.stdin,
+            &json!({ "jsonrpc": "2.0", "id": 2, "method": method, "params": params }),
+        )
+        .await?;
         let resp = self.await_response(2).await?;
         self.parser.note_model(&resp);
-        resp["result"]["thread"]["id"].as_str().map(str::to_string).ok_or_else(|| format!("{method} answered without a thread id"))
+        resp["result"]["thread"]["id"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| format!("{method} answered without a thread id"))
     }
 }
 
@@ -100,15 +124,32 @@ async fn fail_startup(mut child: Child, stderr: StderrTail, why: String) -> Driv
     let _ = child.start_kill();
     let _ = child.wait().await;
     let bytes = stderr.finish().await;
-    let last = String::from_utf8_lossy(&bytes).lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string();
-    startup_error(if last.is_empty() { why } else { format!("{why}: {last}") })
+    let last = String::from_utf8_lossy(&bytes)
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .to_string();
+    startup_error(if last.is_empty() {
+        why
+    } else {
+        format!("{why}: {last}")
+    })
 }
 
 impl CodexAppServerDriver {
-    pub(super) async fn spawn(&self, spec: LaunchSpec, open: Open<'_>) -> Result<Box<dyn Session>, DriverError> {
-        check_cwd(&spec)?;
+    pub(super) async fn spawn(
+        &self,
+        spec: LaunchSpec,
+        open: Open<'_>,
+    ) -> Result<Box<dyn Session>, DriverError> {
+        crate::check_cwd(&spec)?;
         let program = spec.program.clone().unwrap_or_else(|| self.program.clone());
-        let args = self.args().into_iter().chain(spec.extra_args.iter().cloned());
+        let args = self
+            .args()
+            .into_iter()
+            .chain(spec.extra_args.iter().cloned());
         let mut cmd = process::command(&program, &spec, args);
         cmd.envs(Self::remote_env(&spec));
         let mut child = process::spawn(&mut cmd, &program)?;
@@ -118,14 +159,37 @@ impl CodexAppServerDriver {
         let mut parser = CodexParser::default();
         let mut early = Vec::new();
         let (method, params) = open_request(&spec, open);
-        let handshake = Handshake { stdin: &mut stdin, lines: &mut lines, parser: &mut parser, early: &mut early }.run(method, params);
+        let handshake = Handshake {
+            stdin: &mut stdin,
+            lines: &mut lines,
+            parser: &mut parser,
+            early: &mut early,
+        }
+        .run(method, params);
         let thread = match tokio::time::timeout(STARTUP, handshake).await {
             Ok(Ok(t)) => t,
             Ok(Err(why)) => return Err(fail_startup(child, stderr, why).await),
-            Err(_) => return Err(fail_startup(child, stderr, format!("no answer within {}s", STARTUP.as_secs())).await),
+            Err(_) => {
+                return Err(fail_startup(
+                    child,
+                    stderr,
+                    format!("no answer within {}s", STARTUP.as_secs()),
+                )
+                .await);
+            }
         };
         parser.set_thread(&thread);
-        let session = CodexSession::start(Running { child, lines, stderr }, spawn_writer(stdin), parser, thread, early);
+        let session = CodexSession::start(
+            Running {
+                child,
+                lines,
+                stderr,
+            },
+            spawn_writer(stdin),
+            parser,
+            thread,
+            early,
+        );
         Ok(Box::new(session))
     }
 }
@@ -138,7 +202,9 @@ fn spawn_writer(stdin: ChildStdin) -> Writer {
         while let Some(item) = write_rx.recv().await {
             match (item, stdin.as_mut()) {
                 (Some(line), Some(s)) => {
-                    if s.write_all(format!("{line}\n").as_bytes()).await.is_err() || s.flush().await.is_err() {
+                    if s.write_all(format!("{line}\n").as_bytes()).await.is_err()
+                        || s.flush().await.is_err()
+                    {
                         stdin = None;
                     }
                 }
@@ -161,7 +227,10 @@ struct Running {
 fn schedule_resend(core: Arc<Mutex<Core>>, write: Writer, at: Instant) {
     tokio::spawn(async move {
         tokio::time::sleep_until(at.into()).await;
-        let line = core.lock().unwrap().next_turn(Instant::now());
+        let line = core
+            .lock()
+            .expect("core mutex must not be poisoned")
+            .next_turn(Instant::now());
         if let Some(l) = line {
             let _ = write.send(Some(l));
         }
@@ -177,7 +246,11 @@ struct Reader {
 
 impl Reader {
     fn on_line(&self, line: &str) {
-        let out = self.core.lock().unwrap().on_line(line, Instant::now());
+        let out = self
+            .core
+            .lock()
+            .expect("core mutex must not be poisoned")
+            .on_line(line, Instant::now());
         for e in out.events {
             let _ = self.tx.send(e);
         }
@@ -189,7 +262,12 @@ impl Reader {
         }
     }
 
-    async fn run(self, mut p: Running, mut kill_rx: oneshot::Receiver<()>, exited_tx: watch::Sender<bool>) {
+    async fn run(
+        self,
+        mut p: Running,
+        mut kill_rx: oneshot::Receiver<()>,
+        exited_tx: watch::Sender<bool>,
+    ) {
         let killed = process::pump_lines(&mut p.lines, &mut kill_rx, |l| self.on_line(&l)).await;
         // The output ended (exit, EOF, read error) or Stop's grace ran out. The server is not
         // reaped yet, so its group id is still ours: end the group, including a command an
@@ -216,10 +294,18 @@ struct CodexSession {
 }
 
 impl CodexSession {
-    fn start(p: Running, write: Writer, parser: CodexParser, thread: String, early: Vec<DriverEvent>) -> Self {
+    fn start(
+        p: Running,
+        write: Writer,
+        parser: CodexParser,
+        thread: String,
+        early: Vec<DriverEvent>,
+    ) -> Self {
         let core = Arc::new(Mutex::new(Core::new(parser, 2)));
         let (tx, rx) = mpsc::unbounded_channel();
-        let _ = tx.send(DriverEvent::SessionReady { native_session_id: thread });
+        let _ = tx.send(DriverEvent::SessionReady {
+            native_session_id: thread,
+        });
         for e in early {
             let _ = tx.send(e);
         }
@@ -227,10 +313,22 @@ impl CodexSession {
         let (exited_tx, exited_rx) = watch::channel(false);
         let notes = tx.downgrade();
         let pid = p.child.id();
-        let reader = Reader { core: core.clone(), write: write.clone(), tx };
+        let reader = Reader {
+            core: core.clone(),
+            write: write.clone(),
+            tx,
+        };
         tokio::spawn(reader.run(p, kill_rx, exited_tx));
         let events = Some(UnboundedReceiverStream::new(rx).boxed());
-        Self { core, write, events, kill: Some(kill_tx), exited: exited_rx, notes, pid }
+        Self {
+            core,
+            write,
+            events,
+            kill: Some(kill_tx),
+            exited: exited_rx,
+            notes,
+            pid,
+        }
     }
 
     fn write(&self, line: String) -> Result<(), DriverError> {
@@ -268,7 +366,11 @@ impl Session for CodexSession {
         if *self.exited.borrow() {
             return Err(DriverError::Closed);
         }
-        let line = self.core.lock().unwrap().send(msg, Instant::now());
+        let line = self
+            .core
+            .lock()
+            .expect("core mutex must not be poisoned")
+            .send(msg, Instant::now());
         self.write_some(line)
     }
 
@@ -277,7 +379,7 @@ impl Session for CodexSession {
     /// the transcript gets an "interrupt not applied" note instead.
     async fn interrupt(&mut self) -> Result<(), DriverError> {
         let (line, note) = {
-            let mut core = self.core.lock().unwrap();
+            let mut core = self.core.lock().expect("core mutex must not be poisoned");
             let note = core.paused_note();
             (core.interrupt(), note)
         };
@@ -303,10 +405,12 @@ impl Session for CodexSession {
         let reply = self
             .core
             .lock()
-            .unwrap()
+            .expect("core mutex must not be poisoned")
             .parser
             .answer_reply(question_id, &answer)
-            .ok_or(DriverError::Unsupported("an answer to a question this agent is not asking"))?;
+            .ok_or(DriverError::Unsupported(
+                "an answer to a question this agent is not asking",
+            ))?;
         self.write(reply.to_string())
     }
 

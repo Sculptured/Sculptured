@@ -1,7 +1,7 @@
 //! The work ledger: work items, their attempts, decisions and sessions.
+use model::{Finding, OutcomeEvidence, Provenance, ReportVerdict, TenureCause, Wave, WorkState};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use model::{Finding, OutcomeEvidence, Provenance, ReportVerdict, TenureCause, Wave, WorkState};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
@@ -163,4 +163,3 @@ pub struct TenureView {
     /// Files this session edited, from interpreted actions (≈ heuristic): the "left behind" summary.
     pub files_touched: Vec<String>,
 }
-

@@ -1,5 +1,5 @@
-use drivers::claude::ClaudeParser;
 use drivers::DriverEvent;
+use drivers::claude::ClaudeParser;
 use model::TurnStatus;
 use serde_json::Value;
 use std::path::PathBuf;
@@ -17,10 +17,14 @@ const CLAUDE_RECORDINGS: [&str; 9] = [
 ];
 
 fn recording(name: &str) -> Vec<Value> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/recordings").join(format!("{name}.jsonl"));
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../fixtures/recordings")
+        .join(format!("{name}.jsonl"));
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|_| panic!("missing {}: run the M0 spike first", path.display()));
-    text.lines().map(|l| serde_json::from_str(l).unwrap()).collect()
+    text.lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
 }
 
 #[derive(Default)]
@@ -81,7 +85,10 @@ fn consumed(events: &[DriverEvent]) -> Vec<(&str, &str)> {
     events
         .iter()
         .filter_map(|e| match e {
-            DriverEvent::MessageConsumed { message_id, turn_id } => Some((message_id.as_str(), turn_id.as_str())),
+            DriverEvent::MessageConsumed {
+                message_id,
+                turn_id,
+            } => Some((message_id.as_str(), turn_id.as_str())),
             _ => None,
         })
         .collect()
@@ -92,10 +99,32 @@ fn consumed(events: &[DriverEvent]) -> Vec<(&str, &str)> {
 fn usage(events: &[DriverEvent]) -> Vec<(&str, [u64; 4])> {
     let mut out: Vec<(&str, [u64; 4])> = Vec::new();
     for e in events {
-        let DriverEvent::Usage { turn_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, .. } = e else { continue };
-        let (t, u) = (turn_id.as_deref().unwrap_or(""), [*input_tokens, *output_tokens, *cache_read_tokens, *cache_write_tokens]);
+        let DriverEvent::Usage {
+            turn_id,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+            ..
+        } = e
+        else {
+            continue;
+        };
+        let (t, u) = (
+            turn_id.as_deref().unwrap_or(""),
+            [
+                *input_tokens,
+                *output_tokens,
+                *cache_read_tokens,
+                *cache_write_tokens,
+            ],
+        );
         match out.last_mut() {
-            Some((last, sum)) if *last == t => (0..4).for_each(|i| sum[i] += u[i]),
+            Some((last, sum)) if *last == t => {
+                for i in 0..4 {
+                    sum[i] += u[i];
+                }
+            }
             _ => out.push((t, u)),
         }
     }
@@ -131,7 +160,10 @@ fn init_recording_starts_no_turn() {
 fn basic_recording() {
     let ev = replay("claude-basic");
     assert_eq!(consumed(&ev), [("m1", "turn-1")]);
-    assert!(ev.contains(&DriverEvent::Text { turn_id: Some("turn-1".into()), text: "ready".into() }));
+    assert!(ev.contains(&DriverEvent::Text {
+        turn_id: Some("turn-1".into()),
+        text: "ready".into()
+    }));
     // result@1595 modelUsage, baseline 0.
     assert_eq!(usage(&ev), [("turn-1", [2, 4, 10225, 14338])]);
     assert_eq!(ends(&ev), [("turn-1", TurnStatus::Completed)]);
@@ -168,23 +200,63 @@ fn interrupt_recording_orders_tool_result_before_turn_end() {
         .expect("the synthetic is_error tool_result (@2431)");
     // The marker line `[Request interrupted by user for tool use]` (@2431) yields nothing,
     // so the result's Usage and TurnEnded (@2434) follow directly.
-    assert!(matches!(&ev[rejected + 1], DriverEvent::Usage { turn_id: Some(t), .. } if t == "turn-1"), "{:?}", &ev[rejected..]);
-    assert_eq!(ev[rejected + 2], DriverEvent::TurnEnded { turn_id: "turn-1".into(), status: TurnStatus::Interrupted });
+    assert!(
+        matches!(&ev[rejected + 1], DriverEvent::Usage { turn_id: Some(t), .. } if t == "turn-1"),
+        "{:?}",
+        &ev[rejected..]
+    );
+    assert_eq!(
+        ev[rejected + 2],
+        DriverEvent::TurnEnded {
+            turn_id: "turn-1".into(),
+            status: TurnStatus::Interrupted
+        }
+    );
     assert_eq!(consumed(&ev), [("m1", "turn-1"), ("m2", "turn-2")]);
-    assert_eq!(ends(&ev), [("turn-1", TurnStatus::Interrupted), ("turn-2", TurnStatus::Completed)]);
+    assert_eq!(
+        ends(&ev),
+        [
+            ("turn-1", TurnStatus::Interrupted),
+            ("turn-2", TurnStatus::Completed)
+        ]
+    );
     // modelUsage @2434 is 2/128/11896/12668; @3096 is 4/132/36460/17487, so turn-2 is the delta.
-    assert_eq!(usage(&ev), [("turn-1", [2, 128, 11896, 12668]), ("turn-2", [2, 4, 24564, 4819])]);
+    assert_eq!(
+        usage(&ev),
+        [
+            ("turn-1", [2, 128, 11896, 12668]),
+            ("turn-2", [2, 4, 24564, 4819])
+        ]
+    );
 }
 
 #[test]
 fn aborted_tools_alone_marks_the_turn_interrupted() {
-    let ev = replay_with("claude-interrupt", Opts { ignore_interrupts: true, ..Opts::default() });
-    assert_eq!(ends(&ev), [("turn-1", TurnStatus::Interrupted), ("turn-2", TurnStatus::Completed)]);
+    let ev = replay_with(
+        "claude-interrupt",
+        Opts {
+            ignore_interrupts: true,
+            ..Opts::default()
+        },
+    );
+    assert_eq!(
+        ends(&ev),
+        [
+            ("turn-1", TurnStatus::Interrupted),
+            ("turn-2", TurnStatus::Completed)
+        ]
+    );
 }
 
 #[test]
 fn interrupt_with_no_turn_is_a_no_op() {
-    let ev = replay_with("claude-basic", Opts { interrupt_first: true, ..Opts::default() });
+    let ev = replay_with(
+        "claude-basic",
+        Opts {
+            interrupt_first: true,
+            ..Opts::default()
+        },
+    );
     assert_eq!(ends(&ev), [("turn-1", TurnStatus::Completed)]);
 }
 
@@ -192,26 +264,77 @@ fn interrupt_with_no_turn_is_a_no_op() {
 fn queue_recording_runs_two_turns_in_order() {
     let ev = replay("claude-queue");
     // init repeats before each turn (@927, @2143) and starts nothing itself.
-    assert_eq!(ev.iter().filter(|e| matches!(e, DriverEvent::TurnStarted { .. })).count(), 2);
+    assert_eq!(
+        ev.iter()
+            .filter(|e| matches!(e, DriverEvent::TurnStarted { .. }))
+            .count(),
+        2
+    );
     assert_eq!(consumed(&ev), [("m1", "turn-1"), ("m2", "turn-2")]);
-    let second = ev.iter().position(|e| *e == DriverEvent::TurnStarted { turn_id: "turn-2".into() }).expect("turn-2");
-    assert!(ev[..second].contains(&DriverEvent::TurnEnded { turn_id: "turn-1".into(), status: TurnStatus::Completed }));
-    assert_eq!(ev[second + 1], DriverEvent::MessageConsumed { message_id: "m2".into(), turn_id: "turn-2".into() });
-    assert!(ev.contains(&DriverEvent::Text { turn_id: Some("turn-1".into()), text: "one".into() }));
-    assert!(ev.contains(&DriverEvent::Text { turn_id: Some("turn-2".into()), text: "two".into() }));
+    let second = ev
+        .iter()
+        .position(|e| {
+            *e == DriverEvent::TurnStarted {
+                turn_id: "turn-2".into(),
+            }
+        })
+        .expect("turn-2");
+    assert!(ev[..second].contains(&DriverEvent::TurnEnded {
+        turn_id: "turn-1".into(),
+        status: TurnStatus::Completed
+    }));
+    assert_eq!(
+        ev[second + 1],
+        DriverEvent::MessageConsumed {
+            message_id: "m2".into(),
+            turn_id: "turn-2".into()
+        }
+    );
+    assert!(ev.contains(&DriverEvent::Text {
+        turn_id: Some("turn-1".into()),
+        text: "one".into()
+    }));
+    assert!(ev.contains(&DriverEvent::Text {
+        turn_id: Some("turn-2".into()),
+        text: "two".into()
+    }));
     // modelUsage @2136 is 2/3/11896/16808; @3522 is 4/51/40600/17170.
-    assert_eq!(usage(&ev), [("turn-1", [2, 3, 11896, 16808]), ("turn-2", [2, 48, 28704, 362])]);
-    assert_eq!(ends(&ev), [("turn-1", TurnStatus::Completed), ("turn-2", TurnStatus::Completed)]);
+    assert_eq!(
+        usage(&ev),
+        [
+            ("turn-1", [2, 3, 11896, 16808]),
+            ("turn-2", [2, 48, 28704, 362])
+        ]
+    );
+    assert_eq!(
+        ends(&ev),
+        [
+            ("turn-1", TurnStatus::Completed),
+            ("turn-2", TurnStatus::Completed)
+        ]
+    );
 }
 
 #[test]
 fn queued_message_survives_marker_and_subagent_prompt() {
     // A message queued during turn-1 is not consumed by the interrupt marker (@2431).
     // The recording's own second message queues behind it.
-    let ev = replay_with("claude-interrupt", Opts { queue_extra: true, ..Opts::default() });
+    let ev = replay_with(
+        "claude-interrupt",
+        Opts {
+            queue_extra: true,
+            ..Opts::default()
+        },
+    );
     assert_eq!(consumed(&ev), [("m1", "turn-1"), ("queued", "turn-2")]);
     // Nor by the subagent's prompt line (@3277). That recording has no second turn.
-    let ev = replay_with("claude-subagent", Opts { queue_extra: true, ..Opts::default() });
+    let ev = replay_with(
+        "claude-subagent",
+        Opts {
+            queue_extra: true,
+            ..Opts::default()
+        },
+    );
     assert_eq!(consumed(&ev), [("m1", "turn-1")]);
 }
 
@@ -221,7 +344,12 @@ fn subagent_recording_links_children_and_counts_their_usage() {
     let agent = ev
         .iter()
         .find_map(|e| match e {
-            DriverEvent::ToolCall { call_id, name, parent_call_id: None, .. } if name == "Agent" => Some(call_id.clone()),
+            DriverEvent::ToolCall {
+                call_id,
+                name,
+                parent_call_id: None,
+                ..
+            } if name == "Agent" => Some(call_id.clone()),
             _ => None,
         })
         .expect("the Agent call (@3265)");
@@ -244,6 +372,9 @@ fn resume_recordings() {
     // so its per-turn usage needs M2's resume baseline and is not asserted here.
     let ev = replay("claude-resume-2");
     assert_eq!(consumed(&ev), [("m1", "turn-1")]);
-    assert!(ev.contains(&DriverEvent::Text { turn_id: Some("turn-1".into()), text: "PLUM-42".into() }));
+    assert!(ev.contains(&DriverEvent::Text {
+        turn_id: Some("turn-1".into()),
+        text: "PLUM-42".into()
+    }));
     assert_eq!(ends(&ev), [("turn-1", TurnStatus::Completed)]);
 }

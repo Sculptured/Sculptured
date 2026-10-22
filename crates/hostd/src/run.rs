@@ -1,10 +1,9 @@
 use crate::journal::Journal;
-use crate::link::run_link;
 use crate::supervisor::Supervisor;
+use drivers::Driver;
 use drivers::claude::ClaudeStreamDriver;
 use drivers::codex::CodexAppServerDriver;
 use drivers::stub::StubDriver;
-use drivers::Driver;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,7 +46,9 @@ fn lock_data_dir(dir: &std::path::Path) -> Result<std::fs::File, String> {
 /// mode is never changed.
 pub fn private_data_dir(dir: &std::path::Path) -> Result<(), String> {
     crate::private::create_dir(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    if let Some(mode) = crate::private::open_to_others(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))? {
+    if let Some(mode) = crate::private::open_to_others(dir)
+        .map_err(|e| format!("cannot read {}: {e}", dir.display()))?
+    {
         return Err(format!(
             "the agent runner's folder {} can be opened by other users (mode {mode:o}); make it private with chmod 700, because it holds the agents' tool socket",
             dir.display(),
@@ -59,12 +60,23 @@ pub fn private_data_dir(dir: &std::path::Path) -> Result<(), String> {
 /// The supervisor, serving the agent tool socket in hostd's own folder (`host-local/` under `serve`),
 /// which is private (`private_data_dir`): the socket and the agents' tool config files are reachable by
 /// this user only.
-fn with_seat_tools(opts: &HostdOptions, drivers: Vec<Arc<dyn Driver>>, journal: Journal) -> Result<Supervisor, String> {
+fn with_seat_tools(
+    opts: &HostdOptions,
+    drivers: Vec<Arc<dyn Driver>>,
+    journal: Journal,
+) -> Result<Supervisor, String> {
     let socket = crate::seat_tools::socket_path(&opts.data_dir)?;
-    let shim = std::env::current_exe().map_err(|e| format!("cannot locate sculptured for the agent tools: {e}"))?;
-    let host = crate::supervisor::SeatToolsHost { socket: socket.clone(), shim };
+    let shim = std::env::current_exe()
+        .map_err(|e| format!("cannot locate sculptured for the agent tools: {e}"))?;
+    let host = crate::supervisor::SeatToolsHost {
+        socket: socket.clone(),
+        shim,
+    };
     let sup = Supervisor::with_seat_tools(opts.host_id.clone(), drivers, journal, Some(host));
-    let sup = match &opts.policy { Some(p) => sup.restricted(p.clone()), None => sup };
+    let sup = match &opts.policy {
+        Some(p) => sup.restricted(p.clone()),
+        None => sup,
+    };
     let sup = sup.with_ops(ops_host(opts));
     let socket_sup = sup.clone();
     tokio::spawn(async move {
@@ -104,8 +116,8 @@ pub async fn run_hostd(opts: HostdOptions) -> Result<(), String> {
     private_data_dir(&opts.data_dir)?;
     let _lock = lock_data_dir(&opts.data_dir)?;
     write_pid(&opts.data_dir)?;
-    let journal =
-        Journal::open(&opts.data_dir.join("hostd.sqlite"), 10_000).map_err(|e| format!("open journal: {e}"))?;
+    let journal = Journal::open(&opts.data_dir.join("hostd.sqlite"), 10_000)
+        .map_err(|e| format!("open journal: {e}"))?;
     let sup = with_seat_tools(&opts, drivers, journal)?;
     let stop = stop_requested()?;
     tokio::select! {
@@ -122,10 +134,12 @@ pub async fn run_hostd(opts: HostdOptions) -> Result<(), String> {
 /// logoff or shutdown on Windows.
 #[cfg(unix)]
 fn stop_requested() -> Result<impl std::future::Future<Output = ()>, String> {
-    use tokio::signal::unix::{signal, SignalKind};
+    use tokio::signal::unix::{SignalKind, signal};
     let mut term = signal(SignalKind::terminate()).map_err(|e| format!("signal handler: {e}"))?;
     let mut int = signal(SignalKind::interrupt()).map_err(|e| format!("signal handler: {e}"))?;
-    Ok(async move { tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} } })
+    Ok(async move {
+        tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
+    })
 }
 
 #[cfg(windows)]
@@ -136,7 +150,9 @@ fn stop_requested() -> Result<impl std::future::Future<Output = ()>, String> {
     let mut close = windows::ctrl_close().map_err(handler)?;
     let mut logoff = windows::ctrl_logoff().map_err(handler)?;
     let mut shutdown = windows::ctrl_shutdown().map_err(handler)?;
-    Ok(async move { tokio::select! { _ = c.recv() => {}, _ = close.recv() => {}, _ = logoff.recv() => {}, _ = shutdown.recv() => {} } })
+    Ok(async move {
+        tokio::select! { _ = c.recv() => {}, _ = close.recv() => {}, _ = logoff.recv() => {}, _ = shutdown.recv() => {} }
+    })
 }
 
 /// How long an agent gets to finish its current output when the runner stops, before it is killed.
@@ -147,7 +163,7 @@ async fn keep_linked(opts: &HostdOptions, sup: &Supervisor) -> Result<(), String
     let mut backoff = MIN_BACKOFF;
     loop {
         let connected_at = tokio::time::Instant::now();
-        match run_link(&controld_url(opts), &opts.token, sup).await {
+        match crate::link::run_link(&controld_url(opts), &opts.token, sup).await {
             Ok(()) => return Ok(()),
             // A connected computer whose key is refused was disconnected: say so and stop retrying.
             Err(e) if opts.policy.is_some() && e.disconnected() => {
@@ -170,20 +186,45 @@ async fn keep_linked(opts: &HostdOptions, sup: &Supervisor) -> Result<(), String
 /// (`~/.sculptured/copies` for a local `serve`, `<runner dir>/copies` for a connected computer), its CLIs.
 fn ops_host(opts: &HostdOptions) -> crate::ops::OpsHost {
     let home = crate::platform::home().unwrap_or_else(|| PathBuf::from("/"));
-    let copies_root = opts.data_dir.parent().map(|p| p.join("copies")).unwrap_or_else(|| opts.data_dir.join("copies"));
-    let codex_home = std::env::var_os("CODEX_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".codex"));
-    crate::ops::OpsHost { context: localops::Context {
-        home,
-        copies_root,
-        claude: opts.claude_program.clone().unwrap_or_else(|| crate::platform::program("claude")),
-        codex: opts.codex_program.clone().unwrap_or_else(|| crate::platform::program("codex")),
-        codex_home,
-    } }
+    let copies_root = opts
+        .data_dir
+        .parent()
+        .map(|p| p.join("copies"))
+        .unwrap_or_else(|| opts.data_dir.join("copies"));
+    let codex_home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".codex"));
+    crate::ops::OpsHost {
+        context: localops::Context {
+            home,
+            copies_root,
+            claude: opts
+                .claude_program
+                .clone()
+                .unwrap_or_else(|| crate::platform::program("claude")),
+            codex: opts
+                .codex_program
+                .clone()
+                .unwrap_or_else(|| crate::platform::program("codex")),
+            codex_home,
+        },
+    }
 }
 
 /// The drivers this host offers. Kept at the bottom of the file so adding one never touches `run_hostd`.
 fn drivers(opts: &HostdOptions) -> Vec<Arc<dyn Driver>> {
-    let claude = ClaudeStreamDriver { program: opts.claude_program.clone().unwrap_or_else(|| crate::platform::program("claude")) };
-    let codex = CodexAppServerDriver { program: opts.codex_program.clone().unwrap_or_else(|| crate::platform::program("codex")), native_questions: false };
+    let claude = ClaudeStreamDriver {
+        program: opts
+            .claude_program
+            .clone()
+            .unwrap_or_else(|| crate::platform::program("claude")),
+    };
+    let codex = CodexAppServerDriver {
+        program: opts
+            .codex_program
+            .clone()
+            .unwrap_or_else(|| crate::platform::program("codex")),
+        native_questions: false,
+    };
     vec![Arc::new(StubDriver), Arc::new(claude), Arc::new(codex)]
 }

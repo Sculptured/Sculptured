@@ -1,10 +1,10 @@
 //! Starts the real binary (controld + spawned hostd) and drives a stub rig over HTTP.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 const SPEC: &str = r#"
@@ -36,7 +36,13 @@ impl Serve {
     fn start_with(data: &Path, port: u16, extra: &[&str]) -> Serve {
         let started = Instant::now();
         let mut child = Command::new(env!("CARGO_BIN_EXE_sculptured"))
-            .args(["serve", "--port", &port.to_string(), "--web-dir", "/nonexistent"])
+            .args([
+                "serve",
+                "--port",
+                &port.to_string(),
+                "--web-dir",
+                "/nonexistent",
+            ])
             .arg("--data-dir")
             .arg(data)
             .args(extra)
@@ -45,15 +51,26 @@ impl Serve {
             .spawn()
             .unwrap();
         let out = child.stdout.take().unwrap();
-        let mut serve = Serve { base: String::new(), boot: Duration::ZERO, data: data.to_path_buf(), child };
+        let mut serve = Serve {
+            base: String::new(),
+            boot: Duration::ZERO,
+            data: data.to_path_buf(),
+            child,
+        };
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let mut line = String::new();
             let _ = BufReader::new(out).read_line(&mut line);
             let _ = tx.send(line);
         });
-        let line = rx.recv_timeout(Duration::from_secs(30)).expect("serve printed no listening line within 30s");
-        serve.base = line.trim().strip_prefix("listening on ").expect("listening line").to_string();
+        let line = rx
+            .recv_timeout(Duration::from_secs(30))
+            .expect("serve printed no listening line within 30s");
+        serve.base = line
+            .trim()
+            .strip_prefix("listening on ")
+            .expect("listening line")
+            .to_string();
         serve.boot = started.elapsed();
         serve
     }
@@ -63,7 +80,11 @@ impl Serve {
     }
 
     fn hostd_pid(&self) -> Option<i32> {
-        std::fs::read_to_string(self.data.join("host-local/hostd.pid")).ok()?.trim().parse().ok()
+        std::fs::read_to_string(self.data.join("host-local/hostd.pid"))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()
     }
 }
 
@@ -90,7 +111,9 @@ impl Drop for Serve {
 }
 
 fn is_zombie(pid: i32) -> bool {
-    std::fs::read_to_string(format!("/proc/{pid}/stat")).map(|s| s.contains(") Z ")).unwrap_or(true)
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .map(|s| s.contains(") Z "))
+        .unwrap_or(true)
 }
 
 fn alive(pid: i32) -> bool {
@@ -102,9 +125,14 @@ fn alive(pid: i32) -> bool {
 fn sculptured_procs(data: &Path) -> Vec<i32> {
     let needle = data.to_string_lossy().to_string();
     let mut found = vec![];
-    for entry in std::fs::read_dir("/proc").unwrap().flatten() {
-        let Ok(pid) = entry.file_name().to_string_lossy().parse::<i32>() else { continue };
-        let Ok(cmd) = std::fs::read(entry.path().join("cmdline")) else { continue };
+    let flattened_items = std::fs::read_dir("/proc").unwrap().flatten();
+    for entry in flattened_items {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<i32>() else {
+            continue;
+        };
+        let Ok(cmd) = std::fs::read(entry.path().join("cmdline")) else {
+            continue;
+        };
         let cmd = String::from_utf8_lossy(&cmd).replace('\0', " ");
         if cmd.contains("sculptured") && cmd.contains(&needle) && alive(pid) {
             found.push(pid);
@@ -116,7 +144,11 @@ fn sculptured_procs(data: &Path) -> Vec<i32> {
 fn wait_gone(data: &Path) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !sculptured_procs(data).is_empty() {
-        assert!(Instant::now() < deadline, "sculptured processes left: {:?}", sculptured_procs(data));
+        assert!(
+            Instant::now() < deadline,
+            "sculptured processes left: {:?}",
+            sculptured_procs(data)
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
 }
@@ -127,7 +159,10 @@ async fn poll(what: &str, mut f: impl AsyncFnMut() -> bool) {
         if f().await {
             return;
         }
-        assert!(tokio::time::Instant::now() < deadline, "timed out waiting for {what}");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}"
+        );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
@@ -155,10 +190,25 @@ async fn serve_boots_messages_and_stops_a_stub_rig() {
     assert_eq!(boot["rig"], "smoke", "{boot}");
 
     let lifecycles = |http: reqwest::Client, base: String| async move {
-        let snap: Value = http.get(format!("{base}/api/rigs/smoke")).send().await.unwrap().json().await.unwrap();
-        snap["seats"].as_array().unwrap().iter().map(|s| s["lifecycle"].as_str().unwrap().to_string()).collect::<Vec<_>>()
+        let snap: Value = http
+            .get(format!("{base}/api/rigs/smoke"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        snap["seats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["lifecycle"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
     };
-    poll("both seats running", async || lifecycles(http.clone(), base.clone()).await == ["running", "running"]).await;
+    poll("both seats running", async || {
+        lifecycles(http.clone(), base.clone()).await == ["running", "running"]
+    })
+    .await;
 
     let sent: Value = http
         .post(format!("{base}/api/seats/dev.a@smoke/send"))
@@ -172,20 +222,32 @@ async fn serve_boots_messages_and_stops_a_stub_rig() {
     assert!(sent["message_id"].is_string(), "{sent}");
     poll("stub reply", async || {
         let events: Value = http
-            .get(format!("{base}/api/seats/dev.a@smoke/events?after=0&limit=500"))
+            .get(format!(
+                "{base}/api/seats/dev.a@smoke/events?after=0&limit=500"
+            ))
             .send()
             .await
             .unwrap()
             .json()
             .await
             .unwrap();
-        events.as_array().unwrap().iter().any(|e| e["body"]["type"] == "agent-text" && e["body"]["text"] == "stub received: hello")
+        events.as_array().unwrap().iter().any(|e| {
+            e["body"]["type"] == "agent-text" && e["body"]["text"] == "stub received: hello"
+        })
     })
     .await;
 
-    let stop = http.post(format!("{base}/api/rigs/smoke/stop")).json(&json!({ "request_id": "stop-1" })).send().await.unwrap();
+    let stop = http
+        .post(format!("{base}/api/rigs/smoke/stop"))
+        .json(&json!({ "request_id": "stop-1" }))
+        .send()
+        .await
+        .unwrap();
     assert!(stop.status().is_success());
-    poll("both seats stopped", async || lifecycles(http.clone(), base.clone()).await == ["stopped", "stopped"]).await;
+    poll("both seats stopped", async || {
+        lifecycles(http.clone(), base.clone()).await == ["stopped", "stopped"]
+    })
+    .await;
 
     let token = std::fs::read_to_string(data.path().join("host-token")).unwrap();
     assert!(token.len() >= 32);
@@ -206,7 +268,10 @@ fn sigint_to_serves_process_group_leaves_hostd_running() {
     }
     serve.child.wait().unwrap();
     std::thread::sleep(Duration::from_millis(500));
-    assert!(alive(hostd), "hostd must survive Ctrl-C aimed at serve's process group");
+    assert!(
+        alive(hostd),
+        "hostd must survive Ctrl-C aimed at serve's process group"
+    );
     drop(serve);
     wait_gone(data.path());
 }
@@ -225,15 +290,22 @@ fn restarted_serve_on_a_new_port_is_found_by_the_surviving_hostd() {
     assert!(alive(hostd));
     let b = Serve::start(data.path(), 0);
     assert_ne!(a.base, b.base, "second serve should get a different port");
-    assert_eq!(b.hostd_pid(), Some(hostd), "the surviving hostd must keep owning the data dir");
+    assert_eq!(
+        b.hostd_pid(),
+        Some(hostd),
+        "the surviving hostd must keep owning the data dir"
+    );
     // The listening line waits for the host to connect; reaching it well before the 10 s
     // timeout proves the old hostd followed controld.url to the new port.
-    assert!(b.boot < Duration::from_secs(9), "hostd did not reconnect in time: {:?}", b.boot);
+    assert!(
+        b.boot < Duration::from_secs(9),
+        "hostd did not reconnect in time: {:?}",
+        b.boot
+    );
     drop(b);
     drop(a);
     wait_gone(data.path());
 }
-
 
 fn mode(p: &Path) -> u32 {
     use std::os::unix::fs::PermissionsExt;
@@ -257,7 +329,11 @@ fn serve_creates_a_private_data_dir_and_tightens_an_existing_one() {
     let open = parent.path().join("open");
     std::fs::create_dir_all(open.join("host-local")).unwrap();
     std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o755)).unwrap();
-    std::fs::set_permissions(open.join("host-local"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(
+        open.join("host-local"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
     let serve = Serve::start(&open, 0);
     assert_eq!(mode(&open), 0o700, "existing data dir");
     assert_eq!(mode(&open.join("host-local")), 0o700, "existing host-local");
@@ -274,7 +350,14 @@ async fn agent_processes_do_not_inherit_the_host_token() {
     let work = tempfile::tempdir().unwrap();
     let env_log = work.path().join("agent.env");
     let program = work.path().join("fake-claude.sh");
-    std::fs::write(&program, format!("#!/bin/sh\nenv > '{}'\nexec cat > /dev/null\n", env_log.display())).unwrap();
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\nenv > '{}'\nexec cat > /dev/null\n",
+            env_log.display()
+        ),
+    )
+    .unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let spec_path = work.path().join("claude.yaml");
     std::fs::write(
@@ -283,19 +366,42 @@ async fn agent_processes_do_not_inherit_the_host_token() {
     )
     .unwrap();
 
-    let serve = Serve::start_with(data.path(), 0, &["--claude-program", program.to_str().unwrap()]);
+    let serve = Serve::start_with(
+        data.path(),
+        0,
+        &["--claude-program", program.to_str().unwrap()],
+    );
     let base = serve.base.clone();
     let http = client();
-    let boot = http.post(format!("{base}/api/rigs")).json(&json!({ "request_id": "boot-env", "spec_path": spec_path })).send().await.unwrap();
+    let boot = http
+        .post(format!("{base}/api/rigs"))
+        .json(&json!({ "request_id": "boot-env", "spec_path": spec_path }))
+        .send()
+        .await
+        .unwrap();
     assert!(boot.status().is_success(), "{}", boot.text().await.unwrap());
-    poll("agent wrote its environment", async || std::fs::read_to_string(&env_log).is_ok_and(|s| s.contains("PATH="))).await;
+    poll("agent wrote its environment", async || {
+        std::fs::read_to_string(&env_log).is_ok_and(|s| s.contains("PATH="))
+    })
+    .await;
 
     let env = std::fs::read_to_string(&env_log).unwrap();
     let token = std::fs::read_to_string(data.path().join("host-token")).unwrap();
-    assert!(!env.contains("SCULPTURED_HOST_TOKEN"), "agent env has the token variable:\n{env}");
-    assert!(!env.contains(token.trim()), "agent env holds the token value");
+    assert!(
+        !env.contains("SCULPTURED_HOST_TOKEN"),
+        "agent env has the token variable:\n{env}"
+    );
+    assert!(
+        !env.contains(token.trim()),
+        "agent env holds the token value"
+    );
 
-    let stop = http.post(format!("{base}/api/rigs/envcheck/stop")).json(&json!({ "request_id": "stop-env" })).send().await.unwrap();
+    let stop = http
+        .post(format!("{base}/api/rigs/envcheck/stop"))
+        .json(&json!({ "request_id": "stop-env" }))
+        .send()
+        .await
+        .unwrap();
     assert!(stop.status().is_success());
     let data_path = data.path().to_path_buf();
     drop(serve);
@@ -317,7 +423,14 @@ async fn a_runner_told_to_stop_stops_its_agents() {
     let work = tempfile::tempdir().unwrap();
     let pid_file = work.path().join("agent.pid");
     let program = work.path().join("busy-claude.sh");
-    std::fs::write(&program, format!("#!/bin/sh\necho $$ > '{}'\nexec sleep 600\n", pid_file.display())).unwrap();
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\necho $$ > '{}'\nexec sleep 600\n",
+            pid_file.display()
+        ),
+    )
+    .unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let spec_path = work.path().join("busy.yaml");
     std::fs::write(
@@ -326,12 +439,28 @@ async fn a_runner_told_to_stop_stops_its_agents() {
     )
     .unwrap();
 
-    let serve = Serve::start_with(data.path(), 0, &["--claude-program", program.to_str().unwrap()]);
+    let serve = Serve::start_with(
+        data.path(),
+        0,
+        &["--claude-program", program.to_str().unwrap()],
+    );
     let http = client();
-    let boot = http.post(format!("{}/api/rigs", serve.base)).json(&json!({ "request_id": "boot-busy", "spec_path": spec_path })).send().await.unwrap();
+    let boot = http
+        .post(format!("{}/api/rigs", serve.base))
+        .json(&json!({ "request_id": "boot-busy", "spec_path": spec_path }))
+        .send()
+        .await
+        .unwrap();
     assert!(boot.status().is_success(), "{}", boot.text().await.unwrap());
-    poll("agent started", async || std::fs::read_to_string(&pid_file).is_ok_and(|s| s.trim().parse::<i32>().is_ok())).await;
-    let agent: i32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+    poll("agent started", async || {
+        std::fs::read_to_string(&pid_file).is_ok_and(|s| s.trim().parse::<i32>().is_ok())
+    })
+    .await;
+    let agent: i32 = std::fs::read_to_string(&pid_file)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
     let hostd = serve.hostd_pid().expect("hostd pid");
 
     // SAFETY: hostd is this test's runner (read from its pid file just above).

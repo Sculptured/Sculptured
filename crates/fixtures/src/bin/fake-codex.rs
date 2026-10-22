@@ -13,7 +13,7 @@
 //! Thread status: `thread/status/changed` goes `active` (`activeFlags: []`) right after the
 //! `turn/start` response and `idle` just before every `turn/completed` (codex-m2-interrupt@18,67);
 //! an approval sets `waitingOnApproval` and clears it after `serverRequest/resolved`.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufRead, Lines, StdinLock, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -24,7 +24,10 @@ type Stdin = Lines<StdinLock<'static>>;
 const CALL: [u64; 3] = [100, 40, 10];
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 enum Script {
@@ -50,7 +53,8 @@ enum Script {
 }
 
 fn script(text: &str) -> Script {
-    for line in text.lines().map(str::trim) {
+    let mapped_text = text.lines().map(str::trim);
+    for line in mapped_text {
         let s = match line {
             "hang" => Script::Hang,
             "hang-child" => Script::HangChild,
@@ -63,11 +67,19 @@ fn script(text: &str) -> Script {
             l if l.starts_with("tool:") => Script::Tool(l["tool:".len()..].trim().to_string()),
             l if l.starts_with("edit:") => Script::Edit(l["edit:".len()..].trim().to_string()),
             l if l.starts_with("run:") => Script::Run(l["run:".len()..].trim().to_string(), false),
-            l if l.starts_with("run-quiet:") => Script::Run(l["run-quiet:".len()..].trim().to_string(), true),
+            l if l.starts_with("run-quiet:") => {
+                Script::Run(l["run-quiet:".len()..].trim().to_string(), true)
+            }
             l if l.starts_with("ask:") => {
                 let mut parts = l["ask:".len()..].split('|').map(str::trim);
                 let q = parts.next().unwrap_or_default().to_string();
-                Script::Ask(q, parts.filter(|p| !p.is_empty()).map(str::to_string).collect())
+                Script::Ask(
+                    q,
+                    parts
+                        .filter(|p| !p.is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                )
             }
             _ => continue,
         };
@@ -92,7 +104,10 @@ struct Fake {
 impl Fake {
     fn log(&self, line: &str) {
         if let Some(path) = &self.log
-            && let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path)
+            && let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
         {
             let _ = writeln!(f, "{line}");
         }
@@ -121,7 +136,10 @@ impl Fake {
     }
 
     fn new_thread_id() -> String {
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
         format!("thr-{:08x}{:08x}", std::process::id(), nanos)
     }
 
@@ -139,10 +157,14 @@ impl Fake {
 
     /// The stored total and last turn of `thread`; None when it was never started here.
     fn load(&self, thread: &str) -> Option<([u64; 3], Option<String>)> {
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(self.state_file(thread)).ok()?).ok()?;
+        let v: Value =
+            serde_json::from_str(&std::fs::read_to_string(self.state_file(thread)).ok()?).ok()?;
         let t = &v["total"];
         let n = |i: usize| t[i].as_u64().unwrap_or(0);
-        Some(([n(0), n(1), n(2)], v["last_turn"].as_str().map(str::to_string)))
+        Some((
+            [n(0), n(1), n(2)],
+            v["last_turn"].as_str().map(str::to_string),
+        ))
     }
 
     fn thread_json(&self, id: &str, forked_from: Option<&str>) -> Value {
@@ -176,7 +198,8 @@ impl Fake {
     }
 
     fn charge(&mut self, turn: &str) {
-        for (total, call) in self.total.iter_mut().zip(CALL) {
+        let paired_total = self.total.iter_mut().zip(CALL);
+        for (total, call) in paired_total {
             *total += call;
         }
         self.notify(
@@ -193,20 +216,36 @@ impl Fake {
 
     /// `item/started` carries `startedAtMs`, `item/completed` carries `completedAtMs` (codex-m2-basic@2423-2426).
     fn item(&self, method: &str, turn: &str, item: Value) {
-        let at = if method == "item/completed" { "completedAtMs" } else { "startedAtMs" };
-        self.notify(method, json!({ "item": item, "threadId": self.thread_id(), "turnId": turn, at: now_ms() }));
+        let at = if method == "item/completed" {
+            "completedAtMs"
+        } else {
+            "startedAtMs"
+        };
+        self.notify(
+            method,
+            json!({ "item": item, "threadId": self.thread_id(), "turnId": turn, at: now_ms() }),
+        );
     }
 
     fn agent_message(&mut self, turn: &str, text: &str) {
         let id = self.item_id("msg");
         let started = json!({ "type": "agentMessage", "id": id, "text": "", "phase": "final_answer", "delivery": null, "memoryCitation": null, "questions": null });
         self.item("item/started", turn, started);
-        self.notify("item/agentMessage/delta", json!({ "delta": text, "itemId": id, "threadId": self.thread_id(), "turnId": turn }));
+        self.notify(
+            "item/agentMessage/delta",
+            json!({ "delta": text, "itemId": id, "threadId": self.thread_id(), "turnId": turn }),
+        );
         let done = json!({ "type": "agentMessage", "id": id, "text": text, "phase": "final_answer", "delivery": null, "memoryCitation": null, "questions": null });
         self.item("item/completed", turn, done);
     }
 
-    fn command_item(id: &str, cmd: &str, status: &str, output: Option<&str>, exit: Option<i64>) -> Value {
+    fn command_item(
+        id: &str,
+        cmd: &str,
+        status: &str,
+        output: Option<&str>,
+        exit: Option<i64>,
+    ) -> Value {
         json!({ "type": "commandExecution", "id": id, "command": format!("/bin/bash -lc '{cmd}'"),
                 "commandActions": [{ "command": cmd, "type": "unknown" }], "cwd": ".", "aggregatedOutput": output,
                 "exitCode": exit, "status": status, "durationMs": null, "processId": "1", "source": "unifiedExecStartup" })
@@ -229,7 +268,10 @@ impl Fake {
 
     /// `thread/status/changed` to `idle`, sent just before every `turn/completed` (codex-m2-interrupt@67).
     fn idle(&self) {
-        self.notify("thread/status/changed", json!({ "status": { "type": "idle" }, "threadId": self.thread_id() }));
+        self.notify(
+            "thread/status/changed",
+            json!({ "status": { "type": "idle" }, "threadId": self.thread_id() }),
+        );
     }
 
     /// Sends approval request `method` and waits. On an answer: `serverRequest/resolved`, then the
@@ -242,7 +284,10 @@ impl Fake {
     fn ask_approval(&mut self, method: &str, params: Value, stdin: &mut Stdin) -> Option<Value> {
         let rid = self.server_request(method, params);
         let resp = self.wait_response(stdin, Some(rid))?;
-        self.notify("serverRequest/resolved", json!({ "requestId": rid, "threadId": self.thread_id() }));
+        self.notify(
+            "serverRequest/resolved",
+            json!({ "requestId": rid, "threadId": self.thread_id() }),
+        );
         self.active(json!([]));
         Some(resp)
     }
@@ -273,18 +318,28 @@ impl Fake {
     /// interrupted (None, after answering the interrupt). Other requests are refused.
     fn wait_response(&mut self, stdin: &mut Stdin, id: Option<u64>) -> Option<Value> {
         loop {
-            let Some(Ok(line)) = stdin.next() else { std::process::exit(0) };
+            let Some(Ok(line)) = stdin.next() else {
+                std::process::exit(0)
+            };
             self.log(&format!("in: {line}"));
-            let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+            let Ok(v) = serde_json::from_str::<Value>(&line) else {
+                continue;
+            };
             match (v["method"].as_str(), v.get("id")) {
-                (None, Some(rid)) if id.is_some_and(|want| rid.as_u64() == Some(want)) => return Some(v),
+                (None, Some(rid)) if id.is_some_and(|want| rid.as_u64() == Some(want)) => {
+                    return Some(v);
+                }
                 (Some("turn/interrupt"), Some(rid)) => {
                     self.result(rid, json!({}));
                     return None;
                 }
                 // The real server steers here (module doc); the error is a deliberate bug detector.
-                (Some("turn/start"), Some(rid)) => self.error(rid, -32600, "a turn is already in progress"),
-                (Some(m), Some(rid)) => self.error(rid, -32601, &format!("fake-codex cannot {m} during a turn")),
+                (Some("turn/start"), Some(rid)) => {
+                    self.error(rid, -32600, "a turn is already in progress")
+                }
+                (Some(m), Some(rid)) => {
+                    self.error(rid, -32601, &format!("fake-codex cannot {m} during a turn"))
+                }
                 _ => {}
             }
         }
@@ -302,7 +357,10 @@ impl Fake {
         let turn_json = json!({ "id": turn, "status": "inProgress", "items": [], "itemsView": "notLoaded", "error": null, "startedAt": null, "completedAt": null, "durationMs": null });
         self.result(id, json!({ "turn": turn_json.clone() }));
         self.active(json!([]));
-        self.notify("turn/started", json!({ "threadId": self.thread_id(), "turn": turn_json }));
+        self.notify(
+            "turn/started",
+            json!({ "threadId": self.thread_id(), "turn": turn_json }),
+        );
         let user = self.item_id("user");
         let user_item = json!({ "type": "userMessage", "id": user, "clientId": null, "content": [{ "type": "text", "text": text, "text_elements": [] }] });
         self.item("item/started", &turn, user_item.clone());
@@ -329,7 +387,10 @@ impl Fake {
             Script::HangChild => {
                 // Same process group as fake-codex (the default), stdio detached so it never holds
                 // fake-codex's stdout open. Never waited for: it outlives fake-codex unless killed.
-                #[expect(clippy::zombie_processes, reason = "the command must outlive fake-codex unless the driver kills its group")]
+                #[expect(
+                    clippy::zombie_processes,
+                    reason = "the command must outlive fake-codex unless the driver kills its group"
+                )]
                 let child = std::process::Command::new("sleep")
                     .arg("600")
                     .stdin(std::process::Stdio::null())
@@ -339,37 +400,68 @@ impl Fake {
                     .expect("spawn sleep");
                 self.log(&format!("child: {}", child.id()));
                 let item = self.item_id("exec");
-                self.item("item/started", &turn, Self::command_item(&item, "sleep 600", "inProgress", None, None));
+                self.item(
+                    "item/started",
+                    &turn,
+                    Self::command_item(&item, "sleep 600", "inProgress", None, None),
+                );
                 self.wait_response(stdin, None);
                 return self.interrupted(&turn);
             }
             Script::CrashOnInterrupt => {
                 let item = self.item_id("exec");
-                self.item("item/started", &turn, Self::command_item(&item, "sleep 600", "inProgress", None, None));
+                self.item(
+                    "item/started",
+                    &turn,
+                    Self::command_item(&item, "sleep 600", "inProgress", None, None),
+                );
                 self.wait_response(stdin, None);
                 crash()
             }
             Script::Hang => {
                 let item = self.item_id("exec");
-                self.item("item/started", &turn, Self::command_item(&item, "sleep 600", "inProgress", None, None));
+                self.item(
+                    "item/started",
+                    &turn,
+                    Self::command_item(&item, "sleep 600", "inProgress", None, None),
+                );
                 self.wait_response(stdin, None);
                 return self.interrupted(&turn);
             }
             Script::Tool(cmd) => {
                 let item = self.item_id("exec");
-                self.item("item/started", &turn, Self::command_item(&item, &cmd, "inProgress", None, None));
+                self.item(
+                    "item/started",
+                    &turn,
+                    Self::command_item(&item, &cmd, "inProgress", None, None),
+                );
                 let output = format!("ran {cmd}\n");
-                self.item("item/completed", &turn, Self::command_item(&item, &cmd, "completed", Some(&output), Some(0)));
+                self.item(
+                    "item/completed",
+                    &turn,
+                    Self::command_item(&item, &cmd, "completed", Some(&output), Some(0)),
+                );
                 format!("codex ran {cmd}")
             }
             Script::Ask(question, options) if self.native_questions => {
-                let opts: Vec<Value> = options.iter().map(|o| json!({ "label": o, "description": null })).collect();
+                let opts: Vec<Value> = options
+                    .iter()
+                    .map(|o| json!({ "label": o, "description": null }))
+                    .collect();
                 let params = json!({ "questions": [{ "id": "q1", "header": "Question", "question": question, "options": opts, "isOther": true, "isSecret": false }],
                                      "itemId": self.item_id("call"), "threadId": self.thread_id(), "turnId": turn, "isBlocking": false, "autoResolutionMs": null });
                 let rid = self.server_request("item/tool/requestUserInput", params);
-                let Some(resp) = self.wait_response(stdin, Some(rid)) else { return self.interrupted(&turn) };
-                self.notify("serverRequest/resolved", json!({ "requestId": rid, "threadId": self.thread_id() }));
-                let answer = resp["result"]["answers"]["q1"]["answers"][0].as_str().unwrap_or("(no answer)").to_string();
+                let Some(resp) = self.wait_response(stdin, Some(rid)) else {
+                    return self.interrupted(&turn);
+                };
+                self.notify(
+                    "serverRequest/resolved",
+                    json!({ "requestId": rid, "threadId": self.thread_id() }),
+                );
+                let answer = resp["result"]["answers"]["q1"]["answers"][0]
+                    .as_str()
+                    .unwrap_or("(no answer)")
+                    .to_string();
                 format!("codex got answer: {answer}")
             }
             Script::Ask(question, _) => {
@@ -377,29 +469,57 @@ impl Fake {
                 // ends by itself (codex-user-input-noflag: 15 sleeps of 60 s, 480 s, never completed).
                 self.agent_message(&turn, &question);
                 let first = self.item_id("sleep");
-                self.item("item/started", &turn, json!({ "type": "sleep", "id": first, "durationMs": 60000 }));
-                self.item("item/completed", &turn, json!({ "type": "sleep", "id": first, "durationMs": 60000 }));
+                self.item(
+                    "item/started",
+                    &turn,
+                    json!({ "type": "sleep", "id": first, "durationMs": 60000 }),
+                );
+                self.item(
+                    "item/completed",
+                    &turn,
+                    json!({ "type": "sleep", "id": first, "durationMs": 60000 }),
+                );
                 self.charge(&turn);
                 let second = self.item_id("sleep");
-                self.item("item/started", &turn, json!({ "type": "sleep", "id": second, "durationMs": 60000 }));
+                self.item(
+                    "item/started",
+                    &turn,
+                    json!({ "type": "sleep", "id": second, "durationMs": 60000 }),
+                );
                 self.wait_response(stdin, None);
                 return self.interrupted(&turn);
             }
             Script::Edit(path) => {
                 let item = self.item_id("exec");
-                self.item("item/started", &turn, Self::file_item(&item, &path, "inProgress"));
+                self.item(
+                    "item/started",
+                    &turn,
+                    Self::file_item(&item, &path, "inProgress"),
+                );
                 let allowed = if self.approval == "never" {
                     true
                 } else {
                     // M0 order: the fileChange item starts, then the flag, then the request (codex-approval@55-59).
                     self.active(json!(["waitingOnApproval"]));
                     let params = json!({ "itemId": item, "threadId": self.thread_id(), "turnId": turn, "grantRoot": null, "reason": null, "startedAtMs": now_ms() });
-                    let Some(resp) = self.ask_approval("item/fileChange/requestApproval", params, stdin) else { return self.interrupted(&turn) };
+                    let Some(resp) =
+                        self.ask_approval("item/fileChange/requestApproval", params, stdin)
+                    else {
+                        return self.interrupted(&turn);
+                    };
                     allows(&resp)
                 };
                 let status = if allowed { "completed" } else { "declined" };
-                self.item("item/completed", &turn, Self::file_item(&item, &path, status));
-                if allowed { format!("codex changed {path}") } else { format!("codex was not allowed to change {path}") }
+                self.item(
+                    "item/completed",
+                    &turn,
+                    Self::file_item(&item, &path, status),
+                );
+                if allowed {
+                    format!("codex changed {path}")
+                } else {
+                    format!("codex was not allowed to change {path}")
+                }
             }
             Script::Run(cmd, quiet) => {
                 // The command approval path (codex-m2-approval@4646-4648 decline, @8562-8596 accept). The
@@ -410,14 +530,22 @@ impl Fake {
                     // M2 order: the flag, then the command item starts, then the request (codex-m2-approval@62-64).
                     self.active(json!(["waitingOnApproval"]));
                 }
-                self.item("item/started", &turn, Self::proposed_command_item(&item, &cmd, "inProgress"));
+                self.item(
+                    "item/started",
+                    &turn,
+                    Self::proposed_command_item(&item, &cmd, "inProgress"),
+                );
                 let allowed = if ask {
                     let argv = execpolicy_argv(&cmd);
                     let params = json!({ "availableDecisions": ["accept", { "acceptWithExecpolicyAmendment": { "execpolicy_amendment": argv } }, "cancel"],
                                          "command": format!("/bin/bash -lc '{cmd}'"), "commandActions": [{ "command": cmd, "type": "unknown" }],
                                          "cwd": ".", "environmentId": "local", "itemId": item, "kind": "command",
                                          "proposedExecpolicyAmendment": argv, "startedAtMs": now_ms(), "threadId": self.thread_id(), "turnId": turn });
-                    let Some(resp) = self.ask_approval("item/commandExecution/requestApproval", params, stdin) else { return self.interrupted(&turn) };
+                    let Some(resp) =
+                        self.ask_approval("item/commandExecution/requestApproval", params, stdin)
+                    else {
+                        return self.interrupted(&turn);
+                    };
                     allows(&resp)
                 } else {
                     true
@@ -429,12 +557,22 @@ impl Fake {
                         done["durationMs"] = json!(0);
                         done
                     } else {
-                        Self::command_item(&item, &cmd, "completed", Some(&format!("ran {cmd}\n")), Some(0))
+                        Self::command_item(
+                            &item,
+                            &cmd,
+                            "completed",
+                            Some(&format!("ran {cmd}\n")),
+                            Some(0),
+                        )
                     };
                     self.item("item/completed", &turn, done);
                     format!("codex ran {cmd}")
                 } else {
-                    self.item("item/completed", &turn, Self::proposed_command_item(&item, &cmd, "declined"));
+                    self.item(
+                        "item/completed",
+                        &turn,
+                        Self::proposed_command_item(&item, &cmd, "declined"),
+                    );
                     format!("codex was not allowed to run {cmd}")
                 }
             }
@@ -442,9 +580,14 @@ impl Fake {
                 let params = json!({ "itemId": self.item_id("call"), "threadId": self.thread_id(), "turnId": turn, "cwd": ".",
                                      "permissions": {}, "reason": null, "startedAtMs": now_ms(), "environmentId": null });
                 let rid = self.server_request("item/permissions/requestApproval", params);
-                let Some(resp) = self.wait_response(stdin, Some(rid)) else { return self.interrupted(&turn) };
+                let Some(resp) = self.wait_response(stdin, Some(rid)) else {
+                    return self.interrupted(&turn);
+                };
                 match resp.get("error") {
-                    Some(e) => format!("codex got back error: {}", e["message"].as_str().unwrap_or("")),
+                    Some(e) => format!(
+                        "codex got back error: {}",
+                        e["message"].as_str().unwrap_or("")
+                    ),
                     None => format!("codex got back result: {}", resp["result"]),
                 }
             }
@@ -460,8 +603,12 @@ impl Fake {
     }
 
     fn handle(&mut self, v: Value, stdin: &mut Stdin) {
-        let Some(id) = v.get("id").cloned() else { return };
-        let Some(method) = v["method"].as_str() else { return };
+        let Some(id) = v.get("id").cloned() else {
+            return;
+        };
+        let Some(method) = v["method"].as_str() else {
+            return;
+        };
         let params = &v["params"];
         match method {
             "initialize" => self.result(&id, json!({ "codexHome": "/home/user/.codex", "platformFamily": "unix", "platformOs": "linux", "userAgent": "fake-codex/0.160.1" })),
@@ -521,7 +668,10 @@ fn execpolicy_argv(cmd: &str) -> Vec<String> {
 
 /// An approval answer that lets the action run (`accept`, `acceptForSession`); anything else declines.
 fn allows(resp: &Value) -> bool {
-    matches!(resp["result"]["decision"].as_str(), Some("accept" | "acceptForSession"))
+    matches!(
+        resp["result"]["decision"].as_str(),
+        Some("accept" | "acceptForSession")
+    )
 }
 
 fn crash() -> ! {
@@ -533,9 +683,15 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let state = std::env::var_os("FAKE_CODEX_STATE")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(".fake-codex"));
+        .unwrap_or_else(|| {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(".fake-codex")
+        });
     let mut fake = Fake {
-        native_questions: args.windows(2).any(|w| w[0] == "--enable" && w[1] == "default_mode_request_user_input"),
+        native_questions: args
+            .windows(2)
+            .any(|w| w[0] == "--enable" && w[1] == "default_mode_request_user_input"),
         state,
         log: std::env::var_os("FAKE_CODEX_LOG").map(PathBuf::from),
         thread: None,

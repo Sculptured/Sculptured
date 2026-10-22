@@ -1,16 +1,15 @@
 //! The layout comment: what a RigSpec cannot hold, as one line of ASCII-only JSON.
-use super::{dropped_with, META_PREFIX};
+use super::META_PREFIX;
 use crate::Diagnostic;
-use model::valid_segment;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 /// Path and message of the dropped entry for a layout comment that cannot be read.
 const LAYOUT_PATH: &str = "layout";
-const LAYOUT_UNREADABLE: &str =
-    "not imported: the layout comment could not be read, so names, jobs, positions and empty groups were not restored";
-const BAD_LAYOUT_GROUP: &str = "not imported: this group in the layout comment has an invalid id or a negative size";
+const LAYOUT_UNREADABLE: &str = "not imported: the layout comment could not be read, so names, jobs, positions and empty groups were not restored";
+const BAD_LAYOUT_GROUP: &str =
+    "not imported: this group in the layout comment has an invalid id or a negative size";
 
 #[derive(Default, Serialize, Deserialize)]
 pub(super) struct Meta {
@@ -55,11 +54,14 @@ pub(super) struct GroupMeta {
 /// Non-ASCII only occurs inside JSON strings, where the escapes decode back unchanged.
 pub(super) fn ascii_json(json: &str) -> String {
     let mut out = String::with_capacity(json.len());
-    for c in json.chars() {
+    let matching_json = json.chars();
+    for c in matching_json {
         if c.is_ascii() {
             out.push(c);
         } else {
-            for unit in c.encode_utf16(&mut [0u16; 2]) {
+            let mut utf16_units = [0u16; 2];
+            let matching_c = c.encode_utf16(&mut utf16_units);
+            for unit in matching_c {
                 write!(out, "\\u{unit:04x}").expect("writing to a String cannot fail");
             }
         }
@@ -71,16 +73,25 @@ pub(super) fn ascii_json(json: &str) -> String {
 /// it cannot describe, is reported in `lost`; such a group is treated as absent (a group with
 /// agents then gets the computed layout, an empty one is not drawn).
 pub(super) fn read_meta(yaml: &str, lost: &mut Vec<Diagnostic>) -> Option<Meta> {
-    let line = yaml.lines().rev().find_map(|l| l.strip_prefix(META_PREFIX))?;
+    let line = yaml
+        .lines()
+        .rev()
+        .find_map(|l| l.strip_prefix(META_PREFIX))?;
     let Ok(mut meta) = serde_json::from_str::<Meta>(line) else {
-        lost.push(dropped_with(LAYOUT_PATH.into(), LAYOUT_UNREADABLE));
+        lost.push(crate::exchange::dropped_with(
+            LAYOUT_PATH.into(),
+            LAYOUT_UNREADABLE,
+        ));
         return None;
     };
     let mut i = 0;
     meta.groups.retain(|g| {
-        let ok = valid_segment(&g.id) && g.w >= 0 && g.h >= 0;
+        let ok = model::valid_segment(&g.id) && g.w >= 0 && g.h >= 0;
         if !ok {
-            lost.push(dropped_with(format!("{LAYOUT_PATH}.groups[{i}]"), BAD_LAYOUT_GROUP));
+            lost.push(crate::exchange::dropped_with(
+                format!("{LAYOUT_PATH}.groups[{i}]"),
+                BAD_LAYOUT_GROUP,
+            ));
         }
         i += 1;
         ok

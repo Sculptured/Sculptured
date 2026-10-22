@@ -4,7 +4,7 @@
 //! Local mode has no `Analytics`, so nothing is sent.
 use crate::state::AppState;
 use model::{AgentKind, ConnectionKind, EventBody, Subject, TeamDraft};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -19,16 +19,23 @@ const SAVED_EVERY: Duration = Duration::from_secs(600);
 
 impl Analytics {
     /// Starts the sender: reports go to `<gateway>/internal/analytics` signed as `user`.
+    #[must_use]
     pub fn start(gateway: String, user: String, secret: Arc<Vec<u8>>) -> Arc<Analytics> {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(&'static str, Value)>(100);
         // In the full build reqwest has rustls with no provider chosen; building a client then panics.
         // The same provider as the runner's link and the pairing client (installing twice is harmless).
         let _ = rustls::crypto::ring::default_provider().install_default();
         tokio::spawn(async move {
-            let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().expect("http client");
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .expect("http client");
             let url = format!("{}/internal/analytics", gateway.trim_end_matches('/'));
             while let Some((name, props)) = rx.recv().await {
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
                 let sig = signing::sign(&secret, "POST", "/internal/analytics", &user, ts);
                 let sent = client
                     .post(&url)
@@ -43,7 +50,10 @@ impl Analytics {
                 }
             }
         });
-        Arc::new(Analytics { tx, saved: Mutex::new(HashMap::new()) })
+        Arc::new(Analytics {
+            tx,
+            saved: Mutex::new(HashMap::new()),
+        })
     }
 
     /// Queues a report; dropped (never blocking) when the queue is full.
@@ -53,7 +63,7 @@ impl Analytics {
 
     /// `team.saved`, at most once per team per ten minutes.
     pub fn saved(&self, team: &str, props: Value) {
-        let mut last = self.saved.lock().unwrap();
+        let mut last = self.saved.lock().expect("saved mutex must not be poisoned");
         if last.get(team).is_some_and(|t| t.elapsed() < SAVED_EVERY) {
             return;
         }
@@ -71,12 +81,23 @@ pub fn emit(st: &AppState, name: &'static str, props: Value) {
 }
 
 /// A template id as reported (anything not built in is "other").
+#[must_use]
 pub fn template(id: &str) -> &'static str {
-    const KNOWN: &[&str] = &["solo", "builder-reviewer", "planner-builders", "blank", "textbook", "support-triage", "essay-committee", "design-review"];
+    const KNOWN: &[&str] = &[
+        "solo",
+        "builder-reviewer",
+        "planner-builders",
+        "blank",
+        "textbook",
+        "support-triage",
+        "essay-committee",
+        "design-review",
+    ];
     KNOWN.iter().find(|k| **k == id).copied().unwrap_or("other")
 }
 
 /// The shape of a team: counts and yes/no only.
+#[must_use]
 pub fn shape(d: &TeamDraft, own_copies: bool) -> Value {
     let kind = |k: AgentKind| d.agents.iter().filter(|a| a.kind == k).count();
     let arrows = |k: ConnectionKind| d.connections.iter().filter(|c| c.kind == k).count();
@@ -97,6 +118,7 @@ pub fn shape(d: &TeamDraft, own_copies: bool) -> Value {
 }
 
 /// What a start reports: how many agents, which runtimes, how many distinct models, and the shape.
+#[must_use]
 pub fn started(d: &TeamDraft, own_copies: bool) -> Value {
     let runtimes: BTreeSet<&str> = d
         .agents
@@ -107,12 +129,21 @@ pub fn started(d: &TeamDraft, own_copies: bool) -> Value {
             AgentKind::Practice => "stub",
         })
         .collect();
-    let models: BTreeSet<String> = d.agents.iter().filter_map(|a| d.effective_model(a)).collect();
+    let models: BTreeSet<String> = d
+        .agents
+        .iter()
+        .filter_map(|a| d.effective_model(a))
+        .collect();
     json!({ "agents": d.agents.len(), "runtimes": runtimes, "models": models.len(), "shape": shape(d, own_copies) })
 }
 
 fn own_copies(st: &AppState, team: &str) -> bool {
-    st.store.lock().unwrap().team_settings(team).map(|s| s.own_copies).unwrap_or(false)
+    st.store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .team_settings(team)
+        .map(|s| s.own_copies)
+        .unwrap_or(false)
 }
 
 /// `team.saved` for a team just saved (throttled).
@@ -131,7 +162,7 @@ pub fn team_started(st: &AppState, d: &TeamDraft) {
 
 /// A finished run's numbers: duration, tokens, agents, spawned agents, failed agents.
 fn run_summary(st: &AppState, team: &str) -> Option<Value> {
-    let store = st.store.lock().unwrap();
+    let store = st.store.lock().expect("store mutex must not be poisoned");
     let seq = store.latest_run_start(team).ok()??;
     let (run, end) = crate::collaboration::history::bounds(&store, team, seq).ok()?;
     let detail = crate::collaboration::history::load_detail(&store, team, seq).ok()?;
@@ -162,8 +193,15 @@ pub fn watch(st: &AppState) {
                 Err(_) => return,
             };
             match (&item.event.subject, &item.event.body) {
-                (_, EventBody::CheckRan { passed, .. }) => emit(&st, "check.ran", json!({ "passed": passed })),
-                (Subject::Rig(rig), EventBody::RigDesiredChanged { desired: model::Desired::Stopped }) => {
+                (_, EventBody::CheckRan { passed, .. }) => {
+                    emit(&st, "check.ran", json!({ "passed": passed }))
+                }
+                (
+                    Subject::Rig(rig),
+                    EventBody::RigDesiredChanged {
+                        desired: model::Desired::Stopped,
+                    },
+                ) => {
                     if let Some(s) = run_summary(&st, rig) {
                         emit(&st, "run.summary", s);
                     }

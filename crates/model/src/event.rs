@@ -1,12 +1,15 @@
 use crate::{
-    ActionClass, Answer, Caps, DecisionSource, Desired, Finding, LimitKind, MessageIntent, QuestionPrompt, QuestionSource,
-    ReportVerdict, RestoreDecision, RiskFlag, SeatActivity, SeatLifecycle, SessionMode, TenureCause, TurnStatus,
+    ActionClass, Answer, Caps, DecisionSource, Desired, Finding, LimitKind, MessageIntent,
+    QuestionPrompt, QuestionSource, ReportVerdict, RestoreDecision, RiskFlag, SeatActivity,
+    SeatLifecycle, SessionMode, TenureCause, TurnStatus,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use ts_rs::TS;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum Provenance {
@@ -48,6 +51,7 @@ pub enum Subject {
 }
 
 impl Subject {
+    #[must_use]
     pub fn key(&self) -> String {
         match self {
             Subject::Rig(id) => format!("rig:{id}"),
@@ -61,15 +65,44 @@ impl Subject {
 #[serde(tag = "type", rename_all = "kebab-case")]
 #[ts(export)]
 pub enum EventBody {
-    TeamTopologyChanged { parent: String, child: String },
-    RigBooted { spec_hash: String, seat_count: u32 },
-    RigDesiredChanged { desired: Desired },
-    SeatLifecycleChanged { lifecycle: SeatLifecycle, reason: Option<String> },
-    SeatActivityChanged { activity: SeatActivity },
-    TenureStarted { tenure: u32, cause: TenureCause, driver: String, native_session_id: Option<String>, caps: Caps },
-    TenureEnded { tenure: u32, exit_code: Option<i32>, signal: Option<i32>, stderr_tail: String },
-    TurnStarted { turn_id: String },
-    AgentText { turn_id: Option<String>, text: String },
+    TeamTopologyChanged {
+        parent: String,
+        child: String,
+    },
+    RigBooted {
+        spec_hash: String,
+        seat_count: u32,
+    },
+    RigDesiredChanged {
+        desired: Desired,
+    },
+    SeatLifecycleChanged {
+        lifecycle: SeatLifecycle,
+        reason: Option<String>,
+    },
+    SeatActivityChanged {
+        activity: SeatActivity,
+    },
+    TenureStarted {
+        tenure: u32,
+        cause: TenureCause,
+        driver: String,
+        native_session_id: Option<String>,
+        caps: Caps,
+    },
+    TenureEnded {
+        tenure: u32,
+        exit_code: Option<i32>,
+        signal: Option<i32>,
+        stderr_tail: String,
+    },
+    TurnStarted {
+        turn_id: String,
+    },
+    AgentText {
+        turn_id: Option<String>,
+        text: String,
+    },
     ToolCalled {
         turn_id: Option<String>,
         call_id: String,
@@ -77,7 +110,12 @@ pub enum EventBody {
         input: serde_json::Value,
         parent_call_id: Option<String>,
     },
-    ToolResulted { turn_id: Option<String>, call_id: String, output: String, is_error: bool },
+    ToolResulted {
+        turn_id: Option<String>,
+        call_id: String,
+        output: String,
+        is_error: bool,
+    },
     UsageReported {
         turn_id: Option<String>,
         #[ts(type = "number")]
@@ -97,18 +135,41 @@ pub enum EventBody {
         #[ts(as = "Option<bool>", optional)]
         in_turn: bool,
     },
-    TurnEnded { turn_id: String, status: TurnStatus },
-    MessageQueued { message_id: String, intent: MessageIntent, text: String },
-    MessageDelivered { message_id: String },
-    MessageConsumed { message_id: String, turn_id: String },
-    MessageFailed { message_id: String, reason: String },
+    TurnEnded {
+        turn_id: String,
+        status: TurnStatus,
+    },
+    MessageQueued {
+        message_id: String,
+        intent: MessageIntent,
+        text: String,
+    },
+    MessageDelivered {
+        message_id: String,
+    },
+    MessageConsumed {
+        message_id: String,
+        turn_id: String,
+    },
+    MessageFailed {
+        message_id: String,
+        reason: String,
+    },
     /// controld keeps the message until a slot frees (the run budget's "most agents working at once").
-    MessageHeld { message_id: String, reason: String },
+    MessageHeld {
+        message_id: String,
+        reason: String,
+    },
     /// A protection refused one of the agent's tool calls, with the reason the agent read.
-    ProtectionApplied { call_id: String, reason: String },
+    ProtectionApplied {
+        call_id: String,
+        reason: String,
+    },
     /// Heuristic: the agent has been in a turn with no output for a long time (an idea from Gas Town's
     /// patrol). Flagged only; the operator decides. Its next output clears it.
-    StallSuspected { reason: String },
+    StallSuspected {
+        reason: String,
+    },
     /// The agent's context passed the team's ceiling: it writes its notes and continues fresh.
     ContextCeilingReached {
         #[ts(type = "number")]
@@ -120,7 +181,9 @@ pub enum EventBody {
         #[ts(type = "number")]
         count: u64,
     },
-    Unrecognized { raw: serde_json::Value },
+    Unrecognized {
+        raw: serde_json::Value,
+    },
     /// controld: this seat waits for these upstream seats (along "hands work to"
     /// connections) to finish before it gets its first handoff, and whether its handoffs
     /// are stuck. Empty and None = neither waiting nor stuck.
@@ -153,19 +216,49 @@ pub enum EventBody {
         turn_seq: i64,
     },
     /// The agent (or its CLI) asks the operator something and waits.
-    QuestionRaised { question_id: String, source: QuestionSource, prompt: QuestionPrompt, turn_id: Option<String> },
+    QuestionRaised {
+        question_id: String,
+        source: QuestionSource,
+        prompt: QuestionPrompt,
+        turn_id: Option<String>,
+    },
     /// `late`: the question had already expired; the answer is an instruct message overriding the agent's decision.
-    QuestionAnswered { question_id: String, answer: Answer, late: bool },
-    QuestionExpired { question_id: String },
-    QuestionDecided { question_id: String, decision: String, rationale: Option<String>, source: DecisionSource },
-    QuestionWithdrawn { question_id: String, reason: String },
+    QuestionAnswered {
+        question_id: String,
+        answer: Answer,
+        late: bool,
+    },
+    QuestionExpired {
+        question_id: String,
+    },
+    QuestionDecided {
+        question_id: String,
+        decision: String,
+        rationale: Option<String>,
+        source: DecisionSource,
+    },
+    QuestionWithdrawn {
+        question_id: String,
+        reason: String,
+    },
     /// The operator has seen an expired question; it leaves Needs you.
-    QuestionAcknowledged { question_id: String },
+    QuestionAcknowledged {
+        question_id: String,
+    },
     /// The agent's `report` call: findings about its work (agent-reported). `turn_id` is the
     /// turn running when it was received, so the work ledger can place it in an attempt.
-    FindingsReported { turn_id: Option<String>, summary: String, findings: Vec<Finding>, verdict: ReportVerdict },
+    FindingsReported {
+        turn_id: Option<String>,
+        summary: String,
+        findings: Vec<Finding>,
+        verdict: ReportVerdict,
+    },
     /// An agent report or tool call that failed validation (spec §6.3). Evidence; never interrupts the agent.
-    ReportRejected { tool: String, reason: String, raw: serde_json::Value },
+    ReportRejected {
+        tool: String,
+        reason: String,
+        raw: serde_json::Value,
+    },
     ActionInterpreted {
         call_id: String,
         class: ActionClass,
@@ -175,32 +268,58 @@ pub enum EventBody {
         risks: Vec<RiskFlag>,
     },
     /// The operator asked for a new session (spec §6.8 handover). A reason is required.
-    NewSessionRequested { mode: SessionMode, reason: String },
+    NewSessionRequested {
+        mode: SessionMode,
+        reason: String,
+    },
     /// A restore needs the operator: the resume failed or cannot be tried.
-    RestoreNeeded { reason: String, can_resume: bool },
-    RestoreDecided { decision: RestoreDecision },
+    RestoreNeeded {
+        reason: String,
+        can_resume: bool,
+    },
+    RestoreDecided {
+        decision: RestoreDecision,
+    },
     /// The turn ended on the provider's usage or rate limit (`text`: the CLI's words, verbatim; `resets`:
     /// the time those words name, if any). The operator sends "continue" once it resets; Sculptured
     /// never retries by itself. Recorded just before the turn's `TurnEnded { Failed }`.
-    LimitReached { turn_id: Option<String>, kind: LimitKind, resets: Option<String>, text: String },
+    LimitReached {
+        turn_id: Option<String>,
+        kind: LimitKind,
+        resets: Option<String>,
+        text: String,
+    },
     /// controld launched this agent without optional abilities its host (an older agent runner) lacks:
     /// `features` names them (`host_proto::features`), `note` says so in plain words and how to update.
     /// Never posture: a restricted agent is refused instead.
-    FeaturesDropped { features: Vec<String>, note: String },
+    FeaturesDropped {
+        features: Vec<String>,
+        note: String,
+    },
     /// A recorded answer could not reach the agent for certain (its host was not connected, or the
     /// agent's program refused it): the question is open again. `reason`: the host's words, verbatim.
-    QuestionAnswerFailed { question_id: String, reason: String },
+    QuestionAnswerFailed {
+        question_id: String,
+        reason: String,
+    },
     /// The agent's program reports the question settled (hostd maps the driver's `QuestionResolved`).
     /// Sculptured records its own answer or expiry before delivering it, so a question still open
     /// when this arrives was settled by the program itself, without Sculptured's answer. On an answered
     /// (or expired) question it confirms the delivery.
-    QuestionResolved { question_id: String },
+    QuestionResolved {
+        question_id: String,
+    },
     /// The recorded answer (or expiry) may not have reached the agent: it was sent but no reply came, or a
     /// "Send again" was refused. `reason`: the host's or program's words, verbatim. The question stays
     /// answered; Needs you shows it until a "Send again" or the program confirms it.
-    QuestionAnswerUnconfirmed { question_id: String, reason: String },
+    QuestionAnswerUnconfirmed {
+        question_id: String,
+        reason: String,
+    },
     /// A "Send again" of the recorded answer (or expiry) reached the agent: the doubt is cleared.
-    QuestionAnswerConfirmed { question_id: String },
+    QuestionAnswerConfirmed {
+        question_id: String,
+    },
     /// The model a session asked for and, once the CLI says, the model it reports using.
     /// `requested`: what Sculptured passed (None = the CLI's own default). `observed`: the CLI's own
     /// words (Claude `system/init.model`, Codex `thread/start` result `model` or `model/rerouted.toModel`);
@@ -249,11 +368,18 @@ pub enum EventBody {
         basis: ContextBasis,
     },
     /// The CLI's report of how much of the signed-in plan is used (account-wide).
-    PlanUsageReported { usage: crate::PlanUsage },
+    PlanUsageReported {
+        usage: crate::PlanUsage,
+    },
     /// The run's budget changed state: `wrap-up` (its soft value was reached) or `stopped` (its hard value).
-    BudgetStateChanged { state: String, reason: String },
+    BudgetStateChanged {
+        state: String,
+        reason: String,
+    },
     /// Sculptured began running the agent's check command (its design's "check", in its folder).
-    CheckStarted { command: String },
+    CheckStarted {
+        command: String,
+    },
     /// The check's outcome as Sculptured observed it: the command's own exit status, not the agent's word.
     CheckRan {
         command: String,
@@ -268,7 +394,9 @@ pub enum EventBody {
 }
 
 /// What the CLI showed of a model's thinking.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum ThinkingForm {
@@ -281,7 +409,9 @@ pub enum ThinkingForm {
 }
 
 /// Where a context figure comes from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum ContextBasis {
@@ -330,6 +460,7 @@ pub struct HandoffSource {
 
 impl HandoffSource {
     /// What makes this handoff unique within a start: the request, else the turn.
+    #[must_use]
     pub fn key(&self) -> i64 {
         self.requested_seq.unwrap_or(self.turn_seq)
     }

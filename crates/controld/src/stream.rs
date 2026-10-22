@@ -44,7 +44,10 @@ fn belongs(item: &StreamItem, rig: &str) -> bool {
 }
 
 fn snapshot_frame(snapshot: &RigSnapshot) -> Event {
-    Event::default().event("snapshot").json_data(snapshot).expect("snapshot serializes")
+    Event::default()
+        .event("snapshot")
+        .json_data(snapshot)
+        .expect("snapshot serializes")
 }
 
 fn resync_frame() -> Event {
@@ -55,14 +58,23 @@ pub async fn stream(State(st): State<AppState>, Query(q): Query<StreamQuery>) ->
     match (q.rig, q.all) {
         (Some(rig), None) => one_rig(st, rig),
         (None, Some(true)) => every_rig(st),
-        _ => ApiError::bad_request("bad_query", "Ask for one team with rig=NAME, or for every team with all=true").into_response(),
+        _ => ApiError::bad_request(
+            "bad_query",
+            "Ask for one team with rig=NAME, or for every team with all=true",
+        )
+        .into_response(),
     }
 }
 
 fn one_rig(st: AppState, rig: String) -> Response {
     // Subscribe before reading the snapshot so no event falls between them.
     let rx = st.hub.subscribe();
-    let snapshot = match st.store.lock().unwrap().rig_snapshot(&rig) {
+    let snapshot = match st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .rig_snapshot(&rig)
+    {
         Ok(Some(s)) => s,
         Ok(None) => return ApiError::not_found(format!("no rig {rig:?}")).into_response(),
         Err(e) => return ApiError::from(e).into_response(),
@@ -79,7 +91,9 @@ fn one_rig(st: AppState, rig: String) -> Response {
                     if item.event.seq <= covered || !belongs(&item, &rig) {
                         continue;
                     }
-                    if matches!(item.event.body, EventBody::TeamTopologyChanged { .. }) { return Some((Ok(resync_frame()), (rx, rig))); }
+                    if matches!(item.event.body, EventBody::TeamTopologyChanged { .. }) {
+                        return Some((Ok(resync_frame()), (rx, rig)));
+                    }
                     let ev = Event::default()
                         .event("event")
                         .id(item.event.seq.to_string())
@@ -92,7 +106,9 @@ fn one_rig(st: AppState, rig: String) -> Response {
             }
         }
     });
-    Sse::new(head.chain(live)).keep_alive(KeepAlive::default()).into_response()
+    Sse::new(head.chain(live))
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 
 /// What the every-team stream carries between frames.
@@ -119,7 +135,10 @@ impl Every {
             };
             let rig = rig_of(&item).map(str::to_string);
             if let Some(rig) = &rig {
-                let booted = matches!(item.event.body, EventBody::RigBooted { .. } | EventBody::TeamTopologyChanged { .. });
+                let booted = matches!(
+                    item.event.body,
+                    EventBody::RigBooted { .. } | EventBody::TeamTopologyChanged { .. }
+                );
                 if (booted || !self.covered.contains_key(rig)) && !self.cover(rig) {
                     return Some(resync_frame());
                 }
@@ -127,7 +146,7 @@ impl Every {
                     continue;
                 }
             }
-                    let ev = Event::default()
+            let ev = Event::default()
                 .event("event")
                 .id(item.event.seq.to_string())
                 .json_data(TaggedStreamItem { rig, item })
@@ -140,7 +159,12 @@ impl Every {
     /// reflects every event up to its last_seq, and later ones still reach this receiver. False
     /// when it cannot be read (the client then resyncs).
     fn cover(&mut self, rig: &str) -> bool {
-        let snap = self.st.store.lock().unwrap().rig_snapshot(rig);
+        let snap = self
+            .st
+            .store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .rig_snapshot(rig);
         match snap {
             Ok(Some(snap)) => {
                 self.covered.insert(rig.to_string(), snap.last_seq);
@@ -161,8 +185,12 @@ impl Every {
 
 /// Every rig's snapshot, as the stream's first frames.
 fn all_snapshots(st: &AppState) -> rusqlite::Result<Vec<RigSnapshot>> {
-    let store = st.store.lock().unwrap();
-    store.list_rigs().and_then(|rigs| rigs.iter().filter_map(|r| store.rig_snapshot(&r.name).transpose()).collect())
+    let store = st.store.lock().expect("store mutex must not be poisoned");
+    store.list_rigs().and_then(|rigs| {
+        rigs.iter()
+            .filter_map(|r| store.rig_snapshot(&r.name).transpose())
+            .collect()
+    })
 }
 
 fn every_rig(st: AppState) -> Response {
@@ -174,9 +202,23 @@ fn every_rig(st: AppState) -> Response {
     };
     let mut head: Vec<Event> = snapshots.iter().map(snapshot_frame).collect();
     head.push(Event::default().event("ready").data("ready"));
-    let covered = snapshots.into_iter().map(|s| (s.rig.name, s.last_seq)).collect();
-    let state = Every { rx, st, covered, queue: VecDeque::new() };
-    let live = futures::stream::unfold(state, |mut s| async move { s.next_frame().await.map(|ev| (Ok::<Event, Infallible>(ev), s)) });
+    let covered = snapshots
+        .into_iter()
+        .map(|s| (s.rig.name, s.last_seq))
+        .collect();
+    let state = Every {
+        rx,
+        st,
+        covered,
+        queue: VecDeque::new(),
+    };
+    let live = futures::stream::unfold(state, |mut s| async move {
+        s.next_frame()
+            .await
+            .map(|ev| (Ok::<Event, Infallible>(ev), s))
+    });
     let head = futures::stream::iter(head.into_iter().map(Ok::<Event, Infallible>));
-    Sse::new(head.chain(live)).keep_alive(KeepAlive::default()).into_response()
+    Sse::new(head.chain(live))
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }

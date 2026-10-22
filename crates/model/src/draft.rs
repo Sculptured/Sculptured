@@ -6,7 +6,9 @@ use ts_rs::TS;
 /// The group (pod) of agents that have no explicit group.
 pub const DEFAULT_GROUP_ID: &str = "team";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum AgentKind {
@@ -16,7 +18,19 @@ pub enum AgentKind {
     Practice,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+    TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum PermissionPosture {
@@ -25,7 +39,19 @@ pub enum PermissionPosture {
     Restricted,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+    TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum ResumeBehaviour {
@@ -35,7 +61,9 @@ pub enum ResumeBehaviour {
     CheckpointOnly,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct AgentAdvanced {
     /// This agent's own model, overriding its group's and team's default for its kind. None = inherit.
@@ -84,7 +112,9 @@ pub struct AgentAdvanced {
 }
 
 /// Limits a person set on a team's spawned agents. None = no limit; Sculptured sets none of its own.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct TeamLimits {
     /// Most agents in the team at once, its own and spawned children together.
@@ -98,6 +128,7 @@ pub struct TeamLimits {
 }
 
 impl TeamLimits {
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.max_agents.is_none() && self.max_child_levels.is_none()
     }
@@ -122,8 +153,13 @@ pub struct TokenLimit {
 }
 
 impl TokenLimit {
+    #[must_use]
     pub fn soft_value(&self) -> u64 {
-        crate::SoftHard { soft: self.soft, hard: self.tokens }.soft_value()
+        crate::SoftHard {
+            soft: self.soft,
+            hard: self.tokens,
+        }
+        .soft_value()
     }
 }
 
@@ -132,7 +168,19 @@ fn yes() -> bool {
 }
 
 /// Which reported tokens count toward a limit.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+    TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum TokenCount {
@@ -146,6 +194,7 @@ pub enum TokenCount {
 
 impl TokenCount {
     /// The counted share of `[input, output, cache_read, cache_write]`.
+    #[must_use]
     pub fn of(self, t: [u64; 4]) -> u64 {
         match self {
             TokenCount::All => t.iter().sum(),
@@ -157,7 +206,9 @@ impl TokenCount {
 
 /// Per-provider model defaults for a team or a group. None = inherit (group, then team, then the
 /// CLI's own default). An agent keeps its Claude-or-Codex kind and may override with `AgentAdvanced.model`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct ModelDefaults {
     /// For Claude agents: an alias (`opus`, `sonnet`) or a full model id.
@@ -170,6 +221,7 @@ pub struct ModelDefaults {
 
 impl ModelDefaults {
     /// The default for one kind of agent; Practice agents never have one.
+    #[must_use]
     pub fn for_kind(&self, kind: AgentKind) -> Option<&str> {
         match kind {
             AgentKind::Claude => self.claude.as_deref(),
@@ -178,6 +230,7 @@ impl ModelDefaults {
         }
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.claude.is_none() && self.codex.is_none()
     }
@@ -219,7 +272,9 @@ pub struct DraftGroup {
     pub models: ModelDefaults,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum ConnectionKind {
@@ -242,7 +297,9 @@ pub struct DraftConnection {
 
 /// The project's Input box on the Design board: the goal, links and notes the agents it points
 /// to get with their Job when the team starts. (A workflow project uses its workflow's Input.)
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[ts(export)]
 pub struct TeamInput {
     pub text: String,
@@ -318,11 +375,21 @@ pub struct TeamDraft {
 
 impl TeamDraft {
     /// A component by id: one of the team's, or a built-in one.
+    #[must_use]
     pub fn component(&self, id: &str) -> Option<crate::Component> {
-        self.components.iter().find(|c| c.id == id).cloned().or_else(|| crate::component::builtins().into_iter().find(|c| c.id == id))
+        self.components
+            .iter()
+            .find(|c| c.id == id)
+            .cloned()
+            .or_else(|| {
+                crate::component::builtins()
+                    .into_iter()
+                    .find(|c| c.id == id)
+            })
     }
 
     /// The components an agent is given, with those they require first, each once.
+    #[must_use]
     pub fn agent_components(&self, a: &DraftAgent) -> Vec<crate::Component> {
         let mut out: Vec<crate::Component> = Vec::new();
         fn add(d: &TeamDraft, id: &str, out: &mut Vec<crate::Component>, depth: u8) {
@@ -345,9 +412,15 @@ impl TeamDraft {
 
     /// The agent's own skills, then those its skills components add; a name it already has is kept
     /// as its own.
+    #[must_use]
     pub fn agent_skills(&self, a: &DraftAgent) -> Vec<crate::Skill> {
         let mut out = a.advanced.skills.clone();
-        for s in self.agent_components(a).into_iter().filter(|c| c.kind == crate::ComponentKind::Skills).flat_map(|c| c.skills) {
+        let flattened_self = self
+            .agent_components(a)
+            .into_iter()
+            .filter(|c| c.kind == crate::ComponentKind::Skills)
+            .flat_map(|c| c.skills);
+        for s in flattened_self {
             if !out.iter().any(|o| o.name == s.name) {
                 out.push(s);
             }
@@ -356,15 +429,29 @@ impl TeamDraft {
     }
 
     pub fn effective_folder<'a>(&'a self, a: &'a DraftAgent) -> Option<&'a str> {
-        a.folder.as_deref().map(str::trim).filter(|s| !s.is_empty())
-            .or_else(|| self.folder.as_deref().map(str::trim).filter(|s| !s.is_empty()))
+        a.folder
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                self.folder
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+            })
     }
 
-/// The agent's Job, with the project's Input after it when the Input points to the agent
+    /// The agent's Job, with the project's Input after it when the Input points to the agent
     /// (only the Input when it has no Job). Empty when it has neither.
+    #[must_use]
     pub fn job_with_input(&self, a: &DraftAgent) -> String {
         let job = a.job.trim();
-        let input = self.input.as_ref().filter(|i| i.to.contains(&a.id)).map(|i| i.text.trim()).filter(|t| !t.is_empty());
+        let input = self
+            .input
+            .as_ref()
+            .filter(|i| i.to.contains(&a.id))
+            .map(|i| i.text.trim())
+            .filter(|t| !t.is_empty());
         match input {
             Some(text) if job.is_empty() => text.to_string(),
             Some(text) => format!("{job}\n\n--- Input ---\n{text}"),
@@ -372,38 +459,54 @@ impl TeamDraft {
         }
     }
 
+    #[must_use]
     pub fn agent(&self, id: &str) -> Option<&DraftAgent> {
         self.agents.iter().find(|a| a.id == id)
     }
 
     /// The pod id an agent compiles into.
+    #[must_use]
     pub fn pod_of<'a>(&self, a: &'a DraftAgent) -> &'a str {
         a.group_id.as_deref().unwrap_or(DEFAULT_GROUP_ID)
     }
 
     /// The model an agent runs with: its own, else its group's for its kind, else the team's.
     /// None = the CLI's own default. Practice agents inherit nothing.
+    #[must_use]
     pub fn effective_model(&self, a: &DraftAgent) -> Option<String> {
-        let clean = |m: Option<&str>| m.map(str::trim).filter(|m| !m.is_empty()).map(str::to_string);
-        let group = self.groups.iter().find(|g| Some(g.id.as_str()) == a.group_id.as_deref());
+        let clean = |m: Option<&str>| {
+            m.map(str::trim)
+                .filter(|m| !m.is_empty())
+                .map(str::to_string)
+        };
+        let group = self
+            .groups
+            .iter()
+            .find(|g| Some(g.id.as_str()) == a.group_id.as_deref());
         clean(a.advanced.model.as_deref())
             .or_else(|| clean(group.and_then(|g| g.models.for_kind(a.kind))))
             .or_else(|| clean(self.models.for_kind(a.kind)))
     }
 
     /// `pod.member@rig` for an agent, from ids only.
+    #[must_use]
     pub fn seat_id(&self, agent_id: &str) -> Option<String> {
         let a = self.agent(agent_id)?;
         Some(format!("{}.{}@{}", self.pod_of(a), a.id, self.id))
     }
 
     /// The design's agent that runs as `seat` (`pod.member@rig`).
+    #[must_use]
     pub fn agent_for_seat(&self, seat: &str) -> Option<&DraftAgent> {
-        self.agents.iter().find(|a| self.seat_id(&a.id).as_deref() == Some(seat))
+        self.agents
+            .iter()
+            .find(|a| self.seat_id(&a.id).as_deref() == Some(seat))
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum ElementKind {
@@ -420,7 +523,9 @@ pub struct ElementRef {
     pub id: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum IssueSeverity {
@@ -449,4 +554,9 @@ pub struct DraftIssue {
 /// A message sent to `agent` every `every_minutes` while the team runs; skipped when the agent is busy.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
 #[ts(export)]
-pub struct Schedule { pub id: String, pub agent: String, pub every_minutes: u32, pub message: String }
+pub struct Schedule {
+    pub id: String,
+    pub agent: String,
+    pub every_minutes: u32,
+    pub message: String,
+}

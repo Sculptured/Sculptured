@@ -1,6 +1,5 @@
 //! What an agent reports about its work through the `report` seat tool (spec §6.3).
 //! Always agent-reported: shown as `◇ reported`, never as verified.
-use crate::question::cut;
 use crate::QuestionPrompt;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -18,7 +17,9 @@ pub struct Finding {
     pub location: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum ReportVerdict {
@@ -28,10 +29,16 @@ pub enum ReportVerdict {
 }
 
 /// Bounds agent-supplied findings: at most `MAX_FINDINGS`, each text `MAX_FINDING` bytes.
+#[must_use]
 pub fn cap_findings(findings: Vec<Finding>) -> Vec<Finding> {
     findings
         .into_iter()
         .take(MAX_FINDINGS)
-        .map(|f| Finding { text: cut(f.text, MAX_FINDING), location: f.location.map(|l| cut(l, QuestionPrompt::MAX_LABEL)) })
+        .map(|f| Finding {
+            text: crate::question::cut(f.text, MAX_FINDING),
+            location: f
+                .location
+                .map(|l| crate::question::cut(l, QuestionPrompt::MAX_LABEL)),
+        })
         .collect()
 }

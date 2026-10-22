@@ -4,13 +4,15 @@ use crate::state::AppState;
 use model::PermissionPosture;
 use rigspec::CompiledSeat;
 
+#[must_use]
 pub fn for_seat(st: &AppState, rig: &str, seat: &CompiledSeat) -> PermissionPosture {
     if let Some(policy) = seat.permission_policy.as_deref() {
         return from_policy(policy);
     }
-    let store = st.store.lock().unwrap();
+    let store = st.store.lock().expect("store mutex must not be poisoned");
     let team = store.team_settings(rig).ok().and_then(|t| t.posture);
-    team.or_else(|| store.settings().ok().map(|s| s.posture)).unwrap_or(PermissionPosture::Unrestricted)
+    team.or_else(|| store.settings().ok().map(|s| s.posture))
+        .unwrap_or(PermissionPosture::Unrestricted)
 }
 
 /// `none`, `builtin:yolo` and `builtin:open` run unrestricted; any other policy is restricted.

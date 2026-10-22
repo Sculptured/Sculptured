@@ -65,8 +65,14 @@ pub async fn git(path: &FsPath, args: &[&str]) -> Result<String, LocalError> {
     let mut child = cmd
         .spawn()
         .map_err(|_| fail("Install Git to use repository controls"))?;
-    let out = child.stdout.take().unwrap();
-    let err = child.stderr.take().unwrap();
+    let out = child
+        .stdout
+        .take()
+        .expect("Git stdout is piped by this function");
+    let err = child
+        .stderr
+        .take()
+        .expect("Git stderr is piped by this function");
     let run = async {
         let read = |mut r: tokio::io::Take<_>| async move {
             let mut bytes = Vec::new();
@@ -194,7 +200,10 @@ pub async fn diff(dir: &FsPath, path: &str, staged: bool) -> Result<String, Loca
 pub async fn act(dir: &FsPath, req: &GitAction) -> Result<GitSnapshot, LocalError> {
     let before = snapshot(dir).await?;
     if req.fingerprint != before.fingerprint {
-        return Err(LocalError::conflict("git_changed", "Repository changed; review the new status"));
+        return Err(LocalError::conflict(
+            "git_changed",
+            "Repository changed; review the new status",
+        ));
     }
     if req.action == "init" {
         if before.repository {
@@ -265,28 +274,102 @@ mod unit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn sh(dir: &std::path::Path, args: &[&str]) { assert!(std::process::Command::new("git").current_dir(dir).args(args).status().unwrap().success()); }
+    fn sh(dir: &std::path::Path, args: &[&str]) {
+        assert!(
+            std::process::Command::new("git")
+                .current_dir(dir)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
 
     #[tokio::test]
     async fn snapshot_stage_commit_and_refuse_option_like_or_outside_paths() {
         let d = tempfile::tempdir().unwrap();
         let s = snapshot(d.path()).await.unwrap();
         assert!(!s.repository);
-        act(d.path(), &GitAction { action: "init".into(), paths: vec![], message: String::new(), fingerprint: s.fingerprint }).await.unwrap();
-        sh(d.path(), &["config", "user.email", "t@t"]); sh(d.path(), &["config", "user.name", "T"]);
+        act(
+            d.path(),
+            &GitAction {
+                action: "init".into(),
+                paths: vec![],
+                message: String::new(),
+                fingerprint: s.fingerprint,
+            },
+        )
+        .await
+        .unwrap();
+        sh(d.path(), &["config", "user.email", "t@t"]);
+        sh(d.path(), &["config", "user.name", "T"]);
         std::fs::write(d.path().join("a.txt"), "a").unwrap();
         let s = snapshot(d.path()).await.unwrap();
         assert_eq!(s.files.len(), 1);
         for bad in ["--upload-pack=x", "/etc/passwd", "../x", "-c"] {
-            let e = act(d.path(), &GitAction { action: "stage".into(), paths: vec![bad.into()], message: String::new(), fingerprint: s.fingerprint.clone() }).await.unwrap_err();
-            assert_eq!((e.status, e.code.as_str()), (400, "git_failed"), "{bad}: {e:?}");
+            let e = act(
+                d.path(),
+                &GitAction {
+                    action: "stage".into(),
+                    paths: vec![bad.into()],
+                    message: String::new(),
+                    fingerprint: s.fingerprint.clone(),
+                },
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(
+                (e.status, e.code.as_str()),
+                (400, "git_failed"),
+                "{bad}: {e:?}"
+            );
         }
-        let e = act(d.path(), &GitAction { action: "rm -rf".into(), paths: vec![], message: String::new(), fingerprint: s.fingerprint.clone() }).await.unwrap_err();
+        let e = act(
+            d.path(),
+            &GitAction {
+                action: "rm -rf".into(),
+                paths: vec![],
+                message: String::new(),
+                fingerprint: s.fingerprint.clone(),
+            },
+        )
+        .await
+        .unwrap_err();
         assert_eq!(e.message, "Unknown Git action");
-        let e = act(d.path(), &GitAction { action: "stage".into(), paths: vec!["a.txt".into()], message: String::new(), fingerprint: "stale".into() }).await.unwrap_err();
+        let e = act(
+            d.path(),
+            &GitAction {
+                action: "stage".into(),
+                paths: vec!["a.txt".into()],
+                message: String::new(),
+                fingerprint: "stale".into(),
+            },
+        )
+        .await
+        .unwrap_err();
         assert_eq!((e.status, e.code.as_str()), (409, "git_changed"));
-        let s = act(d.path(), &GitAction { action: "stage".into(), paths: vec!["a.txt".into()], message: String::new(), fingerprint: s.fingerprint }).await.unwrap();
-        let s = act(d.path(), &GitAction { action: "commit".into(), paths: vec![], message: "first".into(), fingerprint: s.fingerprint }).await.unwrap();
+        let s = act(
+            d.path(),
+            &GitAction {
+                action: "stage".into(),
+                paths: vec!["a.txt".into()],
+                message: String::new(),
+                fingerprint: s.fingerprint,
+            },
+        )
+        .await
+        .unwrap();
+        let s = act(
+            d.path(),
+            &GitAction {
+                action: "commit".into(),
+                paths: vec![],
+                message: "first".into(),
+                fingerprint: s.fingerprint,
+            },
+        )
+        .await
+        .unwrap();
         assert!(s.log.contains("first"));
         assert!(diff(d.path(), "a.txt", false).await.unwrap().is_empty());
         assert!(diff(d.path(), "../x", false).await.is_err());

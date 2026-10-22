@@ -1,12 +1,11 @@
 //! The account page's summary of your own use: tokens and costs across every team, by day, by CLI and
 //! by team, plus a few activity counts. Read from this Sculptured's event journal, so it covers what ran
 //! here. Costs are only those the CLI reported or a list price gives; reports without one are counted.
-use crate::error::{respond, ApiError};
+use crate::error::ApiError;
 use crate::state::AppState;
+use axum::Router;
 use axum::extract::State;
 use axum::response::Response;
-use axum::routing::get;
-use axum::Router;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use ts_rs::TS;
@@ -18,17 +17,25 @@ const DAY_MS: i64 = 86_400_000;
 #[derive(Clone, Debug, Default, PartialEq, Serialize, TS)]
 #[ts(export)]
 pub struct UsageTotals {
-    #[ts(type = "number")] pub input: u64,
-    #[ts(type = "number")] pub output: u64,
-    #[ts(type = "number")] pub cache_read: u64,
-    #[ts(type = "number")] pub cache_write: u64,
+    #[ts(type = "number")]
+    pub input: u64,
+    #[ts(type = "number")]
+    pub output: u64,
+    #[ts(type = "number")]
+    pub cache_read: u64,
+    #[ts(type = "number")]
+    pub cache_write: u64,
     /// How many usage reports the CLIs made.
-    #[ts(type = "number")] pub reports: u64,
+    #[ts(type = "number")]
+    pub reports: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(export)]
-pub struct SourceCost { pub source: String, pub usd: f64 }
+pub struct SourceCost {
+    pub source: String,
+    pub usd: f64,
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(export)]
@@ -36,7 +43,8 @@ pub struct CostSummary {
     pub usd: f64,
     pub by_source: Vec<SourceCost>,
     /// Reports with no cost (no list price for that model, or an older CLI): counted, never guessed.
-    #[ts(type = "number")] pub reports_without_cost: u64,
+    #[ts(type = "number")]
+    pub reports_without_cost: u64,
     /// When the OpenAI list prices used for Codex were last checked.
     pub openai_prices_checked: String,
 }
@@ -46,24 +54,40 @@ pub struct CostSummary {
 pub struct DayTokens {
     /// UTC date, `YYYY-MM-DD`.
     pub day: String,
-    #[ts(type = "number")] pub tokens: u64,
+    #[ts(type = "number")]
+    pub tokens: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(export)]
-pub struct RuntimeTokens { pub runtime: String, #[ts(type = "number")] pub tokens: u64, pub usd: f64 }
+pub struct RuntimeTokens {
+    pub runtime: String,
+    #[ts(type = "number")]
+    pub tokens: u64,
+    pub usd: f64,
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(export)]
-pub struct TeamTokens { pub team: String, pub name: String, #[ts(type = "number")] pub tokens: u64, pub usd: f64 }
+pub struct TeamTokens {
+    pub team: String,
+    pub name: String,
+    #[ts(type = "number")]
+    pub tokens: u64,
+    pub usd: f64,
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[ts(export)]
 pub struct Activity {
-    #[ts(type = "number")] pub teams: u64,
-    #[ts(type = "number")] pub turns_completed: u64,
-    #[ts(type = "number")] pub agent_sessions: u64,
-    #[ts(type = "number")] pub messages_you_sent: u64,
+    #[ts(type = "number")]
+    pub teams: u64,
+    #[ts(type = "number")]
+    pub turns_completed: u64,
+    #[ts(type = "number")]
+    pub agent_sessions: u64,
+    #[ts(type = "number")]
+    pub messages_you_sent: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
@@ -80,11 +104,11 @@ pub struct AccountUsage {
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/account/usage", get(account_usage))
+    Router::new().route("/api/account/usage", axum::routing::get(account_usage))
 }
 
 async fn account_usage(State(st): State<AppState>) -> Response {
-    respond(
+    crate::error::respond(
         tokio::task::spawn_blocking(move || summarize(&st, model::now_ms()))
             .await
             .map_err(|_| ApiError::internal("usage summary failed"))
@@ -94,8 +118,12 @@ async fn account_usage(State(st): State<AppState>) -> Response {
 
 fn summarize(st: &AppState, now_ms: i64) -> rusqlite::Result<AccountUsage> {
     let (rows, names, activity) = {
-        let store = st.store.lock().unwrap();
-        (store.usage_rows()?, store.team_names()?, store.activity_counts()?)
+        let store = st.store.lock().expect("store mutex must not be poisoned");
+        (
+            store.usage_rows()?,
+            store.team_names()?,
+            store.activity_counts()?,
+        )
     };
     let names: BTreeMap<String, String> = names.into_iter().collect();
     let today = now_ms.div_euclid(DAY_MS);
@@ -114,36 +142,72 @@ fn summarize(st: &AppState, now_ms: i64) -> rusqlite::Result<AccountUsage> {
         totals.reports += u64::from(!r.in_turn);
         let cost = r.cost_usd.unwrap_or(0.0);
         match (r.cost_usd, r.cost_source) {
-            (Some(c), Some(source)) => { usd += c; *by_source.entry(source).or_default() += c; }
+            (Some(c), Some(source)) => {
+                usd += c;
+                *by_source.entry(source).or_default() += c;
+            }
             _ if r.in_turn => {}
             _ => without_cost += 1,
         }
         let age = today - r.at_ms.div_euclid(DAY_MS);
-        if (0..DAYS).contains(&age) { by_day[(DAYS - 1 - age) as usize] += tokens; }
+        if (0..DAYS).contains(&age) {
+            by_day[(DAYS - 1 - age) as usize] += tokens;
+        }
         let rt = by_runtime.entry(r.runtime).or_default();
-        rt.0 += tokens; rt.1 += cost;
+        rt.0 += tokens;
+        rt.1 += cost;
         let t = by_team.entry(r.team).or_default();
-        t.0 += tokens; t.1 += cost;
+        t.0 += tokens;
+        t.1 += cost;
     }
-    let mut top_teams: Vec<TeamTokens> = by_team.into_iter()
-        .map(|(team, (tokens, usd))| TeamTokens { name: names.get(&team).cloned().unwrap_or_else(|| team.clone()), team, tokens, usd })
-        .filter(|t| t.tokens > 0).collect();
+    let mut top_teams: Vec<TeamTokens> = by_team
+        .into_iter()
+        .map(|(team, (tokens, usd))| TeamTokens {
+            name: names.get(&team).cloned().unwrap_or_else(|| team.clone()),
+            team,
+            tokens,
+            usd,
+        })
+        .filter(|t| t.tokens > 0)
+        .collect();
     top_teams.sort_by(|a, b| b.tokens.cmp(&a.tokens).then_with(|| a.team.cmp(&b.team)));
     top_teams.truncate(TOP_TEAMS);
-    let mut by_runtime: Vec<RuntimeTokens> = by_runtime.into_iter().map(|(runtime, (tokens, usd))| RuntimeTokens { runtime, tokens, usd }).collect();
-    by_runtime.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+    let mut by_runtime: Vec<RuntimeTokens> = by_runtime
+        .into_iter()
+        .map(|(runtime, (tokens, usd))| RuntimeTokens {
+            runtime,
+            tokens,
+            usd,
+        })
+        .collect();
+    by_runtime.sort_by_key(|runtime| std::cmp::Reverse(runtime.tokens));
     Ok(AccountUsage {
         totals,
         cost: CostSummary {
             usd,
-            by_source: by_source.into_iter().map(|(source, usd)| SourceCost { source, usd }).collect(),
+            by_source: by_source
+                .into_iter()
+                .map(|(source, usd)| SourceCost { source, usd })
+                .collect(),
             reports_without_cost: without_cost,
             openai_prices_checked: model::pricing::OPENAI_PRICES_CHECKED.to_string(),
         },
-        by_day: by_day.into_iter().enumerate().map(|(i, tokens)| DayTokens { day: utc_date(today - (DAYS - 1 - i as i64)), tokens }).collect(),
+        by_day: by_day
+            .into_iter()
+            .enumerate()
+            .map(|(i, tokens)| DayTokens {
+                day: utc_date(today - (DAYS - 1 - i as i64)),
+                tokens,
+            })
+            .collect(),
         by_runtime,
         top_teams,
-        activity: Activity { teams: activity.teams, turns_completed: activity.turns_completed, agent_sessions: activity.agent_sessions, messages_you_sent: activity.messages_you_sent },
+        activity: Activity {
+            teams: activity.teams,
+            turns_completed: activity.turns_completed,
+            agent_sessions: activity.agent_sessions,
+            messages_you_sent: activity.messages_you_sent,
+        },
     })
 }
 

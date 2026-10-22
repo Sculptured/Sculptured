@@ -17,9 +17,8 @@ impl TeamNames {
             .seats
             .iter()
             .map(|s| {
-                let from_draft = draft.and_then(|d| {
-                    d.agent_for_seat(&s.id).map(|a| a.name.trim().to_string())
-                });
+                let from_draft =
+                    draft.and_then(|d| d.agent_for_seat(&s.id).map(|a| a.name.trim().to_string()));
                 let name = from_draft
                     .filter(|n| !n.is_empty())
                     .or_else(|| s.label.clone().filter(|l| !l.trim().is_empty()))
@@ -32,17 +31,23 @@ impl TeamNames {
 
     /// The agent's name in the builder, else the seat's label, else its member id.
     pub(crate) fn name(&self, seat: &str) -> String {
-        self.names.iter().find(|(id, _)| id == seat).map(|(_, n)| n.clone()).unwrap_or_else(|| {
-            let logical = seat.split('@').next().unwrap_or(seat);
-            logical.rsplit('.').next().unwrap_or(logical).to_string()
-        })
+        self.names
+            .iter()
+            .find(|(id, _)| id == seat)
+            .map(|(_, n)| n.clone())
+            .unwrap_or_else(|| {
+                let logical = seat.split('@').next().unwrap_or(seat);
+                logical.rsplit('.').next().unwrap_or(logical).to_string()
+            })
     }
 
     /// `text` with every seat id of the team replaced by the agent's name.
     pub(crate) fn plain(&self, text: &str) -> String {
         let mut ids: Vec<&(String, String)> = self.names.iter().collect();
         ids.sort_by_key(|(id, _)| std::cmp::Reverse(id.len()));
-        ids.iter().fold(text.to_string(), |t, (id, name)| t.replace(id.as_str(), name))
+        ids.iter().fold(text.to_string(), |t, (id, name)| {
+            t.replace(id.as_str(), name)
+        })
     }
 }
 
@@ -56,15 +61,29 @@ pub(super) struct Team<'a> {
 }
 
 impl Team<'_> {
-    pub(super) fn load<'a>(store: &Store, rig: &'a CompiledRig, seats: &'a [SeatView], draft: Option<TeamDraft>) -> rusqlite::Result<Team<'a>> {
+    pub(super) fn load<'a>(
+        store: &Store,
+        rig: &'a CompiledRig,
+        seats: &'a [SeatView],
+        draft: Option<TeamDraft>,
+    ) -> rusqlite::Result<Team<'a>> {
         let names = TeamNames::new(rig, draft.as_ref());
         let mut changed = HashMap::new();
         for s in &rig.seats {
-            if let Some(e) = store.latest_of_types(&Subject::Seat(s.id.clone()), &["seat-lifecycle-changed"], 1)?.first() {
+            if let Some(e) = store
+                .latest_of_types(&Subject::Seat(s.id.clone()), &["seat-lifecycle-changed"], 1)?
+                .first()
+            {
                 changed.insert(s.id.clone(), e.seq);
             }
         }
-        Ok(Team { rig, draft, names, seats, changed })
+        Ok(Team {
+            rig,
+            draft,
+            names,
+            seats,
+            changed,
+        })
     }
 
     pub(super) fn name(&self, seat: &str) -> String {
@@ -102,7 +121,12 @@ pub(crate) fn upstreams_of(rig: &CompiledRig) -> Vec<(String, Vec<String>)> {
         let mut ups: Vec<String> = rig
             .edges
             .iter()
-            .filter(|e| e.kind == EdgeKind::DelegatesTo && e.to == *b && e.from != *b && order.contains(&e.from.as_str()))
+            .filter(|e| {
+                e.kind == EdgeKind::DelegatesTo
+                    && e.to == *b
+                    && e.from != *b
+                    && order.contains(&e.from.as_str())
+            })
             .map(|e| e.from.clone())
             .collect();
         ups.sort_by_key(|u| order.iter().position(|s| s == u));
@@ -115,13 +139,22 @@ pub(crate) fn upstreams_of(rig: &CompiledRig) -> Vec<(String, Vec<String>)> {
 }
 
 pub(super) fn downstreams_of(rig: &CompiledRig, seat: &str) -> Vec<String> {
-    upstreams_of(rig).into_iter().filter(|(_, ups)| ups.iter().any(|u| u == seat)).map(|(b, _)| b).collect()
+    upstreams_of(rig)
+        .into_iter()
+        .filter(|(_, ups)| ups.iter().any(|u| u == seat))
+        .map(|(b, _)| b)
+        .collect()
 }
 
 /// "Hands work to" arrows that close a loop: back to a seat that launches no later. The launch
 /// order already leaves them out (rigspec), so a seat never waits on one before it first runs.
 pub(super) fn loop_backs(rig: &CompiledRig) -> HashSet<(String, String)> {
-    let layer: HashMap<&str, usize> = rig.launch_layers.iter().enumerate().flat_map(|(i, l)| l.iter().map(move |s| (s.as_str(), i))).collect();
+    let layer: HashMap<&str, usize> = rig
+        .launch_layers
+        .iter()
+        .enumerate()
+        .flat_map(|(i, l)| l.iter().map(move |s| (s.as_str(), i)))
+        .collect();
     rig.edges
         .iter()
         .filter(|e| e.kind == EdgeKind::DelegatesTo && e.from != e.to)
@@ -161,8 +194,16 @@ mod tests {
 
     #[test]
     fn reasons_name_agents_not_seat_ids() {
-        let names = TeamNames { names: vec![("team.b@t".into(), "Builder".into()), ("team.b2@t".into(), "Builder 2".into())] };
-        assert_eq!(names.plain("seat team.b2@t is not running; team.b@t too"), "seat Builder 2 is not running; Builder too");
+        let names = TeamNames {
+            names: vec![
+                ("team.b@t".into(), "Builder".into()),
+                ("team.b2@t".into(), "Builder 2".into()),
+            ],
+        };
+        assert_eq!(
+            names.plain("seat team.b2@t is not running; team.b@t too"),
+            "seat Builder 2 is not running; Builder too"
+        );
         assert_eq!(names.name("team.x@t"), "x");
     }
 }

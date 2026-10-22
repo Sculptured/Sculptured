@@ -52,7 +52,8 @@ fn main() {
     );
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
-    for line in stdin.lock().lines().map_while(Result::ok) {
+    let matching_stdin = stdin.lock().lines().map_while(Result::ok);
+    for line in matching_stdin {
         let req: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(_) => {

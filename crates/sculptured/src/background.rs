@@ -4,8 +4,14 @@
 use std::process::{Command, ExitCode};
 
 fn main() -> ExitCode {
-    let Ok(me) = std::env::current_exe() else { return ExitCode::FAILURE };
-    let runner = me.with_file_name(if cfg!(windows) { "sculptured.exe" } else { "sculptured" });
+    let Ok(me) = std::env::current_exe() else {
+        return ExitCode::FAILURE;
+    };
+    let runner = me.with_file_name(if cfg!(windows) {
+        "sculptured.exe"
+    } else {
+        "sculptured"
+    });
     let mut cmd = Command::new(runner);
     cmd.args(std::env::args_os().skip(1));
     #[cfg(windows)]

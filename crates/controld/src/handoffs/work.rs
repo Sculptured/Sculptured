@@ -41,7 +41,10 @@ impl Item {
     }
     /// The wave this item moves in: its own, else a new one starting at `seat`.
     pub(super) fn wave_of(&self, seat: &str) -> Wave {
-        self.wave.clone().unwrap_or_else(|| Wave { id: self.key(), origin: seat.to_string() })
+        self.wave.clone().unwrap_or_else(|| Wave {
+            id: self.key(),
+            origin: seat.to_string(),
+        })
     }
 }
 
@@ -116,7 +119,9 @@ impl Scan<'_> {
                 }
             }
             EventBody::TurnEnded { turn_id, status } => self.turn_ended(e.seq, turn_id, status),
-            EventBody::HandoverRequested { turn_seq, .. } => self.out.requests.push((e.seq, turn_seq)),
+            EventBody::HandoverRequested { turn_seq, .. } => {
+                self.out.requests.push((e.seq, turn_seq))
+            }
             _ => {}
         }
     }
@@ -127,7 +132,9 @@ impl Scan<'_> {
         self.out.queued.push(message_id.clone());
         match actor {
             Actor::Seat(sender) => {
-                self.out.from_agents.push((seq, message_id.clone(), sender.clone()));
+                self.out
+                    .from_agents
+                    .push((seq, message_id.clone(), sender.clone()));
                 if let Some(wave) = self.waves.get(message_id.as_str()) {
                     self.work_messages.insert(message_id, (*wave).clone());
                 }
@@ -137,7 +144,10 @@ impl Scan<'_> {
                 self.work_messages.insert(message_id, None);
             }
             Actor::System(id) if id == HANDOFF_ACTOR => {
-                let wave = self.waves.get(message_id.as_str()).and_then(|w| (*w).clone());
+                let wave = self
+                    .waves
+                    .get(message_id.as_str())
+                    .and_then(|w| (*w).clone());
                 self.work_messages.insert(message_id, wave);
             }
             Actor::Human(_) if self.head_without_job && !self.first_human_seen => {
@@ -152,7 +162,11 @@ impl Scan<'_> {
         self.out.delivered.insert(message_id.clone());
         self.out.read.insert(message_id.clone());
         if let Some(wave) = self.work_messages.get(&message_id) {
-            self.reading = Some(Reading { message: message_id, wave: wave.clone(), why: None });
+            self.reading = Some(Reading {
+                message: message_id,
+                wave: wave.clone(),
+                why: None,
+            });
         }
     }
 
@@ -172,7 +186,13 @@ impl Scan<'_> {
             r.why = Some("the agent stopped");
         }
         self.current = None;
-        let lost: Vec<String> = self.out.delivered.iter().filter(|m| !self.out.read.contains(*m)).cloned().collect();
+        let lost: Vec<String> = self
+            .out
+            .delivered
+            .iter()
+            .filter(|m| !self.out.read.contains(*m))
+            .cloned()
+            .collect();
         self.out.lost.extend(lost);
     }
 
@@ -185,7 +205,14 @@ impl Scan<'_> {
             TurnStatus::Completed => {
                 let finished = self.reading.take();
                 let work = finished.is_some();
-                self.out.turns.push(Turn { seq, started, turn_id, text, work, wave: finished.and_then(|r| r.wave) });
+                self.out.turns.push(Turn {
+                    seq,
+                    started,
+                    turn_id,
+                    text,
+                    work,
+                    wave: finished.and_then(|r| r.wave),
+                });
             }
             TurnStatus::Interrupted => self.mark_unfinished("interrupted"),
             TurnStatus::Failed => self.mark_unfinished("failed"),
@@ -204,7 +231,13 @@ impl Scan<'_> {
 /// whether it finished the agent's work), the operator's "Hand over again" requests, and
 /// work it read and did not finish. Its work messages are its Jobs, its handoffs (`records`)
 /// and, for a first agent with no Job, the first message you sent it.
-pub(super) fn seat_work(store: &Store, seat: &str, start_seq: i64, records: &[HandedOverRecord], head_without_job: bool) -> rusqlite::Result<SeatWork> {
+pub(super) fn seat_work(
+    store: &Store,
+    seat: &str,
+    start_seq: i64,
+    records: &[HandedOverRecord],
+    head_without_job: bool,
+) -> rusqlite::Result<SeatWork> {
     let types = [
         "message-queued",
         "message-delivered",
@@ -219,7 +252,10 @@ pub(super) fn seat_work(store: &Store, seat: &str, start_seq: i64, records: &[Ha
     let events = store.events_of_types(&Subject::Seat(seat.to_string()), start_seq, &types)?;
     let mut scan = Scan {
         out: SeatWork::default(),
-        waves: records.iter().map(|r| (r.message_id.as_str(), &r.wave)).collect(),
+        waves: records
+            .iter()
+            .map(|r| (r.message_id.as_str(), &r.wave))
+            .collect(),
         head_without_job,
         work_messages: HashMap::new(),
         first_human_seen: false,
@@ -239,14 +275,25 @@ pub(super) fn work_items(w: &SeatWork, seat: &str, before: &impl Fn(i64) -> bool
         .turns
         .iter()
         .filter(|t| t.work && before(t.seq))
-        .map(|t| Item { turn: t.clone(), requested_seq: None, wave: t.wave.clone() })
+        .map(|t| Item {
+            turn: t.clone(),
+            requested_seq: None,
+            wave: t.wave.clone(),
+        })
         .collect();
     for &(req, turn_seq) in &w.requests {
         if !before(req) {
             continue;
         }
         if let Some(t) = w.turns.iter().find(|t| t.seq == turn_seq) {
-            items.push(Item { turn: t.clone(), requested_seq: Some(req), wave: Some(Wave { id: req, origin: seat.to_string() }) });
+            items.push(Item {
+                turn: t.clone(),
+                requested_seq: Some(req),
+                wave: Some(Wave {
+                    id: req,
+                    origin: seat.to_string(),
+                }),
+            });
         }
     }
     items.sort_by_key(|i| i.key());

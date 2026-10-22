@@ -1,7 +1,7 @@
 //! Settings, for everyone and per team.
+use model::PermissionPosture;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use model::PermissionPosture;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -27,7 +27,13 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { sculptured_origin: None, suggested_origin: None, posture: PermissionPosture::Unrestricted, question_timeout_min: 10, copies_folder: None }
+        Self {
+            sculptured_origin: None,
+            suggested_origin: None,
+            posture: PermissionPosture::Unrestricted,
+            question_timeout_min: 10,
+            copies_folder: None,
+        }
     }
 }
 

@@ -1,17 +1,16 @@
 //! Helpers for the seat-tools tests: a host whose agents have their tools on a real socket, and calls
 //! made directly as controld makes them for a host's `SeatTool` frame.
-use super::m2::*;
-use super::wait_for;
-use controld::seat_tools::handle_call;
+
+use super::m2::Served;
 use drivers::stub::StubDriver;
 use host_proto::ToHost;
-use hostd::seat_tools::serve_socket;
 use hostd::supervisor::{SeatToolsHost, Supervisor};
-use model::*;
+
+use model::{Actor, EventBody, Provenance, QuestionPrompt, QuestionSource, Subject};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
 
 /// No seat-tool call in these tests may wait longer than this: a hung relay fails the test instead of
@@ -20,16 +19,16 @@ pub const CALL_WAIT: Duration = Duration::from_secs(15);
 
 /// A served controld with a host whose agents have their tools on a real socket.
 pub async fn with_tools() -> (Served, Supervisor, tempfile::TempDir) {
-    let s = serve().await;
+    let s = crate::common::m2::serve().await;
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("seat-tools.sock");
     let host = SeatToolsHost {
         socket: socket.clone(),
         shim: "/unused/sculptured".into(),
     };
-    let sup = connect(&s, vec![Arc::new(StubDriver)], Some(host)).await;
-    tokio::spawn(serve_socket(sup.clone(), socket.clone()));
-    wait_for("the socket", || socket.exists()).await;
+    let sup = crate::common::m2::connect(&s, vec![Arc::new(StubDriver)], Some(host)).await;
+    tokio::spawn(hostd::seat_tools::serve_socket(sup.clone(), socket.clone()));
+    crate::common::wait_for("the socket", || socket.exists()).await;
     (s, sup, dir)
 }
 
@@ -40,10 +39,10 @@ pub async fn direct(
     tool: &str,
     args: Value,
 ) -> (bool, Value, Option<String>) {
-    let (tx, mut rx) = unbounded_channel();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     tokio::time::timeout(
         CALL_WAIT,
-        handle_call(
+        controld::seat_tools::handle_call(
             s.st.clone(),
             tx,
             "c1".into(),
@@ -69,8 +68,8 @@ pub async fn request_call(
     seat: &str,
     args: Value,
 ) -> (JoinHandle<()>, UnboundedReceiver<ToHost>, String) {
-    let (tx, rx) = unbounded_channel();
-    let call = tokio::spawn(handle_call(
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let call = tokio::spawn(controld::seat_tools::handle_call(
         s.st.clone(),
         tx,
         "c1".into(),
@@ -78,7 +77,7 @@ pub async fn request_call(
         "request_input".into(),
         args,
     ));
-    let e = wait_event(&s.st, seat, "a question", |b| {
+    let e = crate::common::m2::wait_event(&s.st, seat, "a question", |b| {
         matches!(b, EventBody::QuestionRaised { .. })
     })
     .await;
@@ -102,7 +101,7 @@ pub async fn ended(call: JoinHandle<()>) {
 
 /// (tool, reason) of each `report-rejected` on the agent.
 pub fn rejected(s: &Served, seat: &str) -> Vec<(String, String)> {
-    events(&s.st, seat)
+    crate::common::m2::events(&s.st, seat)
         .into_iter()
         .filter_map(|e| match e.body {
             EventBody::ReportRejected { tool, reason, .. } => Some((tool, reason)),
@@ -113,7 +112,7 @@ pub fn rejected(s: &Served, seat: &str) -> Vec<(String, String)> {
 
 /// The question as the API shows it.
 pub async fn question_view(s: &Served, seat: &str, id: &str) -> Value {
-    let (_, qs) = get(&s.router, &format!("/api/seats/{seat}/questions")).await;
+    let (_, qs) = crate::common::m2::get(&s.router, &format!("/api/seats/{seat}/questions")).await;
     qs.as_array()
         .unwrap()
         .iter()
@@ -130,7 +129,8 @@ pub fn expired_question(
     source: QuestionSource,
     tool: Option<&str>,
 ) {
-    let prompt = QuestionPrompt { urgency: None,
+    let prompt = QuestionPrompt {
+        urgency: None,
         header: None,
         text: "Which?".into(),
         options: vec![],

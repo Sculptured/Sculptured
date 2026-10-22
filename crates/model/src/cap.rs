@@ -5,6 +5,7 @@
 pub const MAX_TEXT: usize = 64 * 1024;
 
 /// The longest start of `s` that is at most `max` bytes, cut on a char boundary.
+#[must_use]
 pub fn head(s: &str, max: usize) -> &str {
     if s.len() <= max {
         return s;
@@ -17,6 +18,7 @@ pub fn head(s: &str, max: usize) -> &str {
 }
 
 /// The longest end of `s` that is at most `max` bytes, cut on a char boundary.
+#[must_use]
 pub fn tail(s: &str, max: usize) -> &str {
     if s.len() <= max {
         return s;
@@ -30,6 +32,7 @@ pub fn tail(s: &str, max: usize) -> &str {
 
 /// For `s` longer than `max` bytes: about its first half and last three eighths of `max`, and how many
 /// bytes lie between them. None when `s` fits.
+#[must_use]
 pub fn middle(s: &str, max: usize) -> Option<(&str, usize, &str)> {
     if s.len() <= max {
         return None;
@@ -39,6 +42,7 @@ pub fn middle(s: &str, max: usize) -> Option<(&str, usize, &str)> {
 }
 
 /// Cuts `s` to at most `max` bytes on a char boundary and says how much was dropped.
+#[must_use]
 pub fn truncate(s: String, max: usize) -> String {
     if s.len() <= max {
         return s;
@@ -55,15 +59,25 @@ pub fn truncate(s: String, max: usize) -> String {
 pub const MAX_INPUT_LEAF: usize = 4 * 1024;
 
 fn json_len(v: &serde_json::Value) -> usize {
-    serde_json::to_string(v).map(|s| s.len()).unwrap_or(usize::MAX)
+    serde_json::to_string(v)
+        .map(|s| s.len())
+        .unwrap_or(usize::MAX)
 }
 
-fn cap_leaves(v: serde_json::Value, max: usize, cut: fn(String, usize) -> String) -> serde_json::Value {
+fn cap_leaves(
+    v: serde_json::Value,
+    max: usize,
+    cut: fn(String, usize) -> String,
+) -> serde_json::Value {
     use serde_json::Value;
     match v {
         Value::String(s) => Value::String(cut(s, max)),
         Value::Array(a) => Value::Array(a.into_iter().map(|x| cap_leaves(x, max, cut)).collect()),
-        Value::Object(o) => Value::Object(o.into_iter().map(|(k, x)| (k, cap_leaves(x, max, cut))).collect()),
+        Value::Object(o) => Value::Object(
+            o.into_iter()
+                .map(|(k, x)| (k, cap_leaves(x, max, cut)))
+                .collect(),
+        ),
         other => other,
     }
 }
@@ -85,6 +99,7 @@ pub fn cap_approval_input(input: serde_json::Value) -> serde_json::Value {
 }
 
 /// Whether `cap_approval_input` keeps this input whole.
+#[must_use]
 pub fn approval_input_kept_whole(input: &serde_json::Value) -> bool {
     json_len(input) <= MAX_TEXT
 }
@@ -109,13 +124,21 @@ fn cap_input_with(input: serde_json::Value, cut: fn(String, usize) -> String) ->
 /// bytes in the middle: about the first half and the last three eighths of `max` stay, with a marker
 /// between them naming how much is hidden. Never cut at the end, where a dangerous tail would vanish.
 /// For text whose full form is stored elsewhere (the prompt's whole tool input).
+#[must_use]
 pub fn approval_cut(s: String, max: usize) -> String {
-    middle_cut(s, max, |n| format!("[{n} bytes not shown, read the full command before approving]"))
+    middle_cut(s, max, |n| {
+        format!("[{n} bytes not shown, read the full command before approving]")
+    })
 }
 
 /// Like `approval_cut`, for text whose middle is stored nowhere (a command over the tool-input cap).
+#[must_use]
 pub fn approval_cut_unstored(s: String, max: usize) -> String {
-    middle_cut(s, max, |n| format!("[{n} bytes not stored; this command is too long to show in full, deny it unless you trust the agent]"))
+    middle_cut(s, max, |n| {
+        format!(
+            "[{n} bytes not stored; this command is too long to show in full, deny it unless you trust the agent]"
+        )
+    })
 }
 
 fn middle_cut(s: String, max: usize, marker: impl Fn(usize) -> String) -> String {

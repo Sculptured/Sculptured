@@ -19,6 +19,20 @@ ongoing collaboration. Routing and workflow automation support that experience.
 - TypeScript API types are generated from Rust into `web/src/generated/` by ts-rs. Never hand-edit
   them; run `cargo test --workspace export_bindings` to regenerate.
 
+## Rust code quality
+- Follow the [Google Rust Style Guide](https://google.github.io/styleguide/rustguide.html),
+  applying its API guidance in the context of this Cargo application. Chromium-specific build
+  and test conventions do not apply here.
+- Keep modules focused on one responsibility. Put implementation in leaf modules and preserve
+  public import paths with re-exports when splitting a module.
+- Keep functions focused and reasonably small. The existing 30-line Clippy threshold is advisory,
+  not a reason to split coherent code. Extract helpers around meaningful responsibilities, and share
+  repeated logic without introducing speculative abstractions.
+- Prefer borrowing to unnecessary deep clones, named results to ambiguous tuples, and pattern
+  matching to check-then-unwrap. Use `expect` with an invariant explanation when a panic is required.
+- Run `cargo fmt --all -- --check`, relevant behavior tests, and Clippy for changed crates.
+  Do not suppress warnings or raise thresholds just to make a refactor pass.
+
 ## Visualizations are the primary interface
 - The team board is the entry point. Clicking, tapping or pressing Enter on an agent opens it.
   Keep raw events available as evidence next to the visual summaries.

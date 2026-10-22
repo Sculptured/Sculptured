@@ -1,16 +1,14 @@
 //! Helpers for M2 integration tests: a served controld, a stub host, HTTP calls and event waits.
 //! Later tasks use these and keep their own extra helpers in their own test files.
 #![allow(dead_code)]
-use super::{lifecycle, wait_for};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use controld::AppState;
 use controld::store::Store;
-use controld::{AppState, app};
 use drivers::Driver;
 use drivers::stub::StubDriver;
 use hostd::journal::Journal;
-use hostd::link::run_link;
 use hostd::supervisor::{SeatToolsHost, Supervisor};
 use http_body_util::BodyExt;
 use model::{Actor, EventBody, EventRecord, SeatLifecycle};
@@ -39,26 +37,49 @@ pub const GATEWAY_SECRET: &[u8] = b"test-gateway-secret";
 /// connect over `url` as usual. Both views share one state (store, connected computers).
 pub async fn serve_hosted() -> Served {
     let mut s = serve().await;
-    let hosted = s.st.clone().with_auth(controld::auth::AuthPolicy::Gateway { secret: Arc::new(GATEWAY_SECRET.to_vec()) });
-    s.router = app(hosted.clone(), None);
+    let hosted = s.st.clone().with_auth(controld::auth::AuthPolicy::Gateway {
+        secret: Arc::new(GATEWAY_SECRET.to_vec()),
+    });
+    s.router = controld::app(hosted.clone(), None);
     s.st = hosted;
     s
 }
 
 /// A gateway-signed request for user `u1`, as the hosted router expects.
-pub async fn signed(router: &Router, method: &str, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
-    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
-    let b = Request::builder().method(method).uri(uri).header("host", "test")
-        .header(signing::USER_HEADER, "u1").header(signing::TS_HEADER, ts.to_string())
-        .header(signing::SIG_HEADER, signing::sign(GATEWAY_SECRET, method, uri, "u1", ts));
+pub async fn signed(
+    router: &Router,
+    method: &str,
+    uri: &str,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let b = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("host", "test")
+        .header(signing::USER_HEADER, "u1")
+        .header(signing::TS_HEADER, ts.to_string())
+        .header(
+            signing::SIG_HEADER,
+            signing::sign(GATEWAY_SECRET, method, uri, "u1", ts),
+        );
     let req = match body {
-        Some(v) => b.header("content-type", "application/json").body(Body::from(v.to_string())).unwrap(),
+        Some(v) => b
+            .header("content-type", "application/json")
+            .body(Body::from(v.to_string()))
+            .unwrap(),
         None => b.body(Body::empty()).unwrap(),
     };
     let resp = router.clone().oneshot(req).await.unwrap();
     let status = resp.status();
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 /// A served controld over `store`, for tests that prepare the store before anything runs.
@@ -68,10 +89,10 @@ pub async fn serve_with_store(store: Store) -> Served {
     let addr = listener.local_addr().unwrap();
     let st = AppState::new(store, TOKEN.into(), vec![addr.to_string(), "test".into()])
         .with_home(home.path());
-    let served = app(st.clone(), None);
+    let served = controld::app(st.clone(), None);
     tokio::spawn(async move { axum::serve(listener, served).await.unwrap() });
     Served {
-        router: app(st.clone(), None),
+        router: controld::app(st.clone(), None),
         st,
         url: format!("ws://{addr}/host"),
         home,
@@ -87,13 +108,24 @@ pub async fn connect(
 }
 
 /// A runner connected as `host_id` that answers local operations with `ops` (a connected computer).
-pub async fn connect_with_ops(s: &Served, host_id: &str, drivers: Vec<Arc<dyn Driver>>, ops: hostd::ops::OpsHost) -> Supervisor {
-    let sup = Supervisor::with_seat_tools(host_id.into(), drivers, Journal::open_in_memory(10_000).unwrap(), None).with_ops(ops);
+pub async fn connect_with_ops(
+    s: &Served,
+    host_id: &str,
+    drivers: Vec<Arc<dyn Driver>>,
+    ops: hostd::ops::OpsHost,
+) -> Supervisor {
+    let sup = Supervisor::with_seat_tools(
+        host_id.into(),
+        drivers,
+        Journal::open_in_memory(10_000).unwrap(),
+        None,
+    )
+    .with_ops(ops);
     let (url, link_sup) = (s.url.clone(), sup.clone());
     tokio::spawn(async move {
-        let _ = run_link(&url, TOKEN, &link_sup).await;
+        let _ = hostd::link::run_link(&url, TOKEN, &link_sup).await;
     });
-    wait_for("host connected", || s.st.hosts.is_connected(host_id)).await;
+    crate::common::wait_for("host connected", || s.st.hosts.is_connected(host_id)).await;
     sup
 }
 
@@ -116,9 +148,9 @@ async fn connect_with(
     );
     let (url, link_sup) = (s.url.clone(), sup.clone());
     tokio::spawn(async move {
-        let _ = run_link(&url, TOKEN, &link_sup).await;
+        let _ = hostd::link::run_link(&url, TOKEN, &link_sup).await;
     });
-    wait_for("host connected", || s.st.hosts.is_connected(host_id)).await;
+    crate::common::wait_for("host connected", || s.st.hosts.is_connected(host_id)).await;
     sup
 }
 
@@ -230,7 +262,7 @@ pub async fn start_team(s: &Served, id: &str) {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    wait_for("boot finished", || !s.st.is_booting(id)).await;
+    crate::common::wait_for("boot finished", || !s.st.is_booting(id)).await;
     let seats: Vec<String> =
         s.st.store
             .lock()
@@ -242,10 +274,10 @@ pub async fn start_team(s: &Served, id: &str) {
             .into_iter()
             .map(|x| x.id)
             .collect();
-    wait_for("every agent running", || {
+    crate::common::wait_for("every agent running", || {
         seats
             .iter()
-            .all(|x| lifecycle(&s.st, x) == Some(SeatLifecycle::Running))
+            .all(|x| crate::common::lifecycle(&s.st, x) == Some(SeatLifecycle::Running))
     })
     .await;
 }

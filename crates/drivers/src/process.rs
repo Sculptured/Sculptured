@@ -19,7 +19,11 @@ const TAIL_BYTES: usize = 4096;
 
 /// `program args…` in the agent's folder and environment, without hostd's token, stdio piped,
 /// killed on drop and leading a process group of its own.
-pub(crate) fn command(program: &Path, spec: &LaunchSpec, args: impl IntoIterator<Item = String>) -> Command {
+pub(crate) fn command(
+    program: &Path,
+    spec: &LaunchSpec,
+    args: impl IntoIterator<Item = String>,
+) -> Command {
     // Looked up now: a CLI installed after the runner started is found.
     let mut cmd = Command::new(localops::programs::resolve(program));
     cmd.args(args)
@@ -52,7 +56,10 @@ const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub(crate) fn spawn(cmd: &mut Command, program: &Path) -> Result<Child, DriverError> {
-    cmd.spawn().map_err(|source| DriverError::Spawn { program: program.display().to_string(), source })
+    cmd.spawn().map_err(|source| DriverError::Spawn {
+        program: program.display().to_string(),
+        source,
+    })
 }
 
 /// Windows: ends the child and every process it started (`taskkill /T` walks the tree from the child).
@@ -86,7 +93,11 @@ pub(crate) fn interrupt_group(pid: Option<u32>, exited: &watch::Receiver<bool>) 
 }
 
 /// A hard stop: interrupt at once, force after `HARD_STOP_FORCE_AFTER`.
-pub(crate) async fn hard_stop(pid: Option<u32>, exited: &watch::Receiver<bool>, kill: &mut Option<oneshot::Sender<()>>) {
+pub(crate) async fn hard_stop(
+    pid: Option<u32>,
+    exited: &watch::Receiver<bool>,
+    kill: &mut Option<oneshot::Sender<()>>,
+) {
     interrupt_group(pid, exited);
     stop_within(crate::HARD_STOP_FORCE_AFTER, exited, kill).await;
 }
@@ -120,7 +131,10 @@ impl StderrTail {
     /// Waits a bounded time for stderr to end, then returns what was read.
     pub(crate) async fn finish(self) -> Vec<u8> {
         let _ = tokio::time::timeout(STDERR_DRAIN, self.task).await;
-        self.buf.lock().unwrap().clone()
+        self.buf
+            .lock()
+            .expect("buf mutex must not be poisoned")
+            .clone()
     }
 }
 
@@ -131,7 +145,7 @@ async fn collect_stderr(stderr: ChildStderr, buf: Arc<Mutex<Vec<u8>>>) {
         match r.read(&mut chunk).await {
             Ok(0) | Err(_) => break,
             Ok(n) => {
-                let mut b = buf.lock().unwrap();
+                let mut b = buf.lock().expect("buf mutex must not be poisoned");
                 b.extend_from_slice(&chunk[..n]);
                 if b.len() > 2 * TAIL_BYTES {
                     let cut = b.len() - TAIL_BYTES;
@@ -184,7 +198,11 @@ pub(crate) async fn pump_lines(
 
 /// Waits for the child. The child may still be alive, so `kill` (unless it already fired) is
 /// still honoured by killing the group.
-pub(crate) async fn reap(child: &mut Child, kill: &mut oneshot::Receiver<()>, mut kill_done: bool) -> Option<ExitStatus> {
+pub(crate) async fn reap(
+    child: &mut Child,
+    kill: &mut oneshot::Receiver<()>,
+    mut kill_done: bool,
+) -> Option<ExitStatus> {
     loop {
         tokio::select! {
             st = child.wait() => return st.ok(),
@@ -197,9 +215,16 @@ pub(crate) async fn reap(child: &mut Child, kill: &mut oneshot::Receiver<()>, mu
 }
 
 /// Waits up to `grace` for the session to exit, then fires `kill` and waits for the exit.
-pub(crate) async fn stop_within(grace: Duration, exited: &watch::Receiver<bool>, kill: &mut Option<oneshot::Sender<()>>) {
+pub(crate) async fn stop_within(
+    grace: Duration,
+    exited: &watch::Receiver<bool>,
+    kill: &mut Option<oneshot::Sender<()>>,
+) {
     let mut exited = exited.clone();
-    if tokio::time::timeout(grace, exited.wait_for(|e| *e)).await.is_err() {
+    if tokio::time::timeout(grace, exited.wait_for(|e| *e))
+        .await
+        .is_err()
+    {
         if let Some(k) = kill.take() {
             let _ = k.send(());
         }
