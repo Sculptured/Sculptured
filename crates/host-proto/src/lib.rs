@@ -43,6 +43,8 @@ pub struct LaunchParams {
     pub cwd: String,
     pub model: Option<String>,
     pub program: Option<String>,
+    /// A model connection's settings for the agent's process (`MODEL_ENV_KEYS`). They hold a key: never
+    /// log, store or record them.
     pub env: Vec<(String, String)>,
     pub extra_args: Vec<String>,
     #[serde(default)]
@@ -220,6 +222,26 @@ pub mod features {
     /// Starts remote MCP servers and Claude plugins among `LaunchParams.components`; an older runner
     /// cannot read them at all.
     pub const COMPONENT_KINDS: &str = "component-kinds";
+    /// Passes a model connection's settings (`LaunchParams.env`, `MODEL_ENV_KEYS` only) to the agent's
+    /// CLI. An older runner refuses any environment, so a launch with one is refused before it is sent.
+    pub const MODEL_ENV: &str = "model-env";
+}
+
+/// The only environment the server may give an agent: a model connection's key, and where its
+/// requests go. Anything else in `LaunchParams.env` is refused by a connected computer.
+pub const MODEL_ENV_KEYS: &[&str] = &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL"];
+
+/// The addresses `ANTHROPIC_BASE_URL` may name (OpenRouter's Anthropic-compatible API).
+pub const MODEL_BASE_URLS: &[&str] = &["https://openrouter.ai/api"];
+
+/// True when every entry is a model connection setting (`MODEL_ENV_KEYS`), each named once, with a
+/// known `ANTHROPIC_BASE_URL`.
+pub fn model_env_allowed(env: &[(String, String)]) -> bool {
+    env.iter().enumerate().all(|(i, (k, v))| {
+        MODEL_ENV_KEYS.contains(&k.as_str())
+            && !env[..i].iter().any(|(o, _)| o == k)
+            && (k != "ANTHROPIC_BASE_URL" || MODEL_BASE_URLS.contains(&v.as_str()))
+    })
 }
 
 /// Run the agent in its own git copy (worktree) of the folder, made on the computer that runs it.
@@ -263,6 +285,9 @@ impl LaunchParams {
         }
         if self.own_copy.is_some() {
             f.push(features::LOCAL_OPS);
+        }
+        if !self.env.is_empty() {
+            f.push(features::MODEL_ENV);
         }
         f
     }

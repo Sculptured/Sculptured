@@ -201,6 +201,11 @@ pub struct DraftAgent {
     pub y: i32,
     #[serde(default)]
     pub advanced: AgentAdvanced,
+    /// Claude agents: the person's model connection (its id, kept by the gateway) the agent runs
+    /// with. None = the CLI's own sign-in. Other kinds ignore it; team files never carry it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub connection: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]

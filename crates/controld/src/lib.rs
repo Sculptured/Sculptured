@@ -6,6 +6,8 @@ pub mod api;
 pub mod portable;
 pub mod generate;
 pub mod analytics;
+pub mod gateway;
+pub mod setup;
 pub mod clis;
 pub mod community;
 pub mod device_pairing;

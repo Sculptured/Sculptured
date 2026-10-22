@@ -34,6 +34,7 @@ fn agent(id: &str, name: &str, kind: AgentKind, job: &str, x: i32, y: i32) -> Dr
         x,
         y,
         advanced: AgentAdvanced::default(),
+        connection: None,
     }
 }
 

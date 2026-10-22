@@ -322,9 +322,11 @@ async fn serve(
         let secret = std::env::var("SCULPTURED_GATEWAY_SECRET").map_err(|_| "--hosted needs SCULPTURED_GATEWAY_SECRET".to_string())?;
         let secret = std::sync::Arc::new(secret.into_bytes());
         let st = st.with_auth(controld::auth::AuthPolicy::Gateway { secret: secret.clone() });
-        // The gateway passes where to report (analytics) and as whom; without both, nothing is sent.
+        // The gateway passes where to report (analytics) and read model connections, and as whom;
+        // without both, nothing is sent and agents with a model connection do not start.
         match (std::env::var("SCULPTURED_GATEWAY_URL"), std::env::var("SCULPTURED_USER")) {
             (Ok(url), Ok(user)) => {
+                let st = st.with_gateway(controld::gateway::Gateway::new(url.clone(), user.clone(), secret.clone()));
                 let st = st.with_analytics(controld::analytics::Analytics::start(url, user, secret));
                 controld::analytics::watch(&st);
                 st

@@ -9,6 +9,8 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 - Community item pages on the hosted service no longer fail with error 500.
 
 ### Added
+- Model connections, server side: `DraftAgent.connection` (a connection id the gateway keeps; Claude agents only) reaches the compiled seat (`MemberSpec.connection`, `CompiledSeat.connection`). Team files, MADL and portable exports never carry it. On the hosted service a Claude agent with a connection gets its settings at launch from the gateway (`POST /internal/connection-env`, signed like analytics, `controld::gateway`) into `LaunchParams.env` only; they are never stored, recorded, logged or put in an error. A connection that can't be read keeps the agent from starting with "Couldn't read the model connection for <agent>: <reason>. Check it under Setup → Models." Local mode ignores connections. The runner takes only `host_proto::MODEL_ENV_KEYS` (Anthropic key, auth token, model, and OpenRouter as the only base URL) from the server (runner feature `model-env`; an older runner is refused rather than run on the computer's own sign-in).
+- Setup progress: `GET/PUT /api/setup` (`SetupProgress { done, skipped }` of `SetupStep`: `welcome`, `computer`, `models`, `computers`, `tour`; deduplicated, a done step is not also skipped, an unknown step is `setup_step_invalid`), kept in the settings key `setup`. Docs: [Set up your account](docs-site/guides/setup.mdx).
 - Projects: tick projects (or all of them) to hide them or move them to the Trash together; in the Trash, tick projects to restore them or delete them forever after one confirmation. Running projects can't be moved to the Trash.
 
 ### Changed

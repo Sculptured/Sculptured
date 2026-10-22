@@ -2,4 +2,9 @@
 import type { RestorePolicy } from "./RestorePolicy";
 import type { Runtime } from "./Runtime";
 
-export type CompiledSeat = { id: string, pod: string, member: string, runtime: Runtime, cwd: string, agent_ref: string, profile: string, label: string | null, role: string | null, model: string | null, restore_policy: RestorePolicy, permission_policy: string | null, };
+export type CompiledSeat = { id: string, pod: string, member: string, runtime: Runtime, cwd: string, agent_ref: string, profile: string, label: string | null, role: string | null, model: string | null, restore_policy: RestorePolicy, permission_policy: string | null, 
+/**
+ * Claude Code seats: the person's model connection (an id the gateway keeps). None = the CLI's
+ * own sign-in.
+ */
+connection?: string, };

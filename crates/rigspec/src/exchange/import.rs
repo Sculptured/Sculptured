@@ -140,6 +140,8 @@ fn draft_agent(id: String, pod: &PodSpec, m: &MemberSpec, seat: &CompiledSeat, k
             token_limit: None,
             check: None,
         },
+        // A team file never names the person's own model connection.
+        connection: None,
     }
 }
 

@@ -18,4 +18,9 @@ job: string,
 /**
  * Absolute path. Practice agents may leave it empty (they use the home folder).
  */
-folder: string | null, x: number, y: number, advanced: AgentAdvanced, connection?: string | null, };
+folder: string | null, x: number, y: number, advanced: AgentAdvanced, 
+/**
+ * Claude agents: the person's model connection (its id, kept by the gateway) the agent runs
+ * with. None = the CLI's own sign-in. Other kinds ignore it; team files never carry it.
+ */
+connection?: string, };
