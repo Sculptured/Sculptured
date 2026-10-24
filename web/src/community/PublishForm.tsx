@@ -64,7 +64,7 @@ function LibraryChoice({ library, chosen, onChoose }: { library: GroupBlock[] | 
 function Preview({ block }: { block: GroupBlock }) {
   return (
     <>
-      <div className="cm-preview cm-preview-large"><TemplatePreview draft={block.draft} practice={false} /></div>
+      <div className="cm-preview cm-preview-large"><TemplatePreview draft={block.draft} /></div>
       <details open><summary>Review exactly what will be published</summary><pre className="cm-review" data-raw-evidence>{JSON.stringify(block, null, 2)}</pre></details>
     </>
   );

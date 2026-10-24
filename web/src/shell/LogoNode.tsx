@@ -24,11 +24,11 @@ function ClaudeGuy() {
   );
 }
 
-/** The provider's mark, large: the Claude Code guy, the Codex mark, the Practice flask, or a neutral bot. */
+/** The provider's mark, large: the Claude Code guy, the Codex mark, or a bot (Practice agents in their own colour). */
 export function BrandLogo({ v }: { v: Vendor }) {
   if (v.cls === 'v-claude') return <ClaudeGuy />;
   if (v.cls === 'v-codex') return <Icon name="codex" size={50} strokeWidth={1.7} className="logo-svg" />;
-  if (v.cls === 'v-practice') return <Icon name="practice" size={46} strokeWidth={1.7} className="logo-svg" />;
+  if (v.cls === 'v-practice') return <Icon name="practice" size={44} strokeWidth={1.7} className="logo-svg" />;
   return <Icon name={v.name === 'unknown' ? 'unknown' : 'bot'} size={44} strokeWidth={1.7} className="logo-svg" />;
 }
 
@@ -46,13 +46,6 @@ export function LogoFace({ v, name, status, badge, extra }: { v: Vendor; name: s
             <BrandLogo v={v} />
           </span>
         </span>
-        {v.cls === 'v-practice' && (
-          <span className="logo-bubbles" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-        )}
         {badge}
       </span>
       <span className="logo-name" title={name}>{name}</span>

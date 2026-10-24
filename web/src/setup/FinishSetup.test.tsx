@@ -45,7 +45,7 @@ it('says nothing once every step is done or skipped', async () => {
   expect(container).toBeEmptyDOMElement();
 });
 
-it('on your own computer it offers the practice project and tour', async () => {
+it('on your own computer it offers the first project and tour', async () => {
   serve({ done: [], skipped: [] });
   show({ kind: 'local' });
   expect(await screen.findByRole('link', { name: 'Finish setup' })).toBeInTheDocument();

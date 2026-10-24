@@ -67,7 +67,7 @@ export function UsageDashboard({ rig, names, onClose }: { rig: string; names: Na
         <div><dt>Cached input read</dt><dd>{tokens(sum.cache)}</dd></div>
         <div><dt>Agents reporting</dt><dd>{agents.filter((a) => a.points.length).length}</dd></div>
       </dl>
-      {usage && !series.length && <p>No agent has reported token use yet. Practice agents never do.</p>}
+      {usage && !series.length && <p>No agent has reported token use yet.</p>}
       {series.length > 0 && (
         <figure className="usage-chart">
           <figcaption>Running total per agent (input + output tokens){agents.filter((a) => a.points.length).length > series.length ? ` · the ${series.length} busiest agents; the table lists all` : ''}</figcaption>

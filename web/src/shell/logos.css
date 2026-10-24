@@ -70,17 +70,11 @@
 /* Working: a ring round the disc (still), and, when motion is allowed, a slow orbit and the mark's own loop. */
 .logo-orbit { position: absolute; inset: -7px; border-radius: 50%; border: 2px solid transparent; pointer-events: none; }
 .is-logo.logo-working .logo-orbit { border-color: color-mix(in srgb, var(--vc, var(--accent)) 38%, transparent); }
-.logo-bubbles { position: absolute; left: 50%; top: 30px; width: 0; height: 0; pointer-events: none; }
-.logo-bubbles i { position: absolute; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0; }
-.logo-bubbles i:nth-child(2) { left: -6px; width: 4px; height: 4px; }
-.logo-bubbles i:nth-child(3) { left: 5px; width: 5px; height: 5px; }
 
 @keyframes logo-spin { to { transform: rotate(360deg); } }
 @keyframes clawd-step { 0% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
 @keyframes logo-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 @keyframes logo-turn { 0% { transform: rotate(0deg); } 35%, 50% { transform: rotate(90deg); } 85%, 100% { transform: rotate(180deg); } }
-@keyframes logo-sway { 0%, 100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
-@keyframes logo-bubble { 0% { transform: translateY(0) scale(0.5); opacity: 0; } 25% { opacity: 0.9; } 100% { transform: translateY(-22px) scale(1); opacity: 0; } }
 
 @media (prefers-reduced-motion: no-preference) {
   .is-logo.logo-animated .logo-orbit {
@@ -94,11 +88,7 @@
   .is-logo.logo-animated.v-claude .clawd-legs-a { animation: clawd-step var(--logo-walk) steps(1, end) infinite; }
   .is-logo.logo-animated.v-claude .clawd-legs-b { animation: clawd-step var(--logo-walk) steps(1, end) calc(var(--logo-walk) / -2) infinite; }
   .is-logo.logo-animated.v-codex .logo-turn { animation: logo-turn var(--logo-turn) var(--ease-in-out) infinite; }
-  .is-logo.logo-animated.v-practice .logo-turn { transform-origin: 50% 80%; animation: logo-sway var(--logo-sway) var(--ease-in-out) infinite; }
-  .is-logo.logo-animated.v-practice .logo-bubbles i { animation: logo-bubble var(--logo-sway) ease-out infinite; }
-  .is-logo.logo-animated.v-practice .logo-bubbles i:nth-child(2) { animation-delay: calc(var(--logo-sway) / -3); }
-  .is-logo.logo-animated.v-practice .logo-bubbles i:nth-child(3) { animation-delay: calc(var(--logo-sway) / -1.5); }
-  .is-logo.logo-animated.v-other .logo-mark { animation: logo-breathe var(--logo-breathe) var(--ease-in-out) infinite; }
+  .is-logo.logo-animated:is(.v-practice, .v-other) .logo-mark { animation: logo-breathe var(--logo-breathe) var(--ease-in-out) infinite; }
 }
 
 /* Board style switch: the words go on a phone; the icons stay. */

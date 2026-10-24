@@ -6,6 +6,7 @@ import { ComputerClis, type Computer } from '../hosted/ComputersPage';
 import { ConnectComputer } from '../hosted/ConnectComputer';
 import { useHosted } from '../hosted/HostedGate';
 import { gw } from '../hosted/session';
+import { setKindAll } from '../draft/models';
 import { boardPath } from '../paths';
 import { CliAccounts } from '../shell/CliAccounts';
 import { failText, ModelConnections } from './ModelConnections';
@@ -116,7 +117,7 @@ function Welcome({ setup, nav }: { setup: Setup; nav: Nav }) {
       {setup.mode === 'hosted'
         ? <p>Agents work on your own computers, so first you connect one, then give agents a way to reach a model.</p>
         : <p>Agents work on this computer, so the one thing to set up is a way for them to reach a model.</p>}
-      <p>After that you can {setup.mode === 'hosted' ? 'add more computers or a cluster, and ' : ''}try a free practice project with a short tour.</p>
+      <p>After that you can {setup.mode === 'hosted' ? 'add more computers or a cluster, and ' : ''}try a first project with a short tour.</p>
       <StepNav nav={nav} />
     </Step>
   );
@@ -214,15 +215,17 @@ function FirstProject({ setup, nav }: { setup: Setup; nav: Nav }) {
   const create = async () => {
     setBusy(true); setError('');
     try {
-      const rec = await api.createTeam('builder-reviewer', true, 'Practice project');
+      const rec = await api.createTeam('builder-reviewer', false, 'First project');
+      // The template's reviewer is Codex; a first project runs on Claude only.
+      if (rec.draft.agents.some((a) => a.kind !== 'claude')) await api.saveTeam(rec.draft.id, rec.draft.revision, setKindAll(rec.draft, 'claude'));
       navigate(boardPath(rec.draft.id, 'design'));
       setup.startTour();
     } catch (e) { setError(failText(e)); setBusy(false); }
   };
   return (
     <Step title="Your first project">
-      <p>Try a practice team: a builder hands its work to a reviewer. Practice agents follow a script and make no model calls, so it costs nothing. A short tour then points out the parts of the real screens.</p>
-      <p><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void create()}>{busy ? 'Creating…' : 'Create the practice project'}</button></p>
+      <p>Try a first team: a builder hands its work to a reviewer, both Claude agents. A short tour then points out the parts of the real screens. Nothing runs until you press Start; once started, the agents use your model sign-in and may cost money.</p>
+      <p><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void create()}>{busy ? 'Creating…' : 'Create the first project'}</button></p>
       {error && <p className="tone-red" role="alert">{error}</p>}
       <StepNav nav={nav} optional noContinue />
     </Step>

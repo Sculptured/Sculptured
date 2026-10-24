@@ -33,7 +33,7 @@ pub struct Options {
     /// "2-3" | "4-6" | "7-10"
     #[serde(default)]
     pub size: Option<String>,
-    /// "claude" | "codex" | "practice" | "mixed"
+    /// "claude" | "codex" | "mixed"
     #[serde(default)]
     pub kinds: Option<String>,
     /// "chain" | "lead" | "reviewers"
@@ -78,7 +78,6 @@ impl Options {
                 "Mix Claude Code (\"claude\") and Codex (\"codex\") agents where each fits best."
                     .into(),
             ),
-            Some("practice") => s.push("Use kind \"claude\" for every agent.".into()),
             _ => {}
         }
         match self.shape.as_deref() {

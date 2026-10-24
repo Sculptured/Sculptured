@@ -22,7 +22,7 @@ function ComponentSummary({ pub }: { pub: Publication }) {
 export function BlockCard({ pub, actions }: { pub: Publication; actions?: ReactNode }) {
   return (
     <article className="cm-card">
-      {opensHere(pub) && <div className="cm-preview"><TemplatePreview draft={pub.content.draft} practice={false} /></div>}
+      {opensHere(pub) && <div className="cm-preview"><TemplatePreview draft={pub.content.draft} /></div>}
       <ComponentSummary pub={pub} />
       <h3><Link to={`/community/blocks/${encodeURIComponent(pub.id)}`}>{pub.title}</Link></h3>
       {pub.tags.length > 0 && <ul className="cm-tags" aria-label="Tags">{pub.tags.map((t) => <li key={t}>{t}</li>)}</ul>}

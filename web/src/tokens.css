@@ -134,7 +134,6 @@
   --logo-walk: 1.2s;        /* Claude Code guy: one step with each leg pair */
   --logo-breathe: 3s;       /* any other mark: one breath */
   --logo-turn: 4.8s;        /* Codex mark: two quarter turns with a rest */
-  --logo-sway: 2.8s;      /* Practice flask: one sway, bubbles rise */
   --logo-orbit: 3.2s;       /* the working ring's arc */
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 

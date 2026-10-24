@@ -136,7 +136,7 @@ async fn three_alternatives_become_team_files_laid_out_with_issues() {
 }
 
 #[tokio::test]
-async fn practice_option_makes_every_agent_practice_and_the_folder_is_set() {
+async fn codex_option_makes_every_agent_codex_and_the_folder_is_set() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("teams.json"), result(json!({ "alternatives": [
         { "label": "team", "rationale": "One.", "team": sketch("Docs", &["Writer", "Editor"], &[("Writer", "Editor")]) },
@@ -144,7 +144,7 @@ async fn practice_option_makes_every_agent_practice_and_the_folder_is_set() {
     let s = served_with(fake_claude(d.path(), BY_SCHEMA)).await;
     let folder = s.home.path().join("docs");
     std::fs::create_dir_all(&folder).unwrap();
-    let (status, v) = crate::common::m2::call(&s.router, "POST", "/api/generate/teams", json!({ "options": opts(json!({ "kinds": "practice", "folder": folder.display().to_string() })), "prompt": "docs", "answers": [], "count": 1 })).await;
+    let (status, v) = crate::common::m2::call(&s.router, "POST", "/api/generate/teams", json!({ "options": opts(json!({ "kinds": "codex", "folder": folder.display().to_string() })), "prompt": "docs", "answers": [], "count": 1 })).await;
     assert_eq!(status, StatusCode::OK, "{v}");
     let team = &v["alternatives"][0]["draft"];
     assert!(
@@ -152,7 +152,7 @@ async fn practice_option_makes_every_agent_practice_and_the_folder_is_set() {
             .as_array()
             .unwrap()
             .iter()
-            .all(|a| a["kind"] == "practice")
+            .all(|a| a["kind"] == "codex")
     );
     assert_eq!(team["folder"], json!(folder.display().to_string()));
 }

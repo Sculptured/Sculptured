@@ -21,17 +21,17 @@ import { Btn, Icon, type IconName } from '../shell/ui';
 import { CARD_H, CARD_W } from '../layout';
 import { isMadl } from './madl';
 import { kindVendor } from './Panels';
+import { vendor } from '../herdr';
 import { plural } from '../format';
 import { GenerateTeam } from './GenerateTeam';
 
 const KIND_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', practice: 'Practice' };
 const kindIcon = (k: AgentKind): IconName => k;
 
-/** "2 agents · Claude, Codex", or "2 Practice agents" when Practice is on. */
-export function previewCaption(d: TeamDraft, practice: boolean): string {
+/** "2 agents · Claude, Codex". */
+export function previewCaption(d: TeamDraft): string {
   const n = d.agents.length;
   if (n === 0) return 'empty · add agents yourself';
-  if (practice) return plural(n, 'Practice agent');
   const kinds = [...new Set(d.agents.map((a) => KIND_WORD[a.kind]))];
   return `${plural(n, 'agent')} · ${kinds.join(', ')}`;
 }
@@ -62,7 +62,7 @@ function PreviewName({ x, y, name }: { x: number; y: number; name: string }) {
 }
 
 /** A small drawing of a template's agents and who hands work to whom. */
-export function TemplatePreview({ draft, practice }: { draft: TeamDraft; practice: boolean }) {
+export function TemplatePreview({ draft }: { draft: TeamDraft }) {
   const arrowId=useId();
   if (draft.agents.length === 0)
     return (
@@ -73,8 +73,8 @@ export function TemplatePreview({ draft, practice }: { draft: TeamDraft; practic
         </text>
       </svg>
     );
-  const stages = Object.entries(stageBoxes(draft)).map(([id, b]) => ({ id, name: draft.workflow!.stages.find(s => `$stage:${s.id}` === id)?.name ?? id, kind: 'practice' as const, ...b }));
-  const nodes = draft.workflow?.dispatcher ? [{id:'$workflow-input',name:'Input',kind:'practice' as const,...inputBox(draft)},...draft.agents,...stages] : draft.agents;
+  const stages = Object.entries(stageBoxes(draft)).map(([id, b]) => ({ id, name: draft.workflow!.stages.find(s => `$stage:${s.id}` === id)?.name ?? id, kind: null, ...b }));
+  const nodes = draft.workflow?.dispatcher ? [{id:'$workflow-input',name:'Input',kind:null,...inputBox(draft)},...draft.agents,...stages] : draft.agents;
   const links = draft.workflow ? workflowLinks(draft) : draft.connections;
   const boxes=[...nodes.map(a=>({...a,w:CARD_W,h:CARD_H})),...draft.groups];
   const x0=Math.min(...boxes.map(b=>b.x))-24, y0=Math.min(...boxes.map(b=>b.y))-24;
@@ -100,13 +100,13 @@ export function TemplatePreview({ draft, practice }: { draft: TeamDraft; practic
         return <path key={c.id} className="tpl-edge" d={`M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2 - 6},${y2}`} markerEnd={`url(#${arrowId})`} />;
       })}
       {nodes.map((a) => {
-        const v = kindVendor(practice ? 'practice' : a.kind);
+        const v = a.kind ? kindVendor(a.kind) : vendor(undefined);
         return (
           <g key={a.id} className={`tpl-agent ${v.cls}`}>
             <rect x={a.x} y={a.y} width={CARD_W} height={CARD_H} rx={22} />
             <rect x={a.x + 16} y={a.y + 14} width={36} height={36} rx={10} className="tpl-head" />
             <svg x={a.x + 22} y={a.y + 20} width={24} height={24} className="tpl-mark">
-              <Icon name={kindIcon(practice ? 'practice' : a.kind)} size={24} strokeWidth={2.4} />
+              <Icon name={a.kind ? kindIcon(a.kind) : 'bot'} size={24} strokeWidth={2.4} />
             </svg>
             <PreviewName x={a.x + 64} y={a.y + 42} name={a.name} />
             <line x1={a.x + 16} x2={a.x + CARD_W - 40} y1={a.y + 80} y2={a.y + 80} className="tpl-line" />
@@ -237,8 +237,7 @@ function readMore(): boolean {
 /**
  * New project: the template gallery. A few starting teams come first, the rest sit under More
  * templates, Describe it is the second way in, and file import stays under Advanced. Every agent
- * runs on the kind chosen above the cards (Claude by default); Practice agents are not offered
- * here. Choosing a template creates the team and opens its Design board.
+ * runs on the kind chosen above the cards (Claude by default). Choosing a template creates the team and opens its Design board.
  */
 export function TemplateGallery({ onCreated, onClose, inline, flow = inline, advanced }: { onCreated: (id: string, open?: { history?: boolean }) => void; onClose?: () => void; inline?: boolean; /** The three steps of a run, for a first visit. */ flow?: boolean; /** More expert ways in, under Advanced. */ advanced?: ReactNode }) {
   const [describing, setDescribing] = useState(false);
@@ -246,14 +245,13 @@ export function TemplateGallery({ onCreated, onClose, inline, flow = inline, adv
   const [templates, setTemplates] = useState<TemplateInfo[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [kind, setKind] = useState<AgentKind>('claude');
-  const practice = kind === 'practice';
   const [name, setName] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(readMore);
   const createOnce = useRequestOnce();
   /** The template as it will be created: every agent on the chosen kind. */
-  const as = (d: TeamDraft) => (practice ? d : setKindAll(d, kind));
+  const as = (d: TeamDraft) => setKindAll(d, kind);
   const box = useRef<HTMLDivElement>(null);
   const opener = useRef<Element | null>(null);
 
@@ -279,8 +277,8 @@ export function TemplateGallery({ onCreated, onClose, inline, flow = inline, adv
     setBusy(t.id);
     setError(null);
     try {
-      const rec = await createOnce((id) => api.createTeam(t.id, practice, name.trim() || null, id));
-      if (!practice && rec.draft.agents.some((a) => a.kind !== kind)) await api.saveTeam(rec.draft.id, rec.draft.revision, as(rec.draft));
+      const rec = await createOnce((id) => api.createTeam(t.id, false, name.trim() || null, id));
+      if (rec.draft.agents.some((a) => a.kind !== kind)) await api.saveTeam(rec.draft.id, rec.draft.revision, as(rec.draft));
       onCreated(rec.draft.id);
     } catch (e) {
       setError(errorText(e));
@@ -294,12 +292,12 @@ export function TemplateGallery({ onCreated, onClose, inline, flow = inline, adv
   const card = (t: TemplateInfo) => (
     <li key={t.id}>
       <button type="button" className="tpl-card" onClick={() => create(t)} disabled={!!busy} aria-labelledby={`${ids}-${t.id}-t`} aria-describedby={`${ids}-${t.id}`}>
-        <TemplatePreview draft={as(t.preview)} practice={practice} />
+        <TemplatePreview draft={as(t.preview)} />
         <span className="tpl-title" id={`${ids}-${t.id}-t`}>
           {t.title}
         </span>
         <span id={`${ids}-${t.id}`} className="tpl-summary">
-          {plainSummary(t)} <span className="tpl-caption">{previewCaption(as(t.preview), practice)}</span>
+          {plainSummary(t)} <span className="tpl-caption">{previewCaption(as(t.preview))}</span>
         </span>
         {busy === t.id && <span className="tpl-busy">creating…</span>}
       </button>
@@ -343,7 +341,7 @@ export function TemplateGallery({ onCreated, onClose, inline, flow = inline, adv
           </label>
           <input id={`${ids}-name`} className="field" value={name} spellCheck={false} placeholder="optional · rename any time" onChange={(e) => setName(e.target.value)} />
         </span>
-        {!practice && <p className="gallery-warn tone-amber">{kindWord} agents use your own CLI logins and may cost money once started. You can switch any agent later.</p>}
+        <p className="gallery-warn tone-amber">{kindWord} agents use your own CLI logins and may cost money once started. You can switch any agent later.</p>
       </div>
       {loadError && (
         <DismissibleError className="tone-red pad">

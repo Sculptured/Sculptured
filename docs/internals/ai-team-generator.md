@@ -25,7 +25,7 @@ flowchart LR
 **Options:**
 - CLI and model;
 - team size (2–3, 4–6, 7–10);
-- agent kinds (as the CLI, Claude, Codex, mixed, Practice);
+- agent kinds (as the CLI, Claude, Codex, mixed);
 - shape (chain, a lead with helpers, builders with reviewers, or the AI's choice);
 - check commands;
 - 1 or 3 alternatives;
@@ -99,7 +99,7 @@ flowchart TD
   S[sketch] --> I["ids: unique slugs of names<br/>(two 'Writer' → writer, writer-2)"]
   I --> N["names: a repeated name becomes 'Writer 2' (reported);<br/>arrows match names ignoring case and spaces"]
   N --> G["groups: unknown group name → main group (reported)"]
-  G --> K["kinds: option overrides (Practice: all Practice), else the AI's"]
+  G --> K["kinds: option overrides, else the AI's"]
   K --> A["arrows: unknown or self-pointing ones dropped (reported), duplicates removed"]
   A --> L["layout: column = longest 'hands work to' path (cycle-safe),<br/>rows by group within a column, group boxes around their agents"]
   L --> F["sculptured.team/v1 + issues from the draft checks"]

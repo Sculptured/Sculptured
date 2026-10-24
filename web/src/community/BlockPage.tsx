@@ -29,7 +29,7 @@ export function BlockPage() {
   const copy = projectCopy(pub);
   return (
     <article className="cm-page cm-block">
-      {opensHere(pub) && <div className="cm-preview cm-preview-large"><TemplatePreview draft={pub.content.draft} practice={false} /></div>}
+      {opensHere(pub) && <div className="cm-preview cm-preview-large"><TemplatePreview draft={pub.content.draft} /></div>}
       <h1>{pub.title}</h1>
       <p className="cm-meta"><AuthorChip author={pub.author} /> <span className="muted">v{pub.version} · {pub.license}</span></p>
       <BlockDescription text={pub.description} />

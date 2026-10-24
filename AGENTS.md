@@ -36,7 +36,7 @@ ongoing collaboration. Routing and workflow automation support that experience.
 ## Visualizations are the primary interface
 - The team board is the entry point. Clicking, tapping or pressing Enter on an agent opens it.
   Keep raw events available as evidence next to the visual summaries.
-- The default UI speaks plain words: Team, Group, Agent, Practice agent, "hands work to", Job, Folder.
+- The default UI speaks plain words: Team, Group, Agent, "hands work to", Job, Folder.
   OpenRig words (rig, pod, seat, member, edge, runtime, RigSpec, YAML) appear only inside an Advanced
   disclosure (`data-advanced`). UI tests check this with `web/src/test-vocab.ts`; keep words in `web/src/vocab.ts`.
 - Server errors are shown in plain words (`web/src/errors.ts`), never as the server's own text.

@@ -50,7 +50,7 @@ fn sketch_schema() -> Value {
         "groups": { "type": "array", "items": strict(json!({ "name": { "type": "string" } })) },
         "agents": { "type": "array", "items": strict(json!({
             "name": { "type": "string" },
-            "kind": { "type": "string", "enum": ["claude", "codex", "practice"] },
+            "kind": { "type": "string", "enum": ["claude", "codex"] },
             "group": { "type": ["string", "null"] },
             "job": { "type": "string" },
             "check": { "type": ["string", "null"] },
@@ -103,7 +103,6 @@ impl Kinds {
         match o {
             Some("claude") => Kinds::All(AgentKind::Claude),
             Some("codex") => Kinds::All(AgentKind::Codex),
-            Some("practice") => Kinds::All(AgentKind::Practice),
             _ => Kinds::AsSketched,
         }
     }
@@ -125,7 +124,6 @@ const HEAD: i32 = 32;
 fn kind_of(s: &str) -> AgentKind {
     match s {
         "codex" => AgentKind::Codex,
-        "practice" => AgentKind::Practice,
         _ => AgentKind::Claude,
     }
 }

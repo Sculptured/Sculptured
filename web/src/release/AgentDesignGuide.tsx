@@ -85,7 +85,7 @@ export function AgentDesignGuide() {
         <li><strong>Hands work to</strong> arrows build pipelines; a group holds agents that share instructions.</li>
         <li>Give each agent a <strong>token limit</strong> (optionally including the agents it spawns) and set reviewers to <strong>Restricted</strong>.</li>
         <li>An agent saying “done” is a report, not proof: make the last step run the tests.</li>
-        <li>Try each pattern from the <Link to="/community/explore?q=cs2680">CS2680 pattern catalog</Link> with Practice agents first; they cost nothing.</li>
+        <li>Try each pattern from the <Link to="/community/explore?q=cs2680">CS2680 pattern catalog</Link>.</li>
       </ul>
       <p className="muted">Paraphrased from Juncheng Yang’s CS2680 lectures; not an endorsement by the course.</p>
     </article>

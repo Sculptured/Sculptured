@@ -122,19 +122,12 @@ it('adding an Anthropic key sends it once and only ever shows its last four char
   expect(key).toHaveValue('');
 });
 
-it('OpenRouter needs a model before it is saved', async () => {
-  const { posts } = serve({ done: ['welcome', 'computer'], hosts: [{ id: 'd1' }], connections: [] });
+it('offers an Anthropic key form and no OpenRouter one (not finished yet)', async () => {
+  serve({ done: ['welcome', 'computer'], hosts: [{ id: 'd1' }], connections: [] });
   open();
-  const form = await screen.findByRole('form', { name: 'Claude via OpenRouter' });
-  expect(within(form).getByLabelText('Model')).toHaveAttribute('placeholder', 'anthropic/claude-sonnet-4.5');
-  expect(within(form).getByText(/Claude models work best/)).toBeInTheDocument();
-  await userEvent.type(within(form).getByLabelText('OpenRouter key'), 'sk-or-v1-abcd');
-  await userEvent.click(within(form).getByRole('button', { name: 'Save and check' }));
-  expect(within(form).getByRole('alert')).toHaveTextContent(/Choose a model/);
-  expect(posts).toHaveLength(0);
-  await userEvent.type(within(form).getByLabelText('Model'), 'anthropic/claude-sonnet-4.5');
-  await userEvent.click(within(form).getByRole('button', { name: 'Save and check' }));
-  await waitFor(() => expect(posts[0]?.body).toMatchObject({ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.5', key: 'sk-or-v1-abcd' }));
+  expect(await screen.findByRole('form', { name: 'Claude — API key' })).toBeInTheDocument();
+  expect(screen.queryByRole('form', { name: 'Claude via OpenRouter' })).not.toBeInTheDocument();
+  expect(screen.queryByText(/OpenRouter/)).not.toBeInTheDocument();
 });
 
 const unchecked: Conn = { id: 'c1', name: 'Work key', provider: 'anthropic-key', model: null, key_last4: '9876', checked: null, created_at: '2026-10-21T00:00:00Z' };

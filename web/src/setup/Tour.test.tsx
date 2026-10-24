@@ -60,7 +60,7 @@ it('a tip whose element is not on this page says where to find it', () => {
   expect(screen.getByRole('dialog')).toHaveTextContent(/not on this page/);
 });
 
-it('First project creates the practice team, opens its board with the tour, and the tour marks setup', async () => {
+it('First project creates a Claude team, opens its board with the tour, and the tour marks setup', async () => {
   const puts: { done: string[]; skipped: string[] }[] = [];
   const created: unknown[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
@@ -68,7 +68,7 @@ it('First project creates the practice team, opens its board with the tour, and 
     const method = init?.method ?? 'GET';
     if (u.endsWith('/api/setup') && method === 'PUT') { const b = JSON.parse(String(init!.body)); puts.push(b); return reply(b); }
     if (u.endsWith('/api/setup')) return reply({ done: ['welcome', 'computer', 'models', 'computers'], skipped: [] });
-    if (u.endsWith('/api/teams') && method === 'POST') { created.push(JSON.parse(String(init!.body))); return reply({ draft: { id: 'practice-1', name: 'Practice project', agents: [] } }); }
+    if (u.endsWith('/api/teams') && method === 'POST') { created.push(JSON.parse(String(init!.body))); return reply({ draft: { id: 'first-1', name: 'First project', agents: [] } }); }
     return reply({}, 404);
   });
   const session: HostedSession = { kind: 'signed-in', user: { id: 'u', name: 'Ana', email: 'a@x.com', role: 'member' }, csrf: 'c' };
@@ -86,8 +86,8 @@ it('First project creates the practice team, opens its board with the tour, and 
     </MemoryRouter>,
   );
   const user = userEvent.setup();
-  await user.click(await screen.findByRole('button', { name: 'Create the practice project' }));
-  await waitFor(() => expect(created[0]).toMatchObject({ practice: true }));
+  await user.click(await screen.findByRole('button', { name: 'Create the first project' }));
+  await waitFor(() => expect(created[0]).toMatchObject({ template: 'builder-reviewer', practice: false }));
   expect(await screen.findByRole('dialog', { name: TOUR_TIPS[0].title })).toBeInTheDocument();
   expect(screen.getByText('Builder card')).toBeInTheDocument();
   for (let i = 0; i < TOUR_TIPS.length - 1; i++) await user.click(screen.getByRole('button', { name: 'Next' }));

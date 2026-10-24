@@ -61,17 +61,12 @@ const SELECTIONS = new Map<string, Selection | null>();
 export const forgetBoardSelections = () => SELECTIONS.clear();
 
 export function SaveStatus({ state, error, onRetry, onReload, onKeepMine }: { state: SaveState; error: string | null; onRetry: () => void; onReload: () => void; onKeepMine: () => void }) {
-  // Saved is the normal state: nothing on screen, still announced to screen readers.
-  if (state === 'saved')
+  // Saving is automatic and normal: nothing on screen (so nothing moves while you type), still
+  // announced to screen readers. Only a failed save shows.
+  if (state === 'saved' || state === 'unsaved' || state === 'saving')
     return (
       <span className="save-state sr-only" role="status">
-        <span aria-hidden="true">✓ </span>saved
-      </span>
-    );
-  if (state === 'unsaved' || state === 'saving')
-    return (
-      <span className="save-state muted" role="status">
-        <span aria-hidden="true">◌ </span>saving…
+        {state === 'saved' ? 'saved' : 'saving…'}
       </span>
     );
   return (

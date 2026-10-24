@@ -5,9 +5,9 @@ import './setup.css';
 export type TourTip = { id: string; title: string; text: string; anchors: string[]; where: string };
 
 export const TOUR_TIPS: TourTip[] = [
-  { id: 'agent', title: 'Each card is an agent', text: 'An agent is one Claude Code, Codex or Practice worker with a job. Click its card, or press Enter on it, to see and change what it does.', anchors: ['[data-agent]'], where: 'Agent cards are on a project’s Design board.' },
+  { id: 'agent', title: 'Each card is an agent', text: 'An agent is one Claude Code or Codex worker with a job. Click its card, or press Enter on it, to see and change what it does.', anchors: ['[data-agent]'], where: 'Agent cards are on a project’s Design board.' },
   { id: 'where', title: 'Where it works', text: 'Each agent works in a folder on one of your computers. Open an agent to choose its Computer and Folder.', anchors: ['[data-tour="agent-folder"]', '[data-agent]'], where: 'Computer and Folder are in an agent’s setup.' },
-  { id: 'start', title: 'Start the team', text: 'Start runs every agent. This practice team makes no model calls, so it costs nothing.', anchors: ['[data-tour="start"]'], where: 'Start is at the top of a project.' },
+  { id: 'start', title: 'Start the team', text: 'Start runs every agent. Choose a folder for them first; once started they use your model sign-in and may cost money.', anchors: ['[data-tour="start"]'], where: 'Start is at the top of a project.' },
   { id: 'run', title: 'Watch it on the Run board', text: 'Once the team has started, switch to Run to see what each agent is doing, live, and to message it.', anchors: ['[data-tour="board-mode"]'], where: 'Design and Run switch the board, at the top of a project.' },
   { id: 'fix', title: 'Questions and Things to fix', text: 'Agents ask you things under Questions. Things to fix lists what keeps a team from starting; each item opens what it is about.', anchors: ['[data-tour="fix"]', '[data-tour="questions"]'], where: 'Questions is in a project’s tabs.' },
 ];

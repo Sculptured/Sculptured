@@ -112,7 +112,7 @@ export type GenerateOptions = {
   cli: 'claude' | 'codex';
   model: string | null;
   size: '2-3' | '4-6' | '7-10' | null;
-  kinds: 'claude' | 'codex' | 'mixed' | 'practice' | null;
+  kinds: 'claude' | 'codex' | 'mixed' | null;
   shape: 'chain' | 'lead' | 'reviewers' | null;
   checks: boolean;
   folder: string | null;

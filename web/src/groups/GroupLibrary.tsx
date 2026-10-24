@@ -28,7 +28,7 @@ export function GroupLibrary() {
     {error&&<DismissibleError>{error} <Btn onClick={reload}>Retry</Btn></DismissibleError>}{!blocks&&!error&&<p>Loading saved groups…</p>}
     {empty&&<div className="library-empty"><span className="library-empty-mark" aria-hidden="true"><Icon name="group" size={22}/></span><h3>No groups saved yet</h3><p>Create one here, import a downloaded group file, or select a group on a project's board and choose <strong>Save group to Library</strong>.</p>{actions}</div>}
     <div className="group-library-grid">{blocks?.map(b=><article className="group-library-card" key={b.id}>
-      <button className="library-card-preview" aria-label={`Inspect ${b.name}`} onClick={()=>setInspecting(b)}><TemplatePreview draft={b.draft} practice={false}/></button>
+      <button className="library-card-preview" aria-label={`Inspect ${b.name}`} onClick={()=>setInspecting(b)}><TemplatePreview draft={b.draft}/></button>
       <div className="library-card-body"><h3>{b.name}</h3><p>{b.draft.agents.length} {b.draft.agents.length===1?'agent':'agents'} · {b.draft.workflow?`${b.draft.workflow.stages.length} workflow stages`:`${b.draft.connections.length} connections`}</p>
       {b.boundary_notes.length>0&&<small>{b.boundary_notes.length} external connections to reconnect</small>}
       {b.source&&<small><Link to={`/community/blocks/${encodeURIComponent(b.source.community_block)}`}>From Community · v{b.source.version}</Link></small>}</div>

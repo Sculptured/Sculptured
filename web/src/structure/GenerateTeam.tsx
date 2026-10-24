@@ -245,7 +245,6 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
                   <option value="claude">Claude</option>
                   <option value="codex">Codex</option>
                   <option value="mixed">Mixed</option>
-                  <option value="practice">Practice (free, no model calls when run)</option>
                 </select>
               </label>
               <label>
@@ -324,7 +323,7 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
           {offer.map((t) => (
             <article key={t.label} className="gen-card">
               <h3>{LABELS[t.label] ?? t.label}</h3>
-              <TemplatePreview draft={t.draft} practice={t.draft.agents.every((a) => a.kind === 'practice')} />
+              <TemplatePreview draft={t.draft} />
               <p className="muted">
                 {plural(t.draft.agents.length, 'agent')} · {plural(t.draft.connections.length, 'arrow')}
                 {t.issues.length > 0 ? ` · ${plural(t.issues.length, 'issue')}` : ''}
@@ -343,7 +342,7 @@ export function GenerateTeam({ onCreated, onCancel }: { onCreated: (id: string) 
 
       {step === 'refine' && chosen && current && (
         <div className="gen-refine">
-          <TemplatePreview draft={current} practice={current.agents.every((a) => a.kind === 'practice')} />
+          <TemplatePreview draft={current} />
           <fieldset>
             <legend>Agents</legend>
             {chosen.draft.agents.map((a) => (

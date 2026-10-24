@@ -319,7 +319,7 @@ describe('Structure board: deleting and refusals', () => {
 });
 
 describe('Structure board: autosave', () => {
-  it('shows saving… then saved, and on a conflict keeps your edits and offers Reload', async () => {
+  it('announces saving… then saved without showing either, and on a conflict keeps your edits and offers Reload', async () => {
     saveTiming.delayMs = 150;
     const server = await board();
     const user = userEvent.setup();
@@ -327,6 +327,8 @@ describe('Structure board: autosave', () => {
     const name = await screen.findByRole('textbox', { name: 'Name' });
     await user.type(name, 'X');
     expect(document.querySelector('.save-state')).toHaveTextContent('saving…');
+    // Saving shows nothing on screen, so nothing moves while you type.
+    expect(document.querySelector('.save-state')).toHaveClass('sr-only');
     await waitFor(() => expect(document.querySelector('.save-state')).toHaveTextContent('saved'));
     // Saved is the normal state: nothing on screen, still announced.
     expect(document.querySelector('.save-state')).toHaveClass('sr-only');

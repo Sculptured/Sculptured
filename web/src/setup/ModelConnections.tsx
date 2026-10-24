@@ -39,7 +39,7 @@ export function ModelConnections({ onWorking }: { onWorking?: (ok: boolean) => v
   return (
     <>
       <h3>Pay-per-use keys</h3>
-      <p className="muted">A key is kept sealed on the Sculptured server, handed to an agent only when it starts, and never shown again. Runs with a key are billed to your own Anthropic or OpenRouter account. Check asks the provider whether the key works and uses no tokens.</p>
+      <p className="muted">A key is kept sealed on the Sculptured server, handed to an agent only when it starts, and never shown again. Runs with a key are billed to your own Anthropic account. Check asks the provider whether the key works and uses no tokens.</p>
       {list.length > 0 && (
         <ul className="setup-list" aria-label="Your model connections">
           {list.map((c) => <ConnectionRow key={c.id} c={c} check={checkOf(c)} busy={busy === c.id} onCheck={() => void check(c.id)} onDelete={() => void remove(c.id)} />)}
@@ -48,8 +48,8 @@ export function ModelConnections({ onWorking }: { onWorking?: (ok: boolean) => v
       {loaded && list.length === 0 && <p className="muted">No keys yet.</p>}
       {error && <p className="tone-red" role="alert">{error}</p>}
       <div className="setup-forms">
+        {/* OpenRouter is not finished: Setup offers no form for it. Keys added before still list above. */}
         <KeyForm provider="anthropic-key" onAdded={async (c) => { await reload(); await check(c.id); }} />
-        <KeyForm provider="openrouter" onAdded={async (c) => { await reload(); await check(c.id); }} />
       </div>
     </>
   );

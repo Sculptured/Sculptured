@@ -55,7 +55,7 @@ function ComputerAccess({ device }: { device: Device }) {
     <>
       <p>Allow ‘{device.name}’ ({device.platform}) to run agents for you?</p>
       <p className="tone-amber" role="note"><strong>Only approve a code you just saw on your own computer.</strong> If someone sent you this link, don't approve it: their computer would run your teams and see your work.</p>
-      <p className="muted">It will run your teams' Claude Code, Codex and Practice agents there. Agents start in the folders that computer allows and, unless it was connected with <code>--sandboxed</code>, can act as you do on that computer. You can disconnect it any time from Computers.</p>
+      <p className="muted">It will run your teams' Claude Code and Codex agents there. Agents start in the folders that computer allows and, unless it was connected with <code>--sandboxed</code>, can act as you do on that computer. You can disconnect it any time from Computers.</p>
     </>
   );
 }
