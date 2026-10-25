@@ -47,6 +47,7 @@ If the computer's connection drops while a call is waiting, the runner keeps the
 | [`read_decisions`](#read_decisions) | any agent | Reads the team's decision log. |
 | [`search_history`](#search_history) | any agent | Searches what the team's agents already wrote, ran and were told. |
 | [`record_lesson`](#record_lesson) | any agent | Records a lesson every agent of the team is told. |
+| [`write_status`](#write_status) | the status page's owner | Replaces the team's status page. |
 | [`read_pdf`](#read_pdf) | any agent | Reads a PDF's text, page by page. |
 | [`read_skill`](#read_skill) | Codex agents with skills | Loads one of the agent's skills. |
 
@@ -210,6 +211,17 @@ Records a lesson for the team: something that cost the agent a wrong turn, in a 
 | `kind` | `lesson` or `constraint` | no | `constraint`: a rule every agent must follow in this project; it comes first in briefings. Default `lesson`. |
 
 When you confirm a lesson or constraint, it is also kept with the project for later teams; see [Lessons kept with the project](/guides/knowledge#lessons-kept-with-the-project).
+
+## The status page
+
+### `write_status`
+
+Replaces the team's [status page](/guides/status-page): the one page that says where the work stands and what changed, under Results → Status. Only the agent that owns the page may call it; its briefing says so, and any other agent is told who does. Each call replaces the whole page, and every earlier version is kept.
+
+| Parameter | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `markdown` | string | yes | The whole page, in Markdown. At most 64 KB. |
+| `done` | boolean | no | `true` for the final version, once the team's work is finished. Default `false`. |
 
 ## Reading files
 

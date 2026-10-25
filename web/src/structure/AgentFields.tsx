@@ -18,6 +18,7 @@ import { TextArea } from '../shell/TextArea';
 import { Btn, Icon } from '../shell/ui';
 import { KIND_LABEL, NOT_ENFORCED, WORDS } from '../vocab';
 import { BriefingField } from './BriefingField';
+import { StatusOwnerField } from './StatusOwnerField';
 import { ContractFields } from './ContractFields';
 import { FolderPicker, shortPath, useHome } from './FolderPicker';
 import { KindSwitch, modelLabel, ModelSelect } from './ModelControls';
@@ -299,6 +300,7 @@ export function AdvancedFields(p: Common) {
       <LimitsField {...p} />
       <CheckField {...p} />
       <BriefingField a={p.a} edit={p.edit} locked={p.locked} />
+      <StatusOwnerField {...p} />
       <SkillFields agent={p.a} edit={p.edit} locked={p.locked} />
       <RawConfig {...p} />
     </>

@@ -211,6 +211,9 @@ pub(super) async fn dispatch(
         "record_lesson" => crate::knowledge::record_lesson(st, seat, args)
             .map(|v| (v, None))
             .map_err(invalid),
+        "write_status" => crate::status_page::write_status(st, seat, args)
+            .map(|v| (v, None))
+            .map_err(invalid),
         "read_skill" => crate::skills::read_skill(st, seat, args)
             .map(|v| (v, None))
             .map_err(invalid),

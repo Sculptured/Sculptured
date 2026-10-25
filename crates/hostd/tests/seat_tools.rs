@@ -100,6 +100,7 @@ fn the_shim_initializes_and_lists_its_tools() {
             "spawn_agent",
             "send_agent_message",
             "team_status",
+            "write_status",
             "read_pdf"
         ]
     );
@@ -118,6 +119,7 @@ fn the_shim_initializes_and_lists_its_tools() {
             "spawn_agent",
             "send_agent_message",
             "team_status",
+            "write_status",
             "read_pdf",
             "approve"
         ]
@@ -379,6 +381,7 @@ fn a_team_without_a_workflow_is_not_offered_the_workflow_tools() {
             "spawn_agent",
             "send_agent_message",
             "team_status",
+            "write_status",
             "read_pdf"
         ]
     );

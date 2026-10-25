@@ -45,6 +45,7 @@ pub mod settings;
 pub mod setup;
 pub mod skills;
 pub mod state;
+pub mod status_page;
 pub mod store;
 pub mod stream;
 mod team_context;

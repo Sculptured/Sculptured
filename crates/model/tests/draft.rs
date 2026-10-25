@@ -43,6 +43,7 @@ fn reviewer() -> DraftAgent {
             token_limit: None,
             check: None,
             briefing: None,
+            writes_status: false,
         },
         connection: None,
     }

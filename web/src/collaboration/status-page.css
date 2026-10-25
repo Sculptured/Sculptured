@@ -1,0 +1,17 @@
+/* Results → Status: the team's status page, read like a document rather than a chat message. */
+.status-page { display: grid; gap: var(--space-4); align-content: start; }
+.status-page header { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.status-page header h2 { margin: 0; margin-right: auto; }
+.sp-versions { display: inline-flex; align-items: center; gap: 6px; }
+.sp-versions select { max-width: 280px; }
+.sp-page { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); padding: var(--space-5) var(--space-6); max-width: 88ch; width: 100%; box-sizing: border-box; }
+.sp-about { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); font-size: var(--text-sm); }
+.sp-state { font-weight: var(--weight-medium); }
+.sp-done { color: var(--green); }
+.sp-live { color: var(--muted); }
+.sp-body { font-size: var(--text-md, 15px); line-height: 1.6; overflow-wrap: anywhere; }
+.sp-old { display: flex; align-items: center; gap: var(--space-2); margin: 0; }
+.sp-empty p { margin: 0 0 6px; }
+@media (max-width: 720px) {
+  .sp-page { padding: var(--space-4); }
+}

@@ -1,6 +1,7 @@
 //! Deterministic driver with no model: used by demos, integration tests and e2e. Practice scripts (the
 //! message text): `hang`, `crash`, `fail`, `limit`, `tool:<cmd>`, `ask:`, `ask-only:`, `ask-silent:`,
-//! `perm:`, `request:`, `report:`; anything else is echoed as `stub received: <text>`.
+//! `perm:`, `request:`, `report:`, `<tool>:<json>` for the collaboration tools and `write_status`;
+//! anything else is echoed as `stub received: <text>`.
 use crate::{
     Driver, DriverError, DriverEvent, LaunchSpec, OutboundMessage, SeatToolsLaunch, Session,
 };
@@ -277,7 +278,12 @@ fn scripted_turn(
     if let Some((rest, silent, allow_other)) = ask_script(text) {
         return ask_turn(core, turn, rest, silent, allow_other);
     }
-    for tool in ["spawn_agent", "send_agent_message", "team_status"] {
+    for tool in [
+        "spawn_agent",
+        "send_agent_message",
+        "team_status",
+        "write_status",
+    ] {
         if let Some(rest) = text.strip_prefix(&format!("{tool}:")) {
             let args = match serde_json::from_str(rest) {
                 Ok(v) => v,

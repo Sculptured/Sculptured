@@ -10,10 +10,11 @@ export const DOCS_URL = 'https://docs.usesculptured.com';
 
 export type BoardMode = 'design' | 'run';
 export type AgentTab = 'conversation' | 'setup' | 'activity' | 'questions';
-export type ResultsSection = 'summary' | 'conversation' | 'usage' | 'communications' | 'knowledge' | 'history';
+export type ResultsSection = 'summary' | 'status' | 'conversation' | 'usage' | 'communications' | 'knowledge' | 'history';
 
 export const RESULTS_SECTIONS: { id: ResultsSection; label: string }[] = [
   { id: 'summary', label: 'Summary' },
+  { id: 'status', label: 'Status' },
   { id: 'conversation', label: 'Team conversation' },
   { id: 'usage', label: 'Usage' },
   { id: 'communications', label: 'Communications' },

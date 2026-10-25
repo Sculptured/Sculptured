@@ -106,3 +106,4 @@
 .skill-editor .skill-body textarea { flex:1; }
 .fld-error { color:var(--danger, #b42318); font-size:var(--text-sm, 12px); margin:4px 0 0; }
 .fld-check > span:first-child { display:flex; align-items:center; gap:6px; }
+.fld-checkline { display:flex; align-items:center; gap:6px; }

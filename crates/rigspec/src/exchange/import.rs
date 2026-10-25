@@ -185,6 +185,7 @@ fn draft_agent(
             resume: resume_of(seat.restore_policy),
             token_limit: None,
             check: None,
+            writes_status: false,
         },
         // A team file never names the person's own model connection.
         connection: None,

@@ -253,6 +253,13 @@ pub enum EventBody {
         findings: Vec<Finding>,
         verdict: ReportVerdict,
     },
+    /// The team's status page, as its owner wrote it with `write_status` (subject: the team). Each
+    /// version is kept; the newest is the page. `done`: the owner's final version for the work.
+    StatusPageWritten {
+        markdown: String,
+        #[serde(default)]
+        done: bool,
+    },
     /// An agent report or tool call that failed validation (spec §6.3). Evidence; never interrupts the agent.
     ReportRejected {
         tool: String,

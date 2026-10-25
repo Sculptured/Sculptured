@@ -74,10 +74,10 @@ describe('Results', () => {
     vi.useRealTimers();
   });
 
-  it('has its own tabs for the team conversation, usage, communications, knowledge and history', async () => {
+  it('has its own tabs for the status page, team conversation, usage, communications, knowledge and history', async () => {
     await twoTeams('/p/r/results', finished());
     const tabs = screen.getByRole('navigation', { name: 'Results' });
-    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Summary', 'Team conversation', 'Usage', 'Communications', 'Knowledge', 'History']);
+    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Summary', 'Status', 'Team conversation', 'Usage', 'Communications', 'Knowledge', 'History']);
     await userEvent.setup().click(within(tabs).getByRole('link', { name: 'History' }));
     expect(where()).toBe('/p/r/results/history');
     await waitFor(() => expect(api.deployments).toHaveBeenCalled());

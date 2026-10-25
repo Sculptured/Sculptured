@@ -109,6 +109,10 @@ pub struct AgentAdvanced {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub briefing: Option<crate::BriefingLevel>,
+    /// This agent writes the team's status page (`TeamDraft::status_owner`). At most one agent sets it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub writes_status: bool,
 }
 
 /// Limits a person set on a team's spawned agents. None = no limit; Sculptured sets none of its own.
@@ -431,6 +435,36 @@ impl TeamDraft {
             }
         }
         out
+    }
+
+    /// The agent that writes the team's status page: the one chosen for it; else the workflow's
+    /// collector; else the one agent at the end of the line (others hand work to it, it hands work to
+    /// nobody); else the one agent that leads (hands work on, is handed none); else the first agent.
+    #[must_use]
+    pub fn status_owner(&self) -> Option<&DraftAgent> {
+        let by_id = |id: &str| self.agents.iter().find(|a| a.id == id);
+        if let Some(a) = self.agents.iter().find(|a| a.advanced.writes_status) {
+            return Some(a);
+        }
+        if let Some(a) = self.workflow.as_ref().and_then(|w| by_id(&w.collector)) {
+            return Some(a);
+        }
+        let hands = |a: &DraftAgent, from: bool| {
+            self.connections.iter().any(|c| {
+                c.kind == ConnectionKind::HandsWorkTo
+                    && if from { c.from == a.id } else { c.to == a.id }
+            })
+        };
+        let only = |keep: &dyn Fn(&DraftAgent) -> bool| {
+            let mut it = self.agents.iter().filter(|a| keep(a));
+            match (it.next(), it.next()) {
+                (Some(a), None) => Some(a),
+                _ => None,
+            }
+        };
+        only(&|a| hands(a, false) && !hands(a, true))
+            .or_else(|| only(&|a| hands(a, true) && !hands(a, false)))
+            .or_else(|| self.agents.first())
     }
 
     pub fn effective_folder<'a>(&'a self, a: &'a DraftAgent) -> Option<&'a str> {

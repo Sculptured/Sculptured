@@ -89,6 +89,7 @@ impl Cx<'_> {
                 Some(m::Resume::ResumeIfPossible) | None => ResumeBehaviour::ResumeIfPossible,
             },
             token_limit,
+            writes_status: false,
             check: a.checks.first().map(|c| c.command.clone()),
             data_access: a.data_access.as_ref().map(|d| model::DataAccess {
                 reads: d.reads.clone(),

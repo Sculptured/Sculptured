@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CommunicationDashboard } from '../collaboration/CommunicationDashboard';
 import { DeploymentHistoryView } from '../collaboration/DeploymentHistoryView';
 import { KnowledgeView } from '../collaboration/KnowledgeView';
+import { StatusPageView } from '../collaboration/StatusPageView';
 import { TeamConversation } from '../collaboration/TeamConversation';
 import { UsageDashboard } from '../collaboration/UsageDashboard';
 import { WhereTokensWent } from '../collaboration/WhereTokensWent';
@@ -40,14 +41,16 @@ function agentsOf(p: Project, byId: Record<string, AgentRow>): Record<string, Ag
  */
 export function ResultsPage() {
   const p = useProject();
+  const navigate = useNavigate();
   const { section } = useParams();
   const current = (RESULTS_SECTIONS.find((s) => s.id === section)?.id ?? 'summary') as ResultsSection;
-  // History needs no live team: a team that never ran here can hold an imported run.
-  if (current === 'history' && !p.live)
+  // History and Status need no live team: a team that never ran here can hold an imported run, and
+  // the status page is kept after the team stops.
+  if ((current === 'history' || current === 'status') && !p.live)
     return (
-      <main className="page page-wide results-page results-history">
+      <main className={`page page-wide results-page${current === 'history' ? ' results-history' : ''}`}>
         <SubTabs team={p.team} current={current} />
-        <DeploymentHistoryView rig={p.team} />
+        {current === 'history' ? <DeploymentHistoryView rig={p.team} /> : <StatusPageView rig={p.team} onClose={() => navigate(resultsPath(p.team))} />}
       </main>
     );
   if (!p.started)
@@ -85,6 +88,8 @@ function Section({ p, current }: { p: Project; current: ResultsSection }) {
       return <CommunicationDashboard rig={p.team} state={state} connected={p.connected} names={names} onClose={back} />;
     case 'knowledge':
       return <KnowledgeView rig={p.team} onClose={back} />;
+    case 'status':
+      return <StatusPageView rig={p.team} onClose={back} />;
     case 'history':
       return <DeploymentHistoryView rig={p.team} />;
     default:

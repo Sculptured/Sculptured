@@ -19,6 +19,7 @@ pub(super) fn briefing(d: &TeamDraft, me: &DraftAgent, message: &str) -> String 
     }
     lines.extend(super::own_contract(me));
     lines.extend(crate::skills::briefing_lines(d, me));
+    lines.extend(crate::status_page::briefing_line(d, me));
     lines.push(finish(d, me).into());
     lines.join("\n\n")
 }

@@ -49,4 +49,8 @@ integrations?: Array<string>,
 /**
  * How much of the team the agent is told about (default full).
  */
-briefing?: BriefingLevel, };
+briefing?: BriefingLevel, 
+/**
+ * This agent writes the team's status page (`TeamDraft::status_owner`). At most one agent sets it.
+ */
+writes_status?: boolean, };

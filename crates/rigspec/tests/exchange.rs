@@ -470,6 +470,7 @@ fn connection_ends_models_and_resume_survive_a_round_trip() {
         token_limit: None,
         check: None,
         briefing: None,
+        writes_status: false,
     };
     d.agents.push(helper(Some("build"), opus));
     d.agents[1].advanced.resume = ResumeBehaviour::CheckpointOnly;

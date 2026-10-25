@@ -152,6 +152,7 @@ pub(crate) fn briefing_with(d: &TeamDraft, seat: &str, message: &str) -> Option<
     lines.push("Use downstream jobs to decide your handoff: when another agent owns implementation, provide its plan and inputs instead of doing that agent's work. Respect project-wide constraints stated in the jobs (such as output folders or no publishing) throughout the team. Ask the operator about conflicting instructions.".into());
     lines.extend(team_lines(d, me));
     lines.extend(contract_lines(d, me));
+    lines.extend(crate::status_page::briefing_line(d, me));
     Some(lines.join("\n\n"))
 }
 
@@ -521,6 +522,21 @@ mod tests {
                 .unwrap()
                 .contains("Your group")
         );
+    }
+
+    #[test]
+    fn only_the_status_page_owner_is_told_to_write_it_even_on_a_minimal_briefing() {
+        let mut d =
+            rigspec::templates::template("builder-reviewer", "project", "My project", false)
+                .unwrap();
+        let told = |d: &TeamDraft, id: &str| {
+            briefing(d, &d.seat_id(id).unwrap())
+                .unwrap()
+                .contains("You own this team's status page")
+        };
+        assert!(told(&d, "reviewer") && !told(&d, "builder"));
+        d.agents[1].advanced.briefing = Some(model::BriefingLevel::Minimal);
+        assert!(told(&d, "reviewer"));
     }
 
     #[test]

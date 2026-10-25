@@ -2322,6 +2322,27 @@
           ]
         },
         {
+          "description": "The team's status page, as its owner wrote it with `write_status` (subject: the team). Each\nversion is kept; the newest is the page. `done`: the owner's final version for the work.",
+          "type": "object",
+          "properties": {
+            "done": {
+              "type": "boolean",
+              "default": false
+            },
+            "markdown": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "status-page-written"
+            }
+          },
+          "required": [
+            "type",
+            "markdown"
+          ]
+        },
+        {
           "description": "An agent report or tool call that failed validation (spec §6.3). Evidence; never interrupts the agent.",
           "type": "object",
           "properties": {

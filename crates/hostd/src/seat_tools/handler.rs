@@ -165,6 +165,7 @@ pub(super) fn known(tool: &str, offer: Offer) -> bool {
             | "read_pdf"
             | "search_history"
             | "record_lesson"
+            | "write_status"
     ) || (offer.workflow && workflow)
         || (offer.approve && tool == "approve")
         || (offer.skills && tool == "read_skill")

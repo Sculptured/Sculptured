@@ -105,6 +105,15 @@ const rigUrl = (name: string) => `/api/rigs/${encodeURIComponent(name)}`;
 const seatUrl = (id: string) => `/api/seats/${encodeURIComponent(id)}`;
 
 const teamUrl = (id: string) => `/api/teams/${encodeURIComponent(id)}`;
+
+/** One version of a team's status page, as its owner agent wrote it (agent-reported). */
+export type StatusPage = { seq: number; at_ms: number; author: string; author_name: string; markdown: string; done: boolean };
+export type TeamStatus = {
+  /** The agent that writes it; `chosen` when a person picked it, else Sculptured's default. */
+  owner: { id: string; name: string; chosen: boolean } | null;
+  page: StatusPage | null;
+  versions: Omit<StatusPage, 'markdown'>[];
+};
 const questionUrl = (id: string) => `/api/questions/${encodeURIComponent(id)}`;
 
 /** What the generator is told before it drafts a team (all optional but the CLI). */
@@ -186,6 +195,9 @@ export const api = {
   decisions: (id: string) => get<import('./generated/DecisionEntry').DecisionEntry[]>(`${teamUrl(id)}/decisions`),
   addDecision: (id: string, text: string) => request<{ id: string }>('POST', `${teamUrl(id)}/decisions`, { text }),
   hideDecision: (id: string, entry: string) => request<{ hidden: string }>('POST', `${teamUrl(id)}/decisions/${encodeURIComponent(entry)}/hide`, {}),
+  /** The team's status page: who writes it, the page now and its earlier versions (newest first). */
+  teamStatus: (id: string) => get<TeamStatus>(`${teamUrl(id)}/status`),
+  teamStatusVersion: (id: string, seq: number) => get<StatusPage>(`${teamUrl(id)}/status/${seq}`),
   /** What the team's agents know: the project maps made at each start, and lessons and decisions. */
   knowledge: (id: string) => get<import('./knowledge').Knowledge>(`${teamUrl(id)}/knowledge`),
   confirmDecision: (id: string, entry: string) => request<{ confirmed: string }>('POST', `${teamUrl(id)}/decisions/${encodeURIComponent(entry)}/confirm`, {}),
