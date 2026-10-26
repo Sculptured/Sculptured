@@ -155,3 +155,54 @@ async fn a_restricted_agent_asks_runs_is_interrupted_and_resumes() {
     );
     s.stop(Duration::from_secs(5)).await.unwrap();
 }
+
+/// One real turn on OpenRouter, for a check before a release: costs a fraction of a cent. Skipped
+/// unless `OPENCODE_LIVE_PROGRAM`, `OPENCODE_LIVE_REAL_MODEL` (OpenCode's `openrouter/…` name) and
+/// `OPENROUTER_API_KEY` are set.
+#[tokio::test]
+async fn a_real_model_on_openrouter_answers_and_reports_its_cost() {
+    let (Ok(program), Ok(model), Ok(key)) = (
+        std::env::var("OPENCODE_LIVE_PROGRAM"),
+        std::env::var("OPENCODE_LIVE_REAL_MODEL"),
+        std::env::var("OPENROUTER_API_KEY"),
+    ) else {
+        eprintln!(
+            "skipped: set OPENCODE_LIVE_PROGRAM, OPENCODE_LIVE_REAL_MODEL and OPENROUTER_API_KEY"
+        );
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = spec(dir.path(), &program, "https://openrouter.ai/api/v1");
+    s.model = Some(model.clone());
+    s.posture = PermissionPosture::Unrestricted;
+    s.env.retain(|(k, _)| k != "OPENROUTER_API_KEY");
+    s.env.push(("OPENROUTER_API_KEY".into(), key));
+    let mut session = OpencodeAcpDriver::default()
+        .launch(s)
+        .await
+        .expect("starts");
+    let mut events = session.take_events().unwrap();
+    session
+        .send(msg(
+            "m1",
+            "Run the shell command `echo sculptured-live` and reply with its output only.",
+        ))
+        .await
+        .unwrap();
+    let turn = until(&mut events, |e| matches!(e, DriverEvent::TurnEnded { .. })).await;
+    session.stop(Duration::from_secs(5)).await.unwrap();
+    eprintln!("{turn:#?}");
+    assert!(turn.contains(&DriverEvent::TurnEnded {
+        turn_id: "turn-m1".into(),
+        status: TurnStatus::Completed
+    }));
+    assert!(turn.iter().any(|e| matches!(e, DriverEvent::ToolResult { output, .. } if output.contains("sculptured-live"))));
+    // A `:free` model costs nothing, so it reports no cost.
+    if !model.ends_with(":free") {
+        assert!(
+            turn.iter()
+                .any(|e| matches!(e, DriverEvent::Usage { cost: Some(c), .. } if c.usd > 0.0)),
+            "a cost was reported"
+        );
+    }
+}
