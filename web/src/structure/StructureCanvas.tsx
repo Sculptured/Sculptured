@@ -62,7 +62,7 @@ export type CanvasHandle = {
 
 const EDGE_KIND: Record<ConnectionKind, EdgeKind> = { 'hands-work-to': 'delegates_to', 'reports-to': 'escalates_to', watches: 'can_observe' };
 const PALETTE: AgentKind[] = OFFERED_KINDS;
-const PALETTE_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', practice: 'Practice' };
+const PALETTE_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', practice: 'Practice' };
 
 /** Whether More tools is open, per browser: newcomers see one Add agent button. */
 export const MORE_TOOLS_KEY = 'sculptured.design.more-tools.v1';

@@ -26,27 +26,35 @@ export type StartChoice = { resume: boolean };
 
 const list = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
 
-type Starter = { id: string; name: string; kind: 'claude' | 'codex' | 'other'; folder: string | null };
+type Starter = { id: string; name: string; kind: 'claude' | 'codex' | 'opencode' | 'other'; folder: string | null };
+
+/** "2 Claude agents and an OpenCode agent", and what they use: "your Claude account and your OpenCode models". */
+function whoAndUses(agents: Starter[]): { who: string[]; uses: string[] } {
+  const n = (k: Starter['kind']) => agents.filter((a) => a.kind === k).length;
+  const [claude, codex, opencode] = [n('claude'), n('codex'), n('opencode')];
+  const who = [claude ? plural(claude, 'Claude agent') : '', codex ? plural(codex, 'Codex agent') : '', opencode ? plural(opencode, 'OpenCode agent') : ''].filter(Boolean);
+  const accounts = [claude ? 'Claude' : '', codex ? 'Codex' : ''].filter(Boolean);
+  const uses = [accounts.length ? `your ${list(accounts)} account${accounts.length > 1 ? 's' : ''}` : '', opencode ? 'your OpenCode models' : ''].filter(Boolean);
+  return { who, uses };
+}
 
 /** `first`: who starts, when it is not an agent (a workflow's dispatch command). */
 function describe(agents: Starter[], handsTo: { from: string; to: string }[], home: string | null, first?: string): StartConfirmation | null {
-  const claude = agents.filter((a) => a.kind === 'claude');
-  const codex = agents.filter((a) => a.kind === 'codex');
-  if (claude.length === 0 && codex.length === 0) return null;
-  const who = [claude.length ? plural(claude.length, 'Claude agent') : '', codex.length ? plural(codex.length, 'Codex agent') : ''].filter(Boolean);
-  const accounts = [claude.length ? 'Claude' : '', codex.length ? 'Codex' : ''].filter(Boolean);
-  const folders = [...new Set([...claude, ...codex].map((a) => (a.folder ? shortPath(a.folder, home) : '~ (home folder)')))];
+  const real = agents.filter((a) => a.kind !== 'other');
+  if (real.length === 0) return null;
+  const { who, uses } = whoAndUses(real);
+  const folders = [...new Set(real.map((a) => (a.folder ? shortPath(a.folder, home) : '~ (home folder)')))];
   const where = folders.length === 1 ? folders[0] : `${folders.length} folders (${list(folders.slice(0, 3))}${folders.length > 3 ? ', …' : ''})`;
   // No folder, or the home folder itself: the agent can reach every file you own there.
-  const atHome = [...claude, ...codex].filter((a) => !a.folder || a.folder === '~' || (home !== null && a.folder.replace(/\/+$/, '') === home.replace(/\/+$/, '')));
+  const atHome = real.filter((a) => !a.folder || a.folder === '~' || (home !== null && a.folder.replace(/\/+$/, '') === home.replace(/\/+$/, '')));
   const broad = atHome.length === 0 ? undefined
-    : `${atHome.length === claude.length + codex.length ? (atHome.length === 1 ? 'This agent works' : 'These agents work') : `${list(atHome.map((a) => a.name))} ${atHome.length === 1 ? 'works' : 'work'}`} in your whole home folder (~), so ${atHome.length === 1 ? 'it' : 'they'} can read and change any file in it. To narrow this, choose a project folder on the Design board.`;
+    : `${atHome.length === real.length ? (atHome.length === 1 ? 'This agent works' : 'These agents work') : `${list(atHome.map((a) => a.name))} ${atHome.length === 1 ? 'works' : 'work'}`} in your whole home folder (~), so ${atHome.length === 1 ? 'it' : 'they'} can read and change any file in it. To narrow this, choose a project folder on the Design board.`;
   // The first to start: agents no other agent of the team hands work to. They get their job at once.
   const ids = new Set(agents.map((a) => a.id));
   const heads = agents.filter((a) => !handsTo.some((c) => c.to === a.id && c.from !== a.id && ids.has(c.from)));
   return {
     title: `Start ${list(who)}?`,
-    body: `They run in ${where} and use your ${list(accounts)} account${accounts.length > 1 ? 's' : ''}. First to start: ${first ?? (heads.length ? list(heads.map((a) => a.name)) : 'unknown')}.`,
+    body: `They run in ${where} and use ${list(uses)}. First to start: ${first ?? (heads.length ? list(heads.map((a) => a.name)) : 'unknown')}.`,
     efficiency: [],
     broad,
   };
@@ -82,7 +90,7 @@ export function startConfirmation(d: TeamDraft | undefined, home: string | null)
 
 /** The same from a started team's compiled spec, for when its design has not loaded yet. */
 export function specStartConfirmation(rig: CompiledRig, names: NameMap, home: string | null): StartConfirmation | null {
-  const kind = (r: Runtime): Starter['kind'] => (r === 'claude-code' ? 'claude' : r === 'codex' ? 'codex' : 'other');
+  const kind = (r: Runtime): Starter['kind'] => (r === 'claude-code' ? 'claude' : r === 'codex' || r === 'opencode' ? r : 'other');
   const c = describe(
     rig.seats.map((s) => ({ id: s.id, name: nameForId(s.id, names), kind: kind(s.runtime), folder: s.cwd === '.' ? null : s.cwd })),
     rig.edges.filter((e) => e.kind === 'delegates_to'),

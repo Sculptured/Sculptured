@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 pub(crate) fn briefing_lines(d: &TeamDraft, me: &DraftAgent) -> Vec<String> {
     let mut out = Vec::new();
     let skills = d.agent_skills(me);
-    if me.kind == AgentKind::Codex && !skills.is_empty() {
+    if matches!(me.kind, AgentKind::Codex | AgentKind::Opencode) && !skills.is_empty() {
         let list: Vec<String> = skills
             .iter()
             .map(|s| format!("- {}: {}", s.name, s.description.trim()))

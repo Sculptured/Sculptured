@@ -37,7 +37,7 @@ pub fn launch_params(
         .is_none_or(|d| d.workflow.is_some());
     matches!(
         seat.runtime,
-        Runtime::ClaudeCode | Runtime::Codex | Runtime::Stub
+        Runtime::ClaudeCode | Runtime::Codex | Runtime::Opencode | Runtime::Stub
     )
     .then(|| SeatToolsParams {
         approve: posture == PermissionPosture::Restricted && seat.runtime == Runtime::ClaudeCode,

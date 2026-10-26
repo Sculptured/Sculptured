@@ -117,6 +117,7 @@ fn kind_of(runtime: Runtime, path: &str) -> Result<AgentKind, Diagnostic> {
     match runtime {
         Runtime::ClaudeCode => Ok(AgentKind::Claude),
         Runtime::Codex => Ok(AgentKind::Codex),
+        Runtime::Opencode => Ok(AgentKind::Opencode),
         Runtime::Stub => Ok(AgentKind::Practice),
         other => Err(Diagnostic {
             path: format!("{path}.runtime"),

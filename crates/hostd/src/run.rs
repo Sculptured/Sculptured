@@ -3,6 +3,7 @@ use crate::supervisor::Supervisor;
 use drivers::Driver;
 use drivers::claude::ClaudeStreamDriver;
 use drivers::codex::CodexAppServerDriver;
+use drivers::opencode::OpencodeAcpDriver;
 use drivers::stub::StubDriver;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -226,5 +227,14 @@ fn drivers(opts: &HostdOptions) -> Vec<Arc<dyn Driver>> {
             .unwrap_or_else(|| crate::platform::program("codex")),
         native_questions: false,
     };
-    vec![Arc::new(StubDriver), Arc::new(claude), Arc::new(codex)]
+    // Looked up when each agent starts (`process::command`), so an OpenCode installed later is found.
+    let opencode = OpencodeAcpDriver {
+        program: std::path::PathBuf::from("opencode"),
+    };
+    vec![
+        Arc::new(StubDriver),
+        Arc::new(claude),
+        Arc::new(codex),
+        Arc::new(opencode),
+    ]
 }

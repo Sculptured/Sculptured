@@ -118,6 +118,7 @@ function boardCommands(c: CommandContext, status: BoardStatus | null): Command[]
   return [
     { id: 'board.add-claude', section, title: 'Add a Claude agent', keys: 'n  ⏎', words: 'new agent', rank: 2, disabled: lock, run: () => c.board?.add('claude') },
     { id: 'board.add-codex', section, title: 'Add a Codex agent', words: 'new agent', rank: 3, disabled: lock, run: () => c.board?.add('codex') },
+    { id: 'board.add-opencode', section, title: 'Add an OpenCode agent', words: 'new agent open model openrouter', rank: 3, disabled: lock, run: () => c.board?.add('opencode') },
     { id: 'board.add-group', section, title: 'Add a group', words: 'new box', disabled: lock, run: () => c.board?.addGroup() },
     { id: 'board.select-all', section, title: 'Select all agents', keys: 'Ctrl+A', words: 'multi bulk every', rank: 4, run: () => c.board?.selectAll() },
     { id: 'board.undo', section, title: 'Undo', keys: 'Ctrl+Z', disabled: status?.canUndo ? null : 'Nothing to undo.', run: () => c.board?.undo() },

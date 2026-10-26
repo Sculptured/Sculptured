@@ -14,6 +14,14 @@ export const MODEL_CHOICES: Record<ModelKind, { id: string; label: string }[]> =
     { id: 'haiku', label: 'Haiku' },
   ],
   codex: [{ id: 'gpt-6-astra', label: 'gpt-6-astra' }],
+  // OpenCode's own `provider/model` names, as OpenCode 1.19.4 lists them.
+  opencode: [
+    { id: 'openrouter/moonshotai/kimi-k2.7-code', label: 'Kimi K2.7 Code' },
+    { id: 'openrouter/z-ai/glm-5.3', label: 'GLM-5.3' },
+    { id: 'openrouter/deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+    { id: 'openrouter/deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash' },
+    { id: 'openrouter/openai/gpt-oss-120b', label: 'GPT OSS 120B' },
+  ],
 };
 
 const OTHER = '__other__';
@@ -24,12 +32,12 @@ export const modelLabel = (k: ModelKind, id: string | null) =>
 
 type KindSwitchProps = { value: AgentKind | null; onChange: (k: AgentKind) => void; disabled?: boolean; kinds?: AgentKind[]; label: string };
 
-/** Claude / Codex / Practice as one row of buttons; `value` null = mixed. */
+/** Claude / Codex / OpenCode / Practice as one row of buttons; `value` null = mixed. */
 /**
  * The kinds offered when adding or switching agents. Practice agents (free, scripted, no model)
  * are no longer offered; a team that already has them keeps them and can switch them.
  */
-export const OFFERED_KINDS: AgentKind[] = ['claude', 'codex'];
+export const OFFERED_KINDS: AgentKind[] = ['claude', 'codex', 'opencode'];
 
 export function KindSwitch({ value, onChange, disabled, kinds = value === 'practice' ? [...OFFERED_KINDS, 'practice'] : OFFERED_KINDS, label }: KindSwitchProps) {
   return (

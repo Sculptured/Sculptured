@@ -184,10 +184,13 @@ fn every_part_of_a_team_round_trips_in_madl_core() {
     team.models = model::ModelDefaults {
         claude: Some("sonnet".into()),
         codex: Some("gpt-6-sol".into()),
+        // OpenCode's own provider/model, kept whole through MADL.
+        opencode: Some("openrouter/deepseek/deepseek-chat-v3.1".into()),
     };
     team.groups[0].models = model::ModelDefaults {
         claude: Some("opus".into()),
         codex: None,
+        opencode: None,
     };
     team.folder = Some("/home/someone/book".into());
     team.agents[0].folder = Some("/home/someone/book/engine".into());

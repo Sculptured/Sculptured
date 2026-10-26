@@ -14,6 +14,8 @@ pub const DEFAULT_GROUP_ID: &str = "team";
 pub enum AgentKind {
     Claude,
     Codex,
+    /// OpenCode over ACP, for open models (OpenRouter or the person's own OpenCode setup).
+    Opencode,
     /// Runs the stub driver: no model calls, no cost.
     Practice,
 }
@@ -221,6 +223,10 @@ pub struct ModelDefaults {
     /// For Codex agents: a model slug (e.g. `gpt-6-sol`).
     #[serde(default)]
     pub codex: Option<String>,
+    /// For OpenCode agents: OpenCode's `provider/model` (e.g. `openrouter/deepseek/deepseek-chat-v3.1`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub opencode: Option<String>,
 }
 
 impl ModelDefaults {
@@ -230,13 +236,14 @@ impl ModelDefaults {
         match kind {
             AgentKind::Claude => self.claude.as_deref(),
             AgentKind::Codex => self.codex.as_deref(),
+            AgentKind::Opencode => self.opencode.as_deref(),
             AgentKind::Practice => None,
         }
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.claude.is_none() && self.codex.is_none()
+        self.claude.is_none() && self.codex.is_none() && self.opencode.is_none()
     }
 }
 

@@ -15,6 +15,7 @@ pub fn driver_for(rt: Runtime) -> Option<&'static str> {
     match rt {
         Runtime::ClaudeCode => Some("claude-stream"),
         Runtime::Codex => Some("codex-app-server"),
+        Runtime::Opencode => Some("opencode-acp"),
         Runtime::Stub => Some("stub"),
         _ => None,
     }
@@ -54,13 +55,14 @@ pub struct ModelAccess {
     model: Option<String>,
 }
 
-/// Hosted Claude Code agents with a model connection: its settings from the gateway. Nothing for any
-/// other agent, and nothing in local mode, where the computer's own sign-in is used.
+/// Hosted Claude Code and OpenCode agents with a model connection: its settings from the gateway.
+/// Nothing for any other agent, and nothing in local mode, where the computer's own sign-in (or
+/// OpenCode setup) is used.
 pub async fn model_access(st: &AppState, seat: &CompiledSeat) -> Result<ModelAccess, String> {
     let Some(id) = seat
         .connection
         .as_deref()
-        .filter(|_| hosted(st) && seat.runtime == Runtime::ClaudeCode)
+        .filter(|_| hosted(st) && matches!(seat.runtime, Runtime::ClaudeCode | Runtime::Opencode))
     else {
         return Ok(ModelAccess::default());
     };
@@ -75,12 +77,41 @@ pub async fn model_access(st: &AppState, seat: &CompiledSeat) -> Result<ModelAcc
         .as_ref()
         .ok_or_else(|| fail("this server has no way to read model connections".into()))?;
     let got = gateway.connection_env(id).await.map_err(fail)?;
+    let model = got
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string);
+    if seat.runtime == Runtime::Opencode {
+        return for_opencode(got, model).map_err(fail);
+    }
     Ok(ModelAccess {
         env: got.env,
-        model: got
-            .model
-            .map(|m| m.trim().to_string())
-            .filter(|m| !m.is_empty()),
+        model,
+    })
+}
+
+/// The gateway gives an OpenRouter connection in Claude Code's shape (`ANTHROPIC_AUTH_TOKEN` at
+/// OpenRouter's Anthropic-compatible address). OpenCode reads the same key as `OPENROUTER_API_KEY` and
+/// names the model `openrouter/<model>`.
+fn for_opencode(
+    got: crate::gateway::ConnectionEnv,
+    model: Option<String>,
+) -> Result<ModelAccess, String> {
+    if got.provider != "openrouter" {
+        return Err("OpenCode agents need an OpenRouter connection".into());
+    }
+    let key = got
+        .env
+        .into_iter()
+        .find(|(k, _)| k == "ANTHROPIC_AUTH_TOKEN")
+        .map(|(_, v)| v)
+        .filter(|v| !v.is_empty())
+        .ok_or("the connection has no key")?;
+    Ok(ModelAccess {
+        env: vec![("OPENROUTER_API_KEY".into(), key)],
+        model: model.map(|m| format!("openrouter/{m}")),
     })
 }
 
@@ -119,7 +150,10 @@ fn fitted_params(
     let local = host == LOCAL_HOST && !hosted(st);
     if local
         && !per_item
-        && matches!(seat.runtime, Runtime::ClaudeCode | Runtime::Codex)
+        && matches!(
+            seat.runtime,
+            Runtime::ClaudeCode | Runtime::Codex | Runtime::Opencode
+        )
         && crate::copies::enabled(st, rig)
     {
         cwd = crate::copies::prepare(st, rig, &seat.id, Path::new(&cwd))?
@@ -239,7 +273,10 @@ pub fn own_copy_for(
     runtime: Runtime,
 ) -> Option<host_proto::OwnCopy> {
     (hosted(st)
-        && matches!(runtime, Runtime::ClaudeCode | Runtime::Codex)
+        && matches!(
+            runtime,
+            Runtime::ClaudeCode | Runtime::Codex | Runtime::Opencode
+        )
         && crate::copies::enabled(st, rig))
     .then(|| host_proto::OwnCopy {
         team: rig.to_string(),
@@ -400,7 +437,10 @@ fn agent_extras(
     rig: &str,
     seat: &CompiledSeat,
 ) -> (Vec<model::Skill>, Vec<String>, Vec<model::Component>) {
-    if !matches!(seat.runtime, Runtime::ClaudeCode | Runtime::Codex) {
+    if !matches!(
+        seat.runtime,
+        Runtime::ClaudeCode | Runtime::Codex | Runtime::Opencode
+    ) {
         return (vec![], vec![], vec![]);
     }
     let draft = st

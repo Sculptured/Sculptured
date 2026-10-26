@@ -12,4 +12,8 @@ claude: string | null,
 /**
  * For Codex agents: a model slug (e.g. `gpt-6-sol`).
  */
-codex: string | null, };
+codex: string | null, 
+/**
+ * For OpenCode agents: OpenCode's `provider/model` (e.g. `openrouter/deepseek/deepseek-chat-v3.1`).
+ */
+opencode?: string, };

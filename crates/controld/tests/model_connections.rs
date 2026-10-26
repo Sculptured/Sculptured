@@ -14,11 +14,13 @@ use std::sync::{Arc, Mutex};
 const SECRET: &[u8] = b"instance-secret";
 const USER: &str = "6f1c0b3e-1111-4222-8333-944455556666";
 const KEY: &str = "sk-ant-api03-NEVER-STORE-THIS-0123456789";
+const OR_KEY: &str = "sk-or-v1-NEVER-STORE-THIS-TOO-9876543210";
 
 type Asked = Arc<Mutex<Vec<String>>>;
 
-/// A stand-in gateway: answers `/internal/connection-env` for `conn-1` when the request is signed
-/// as this instance's user, 404 for any other connection, 401 when the signature is wrong.
+/// A stand-in gateway: answers `/internal/connection-env` for `conn-1` (an Anthropic key) and `conn-or`
+/// (OpenRouter, in Claude Code's shape as the real gateway gives it) when the request is signed as this
+/// instance's user, 404 for any other connection, 401 when the signature is wrong.
 async fn fake_gateway() -> (String, Asked) {
     let asked: Asked = Default::default();
     let keep = asked.clone();
@@ -35,6 +37,11 @@ async fn fake_gateway() -> (String, Asked) {
                 }
                 let id = body["connection_id"].as_str().unwrap_or_default().to_string();
                 keep.lock().unwrap().push(id.clone());
+                if id == "conn-or" {
+                    return (StatusCode::OK, axum::Json(json!({ "provider": "openrouter", "model": "deepseek/deepseek-chat-v3.1",
+                        "env": [["ANTHROPIC_BASE_URL", "https://openrouter.ai/api"], ["ANTHROPIC_AUTH_TOKEN", OR_KEY],
+                                ["ANTHROPIC_API_KEY", ""], ["ANTHROPIC_MODEL", "deepseek/deepseek-chat-v3.1"]] })));
+                }
                 if id != "conn-1" {
                     return (StatusCode::NOT_FOUND, axum::Json(json!({ "error": "no such connection" })));
                 }
@@ -50,8 +57,38 @@ async fn fake_gateway() -> (String, Asked) {
 
 type Seen = Arc<Mutex<Vec<(String, Vec<(String, String)>)>>>;
 
-/// Runs as Claude Code (`claude-stream`) but is the stub underneath; keeps each launch's environment.
+/// Runs as Claude Code (`claude-stream`) or OpenCode (`opencode-acp`) but is the stub underneath; keeps
+/// each launch's environment, and its model in `models`.
 struct RecordingClaude(Seen);
+struct RecordingOpencode(Seen, Arc<Mutex<Vec<Option<String>>>>);
+
+#[async_trait::async_trait]
+impl Driver for RecordingOpencode {
+    fn name(&self) -> &'static str {
+        "opencode-acp"
+    }
+    fn capabilities(&self) -> model::Caps {
+        StubDriver.capabilities()
+    }
+    async fn launch(
+        &self,
+        mut spec: drivers::LaunchSpec,
+    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
+        self.0
+            .lock()
+            .unwrap()
+            .push((spec.seat.to_string(), spec.env.0.clone()));
+        self.1.lock().unwrap().push(spec.model.take());
+        StubDriver.launch(spec).await
+    }
+    async fn resume(
+        &self,
+        spec: drivers::LaunchSpec,
+        native_id: &str,
+    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
+        StubDriver.resume(spec, native_id).await
+    }
+}
 
 #[async_trait::async_trait]
 impl Driver for RecordingClaude {
@@ -108,6 +145,17 @@ fn folder(s: &Served) -> String {
 
 /// A team with one Claude agent "Writer" using `connection`; returns its id.
 async fn claude_team(s: &Served, hosted: bool, folder: &str, connection: Option<&str>) -> String {
+    team_of(s, hosted, folder, connection, "claude").await
+}
+
+/// A team with one agent "Writer" of `kind` using `connection`; returns its id.
+async fn team_of(
+    s: &Served,
+    hosted: bool,
+    folder: &str,
+    connection: Option<&str>,
+    kind: &str,
+) -> String {
     let body = json!({ "request_id": rid(), "template": "blank", "name": "Keys" });
     let (status, rec) = if hosted {
         signed(&s.router, "POST", "/api/teams", Some(body)).await
@@ -116,7 +164,7 @@ async fn claude_team(s: &Served, hosted: bool, folder: &str, connection: Option<
     };
     assert_eq!(status, StatusCode::OK, "{rec}");
     let mut draft = rec["draft"].clone();
-    let mut agent = json!({ "id": "w", "group_id": null, "name": "Writer", "kind": "claude", "job": "write", "folder": folder, "x": 40, "y": 40 });
+    let mut agent = json!({ "id": "w", "group_id": null, "name": "Writer", "kind": kind, "job": "write", "folder": folder, "x": 40, "y": 40 });
     if let Some(c) = connection {
         agent["connection"] = json!(c);
     }
@@ -222,6 +270,96 @@ async fn a_hosted_claude_agent_with_a_connection_gets_its_key_in_its_environment
     assert!(!snapshot.contains(KEY));
     let events = serde_json::to_string(&events(&s.st, &w)).unwrap();
     assert!(!events.contains(KEY), "{events}");
+}
+
+#[tokio::test]
+async fn a_hosted_opencode_agent_with_an_openrouter_connection_gets_the_key_as_openrouter_api_key()
+{
+    let (url, asked) = fake_gateway().await;
+    let mut s = serve_hosted().await;
+    s.st = s.st.clone().with_gateway(controld::gateway::Gateway::new(
+        url,
+        USER.to_string(),
+        Arc::new(SECRET.to_vec()),
+    ));
+    s.router = controld::app(s.st.clone(), None);
+    let (seen, models): (Seen, _) = Default::default();
+    let _laptop = connect_as(
+        &s,
+        "laptop",
+        vec![Arc::new(RecordingOpencode(
+            seen.clone(),
+            Arc::clone(&models),
+        ))],
+    )
+    .await;
+    let id = team_of(&s, true, &folder(&s), Some("conn-or"), "opencode").await;
+    let (status, body) = signed(
+        &s.router,
+        "POST",
+        &format!("/api/teams/{id}/start"),
+        Some(json!({ "request_id": rid() })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let w = seat(&id, "w");
+    wait_for("the agent runs", || {
+        lifecycle(&s.st, &w) == Some(SeatLifecycle::Running)
+    })
+    .await;
+    assert_eq!(asked.lock().unwrap().clone(), ["conn-or"]);
+    let launches = seen.lock().unwrap().clone();
+    assert_eq!(
+        launches[0].1,
+        vec![("OPENROUTER_API_KEY".to_string(), OR_KEY.to_string())],
+        "only the key, under the name OpenCode reads"
+    );
+    assert_eq!(
+        models.lock().unwrap()[0].as_deref(),
+        Some("openrouter/deepseek/deepseek-chat-v3.1")
+    );
+    assert!(
+        !whole_store(&s).contains(OR_KEY),
+        "the key is never stored or recorded"
+    );
+}
+
+#[tokio::test]
+async fn an_opencode_agent_with_an_anthropic_key_connection_does_not_start_and_says_why() {
+    let (url, _asked) = fake_gateway().await;
+    let mut s = serve_hosted().await;
+    s.st = s.st.clone().with_gateway(controld::gateway::Gateway::new(
+        url,
+        USER.to_string(),
+        Arc::new(SECRET.to_vec()),
+    ));
+    s.router = controld::app(s.st.clone(), None);
+    let (seen, models): (Seen, _) = Default::default();
+    let _laptop = connect_as(
+        &s,
+        "laptop",
+        vec![Arc::new(RecordingOpencode(seen.clone(), models))],
+    )
+    .await;
+    let id = team_of(&s, true, &folder(&s), Some("conn-1"), "opencode").await;
+    let (status, body) = signed(
+        &s.router,
+        "POST",
+        &format!("/api/teams/{id}/start"),
+        Some(json!({ "request_id": rid() })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let w = seat(&id, "w");
+    wait_for("the launch is refused in plain words", || {
+        events(&s.st, &w).iter().any(|e| {
+            serde_json::to_string(e)
+                .unwrap()
+                .contains("OpenCode agents need an OpenRouter connection")
+        })
+    })
+    .await;
+    assert!(seen.lock().unwrap().is_empty(), "never launched");
 }
 
 #[tokio::test]

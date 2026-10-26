@@ -1,7 +1,7 @@
 # Sculptured — workspace instructions
 
 ## Product
-Sculptured runs and supervises local Claude Code and Codex agents. Users design a team on a
+Sculptured runs and supervises local Claude Code, Codex and OpenCode agents. Users design a team on a
 board, start it, and watch and talk to it live. Internally it follows the OpenRig RigSpec model
 (rig → pod → seat, typed edges). It owns its runtime: `sculptured serve` (controld) and
 `sculptured hostd` (the agent runner). How it fits together is in `docs/internals/`, starting

@@ -2,7 +2,7 @@
 
 export type CliStatus = { 
 /**
- * `claude` or `codex`.
+ * `claude`, `codex` or `opencode`.
  */
 name: string, installed: boolean, version: string | null, 
 /**

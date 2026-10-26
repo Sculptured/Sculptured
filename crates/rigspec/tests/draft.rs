@@ -702,6 +702,7 @@ fn an_agent_runs_its_own_model_else_its_groups_else_the_teams() {
     let models = |claude: &str, codex: &str| ModelDefaults {
         claude: Some(claude.into()),
         codex: Some(codex.into()),
+        opencode: None,
     };
     let mut d = team(
         vec![

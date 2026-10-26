@@ -105,6 +105,7 @@ pub fn shape(d: &TeamDraft, own_copies: bool) -> Value {
         "agents": d.agents.len(),
         "claude": kind(AgentKind::Claude),
         "codex": kind(AgentKind::Codex),
+        "opencode": kind(AgentKind::Opencode),
         "practice": kind(AgentKind::Practice),
         "groups": d.groups.len(),
         "arrows_hands": arrows(ConnectionKind::HandsWorkTo),
@@ -126,6 +127,7 @@ pub fn started(d: &TeamDraft, own_copies: bool) -> Value {
         .map(|a| match a.kind {
             AgentKind::Claude => "claude-code",
             AgentKind::Codex => "codex",
+            AgentKind::Opencode => "opencode",
             AgentKind::Practice => "stub",
         })
         .collect();

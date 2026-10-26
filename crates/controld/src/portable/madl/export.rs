@@ -98,6 +98,7 @@ pub fn runtime(kind: AgentKind) -> &'static str {
     match kind {
         AgentKind::Claude => "claude-code",
         AgentKind::Codex => "codex",
+        AgentKind::Opencode => super::care::OPENCODE,
         AgentKind::Practice => "x-sculptured-practice",
     }
 }
@@ -179,6 +180,7 @@ fn agent(a: &DraftAgent) -> m::Agent {
 pub fn with_provider(kind: AgentKind, id: String) -> String {
     let provider = match kind {
         AgentKind::Codex => "openai",
+        AgentKind::Opencode => "openrouter",
         AgentKind::Claude | AgentKind::Practice => "anthropic",
     };
     if id.contains('/') {

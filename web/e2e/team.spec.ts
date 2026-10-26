@@ -43,7 +43,8 @@ type Rect = { x: number; y: number; width: number; height: number };
 const overlap = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
 // The save status is hidden on a phone's narrow header, so its text is checked, not its visibility.
-const saved = (page: Page) => expect(page.locator('.save-state')).toHaveText(/✓\s*saved/);
+// Saving is announced to screen readers only (no visible pill), so the page never jumps.
+const saved = (page: Page) => expect(page.locator('.save-state')).toHaveText('saved');
 
 /** Run: every agent of the team on one list, the default view. */
 async function checkRun(page: Page, agent: string) {

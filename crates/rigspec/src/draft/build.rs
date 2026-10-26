@@ -31,7 +31,8 @@ fn member(d: &TeamDraft, a: &DraftAgent) -> MemberSpec {
         session_source: None,
         starter_ref: None,
         startup: None,
-        connection: (a.kind == AgentKind::Claude)
+        // Model connections serve Claude Code and OpenCode agents (OpenRouter keys).
+        connection: matches!(a.kind, AgentKind::Claude | AgentKind::Opencode)
             .then(|| {
                 a.connection
                     .as_deref()

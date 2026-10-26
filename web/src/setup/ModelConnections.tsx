@@ -39,7 +39,7 @@ export function ModelConnections({ onWorking }: { onWorking?: (ok: boolean) => v
   return (
     <>
       <h3>Pay-per-use keys</h3>
-      <p className="muted">A key is kept sealed on the Sculptured server, handed to an agent only when it starts, and never shown again. Runs with a key are billed to your own Anthropic account. Check asks the provider whether the key works and uses no tokens.</p>
+      <p className="muted">A key is kept sealed on the Sculptured server, handed to an agent only when it starts, and never shown again. Runs with a key are billed to your own Anthropic or OpenRouter account. Check asks the provider whether the key works and uses no tokens.</p>
       {list.length > 0 && (
         <ul className="setup-list" aria-label="Your model connections">
           {list.map((c) => <ConnectionRow key={c.id} c={c} check={checkOf(c)} busy={busy === c.id} onCheck={() => void check(c.id)} onDelete={() => void remove(c.id)} />)}
@@ -48,8 +48,8 @@ export function ModelConnections({ onWorking }: { onWorking?: (ok: boolean) => v
       {loaded && list.length === 0 && <p className="muted">No keys yet.</p>}
       {error && <p className="tone-red" role="alert">{error}</p>}
       <div className="setup-forms">
-        {/* OpenRouter is not finished: Setup offers no form for it. Keys added before still list above. */}
         <KeyForm provider="anthropic-key" onAdded={async (c) => { await reload(); await check(c.id); }} />
+        <KeyForm provider="openrouter" onAdded={async (c) => { await reload(); await check(c.id); }} />
       </div>
     </>
   );
@@ -83,7 +83,7 @@ function ConnectionRow({ c, check, busy, onCheck, onDelete }: { c: ModelConnecti
 
 const FORM: Record<ConnectionProvider, { title: string; blurb: string; keyLabel: string; name: string }> = {
   'anthropic-key': { title: 'Claude — API key', blurb: 'An Anthropic API key, from console.anthropic.com.', keyLabel: 'Anthropic API key', name: 'Anthropic key' },
-  openrouter: { title: 'Claude via OpenRouter', blurb: 'An OpenRouter key and the model Claude Code should use.', keyLabel: 'OpenRouter key', name: 'OpenRouter' },
+  openrouter: { title: 'Open models — OpenRouter', blurb: 'An OpenRouter key, from openrouter.ai, and the open model your OpenCode agents run on it.', keyLabel: 'OpenRouter key', name: 'OpenRouter' },
 };
 
 function KeyForm({ provider, onAdded }: { provider: ConnectionProvider; onAdded: (c: ModelConnection) => Promise<void> }) {
@@ -121,7 +121,7 @@ function KeyForm({ provider, onAdded }: { provider: ConnectionProvider; onAdded:
         <>
           <label className="fld-label" htmlFor={`${ids}-model`}>Model</label>
           <input id={`${ids}-model`} className="fld-input mono" value={model} placeholder={OPENROUTER_MODEL} spellCheck={false} aria-describedby={`${ids}-mhint`} onChange={(e) => setModel(e.target.value)} />
-          <p id={`${ids}-mhint`} className="fld-hint">Claude models work best: Claude Code is made for them, and other models may not handle its tools.</p>
+          <p id={`${ids}-mhint`} className="fld-hint">Its name on OpenRouter, like {OPENROUTER_MODEL}. OpenCode runs it on the agent’s computer, which needs OpenCode installed.</p>
         </>
       )}
       {error && <p className="tone-red" role="alert">{error}</p>}

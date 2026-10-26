@@ -25,7 +25,7 @@ import { vendor } from '../herdr';
 import { plural } from '../format';
 import { GenerateTeam } from './GenerateTeam';
 
-const KIND_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', practice: 'Practice' };
+const KIND_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', practice: 'Practice' };
 const kindIcon = (k: AgentKind): IconName => k;
 
 /** "2 agents · Claude, Codex". */

@@ -40,8 +40,10 @@ it('hosted: lists your model connections beside the subscription, and picking on
   const pick = await screen.findByRole('combobox', { name: 'Builder runs on' });
   await waitFor(() => expect(screen.getByRole('option', { name: 'Claude (API key) · Work' })).toBeInTheDocument());
   expect(screen.getByRole('option', { name: 'Claude (subscription)' })).toBeInTheDocument();
-  expect(screen.getByRole('option', { name: /Claude via OpenRouter · Router/ })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'OpenCode via OpenRouter · Router (check failed)' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /Claude via OpenRouter/ })).toBeNull();
   expect(screen.getByRole('option', { name: 'Codex' })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'OpenCode (its computer’s own setup)' })).toBeInTheDocument();
   expect(pick).toHaveValue('claude');
   await userEvent.selectOptions(pick, 'Claude (API key) · Work');
   expect(latest.agents[0]).toMatchObject({ kind: 'claude', connection: 'k1' });
@@ -49,6 +51,23 @@ it('hosted: lists your model connections beside the subscription, and picking on
   await userEvent.selectOptions(pick, 'Codex');
   expect(latest.agents[0].kind).toBe('codex');
   expect(latest.agents[0].connection ?? null).toBeNull();
+});
+
+it('an OpenRouter connection runs an OpenCode agent on its model', async () => {
+  serve();
+  render(<Harness session={SIGNED_IN} start={claudeTeam()} />);
+  const pick = await screen.findByRole('combobox', { name: 'Builder runs on' });
+  await waitFor(() => expect(screen.getByRole('option', { name: /OpenCode via OpenRouter · Router/ })).toBeInTheDocument());
+  await userEvent.selectOptions(pick, 'OpenCode via OpenRouter · Router (check failed)');
+  expect(latest.agents[0]).toMatchObject({ kind: 'opencode', connection: 'or1' });
+  expect(await screen.findByText(/from the connection/)).toHaveTextContent('anthropic/claude-sonnet-4.5');
+});
+
+it('a Claude agent already on an OpenRouter key keeps that choice', async () => {
+  serve();
+  render(<Harness session={SIGNED_IN} start={teamDraft({ agents: [draftAgent('builder', { kind: 'claude', connection: 'or1' })] })} />);
+  const pick = await screen.findByRole('combobox', { name: 'Builder runs on' });
+  await waitFor(() => expect(pick).toHaveDisplayValue('Claude via OpenRouter · Router (check failed)'));
 });
 
 it('a connection whose check failed shows a warning when chosen', async () => {
@@ -64,7 +83,7 @@ it('a removed connection is named as removed, not shown as the subscription', as
   expect(await screen.findByText(/connection was removed/)).toBeInTheDocument();
 });
 
-it('on your own computer the choice stays Claude or Codex', async () => {
+it('on your own computer the choice is Claude, Codex or OpenCode', async () => {
   serve();
   render(<Harness session={{ kind: 'local' }} start={claudeTeam()} />);
   expect(screen.getByRole('radiogroup', { name: 'Builder runs on' })).toBeInTheDocument();

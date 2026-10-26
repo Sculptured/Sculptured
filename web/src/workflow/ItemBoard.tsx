@@ -10,7 +10,11 @@ function duration(ms: number): string {
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
 }
 
-const SOURCE_WORDS: Record<CostSource, string> = { 'claude-code': "Claude Code's own estimate", 'openai-list-prices': 'OpenAI list prices (checked 12 Oct 2026)' };
+const SOURCE_WORDS: Record<CostSource, string> = {
+  'claude-code': "Claude Code's own estimate",
+  'openai-list-prices': 'OpenAI list prices (checked 12 Oct 2026)',
+  opencode: "OpenCode's own estimate",
+};
 /** Estimated cost in words: always "≈", always where it came from; plan subscribers are not billed this. */
 export function costText(usd: number, partial: boolean): string {
   return `${partial ? 'at least ' : ''}≈ $${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}`;

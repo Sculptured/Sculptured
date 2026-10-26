@@ -277,6 +277,14 @@ const PATHS = {
       <path d="M12 8.5 15.5 12 12 15.5 8.5 12Z" fill="currentColor" />
     </>
   ),
+  /** Code brackets around a dot: the OpenCode mark (drawn here). */
+  opencode: (
+    <>
+      <path d="M8 6 2 12l6 6" />
+      <path d="m16 6 6 6-6 6" />
+      <rect x="10" y="10" width="4" height="4" rx="1" fill="currentColor" />
+    </>
+  ),
   /** Lucide `bot`: the Practice-agent mark, an agent like any other (its colour tells it apart). */
   practice: (
     <>

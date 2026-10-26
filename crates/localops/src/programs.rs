@@ -37,7 +37,14 @@ pub fn program_in(
         if cfg!(windows) {
             places.push(h.join(".local").join("bin").join(format!("{name}.exe")));
         } else {
-            for dir in [".local/bin", ".npm-global/bin", ".bun/bin", ".volta/bin"] {
+            // `.opencode/bin` is where OpenCode's own installer puts it.
+            for dir in [
+                ".local/bin",
+                ".npm-global/bin",
+                ".bun/bin",
+                ".volta/bin",
+                ".opencode/bin",
+            ] {
                 places.push(h.join(dir).join(name));
             }
         }

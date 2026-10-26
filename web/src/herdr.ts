@@ -111,6 +111,8 @@ export function vendor(runtime: Runtime | undefined): Vendor {
       return { mark: '✳', name: 'Claude', cls: 'v-claude' };
     case 'codex':
       return { mark: '◈', name: 'Codex', cls: 'v-codex' };
+    case 'opencode':
+      return { mark: '‹›', name: 'OpenCode', cls: 'v-opencode' };
     case 'stub':
       return { mark: '◇', name: 'Practice', cls: 'v-practice' };
     case undefined:

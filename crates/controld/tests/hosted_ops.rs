@@ -121,16 +121,17 @@ async fn hosted_folders_git_and_clis_run_on_the_teams_computer() {
     let (status, clis) = crate::common::m2::signed(&s.router, "GET", "/api/clis", None).await;
     assert_eq!(
         (status.as_u16(), clis.as_array().map(Vec::len)),
-        (200, Some(2)),
-        "{clis}"
+        (200, Some(3)),
+        "Claude Code, Codex and OpenCode: {clis}"
     );
     assert_eq!(clis[0]["installed"], false);
+    assert_eq!(clis[2]["name"], "opencode");
     // A team's CLIs are its computer's (what Start checks first).
     let (status, clis) =
         crate::common::m2::signed(&s.router, "GET", &format!("/api/clis?team={id}"), None).await;
     assert_eq!(
         (status.as_u16(), clis.as_array().map(Vec::len)),
-        (200, Some(2)),
+        (200, Some(3)),
         "{clis}"
     );
     // The code from a sign-in page goes to that computer's sign-in, which here has not started.

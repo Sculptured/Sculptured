@@ -14,15 +14,17 @@ import type { SeatView } from './generated/SeatView';
 export const RUNTIME_LABEL: Record<Runtime, string> = {
   'claude-code': 'Claude',
   codex: 'Codex',
+  opencode: 'OpenCode',
   pi: 'Pi',
   omp: 'OMP',
   terminal: 'Terminal',
   stub: 'Practice agent',
 };
 
-export const KIND_LABEL: Record<'claude' | 'codex' | 'practice', string> = {
+export const KIND_LABEL: Record<'claude' | 'codex' | 'opencode' | 'practice', string> = {
   claude: 'Claude',
   codex: 'Codex',
+  opencode: 'OpenCode',
   practice: 'Practice agent',
 };
 

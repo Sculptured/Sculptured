@@ -10,11 +10,13 @@ export type ModelConnection = {
 };
 export type NewConnection = { name: string; provider: ConnectionProvider; key: string; model?: string };
 
-export const PROVIDER_LABEL: Record<ConnectionProvider, string> = { 'anthropic-key': 'Claude (API key)', openrouter: 'Claude via OpenRouter' };
-/** The model OpenRouter suggests first; Claude Code works best with Claude models there. */
-export const OPENROUTER_MODEL = 'anthropic/claude-sonnet-4.5';
+export const PROVIDER_LABEL: Record<ConnectionProvider, string> = { 'anthropic-key': 'Claude (API key)', openrouter: 'Open models via OpenRouter' };
+/** An open model OpenCode agents run well, by its OpenRouter name (OpenCode calls it `openrouter/…`). */
+export const OPENROUTER_MODEL = 'moonshotai/kimi-k2.7-code';
 
-export const connectionLabel = (c: Pick<ModelConnection, 'provider' | 'name'>) => `${PROVIDER_LABEL[c.provider]} · ${c.name}`;
+/** What runs on a connection: Claude Code on an Anthropic key, OpenCode on an OpenRouter key. */
+export const connectionLabel = (c: Pick<ModelConnection, 'provider' | 'name'>) =>
+  `${c.provider === 'openrouter' ? 'OpenCode via OpenRouter' : PROVIDER_LABEL[c.provider]} · ${c.name}`;
 export const maskedKey = (last4: string) => `••••${last4}`;
 
 export async function listConnections(): Promise<ModelConnection[]> {

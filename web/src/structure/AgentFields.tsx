@@ -4,10 +4,9 @@ import { effectiveFolder, folderForAll } from '../draft/folders';
 import { drawnGroups } from '../draft/geometry';
 import { groupOf, seatIdFor } from '../draft/ids';
 import { MARK } from '../draft/issues';
-import { groupDefault, isModelKind, setKind, setRunsOn, type ModelKind } from '../draft/models';
-import type { AgentKind } from '../generated/AgentKind';
+import { groupDefault, isModelKind, setKind, setRunsOn, usesConnections, type ModelKind } from '../draft/models';
 import { Link } from 'react-router-dom';
-import { connectionLabel, useConnections, type ModelConnection } from '../hosted/connections';
+import { useConnections, type ModelConnection } from '../hosted/connections';
 import type { ConnectionKind } from '../generated/ConnectionKind';
 import type { DraftAgent } from '../generated/DraftAgent';
 import type { DraftIssue } from '../generated/DraftIssue';
@@ -24,6 +23,7 @@ import { FolderPicker, shortPath, useHome } from './FolderPicker';
 import { KindSwitch, modelLabel, ModelSelect } from './ModelControls';
 import { LOCK_REASON, nameOf, type Edit } from './Panels';
 import { PickMenu } from './PickMenu';
+import { RunsOnPicker } from './RunsOnPicker';
 import { IntegrationFields, SkillFields } from './SkillFields';
 import { TokenLimitField } from './TokenLimitField';
 import { useHosted } from '../hosted/HostedGate';
@@ -84,12 +84,12 @@ export function NameField({ a, edit, inputRef, issues = [] }: { a: DraftAgent; e
   );
 }
 
-/** "Runs on" (Claude or Codex, and hosted, your model connections) and its model, side by side. */
+/** "Runs on" (Claude, Codex or OpenCode, and hosted, your model connections) and its model, side by side. */
 export function RunsOnField({ draft, a, edit, locked }: Common) {
   const k = a.kind;
   const hosted = useHosted().kind === 'signed-in';
   const conns = useConnections(hosted);
-  const conn = k === 'claude' && a.connection ? conns.list.find((c) => c.id === a.connection) ?? null : null;
+  const conn = usesConnections(k) && a.connection ? conns.list.find((c) => c.id === a.connection) ?? null : null;
   const picker = hosted && (conns.list.length > 0 || (conns.loaded && !!a.connection));
   const fallback = isModelKind(k) ? groupDefault(draft, a.group_id, k) : null;
   const from = a.group_id && draft.groups.find((g) => g.id === a.group_id)?.models?.[k as ModelKind] ? 'group' : 'team';
@@ -120,31 +120,8 @@ export function RunsOnField({ draft, a, edit, locked }: Common) {
 /** A chosen connection whose last check failed, or that was removed. */
 function ConnectionWarning({ a, conn, loaded }: { a: DraftAgent; conn: ModelConnection | null; loaded: boolean }) {
   if (conn?.checked?.ok === false) return <p className="fld-issue tone-amber"><span aria-hidden="true">⚠ </span>This connection’s last check failed. <Link to="/setup?step=models">Check it in Setup</Link></p>;
-  if (a.kind === 'claude' && a.connection && loaded && !conn) return <p className="fld-issue tone-amber"><span aria-hidden="true">⚠ </span>This agent’s model connection was removed. Choose another.</p>;
+  if (usesConnections(a.kind) && a.connection && loaded && !conn) return <p className="fld-issue tone-amber"><span aria-hidden="true">⚠ </span>This agent’s model connection was removed. Choose another.</p>;
   return null;
-}
-
-const MISSING = '__missing__';
-const CONN = 'connection:';
-
-/** Hosted: Claude by subscription, each of your model connections, Codex (and Practice for a Practice agent). */
-function RunsOnPicker({ a, label, conns, disabled, onChange }: { a: DraftAgent; label: string; conns: ModelConnection[]; disabled: boolean; onChange: (kind: AgentKind, connection: string | null) => void }) {
-  const known = a.kind === 'claude' && a.connection ? conns.some((c) => c.id === a.connection) : true;
-  const value = a.kind === 'claude' && a.connection ? (known ? `${CONN}${a.connection}` : MISSING) : a.kind;
-  return (
-    <select aria-label={label} className="fld-input" value={value} disabled={disabled}
-      onChange={(e) => {
-        const v = e.target.value;
-        if (v.startsWith(CONN)) onChange('claude', v.slice(CONN.length));
-        else if (v !== MISSING) onChange(v as AgentKind, null);
-      }}>
-      <option value="claude">Claude (subscription)</option>
-      {conns.map((c) => <option key={c.id} value={`${CONN}${c.id}`}>{connectionLabel(c)}{c.checked?.ok === false ? ' (check failed)' : ''}</option>)}
-      {!known && <option value={MISSING} disabled>Removed connection</option>}
-      <option value="codex">{KIND_LABEL.codex}</option>
-      {a.kind === 'practice' && <option value="practice">{KIND_LABEL.practice}</option>}
-    </select>
-  );
 }
 
 const JOB_HELP_FIRST = 'Sent as its first message when the team starts. With no Job, your first message to it is its work.';

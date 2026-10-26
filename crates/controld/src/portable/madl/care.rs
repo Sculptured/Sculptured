@@ -19,6 +19,9 @@ fn model_ref(provider: &str, id: Option<&str>) -> Option<m::ModelRef> {
     }))
 }
 
+/// MADL has no OpenCode runtime yet: Sculptured's extension name for it (a plain `opencode` is read too).
+pub const OPENCODE: &str = "x-sculptured-opencode";
+
 fn models_out(models: &ModelDefaults) -> std::collections::BTreeMap<String, m::ModelRef> {
     let pairs = [
         (
@@ -26,6 +29,11 @@ fn models_out(models: &ModelDefaults) -> std::collections::BTreeMap<String, m::M
             model_ref("anthropic", models.claude.as_deref()),
         ),
         ("codex", model_ref("openai", models.codex.as_deref())),
+        // Already `provider/model`: kept whole.
+        (
+            OPENCODE,
+            model_ref("openrouter", models.opencode.as_deref()),
+        ),
     ];
     pairs
         .into_iter()
@@ -157,13 +165,18 @@ pub fn models_in(s: Option<&m::Settings>) -> (ModelDefaults, Vec<String>) {
     let id = |r: &str| models.get(r).map(|m| bare(model_id(m)));
     let others = models
         .keys()
-        .filter(|k| !matches!(k.as_str(), "claude-code" | "codex"))
+        .filter(|k| !matches!(k.as_str(), "claude-code" | "codex" | OPENCODE | "opencode"))
         .cloned()
         .collect();
     (
         ModelDefaults {
             claude: id("claude-code"),
             codex: id("codex"),
+            // OpenCode names its models `provider/model` itself: kept whole.
+            opencode: models
+                .get(OPENCODE)
+                .or_else(|| models.get("opencode"))
+                .map(|m| model_id(m).to_string()),
         },
         others,
     )

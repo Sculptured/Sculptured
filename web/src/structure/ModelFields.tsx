@@ -42,11 +42,11 @@ export function AgentModelFields({ draft, edit, locked, a }: Common & { a: Draft
   );
 }
 
-/** A Claude model and a Codex model, for a team or a group. */
+/** A Claude, a Codex and an OpenCode model, for a team or a group. */
 function DefaultsPair({ models, inherited, label, locked, onChange }: { models?: ModelDefaults; inherited: (k: ModelKind) => string; label: string; locked: boolean; onChange: (k: ModelKind, m: string | null) => void }) {
   return (
     <>
-      {(['claude', 'codex'] as ModelKind[]).map((k) => (
+      {(['claude', 'codex', 'opencode'] as ModelKind[]).map((k) => (
         <label key={k} className="model-row">
           <span className="model-row-kind">{KIND_LABEL[k]} agents</span>
           <ModelSelect kind={k} label={`${label}: ${KIND_LABEL[k]} model`} value={models?.[k] ?? null} inherited={inherited(k)} disabled={locked} onChange={(m) => onChange(k, m)} />

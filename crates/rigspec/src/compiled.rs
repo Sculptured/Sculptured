@@ -8,6 +8,7 @@ use ts_rs::TS;
 pub enum Runtime {
     ClaudeCode,
     Codex,
+    Opencode,
     Pi,
     Omp,
     Terminal,
@@ -20,6 +21,7 @@ impl Runtime {
         Some(match s {
             "claude-code" => Self::ClaudeCode,
             "codex" => Self::Codex,
+            "opencode" => Self::Opencode,
             "pi" => Self::Pi,
             "omp" => Self::Omp,
             "terminal" => Self::Terminal,
@@ -32,6 +34,7 @@ impl Runtime {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
+            Self::Opencode => "opencode",
             Self::Pi => "pi",
             Self::Omp => "omp",
             Self::Terminal => "terminal",

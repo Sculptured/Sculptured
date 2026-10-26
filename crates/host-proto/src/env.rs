@@ -49,6 +49,7 @@ pub const MODEL_ENV_KEYS: &[&str] = &[
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_MODEL",
+    "OPENROUTER_API_KEY",
 ];
 
 /// The addresses `ANTHROPIC_BASE_URL` may name (OpenRouter's Anthropic-compatible API).

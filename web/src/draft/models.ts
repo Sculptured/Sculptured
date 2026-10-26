@@ -4,7 +4,7 @@ import type { ModelDefaults } from '../generated/ModelDefaults';
 import type { TeamDraft } from '../generated/TeamDraft';
 
 /** The kinds that call a model; Practice agents never do. */
-export type ModelKind = 'claude' | 'codex';
+export type ModelKind = 'claude' | 'codex' | 'opencode';
 
 export const isModelKind = (k: AgentKind): k is ModelKind => k !== 'practice';
 
@@ -37,12 +37,15 @@ export const setKind = (d: TeamDraft, id: string, kind: AgentKind): TeamDraft =>
   agents: d.agents.map((a) => (a.id === id ? withoutConnection({ ...a, kind, advanced: { ...a.advanced, model: null } }) : a)),
 });
 
-/** What an agent runs on: a kind and, for Claude, one of your model connections (null: the subscription). */
+/** Kinds that can run on one of your model connections: Claude Code (an Anthropic key) and OpenCode (OpenRouter). */
+export const usesConnections = (k: AgentKind) => k === 'claude' || k === 'opencode';
+
+/** What an agent runs on: a kind and, for Claude or OpenCode, one of your model connections (null: its computer's own setup). */
 export function setRunsOn(d: TeamDraft, id: string, kind: AgentKind, connection: string | null): TeamDraft {
   const a = d.agents.find((x) => x.id === id);
   if (!a) return d;
   const base = a.kind === kind ? d : setKind(d, id, kind);
-  return { ...base, agents: base.agents.map((x) => (x.id !== id ? x : kind === 'claude' && connection ? { ...x, connection } : withoutConnection(x))) };
+  return { ...base, agents: base.agents.map((x) => (x.id !== id ? x : usesConnections(kind) && connection ? { ...x, connection } : withoutConnection(x))) };
 }
 
 /** Switches every agent in `ids` (default: all) to `kind`. */
@@ -52,6 +55,7 @@ export const setKindAll = (d: TeamDraft, kind: AgentKind, ids?: string[]): TeamD
 const withModel = (m: ModelDefaults | undefined, k: ModelKind, model: string | null): ModelDefaults => ({
   claude: m?.claude ?? null,
   codex: m?.codex ?? null,
+  ...(m?.opencode ? { opencode: m.opencode } : {}),
   [k]: clean(model),
 });
 

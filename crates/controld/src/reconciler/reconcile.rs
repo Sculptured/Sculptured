@@ -12,6 +12,7 @@ pub fn runtime_words(rt: Runtime) -> &'static str {
     match rt {
         Runtime::ClaudeCode => "Claude",
         Runtime::Codex => "Codex",
+        Runtime::Opencode => "OpenCode",
         Runtime::Pi => "Pi",
         Runtime::Omp => "OMP",
         Runtime::Terminal => "Terminal",

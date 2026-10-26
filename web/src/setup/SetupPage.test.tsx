@@ -122,12 +122,13 @@ it('adding an Anthropic key sends it once and only ever shows its last four char
   expect(key).toHaveValue('');
 });
 
-it('offers an Anthropic key form and no OpenRouter one (not finished yet)', async () => {
+it('offers an Anthropic key form and an OpenRouter one for open models, which asks for the model', async () => {
   serve({ done: ['welcome', 'computer'], hosts: [{ id: 'd1' }], connections: [] });
   open();
   expect(await screen.findByRole('form', { name: 'Claude — API key' })).toBeInTheDocument();
-  expect(screen.queryByRole('form', { name: 'Claude via OpenRouter' })).not.toBeInTheDocument();
-  expect(screen.queryByText(/OpenRouter/)).not.toBeInTheDocument();
+  const router = screen.getByRole('form', { name: 'Open models — OpenRouter' });
+  expect(router).toHaveTextContent(/OpenCode agents/);
+  expect(within(router).getByRole('textbox', { name: 'Model' })).toHaveAttribute('placeholder', 'moonshotai/kimi-k2.7-code');
 });
 
 const unchecked: Conn = { id: 'c1', name: 'Work key', provider: 'anthropic-key', model: null, key_last4: '9876', checked: null, created_at: '2026-10-21T00:00:00Z' };

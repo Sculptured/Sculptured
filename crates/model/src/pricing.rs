@@ -13,6 +13,8 @@ pub enum CostSource {
     ClaudeCode,
     /// Sculptured's price table of OpenAI list prices (`OPENAI_PRICES_CHECKED`).
     OpenaiListPrices,
+    /// OpenCode's own estimate, from its price table, for the turn's model calls.
+    Opencode,
 }
 
 /// An estimated cost in US dollars, with its source.

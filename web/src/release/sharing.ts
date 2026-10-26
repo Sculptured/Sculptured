@@ -13,7 +13,7 @@ export function sanitizeExport(input: GroupBlock): GroupBlock {
   const validString=(v:unknown)=>typeof v==='string'&&v.length<=200000;
   const ids=new Set(d.agents.map(a=>a?.id));
   if (!validString(b.id)||!validString(b.name)||!g||!validString(g.id)||!validString(g.label)||![g.x,g.y,g.w,g.h].every(Number.isFinite)||g.w<=0||g.h<=0
-      ||ids.size!==d.agents.length||d.agents.some(a=>!a||!validString(a.id)||!validString(a.name)||!validString(a.job)||!['claude','codex','practice'].includes(a.kind)||a.group_id!==g.id||![a.x,a.y].every(Number.isFinite))
+      ||ids.size!==d.agents.length||d.agents.some(a=>!a||!validString(a.id)||!validString(a.name)||!validString(a.job)||!['claude','codex','opencode','practice'].includes(a.kind)||a.group_id!==g.id||![a.x,a.y].every(Number.isFinite))
       ||!Array.isArray(d.connections)||d.connections.length>500||d.connections.some(c=>!c||!validString(c.id)||!ids.has(c.from)||!ids.has(c.to)||!['hands-work-to','reports-to','watches'].includes(c.kind)))
     throw Error('Choose a valid group export from Sculptured Library');
   if(d.workflow) checkWorkflow(d.workflow, ids, d.connections.length);

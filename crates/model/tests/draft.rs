@@ -166,10 +166,12 @@ fn model_defaults_are_optional_and_omitted_when_empty() {
     d.models = ModelDefaults {
         claude: Some("sonnet".into()),
         codex: None,
+        opencode: None,
     };
     d.groups[0].models = ModelDefaults {
         claude: None,
         codex: Some("gpt-6-sol".into()),
+        opencode: None,
     };
     let v = serde_json::to_value(&d).unwrap();
     assert_eq!(v["models"], json!({ "claude": "sonnet", "codex": null }));
@@ -184,7 +186,8 @@ fn model_defaults_are_optional_and_omitted_when_empty() {
         one,
         ModelDefaults {
             claude: None,
-            codex: Some("gpt-6-luna".into())
+            codex: Some("gpt-6-luna".into()),
+            opencode: None,
         }
     );
     assert!(!one.is_empty());

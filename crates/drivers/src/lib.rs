@@ -1,5 +1,6 @@
 pub mod claude;
 pub mod codex;
+pub mod opencode;
 mod process;
 pub mod stub;
 

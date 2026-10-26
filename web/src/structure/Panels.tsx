@@ -1,3 +1,4 @@
+import type { AgentKind } from '../generated/AgentKind';
 import type { TeamOrigin } from '../generated/TeamOrigin';
 import { SaveGroupButton } from '../groups/SaveGroupButton';
 import { useId, useState, type ReactNode } from 'react';
@@ -20,8 +21,9 @@ export type Edit = (fn: (d: TeamDraft) => EditResult, key?: string) => string | 
 /** Why structure can't change while the team runs. */
 export const LOCK_REASON = 'Stop the team to change this.';
 
-export const kindVendor = (k: 'claude' | 'codex' | 'practice') =>
-  vendor(k === 'claude' ? 'claude-code' : k === 'codex' ? 'codex' : 'stub');
+const KIND_RUNTIME = { claude: 'claude-code', codex: 'codex', opencode: 'opencode', practice: 'stub' } as const;
+
+export const kindVendor = (k: AgentKind) => vendor(KIND_RUNTIME[k]);
 
 export const nameOf = (d: TeamDraft, id: string) => d.agents.find((a) => a.id === id)?.name.trim() || 'Unnamed agent';
 

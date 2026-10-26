@@ -203,11 +203,14 @@ pub async fn execute(cx: &Context, op: LocalOp) -> Result<serde_json::Value, Loc
             ))
         }
         LocalOp::Clis => {
-            let (a, b) = tokio::join!(
+            // OpenCode is looked up where its installer and npm put it (`programs::program`).
+            let opencode = crate::programs::program("opencode");
+            let (a, b, c) = tokio::join!(
                 clis::status("claude", &cx.claude),
-                clis::status("codex", &cx.codex)
+                clis::status("codex", &cx.codex),
+                clis::status("opencode", &opencode)
             );
-            Ok(json(vec![a, b]))
+            Ok(json(vec![a, b, c]))
         }
         LocalOp::CliLogin { name } => {
             let program = match name.as_str() {

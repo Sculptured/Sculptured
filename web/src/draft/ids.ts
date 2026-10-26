@@ -42,7 +42,7 @@ export function newId(base: string, taken: Set<string>): string {
   }
 }
 
-export const KIND_BASE: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', practice: 'Practice' };
+export const KIND_BASE: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', practice: 'Practice' };
 
 export function nextAgentName(d: TeamDraft, kind: AgentKind): string {
   const used = new Set(d.agents.map((a) => a.name.trim().toLowerCase()));

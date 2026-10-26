@@ -3,4 +3,4 @@
 /**
  * Where a cost figure came from.
  */
-export type CostSource = "claude-code" | "openai-list-prices";
+export type CostSource = "claude-code" | "openai-list-prices" | "opencode";

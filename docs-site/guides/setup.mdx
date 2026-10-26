@@ -21,13 +21,14 @@ Accounts that already have a connected computer and a signed-in Claude Code or C
 
 ## Model connections
 
-A model connection is how an agent reaches a model. Each agent's block lets you choose one, the same way you choose Claude Code or Codex. A team uses its first working connection for new agents.
+A model connection is how an agent reaches a model. Each agent's block lets you choose one, the same way you choose Claude Code, Codex or OpenCode. A team uses its first working connection for new agents.
 
 | Connection | What you give | What **Check** does |
 |---|---|---|
 | **Claude, subscription** | Sign in to Claude Code on a connected computer (paste the code it shows). | Uses the existing Claude Code sign-in check. |
 | **Claude, API key** | An Anthropic API key. | Lists the models the key can use. Uses no tokens. |
 | **Codex, ChatGPT subscription** | Sign in to Codex with the one-time code it shows. | Uses the existing Codex sign-in check. |
+| **Open models — OpenRouter** | An OpenRouter key and the open model OpenCode agents run on it, by its OpenRouter name (for example `moonshotai/kimi-k2.7-code`). The computer needs [OpenCode](/guides/open-models) installed. | Reads the key's own details from OpenRouter. Uses no tokens. |
 
 ### How keys are kept
 
@@ -40,6 +41,6 @@ If a key can't be read when an agent starts, the agent doesn't start, and its ca
 
 ## Costs
 
-A run that uses an API key is billed to your own Anthropic account, at that provider's prices. Sculptured does not pay for model use. Budget views mark these runs as a pay-per-use key, and their costs as estimates based on the provider's prices. A subscription connection uses your Claude or ChatGPT plan, as before.
+A run that uses an API key is billed to your own Anthropic or OpenRouter account, at that provider's prices. Sculptured does not pay for model use. Budget views mark these runs as a pay-per-use key, and their costs as estimates based on the provider's prices. A subscription connection uses your Claude or ChatGPT plan, as before.
 
 A connection's **Check** uses no tokens. The first real use of a key is your first run with it.

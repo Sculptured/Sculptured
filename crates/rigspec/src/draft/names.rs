@@ -56,6 +56,7 @@ pub(super) fn runtime_of(kind: AgentKind) -> &'static str {
     match kind {
         AgentKind::Claude => "claude-code",
         AgentKind::Codex => "codex",
+        AgentKind::Opencode => "opencode",
         AgentKind::Practice => "stub",
     }
 }

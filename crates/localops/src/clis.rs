@@ -16,7 +16,7 @@ use ts_rs::TS;
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct CliStatus {
-    /// `claude` or `codex`.
+    /// `claude`, `codex` or `opencode`.
     pub name: String,
     pub installed: bool,
     pub version: Option<String>,
@@ -79,6 +79,17 @@ pub async fn status(name: &str, program: &Path) -> CliStatus {
             detail,
         };
     };
+    if name == "opencode" {
+        // Its keys come from a model connection or its own setup, per provider: no one sign-in to check.
+        return CliStatus {
+            name: name.into(),
+            installed: true,
+            version: Some(version.clone()),
+            signed_in: None,
+            account: None,
+            detail: version,
+        };
+    }
     let args: &[&str] = if name == "claude" {
         &["auth", "status"]
     } else {

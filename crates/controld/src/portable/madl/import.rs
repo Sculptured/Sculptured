@@ -262,6 +262,7 @@ pub(super) fn kind_of(runtime: Option<&str>) -> Option<AgentKind> {
     match runtime {
         Some("claude-code") => Some(AgentKind::Claude),
         Some("codex") => Some(AgentKind::Codex),
+        Some(super::care::OPENCODE | "opencode") => Some(AgentKind::Opencode),
         Some("x-sculptured-practice") => Some(AgentKind::Practice),
         _ => None,
     }

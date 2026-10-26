@@ -174,7 +174,7 @@ export function StuckMark({ reason, className }: { reason: string; className?: s
   );
 }
 
-const VENDOR_ICON: Record<string, IconName> = { 'v-claude': 'claude', 'v-codex': 'codex', 'v-practice': 'practice' };
+const VENDOR_ICON: Record<string, IconName> = { 'v-claude': 'claude', 'v-codex': 'codex', 'v-opencode': 'opencode', 'v-practice': 'practice' };
 
 /**
  * The agent's avatar: a rounded tile tinted with its provider's colour and its provider's mark

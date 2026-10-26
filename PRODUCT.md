@@ -27,7 +27,7 @@ The team is a board. A multi-agent team is designed and steered visually: each a
 - **Default wording:** the default UI uses plain words: Team, Group, Agent, Job, Folder, "hands work to". OpenRig words (rig, pod, seat, member, edge, runtime, RigSpec, YAML) appear only inside Advanced disclosures (see AGENTS.md).
 - **Work states stay distinct:** planned, in progress, reported complete, verified and blocked are separate states. Provenance is labelled: protocol-observed, agent-reported, filesystem-observed, captured-tool, verified, heuristic or operator. Unknown stays "unknown".
 - **Status display:** status is shown as shape plus text, never colour alone. Disabled controls say why in visible text. Layout is stable: updates never move cards or reset selection.
-- **Agent kinds:** every agent is a Claude Code or Codex agent. Practice agents (free, scripted) are not offered anywhere in the UI: not when adding or switching agents, generating a team, or in Setup. The engine keeps them as a hidden kind for tests only.
+- **Agent kinds:** every agent is a Claude Code, Codex or OpenCode agent (open models through OpenRouter). Practice agents (free, scripted) are not offered anywhere in the UI: not when adding or switching agents, generating a team, or in Setup. The engine keeps them as a hidden kind for tests only.
 - **Feature depth:** advanced features (workflows, stages, review panels, checks, merges, schedules, decision log, budgets) must stay reachable without burdening newcomers.
 
 ## Brand Commitments

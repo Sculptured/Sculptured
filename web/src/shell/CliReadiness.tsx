@@ -8,13 +8,15 @@ import { CliInstall } from './CliInstall';
 import { CliSignInSteps } from './CliSignInSteps';
 import { Btn } from './ui';
 
-export const PRODUCT: Record<string, string> = { claude: 'Claude Code', codex: 'Codex' };
+export const PRODUCT: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 
-/** The CLIs a team's agents need signed in (`claude`, `codex`). Practice agents need none, and nor
- * does an agent on a model connection: it runs on that connection's key. */
+/** The CLIs a team's agents need ready: Claude Code and Codex signed in, unless the agent runs on a
+ * model connection's key; OpenCode installed, always (a connection gives it only the key). Practice
+ * agents need none. */
 export function cliNeeds(draft: TeamDraft): string[] {
-  const signIn = draft.agents.filter((a) => !a.connection).map((a) => a.kind);
-  return [...new Set(signIn.filter((k): k is 'claude' | 'codex' => k === 'claude' || k === 'codex'))].sort();
+  const signIn = draft.agents.filter((a) => !a.connection && (a.kind === 'claude' || a.kind === 'codex')).map((a) => a.kind);
+  const installed = draft.agents.some((a) => a.kind === 'opencode') ? ['opencode'] : [];
+  return [...new Set([...signIn, ...installed])].sort();
 }
 
 const notReady = (c: CliStatus) => !c.installed || c.signed_in === false;
@@ -53,7 +55,7 @@ export function CliReadiness({ need, on, onReady }: { need: string[]; on: CliOn;
   const ready = clis.length > 0 && !clis.some(notReady);
   return (
     <div className="cli-readiness">
-      <ul aria-label="Claude Code and Codex on that computer">
+      <ul aria-label="The agents’ programs on that computer">
         {clis.map((c) => <CliRow key={c.name} c={c} on={on} />)}
       </ul>
       <p className="cli-readiness-actions">
@@ -74,6 +76,8 @@ function CliRow({ c, on }: { c: CliStatus; on: CliOn }) {
     try { setStarted(await api.cliLogin(c.name, on)); } catch (e) { setError(errorText(e)); }
   };
   if (!c.installed) return <li><strong>{name}</strong>: not installed<CliInstall cli={c.name} /></li>;
+  // OpenCode has no one sign-in to check: its keys come from a connection or its own setup.
+  if (!notReady(c) && c.name === 'opencode') return <li><strong>{name}</strong>: <span aria-hidden="true">✓ </span>installed{c.version ? ` (${c.version})` : ''}</li>;
   if (!notReady(c)) return <li><strong>{name}</strong>: <span aria-hidden="true">✓ </span>signed in{c.account ? ` (${c.account})` : ''}</li>;
   return (
     <li>

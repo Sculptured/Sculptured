@@ -1,11 +1,12 @@
-# Agent drivers: Claude Code and Codex
+# Agent drivers: Claude Code, Codex and OpenCode
 
-A driver starts one coding CLI for one agent, sends it the operator's messages and turns everything the CLI prints into one shared list of events (`DriverEvent`). Sculptured has three drivers: Claude Code (`claude-stream`), Codex (`codex-app-server`) and the Practice driver (`stub`), which calls no model. The runner on each computer (`hostd`) owns the drivers. controld only names a driver and sends launch parameters.
+A driver starts one coding CLI for one agent, sends it the operator's messages and turns everything the CLI prints into one shared list of events (`DriverEvent`). Sculptured has four drivers: Claude Code (`claude-stream`), Codex (`codex-app-server`), OpenCode (`opencode-acp`, open models) and the Practice driver (`stub`), which calls no model. The runner on each computer (`hostd`) owns the drivers. controld only names a driver and sends launch parameters.
 
 Sources:
 - `crates/drivers/src/{lib,process,stub}.rs`
 - `crates/drivers/src/claude/{mod,parser,limits}.rs`
 - `crates/drivers/src/codex/{mod,session,core}.rs`, `crates/drivers/src/codex/parser/{mod,turns,items,requests}.rs`
+- `crates/drivers/src/opencode/{mod,config,core,parser,session}.rs`
 - `crates/model/src/{caps,limit,pricing}.rs`
 - `crates/controld/src/launch.rs`, `crates/hostd/src/run.rs`, `crates/hostd/src/supervisor/{mod,lifecycle}.rs`, `crates/hostd/src/mapping.rs`
 - `crates/fixtures/src/bin/{fake-claude,fake-codex,codex-probe,mcp-ping-stub}.rs`, `crates/fixtures/recordings/`
@@ -28,19 +29,19 @@ flowchart LR
   M -- "EventBody journaled, sent to controld" --> C
 ```
 
-- **Choosing a driver.** `launch::driver_for` maps an agent type to a driver name: Claude Code → `claude-stream`, Codex → `codex-app-server`, Practice (`Runtime::Stub`) → `stub`. hostd registers all three in `run.rs::drivers`. The `claude` and `codex` programs default to the names on `PATH`; `--claude-program` and `--codex-program` override them.
+- **Choosing a driver.** `launch::driver_for` maps an agent type to a driver name: Claude Code → `claude-stream`, Codex → `codex-app-server`, OpenCode → `opencode-acp`, Practice (`Runtime::Stub`) → `stub`. hostd registers all four in `run.rs::drivers`; `opencode` is looked up on `PATH` and in `~/.opencode/bin` when each agent starts. The `claude` and `codex` programs default to the names on `PATH`; `--claude-program` and `--codex-program` override them.
 - **The trait.** `Driver` has `launch`, `resume`, `fork` (Codex and stub only) and `capabilities`. A `Session` has `send`, `interrupt`, `stop(grace)`, `answer` and `take_events`. The event stream always ends with `Exited`.
 - **Capabilities** (`model::Caps`) tell the UI which controls to disable:
 
-| Capability | Claude Code | Codex | Practice |
-|---|---|---|---|
-| `interrupt` | yes | yes | yes |
-| `resume` | yes | yes | yes |
-| `fork` | no (not probed) | yes | yes |
-| `usage` | yes | yes | yes |
-| `questions` | no | only with `native_questions` (off in `run.rs`) | yes |
-| `mid_turn_input` | no: messages queue | no: the driver queues | no |
-| `subagent_events` | yes | no (not observed) | no |
+| Capability | Claude Code | Codex | OpenCode | Practice |
+|---|---|---|---|---|
+| `interrupt` | yes | yes | yes (`session/cancel`) | yes |
+| `resume` | yes | yes | yes (`session/resume`) | yes |
+| `fork` | no (not probed) | yes | no (unstable in ACP v1) | yes |
+| `usage` | yes | yes | yes, partial tokens (§3a) | yes |
+| `questions` | no | only with `native_questions` (off in `run.rs`) | no | yes |
+| `mid_turn_input` | no: messages queue | no: the driver queues | no: the driver queues | no |
+| `subagent_events` | yes | no (not observed) | no | no |
 
 ## 2. How Claude Code is driven
 
@@ -122,6 +123,17 @@ sequenceDiagram
 - **Interrupt** sends `turn/interrupt {threadId, turnId}`. Before the turn id is known it is held and sent when the id arrives. An interrupt that stops nothing adds an "interrupt not applied: …" note. An interrupt ends the turn but not the command Codex was running.
 - **Questions and approvals.** `item/tool/requestUserInput`, `item/fileChange/requestApproval` and `item/commandExecution/requestApproval` become `QuestionRaised`; any other server request is refused with JSON-RPC error -32601 so the turn cannot hang.
 - **Stop** closes stdin.
+
+## 3a. How OpenCode is driven
+
+`opencode acp` speaks the Agent Client Protocol, version 1: JSON-RPC 2.0 lines over stdin and stdout. The recordings `crates/fixtures/recordings/opencode-*.jsonl` were made with OpenCode 1.19.4 against a local stand-in for OpenRouter's chat API (no real model calls); `crates/drivers/tests/opencode_recordings.rs` replays them, and `opencode_live.rs` runs a real `opencode` against a stand-in when `OPENCODE_LIVE_PROGRAM` and `OPENCODE_LIVE_BASE_URL` are set.
+
+- **Launch.** `initialize` (no file system or terminal offered), then `session/new {cwd, mcpServers}` or `session/resume {sessionId, cwd, mcpServers}`, then `session/set_config_option {configId: "model"}` when the agent has a model. A model OpenCode does not know fails the launch in plain words.
+- **Config** (`config.rs`) goes in `OPENCODE_CONFIG_CONTENT`, merged over the person's own OpenCode setup: `permission` from the posture (unrestricted: everything allowed; restricted: edit, bash, webfetch, websearch and outside folders ask; a sandboxed computer denies outside folders), `small_model` set to the agent's own model (otherwise OpenCode titles sessions with another model on the person's key), `experimental.mcp_timeout` long enough for a question to wait for the operator (the MCP SDK's default is 60 seconds), no automatic updates, no sharing.
+- **Seat tools and integrations** are `mcpServers` entries, sent over stdin. OpenCode shows them to the model as `rig_<tool>`.
+- **A turn** is one `session/prompt`. Text and thoughts arrive as chunks under one `messageId` per model call; the parser keeps them until the message ends and emits one `Text` or `Thinking`. A tool is announced at its first update that runs or finishes (the first `tool_call` carries only `{cwd}`), and its result is `rawOutput.output`. `session/request_permission` becomes a `NativePermission` question; Allow and Expired pick `allow_once`, Deny picks `reject_once`. The prompt's answer ends the turn: `end_turn` completed, `cancelled` interrupted, anything else failed. An error answer is kept as evidence; OpenRouter's "Insufficient credits" is `LimitReached { Usage }`, a rate limit `LimitReached { Rate }`.
+- **Usage.** `usage_update.cost` is OpenCode's estimate of the session's total; a turn's cost (`CostSource::Opencode`) is how much it rose. It is unknown for the first turn of a resumed session, and a total that falls (0 after a cancel) is ignored. The prompt's `usage` holds only the turn's last model call, so token counts understate a turn with several calls. `usage_update.used` and `size` become `Context`.
+- **Connections.** On the hosted service an OpenCode agent's OpenRouter connection arrives from the gateway in Claude Code's shape; `launch::for_opencode` turns it into `OPENROUTER_API_KEY` and the model `openrouter/<model>`. An Anthropic-key connection is refused for OpenCode agents.
 
 ## 4. Normalized events (`DriverEvent`)
 
