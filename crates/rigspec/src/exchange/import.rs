@@ -445,6 +445,7 @@ impl Importer<'_> {
             budget: Default::default(),
             input: None,
             schedules: vec![],
+            mandate: Default::default(),
             decision_log: false,
             limits: Default::default(),
             workflow,

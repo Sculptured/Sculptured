@@ -286,6 +286,7 @@ pub fn import_run(
             budget: Default::default(),
             input: None,
             schedules: vec![],
+            mandate: Default::default(),
             decision_log: false,
             limits: Default::default(),
             workflow: None,

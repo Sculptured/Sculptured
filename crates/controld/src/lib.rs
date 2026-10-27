@@ -4,6 +4,7 @@ pub mod api;
 pub mod auth;
 pub mod background;
 pub mod budget;
+pub mod changes;
 pub mod checks;
 pub mod claims;
 pub mod clis;

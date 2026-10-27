@@ -15,6 +15,7 @@ import { UsageStrip } from '../shell/UsageStrip';
 import { Icon } from '../shell/ui';
 import { WORDS } from '../vocab';
 import { useProject, type Project } from './ProjectContext';
+import { ChangesView } from '../collaboration/ChangesView';
 
 /** Results' own pages, as a row of plain tabs. */
 function SubTabs({ team, current }: { team: string; current: ResultsSection }) {
@@ -44,13 +45,13 @@ export function ResultsPage() {
   const navigate = useNavigate();
   const { section } = useParams();
   const current = (RESULTS_SECTIONS.find((s) => s.id === section)?.id ?? 'summary') as ResultsSection;
-  // History and Status need no live team: a team that never ran here can hold an imported run, and
-  // the status page is kept after the team stops.
-  if ((current === 'history' || current === 'status') && !p.live)
+  // History, Status and Changes need no live team: a team that never ran here can hold an imported run,
+  // and the status page and the changes are kept after the team stops.
+  if (KEPT.includes(current) && !p.live)
     return (
       <main className={`page page-wide results-page${current === 'history' ? ' results-history' : ''}`}>
         <SubTabs team={p.team} current={current} />
-        {current === 'history' ? <DeploymentHistoryView rig={p.team} /> : <StatusPageView rig={p.team} onClose={() => navigate(resultsPath(p.team))} />}
+        <Kept team={p.team} current={current} onClose={() => navigate(resultsPath(p.team))} />
       </main>
     );
   if (!p.started)
@@ -69,6 +70,15 @@ export function ResultsPage() {
       {!p.live ? <p role="status" className="muted">{WORDS.connecting(p.title)}</p> : <Section p={p} current={current} />}
     </main>
   );
+}
+
+/** Tabs that read what is kept, so they show without a live team. */
+const KEPT: ResultsSection[] = ['history', 'status', 'changes'];
+
+function Kept({ team, current, onClose }: { team: string; current: ResultsSection; onClose: () => void }) {
+  if (current === 'history') return <DeploymentHistoryView rig={team} />;
+  if (current === 'changes') return <ChangesView rig={team} />;
+  return <StatusPageView rig={team} onClose={onClose} />;
 }
 
 function Section({ p, current }: { p: Project; current: ResultsSection }) {
@@ -90,6 +100,8 @@ function Section({ p, current }: { p: Project; current: ResultsSection }) {
       return <KnowledgeView rig={p.team} onClose={back} />;
     case 'status':
       return <StatusPageView rig={p.team} onClose={back} />;
+    case 'changes':
+      return <ChangesView rig={p.team} />;
     case 'history':
       return <DeploymentHistoryView rig={p.team} />;
     default:

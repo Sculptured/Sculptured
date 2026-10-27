@@ -260,6 +260,32 @@ pub enum EventBody {
         #[serde(default)]
         done: bool,
     },
+    /// An agent proposed a change to a business system with `propose_change` (subject: the team;
+    /// agent-reported). Nothing is changed by the proposal itself.
+    ChangeProposed {
+        proposal_id: String,
+        action: String,
+        #[serde(default)]
+        system: Option<String>,
+        summary: String,
+        #[ts(type = "unknown")]
+        payload: serde_json::Value,
+        #[serde(default)]
+        reason: Option<String>,
+    },
+    /// The team's rules, checked by Sculptured against the proposal (verified).
+    ChangeChecked {
+        proposal_id: String,
+        results: Vec<crate::RuleResult>,
+    },
+    /// What became of the proposal: approved or not, and who decided.
+    ChangeDecided {
+        proposal_id: String,
+        approved: bool,
+        by: ChangeDecider,
+        #[serde(default)]
+        note: Option<String>,
+    },
     /// An agent report or tool call that failed validation (spec §6.3). Evidence; never interrupts the agent.
     ReportRejected {
         tool: String,
@@ -413,6 +439,21 @@ pub enum ThinkingForm {
     Full,
     /// Thinking happened but the CLI returned no text.
     Hidden,
+}
+
+/// Who decided a proposed change.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
+)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum ChangeDecider {
+    /// Every rule that applies passed and the team approves such changes itself.
+    Mandate,
+    /// A person, in Needs you.
+    Person,
+    /// Nobody answered before the question timed out: not approved.
+    NobodyInTime,
 }
 
 /// Where a context figure comes from.

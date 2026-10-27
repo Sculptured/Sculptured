@@ -15,6 +15,9 @@ pub enum QuestionSource {
     NativeQuestion,
     /// The CLI asks before running a tool. Only a restricted posture produces these.
     NativePermission,
+    /// An agent's proposed change (`propose_change`) that its team's rules do not approve by themselves.
+    /// Answered Allow (approve) or Deny; nobody answering in time means not approved.
+    Approval,
 }
 
 #[derive(
@@ -159,6 +162,8 @@ pub enum DecisionSource {
     NextMessage,
     /// A permission prompt that Sculptured allowed on timeout (D8).
     AllowedOnTimeout,
+    /// An approval nobody gave in time: the change is not approved.
+    RejectedOnTimeout,
     /// The agent did not say what it decided.
     Unknown,
 }

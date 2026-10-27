@@ -97,6 +97,7 @@ fn the_shim_speaks_mcp_on_stdio_and_relays_calls_to_the_socket() {
             "spawn_agent",
             "send_agent_message",
             "team_status",
+            "propose_change",
             "write_status",
             "read_pdf"
         ],

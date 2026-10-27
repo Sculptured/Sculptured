@@ -146,6 +146,7 @@ pub fn template(id: &str, name: &str, practice: bool) -> TeamDraft {
         budget: Default::default(),
         input: None,
         schedules: vec![],
+        mandate: Default::default(),
         decision_log: false,
         limits: Default::default(),
         workflow: Some(workflow),

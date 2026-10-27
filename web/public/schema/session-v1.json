@@ -737,6 +737,26 @@
       },
       "additionalProperties": false
     },
+    "ChangeDecider": {
+      "description": "Who decided a proposed change.",
+      "oneOf": [
+        {
+          "description": "Every rule that applies passed and the team approves such changes itself.",
+          "type": "string",
+          "const": "mandate"
+        },
+        {
+          "description": "A person, in Needs you.",
+          "type": "string",
+          "const": "person"
+        },
+        {
+          "description": "Nobody answered before the question timed out: not approved.",
+          "type": "string",
+          "const": "nobody-in-time"
+        }
+      ]
+    },
     "Channel": {
       "description": "Where messages or artifacts travel.",
       "type": "object",
@@ -1202,6 +1222,11 @@
           "description": "A permission prompt that Sculptured allowed on timeout (D8).",
           "type": "string",
           "const": "allowed-on-timeout"
+        },
+        {
+          "description": "An approval nobody gave in time: the change is not approved.",
+          "type": "string",
+          "const": "rejected-on-timeout"
         },
         {
           "description": "The agent did not say what it decided.",
@@ -2345,6 +2370,103 @@
           "required": [
             "type",
             "markdown"
+          ]
+        },
+        {
+          "description": "An agent proposed a change to a business system with `propose_change` (subject: the team;\nagent-reported). Nothing is changed by the proposal itself.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "payload": true,
+            "proposal_id": {
+              "type": "string"
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "summary": {
+              "type": "string"
+            },
+            "system": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "type": {
+              "type": "string",
+              "const": "change-proposed"
+            }
+          },
+          "required": [
+            "type",
+            "proposal_id",
+            "action",
+            "summary",
+            "payload"
+          ]
+        },
+        {
+          "description": "The team's rules, checked by Sculptured against the proposal (verified).",
+          "type": "object",
+          "properties": {
+            "proposal_id": {
+              "type": "string"
+            },
+            "results": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RuleResult"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "change-checked"
+            }
+          },
+          "required": [
+            "type",
+            "proposal_id",
+            "results"
+          ]
+        },
+        {
+          "description": "What became of the proposal: approved or not, and who decided.",
+          "type": "object",
+          "properties": {
+            "approved": {
+              "type": "boolean"
+            },
+            "by": {
+              "$ref": "#/$defs/ChangeDecider"
+            },
+            "note": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "proposal_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "change-decided"
+            }
+          },
+          "required": [
+            "type",
+            "proposal_id",
+            "approved",
+            "by"
           ]
         },
         {
@@ -3933,6 +4055,11 @@
           "description": "The CLI asks before running a tool. Only a restricted posture produces these.",
           "type": "string",
           "const": "native-permission"
+        },
+        {
+          "description": "An agent's proposed change (`propose_change`) that its team's rules do not approve by themselves.\nAnswered Allow (approve) or Deny; nobody answering in time means not approved.",
+          "type": "string",
+          "const": "approval"
         }
       ]
     },
@@ -4142,6 +4269,32 @@
       "enum": [
         "dynamic",
         "static"
+      ]
+    },
+    "RuleResult": {
+      "description": "What one rule found, in plain words, with the value it read.",
+      "type": "object",
+      "properties": {
+        "actual": true,
+        "field": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "rule_id": {
+          "type": "string"
+        },
+        "words": {
+          "description": "\"amount is 4200, at most 5000\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "field",
+        "passed",
+        "words"
       ]
     },
     "RunBudget": {

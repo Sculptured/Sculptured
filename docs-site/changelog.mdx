@@ -7,6 +7,10 @@ Changes you can see or use, by date. The open-source core's full history is on [
 
 ## 26 October 2026
 
+### Changes to business systems
+
+- **Agents propose before they change a business system.** With the new `propose_change` tool, an agent describes an order, a schedule or another change before making it. Sculptured checks the team's rules itself, such as a spending limit or approved suppliers, and approves the change or asks you in **Needs you** with **Approve** and **Reject**. Nobody answering in time means not approved. Set the rules under **Settings → Changes to business systems**; every change is kept under **Results → Changes**. See [Changes to business systems](/guides/changes).
+
 ### Open models with OpenCode
 
 - **Agents on open models:** an agent can now run on **OpenCode**, with models such as Kimi, GLM, DeepSeek and GPT OSS through an OpenRouter key. Choose **OpenCode** under **Runs on**; on the hosted service, add an **Open models — OpenRouter** key under **Setup → Models** and pick **OpenCode via OpenRouter**. OpenCode agents use Sculptured's agent tools, ask before acting when access is sandboxed, can be interrupted and resume where they left off. Each turn's cost is shown as OpenCode estimates it. See [Open models with OpenCode](/guides/open-models).

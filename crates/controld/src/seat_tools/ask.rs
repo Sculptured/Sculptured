@@ -148,7 +148,7 @@ pub(super) async fn approve(st: &AppState, seat: &str, args: &Value) -> Result<O
 /// Raises a question with a waiter and waits for the answer, the expiry or a withdrawal. While it
 /// waits the agent is `waiting-input` (spec §4.2), as for a native question; afterwards it is
 /// `working` again once no question of it is open, unless it stopped meanwhile.
-async fn ask(
+pub(super) async fn ask(
     st: &AppState,
     seat: &str,
     source: QuestionSource,

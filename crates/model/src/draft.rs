@@ -380,6 +380,11 @@ pub struct TeamDraft {
     #[serde(default, skip_serializing_if = "crate::RunBudget::is_empty")]
     #[ts(as = "Option<crate::RunBudget>", optional)]
     pub budget: crate::RunBudget,
+    /// The rules a change its agents propose (`propose_change`) must meet, and whether Sculptured
+    /// approves one that meets them. Absent = every proposed change waits for a person.
+    #[serde(default, skip_serializing_if = "crate::Mandate::is_empty")]
+    #[ts(as = "Option<crate::Mandate>", optional)]
+    pub mandate: crate::Mandate,
     /// People keep a decision log that agents read with read_decisions (Advanced).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(as = "Option<bool>", optional)]

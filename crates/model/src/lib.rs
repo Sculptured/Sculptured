@@ -22,6 +22,8 @@ mod draft;
 mod event;
 mod ids;
 mod limit;
+pub mod mandate;
+pub use mandate::{ChangeRule, Mandate, RuleResult, RuleTest};
 mod question;
 mod report;
 mod status;
@@ -46,8 +48,8 @@ pub use draft::{
     TokenLimit,
 };
 pub use event::{
-    Actor, ContextBasis, EventBody, EventRecord, HandoffSource, HandoffStuck, Provenance, Subject,
-    ThinkingForm, Wave,
+    Actor, ChangeDecider, ContextBasis, EventBody, EventRecord, HandoffSource, HandoffStuck,
+    Provenance, Subject, ThinkingForm, Wave,
 };
 pub use ids::{IdError, SeatId, valid_segment};
 pub use limit::{LimitKind, MAX_RESETS, PlanUsage, PlanWindow, limit_resets};

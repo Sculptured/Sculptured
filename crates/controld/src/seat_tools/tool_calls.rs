@@ -191,6 +191,7 @@ pub(super) async fn dispatch(
                 .map_err(invalid)
         }
         "request_input" => ask::request_input(st, seat, args).await,
+        "propose_change" => super::propose::propose_change(st, seat, args).await,
         "approve" if !may_approve(st, seat) => {
             Err(invalid("the approve tool is not available to this agent"))
         }

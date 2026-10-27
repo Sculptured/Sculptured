@@ -5,6 +5,7 @@ import type { Answer } from '../generated/Answer';
 import type { EventRecord } from '../generated/EventRecord';
 import type { QuestionView } from '../generated/QuestionView';
 import { usePolled } from '../usePolling';
+import { ChangeDetails, isChange } from './ChangeApproval';
 
 /** A question that needs the person: open, an answer that may not have arrived, or one that timed out unseen. */
 export function needsYou(q: QuestionView): boolean {
@@ -70,23 +71,27 @@ export function QuestionCard({ q, name, onDone }: { q: QuestionView; name: strin
     onDone();
   };
   const act: Act = { q, name, text, setText, busy, run };
-  const permission = q.source === 'native-permission';
+  const permission = q.source === 'native-permission' || isChange(q);
   return (
     <article className={`question-card${permission ? ' permission' : ''}`}>
       <Asked q={q} name={name} />
       {q.state === 'answered' ? <Unconfirmed {...act} /> : q.state === 'expired' ? <Late {...act} /> : permission ? <Approval {...act} /> : <Reply {...act} />}
-      {q.state === 'open' && q.deadline_ms !== null && (
-        <p className="muted question-deadline">
-          {permission ? `Allowed automatically at ${clock(q.deadline_ms)} if nobody answers.` : `${name} decides on its own at ${clock(q.deadline_ms)} if nobody answers.`}
-        </p>
-      )}
+      {q.state === 'open' && q.deadline_ms !== null && <p className="muted question-deadline">{deadlineWords(q, name, q.deadline_ms)}</p>}
       {error && <p className="tone-red" role="alert">{error}</p>}
     </article>
   );
 }
 
+/** What happens when nobody answers: a tool is allowed, a change is not approved, a question is decided by the agent. */
+function deadlineWords(q: QuestionView, name: string, at: number): string {
+  if (isChange(q)) return `Not approved at ${clock(at)} if nobody answers.`;
+  if (q.source === 'native-permission') return `Allowed automatically at ${clock(at)} if nobody answers.`;
+  return `${name} decides on its own at ${clock(at)} if nobody answers.`;
+}
+
 /** What the agent asked, verbatim; for a tool approval, the tool, its input and what it would do. */
 function Asked({ q, name }: { q: QuestionView; name: string }) {
+  if (isChange(q)) return <><p className="question-title"><strong>{name} proposes a change</strong></p><p className="question-text" data-raw-evidence>{q.prompt.text}</p><ChangeDetails q={q} /></>;
   const permission = q.source === 'native-permission';
   const title = permission ? `${name} wants to run ${q.prompt.tool ?? 'a tool'}` : q.prompt.header ?? `${name} asks`;
   return (
@@ -125,6 +130,7 @@ function Unconfirmed(a: Act) {
 
 /** Nobody answered in time: deny the approval now, or send a late answer that overrides the agent's decision. */
 function Late(a: Act) {
+  if (isChange(a.q)) return <><p className="muted">Nobody answered in time, so it was not approved.</p><p className="question-actions"><button type="button" className="btn" disabled={a.busy} onClick={() => void a.run(() => api.acknowledge(a.q.id))}>OK</button></p></>;
   const permission = a.q.source === 'native-permission';
   const words = a.text.trim();
   return (
@@ -146,14 +152,15 @@ function Late(a: Act) {
   );
 }
 
-/** A tool approval: Allow, or Deny with an optional reason the agent is told. */
+/** A tool approval (Allow or Deny) or a proposed change (Approve or Reject), with an optional reason the agent is told. */
 function Approval(a: Act) {
+  const [yes, no] = isChange(a.q) ? ['Approve', 'Reject'] : ['Allow', 'Deny'];
   return (
     <>
       <ReasonBox {...a} />
       <p className="question-actions">
-        <button type="button" className="btn btn-primary" disabled={a.busy} onClick={() => reply(a, { kind: 'allow' })}>Allow</button>
-        <button type="button" className="btn btn-danger" disabled={a.busy} onClick={() => reply(a, { kind: 'deny', reason: reasonOf(a) })}>Deny</button>
+        <button type="button" className="btn btn-primary" disabled={a.busy} onClick={() => reply(a, { kind: 'allow' })}>{yes}</button>
+        <button type="button" className="btn btn-danger" disabled={a.busy} onClick={() => reply(a, { kind: 'deny', reason: reasonOf(a) })}>{no}</button>
       </p>
     </>
   );
@@ -188,6 +195,7 @@ function AnswerBox({ label, text, setText }: Act & { label: string }) {
   return <textarea className="question-answer" aria-label={label} placeholder={label} rows={2} value={text} onChange={(e) => setText(e.target.value)} />;
 }
 
-function ReasonBox({ text, setText }: Act) {
-  return <input className="question-reason" type="text" aria-label="Reason (optional)" placeholder="Reason, if you deny (optional)" value={text} onChange={(e) => setText(e.target.value)} />;
+function ReasonBox({ q, text, setText }: Act) {
+  const placeholder = isChange(q) ? 'Reason, if you reject (optional)' : 'Reason, if you deny (optional)';
+  return <input className="question-reason" type="text" aria-label="Reason (optional)" placeholder={placeholder} value={text} onChange={(e) => setText(e.target.value)} />;
 }

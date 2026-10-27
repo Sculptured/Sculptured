@@ -50,6 +50,7 @@ pub fn from_madl(doc: &m::Document) -> Imported {
             max_agents: doc.system.budget.as_ref().and_then(|b| b.max_agents),
             max_child_levels: spawn_depth(doc),
         },
+        mandate: Default::default(),
         decision_log: doc.channels.iter().any(|c| c.medium == "decision-log"),
         revision: 0,
         ..cx.defaults()
@@ -153,6 +154,7 @@ impl Cx<'_> {
             limits: TeamLimits::default(),
             components: Vec::new(),
             budget: RunBudget::default(),
+            mandate: Default::default(),
             decision_log: false,
             revision: 0,
         }

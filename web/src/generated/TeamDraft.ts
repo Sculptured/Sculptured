@@ -4,6 +4,7 @@ import type { Component } from "./Component";
 import type { DraftAgent } from "./DraftAgent";
 import type { DraftConnection } from "./DraftConnection";
 import type { DraftGroup } from "./DraftGroup";
+import type { Mandate } from "./Mandate";
 import type { ModelDefaults } from "./ModelDefaults";
 import type { Protection } from "./Protection";
 import type { RunBudget } from "./RunBudget";
@@ -54,6 +55,11 @@ components?: Array<Component>,
  * What one run may use (Advanced). Absent = no budget.
  */
 budget?: RunBudget, 
+/**
+ * The rules a change its agents propose (`propose_change`) must meet, and whether Sculptured
+ * approves one that meets them. Absent = every proposed change waits for a person.
+ */
+mandate?: Mandate, 
 /**
  * People keep a decision log that agents read with read_decisions (Advanced).
  */

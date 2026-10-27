@@ -107,3 +107,21 @@
 .fld-error { color:var(--danger, #b42318); font-size:var(--text-sm, 12px); margin:4px 0 0; }
 .fld-check > span:first-child { display:flex; align-items:center; gap:6px; }
 .fld-checkline { display:flex; align-items:center; gap:6px; }
+
+/* Settings → Changes to business systems: one rule per row, wrapping on a phone. */
+.mandate-rule { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.mandate-rule .fld-input { width: auto; min-width: 8rem; flex: 1 1 8rem; }
+.mandate-rule .fld-input:first-of-type { flex: 2 1 14rem; }
+
+/* A proposed change: its fields and the team's rules as Sculptured checked them. */
+.change-fields { border-collapse: collapse; margin: 8px 0; font-size: var(--text-sm, 0.875rem); }
+.change-fields th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 12px 2px 0; vertical-align: top; }
+.change-fields td { padding: 2px 0; overflow-wrap: anywhere; }
+.change-checks { list-style: none; padding: 0; margin: 8px 0; }
+.change-checks li { margin: 2px 0; }
+
+/* Results → Changes */
+.changes-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.change-row { border: 1px solid var(--line); border-radius: var(--radius-md, 8px); padding: 12px 16px; background: var(--panel); }
+.change-row p { margin: 4px 0; }
+.change-head strong { overflow-wrap: anywhere; }

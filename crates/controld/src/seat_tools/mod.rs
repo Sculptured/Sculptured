@@ -8,6 +8,7 @@
 //! a connection that dies before hostd reads it (or a hostd that dies) is not detected here, and stays
 //! unconfirmed like any other delivery without a reply.
 mod ask;
+mod propose;
 mod records;
 
 use crate::state::AppState;

@@ -47,6 +47,7 @@ If the computer's connection drops while a call is waiting, the runner keeps the
 | [`read_decisions`](#read_decisions) | any agent | Reads the team's decision log. |
 | [`search_history`](#search_history) | any agent | Searches what the team's agents already wrote, ran and were told. |
 | [`record_lesson`](#record_lesson) | any agent | Records a lesson every agent of the team is told. |
+| [`propose_change`](#propose_change) | any agent | Proposes a change to a business system and waits until it is approved or not. |
 | [`write_status`](#write_status) | the status page's owner | Replaces the team's status page. |
 | [`read_pdf`](#read_pdf) | any agent | Reads a PDF's text, page by page. |
 | [`read_skill`](#read_skill) | Codex agents with skills | Loads one of the agent's skills. |
@@ -211,6 +212,20 @@ Records a lesson for the team: something that cost the agent a wrong turn, in a 
 | `kind` | `lesson` or `constraint` | no | `constraint`: a rule every agent must follow in this project; it comes first in briefings. Default `lesson`. |
 
 When you confirm a lesson or constraint, it is also kept with the project for later teams; see [Lessons kept with the project](/guides/knowledge#lessons-kept-with-the-project).
+
+## Changes to business systems
+
+### `propose_change`
+
+Proposes a change to a business system, such as an order, a schedule or a record in the ERP, and waits for the decision; see [Changes to business systems](/guides/changes). Sculptured checks the team's rules against `payload` itself, then approves the change or asks a person. The reply says whether it is approved, by whom, each rule's result, and the proposal's id. Nobody answering in time means not approved. Proposing changes nothing by itself.
+
+| Parameter | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `action` | string | yes | The kind of change, as a short name, such as `create_purchase_order`. At most 80 characters. Rules name it. |
+| `summary` | string | yes | One line a person can approve from. At most 300 characters are kept. |
+| `payload` | object | yes | The change's fields, as they would be written. Rules read them. At most 32 KB. |
+| `system` | string | no | Which system it changes, such as `ERP`. |
+| `reason` | string | no | Why this change. |
 
 ## The status page
 

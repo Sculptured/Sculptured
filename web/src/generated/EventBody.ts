@@ -2,6 +2,7 @@
 import type { ActionClass } from "./ActionClass";
 import type { Answer } from "./Answer";
 import type { Caps } from "./Caps";
+import type { ChangeDecider } from "./ChangeDecider";
 import type { ContextBasis } from "./ContextBasis";
 import type { Cost } from "./Cost";
 import type { DecisionSource } from "./DecisionSource";
@@ -17,6 +18,7 @@ import type { QuestionSource } from "./QuestionSource";
 import type { ReportVerdict } from "./ReportVerdict";
 import type { RestoreDecision } from "./RestoreDecision";
 import type { RiskFlag } from "./RiskFlag";
+import type { RuleResult } from "./RuleResult";
 import type { SeatActivity } from "./SeatActivity";
 import type { SeatLifecycle } from "./SeatLifecycle";
 import type { SessionMode } from "./SessionMode";
@@ -38,7 +40,7 @@ in_turn?: boolean, } | { "type": "turn-ended", turn_id: string, status: TurnStat
 /**
  * The "More work" wave this message belongs to, if any.
  */
-wave: Wave | null, } | { "type": "handover-requested", turn_id: string, turn_seq: number, } | { "type": "question-raised", question_id: string, source: QuestionSource, prompt: QuestionPrompt, turn_id: string | null, } | { "type": "question-answered", question_id: string, answer: Answer, late: boolean, } | { "type": "question-expired", question_id: string, } | { "type": "question-decided", question_id: string, decision: string, rationale: string | null, source: DecisionSource, } | { "type": "question-withdrawn", question_id: string, reason: string, } | { "type": "question-acknowledged", question_id: string, } | { "type": "findings-reported", turn_id: string | null, summary: string, findings: Array<Finding>, verdict: ReportVerdict, } | { "type": "status-page-written", markdown: string, done: boolean, } | { "type": "report-rejected", tool: string, reason: string, raw: JsonValue, } | { "type": "action-interpreted", call_id: string, class: ActionClass, paths: Array<string>, risks: Array<RiskFlag>, } | { "type": "new-session-requested", mode: SessionMode, reason: string, } | { "type": "restore-needed", reason: string, can_resume: boolean, } | { "type": "restore-decided", decision: RestoreDecision, } | { "type": "limit-reached", turn_id: string | null, kind: LimitKind, resets: string | null, text: string, } | { "type": "features-dropped", features: Array<string>, note: string, } | { "type": "question-answer-failed", question_id: string, reason: string, } | { "type": "question-resolved", question_id: string, } | { "type": "question-answer-unconfirmed", question_id: string, reason: string, } | { "type": "question-answer-confirmed", question_id: string, } | { "type": "model-observed", requested: string | null, observed: string | null, 
+wave: Wave | null, } | { "type": "handover-requested", turn_id: string, turn_seq: number, } | { "type": "question-raised", question_id: string, source: QuestionSource, prompt: QuestionPrompt, turn_id: string | null, } | { "type": "question-answered", question_id: string, answer: Answer, late: boolean, } | { "type": "question-expired", question_id: string, } | { "type": "question-decided", question_id: string, decision: string, rationale: string | null, source: DecisionSource, } | { "type": "question-withdrawn", question_id: string, reason: string, } | { "type": "question-acknowledged", question_id: string, } | { "type": "findings-reported", turn_id: string | null, summary: string, findings: Array<Finding>, verdict: ReportVerdict, } | { "type": "status-page-written", markdown: string, done: boolean, } | { "type": "change-proposed", proposal_id: string, action: string, system: string | null, summary: string, payload: unknown, reason: string | null, } | { "type": "change-checked", proposal_id: string, results: Array<RuleResult>, } | { "type": "change-decided", proposal_id: string, approved: boolean, by: ChangeDecider, note: string | null, } | { "type": "report-rejected", tool: string, reason: string, raw: JsonValue, } | { "type": "action-interpreted", call_id: string, class: ActionClass, paths: Array<string>, risks: Array<RiskFlag>, } | { "type": "new-session-requested", mode: SessionMode, reason: string, } | { "type": "restore-needed", reason: string, can_resume: boolean, } | { "type": "restore-decided", decision: RestoreDecision, } | { "type": "limit-reached", turn_id: string | null, kind: LimitKind, resets: string | null, text: string, } | { "type": "features-dropped", features: Array<string>, note: string, } | { "type": "question-answer-failed", question_id: string, reason: string, } | { "type": "question-resolved", question_id: string, } | { "type": "question-answer-unconfirmed", question_id: string, reason: string, } | { "type": "question-answer-confirmed", question_id: string, } | { "type": "model-observed", requested: string | null, observed: string | null, 
 /**
  * Codex `modelProvider` (e.g. "openai"); None for Claude.
  */

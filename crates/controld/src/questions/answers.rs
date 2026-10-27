@@ -66,8 +66,11 @@ async fn deliver(st: &AppState, q: &QuestionRow, answer: Answer) -> Result<(), U
 pub(super) fn check_answer(q: &QuestionRow, a: &Answer) -> Result<(), ApiError> {
     let fits = match (q.source, a) {
         (_, Answer::Expired) => false,
-        (QuestionSource::NativePermission, Answer::Allow | Answer::Deny { .. }) => true,
-        (QuestionSource::NativePermission, Answer::Text { .. }) => false,
+        (
+            QuestionSource::NativePermission | QuestionSource::Approval,
+            Answer::Allow | Answer::Deny { .. },
+        ) => true,
+        (QuestionSource::NativePermission | QuestionSource::Approval, Answer::Text { .. }) => false,
         (_, Answer::Text { text }) if text.trim().is_empty() => false,
         (_, Answer::Text { text }) => {
             q.prompt.allow_other
@@ -345,6 +348,28 @@ pub(super) fn allowed_on_timeout(st: &AppState, id: &str) {
 /// in the event order, and hostd forwards a command's events before the command's result. An expiry
 /// whose delivery is unconfirmed is recorded as in doubt ("may not have reached the agent") and decides
 /// nothing yet: the agent's own words, a "Send again", or the end of its turn decide it later.
+/// An approval nobody gave in time: the change is not approved (the waiting `propose_change` call
+/// records the change's decision; this closes the question).
+fn rejected_on_timeout(st: &AppState, q: &QuestionRow) {
+    let body = EventBody::QuestionDecided {
+        question_id: q.id.clone(),
+        decision: "not approved: nobody answered in time".to_string(),
+        rationale: None,
+        source: DecisionSource::RejectedOnTimeout,
+    };
+    crate::questions::record_or_log(
+        st,
+        &q.seat,
+        (
+            crate::questions::timeout_actor(),
+            Provenance::ProtocolObserved,
+        ),
+        body,
+        &q.id,
+        "cannot record the decision",
+    );
+}
+
 pub async fn expire(st: &AppState, id: &str) {
     let Some(_held) = crate::questions::claim(id) else {
         return;
@@ -378,6 +403,7 @@ pub async fn expire(st: &AppState, id: &str) {
 /// reads the agent's own words next); a doubtful one is noted; one that failed decides "unknown".
 fn expiry_delivered(st: &AppState, q: &QuestionRow, delivered: Result<(), Undelivered>) {
     match delivered {
+        Ok(()) if q.source == QuestionSource::Approval => rejected_on_timeout(st, q),
         Ok(()) => allowed_on_timeout(st, &q.id),
         Err(Undelivered::Unconfirmed(reason)) => {
             if let Err(e) = note_unconfirmed(st, q, &reason) {

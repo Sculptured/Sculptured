@@ -421,7 +421,7 @@ pub(crate) fn undecided_expired(
 ) -> rusqlite::Result<Vec<(String, i64)>> {
     let mut q = conn.prepare(
         "SELECT id, expired_seq FROM questions WHERE seat = ?1 AND state = 'expired' AND decision_source IS NULL
-             AND source != 'native-permission' AND expired_seq IS NOT NULL",
+             AND source NOT IN ('native-permission', 'approval') AND expired_seq IS NOT NULL",
     )?;
     q.query_map([seat], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect()

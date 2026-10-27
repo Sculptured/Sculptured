@@ -71,6 +71,7 @@ pub(super) fn rebuild(threads: &[Thread], source: Source) -> PortableTeam {
         models: Default::default(),
         workflow: None,
         schedules: vec![],
+        mandate: Default::default(),
         decision_log: false,
         limits: Default::default(),
         groups: vec![],

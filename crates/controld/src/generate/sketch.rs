@@ -244,6 +244,7 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
         budget: Default::default(),
         input: None,
         schedules: vec![],
+        mandate: Default::default(),
         decision_log: false,
         limits: Default::default(),
         workflow: None,

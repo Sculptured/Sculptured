@@ -14,6 +14,7 @@ import { OriginLine } from '../structure/Panels';
 import { ProjectFolder } from '../structure/ProjectFolder';
 import { ProtectionFields } from '../structure/ProtectionFields';
 import { TeamExport } from '../structure/TeamAdvanced';
+import { MandateFields } from '../structure/MandateFields';
 import { TeamLimitsFields } from '../structure/TeamLimitsFields';
 import { TraceSettings } from '../structure/TraceSettings';
 import { useProject, type Project } from './ProjectContext';
@@ -54,6 +55,7 @@ export function SettingsPage() {
       <General p={p} locked={locked} />
       <Group title="Default models" hint="Each agent uses these unless its group or its own setup picks another."><TeamModelFields {...c} /></Group>
       <Group title="Run budget"><BudgetFields {...c} /></Group>
+      <Group title="Changes to business systems" hint="Agents propose each change to an order, a schedule or another system before making it. Sculptured checks these rules itself."><MandateFields {...c} /></Group>
       <Shortcuts p={p} />
       <MoreSettings p={p} locked={locked} />
       <Group title="Export"><TeamExport teamId={p.team} draft={draft} flush={p.t.flush} /></Group>

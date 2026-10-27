@@ -40,6 +40,7 @@ fn team(agents: Vec<DraftAgent>, connections: Vec<DraftConnection>) -> TeamDraft
         budget: Default::default(),
         input: None,
         schedules: vec![],
+        mandate: Default::default(),
         decision_log: false,
         limits: Default::default(),
         workflow: None,

@@ -96,6 +96,8 @@ pub struct QuestionView {
 pub enum InboxKind {
     Question,
     Permission,
+    /// A change an agent proposed that its team's rules do not approve by themselves.
+    Approval,
     /// Expired, not yet acknowledged: shows the agent's decision.
     Expired,
     /// An agent in attention (stopped unexpectedly, lost, failed launch), failed, or stale.

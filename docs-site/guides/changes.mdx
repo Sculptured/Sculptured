@@ -1,0 +1,42 @@
+---
+title: Changes to business systems
+description: Agents propose each change to an order, a schedule or another system first. Sculptured checks your rules itself, then approves the change or asks you.
+---
+
+When agents work with real business systems, such as an ERP, a purchasing system or a production schedule, you want a say before anything changes there. With **proposed changes**, an agent describes the change it would make, Sculptured checks the team's rules against it, and the change is approved by those rules or by a person before the agent makes it.
+
+## How it works
+
+1. An agent calls `propose_change` with what it would write: the kind of change (for example `create_purchase_order`), a one-line summary, the fields as they would be written (amount, supplier, item, dates) and why.
+2. Sculptured checks every rule of the team that applies to that kind of change. These results are **verified**: Sculptured evaluates them itself, not the agent.
+3. If the team approves changes that pass its rules, and every rule that applies passes, the change is approved straight away.
+4. Otherwise the change waits for a person in **Needs you** (and the project's **Questions**), showing its fields, each rule's result and the agent's reason. Choose **Approve** or **Reject**, with an optional reason the agent is told.
+5. The agent is told the decision and carries out only an approved change, exactly as proposed. **Nobody answering before the question times out means not approved.**
+
+Proposing changes nothing by itself. Every proposal, its rule results and its decision are kept under **Results → Changes**.
+
+## Set the rules
+
+Open the project's **Settings → Changes to business systems**.
+
+- **Approve a change that passes every rule below without asking.** When on, a change that passes every rule that applies is approved by Sculptured. When off, every change waits for a person. A change no rule applies to always waits for a person.
+- **Add a rule** for each limit. A rule reads: *For* a kind of change (`*` for every change), a *field* of the change *is at most*, *is at least*, *is one of*, or *is filled in*, and a value.
+
+| Rule | Example |
+| --- | --- |
+| A spending limit | For `create_purchase_order`, `amount` is at most `5000` |
+| Approved suppliers | For `create_purchase_order`, `supplier` is one of `Acme Hydraulics, Bolt & Co` |
+| A required field | For `*`, `reason` is filled in |
+
+A field can name a nested value with dots, such as `lines.0.item`. Numbers may be written as text, and a currency sign and thousands separators are ignored: `"$4,200.00"` is 4200. **Is one of** ignores case and surrounding spaces.
+
+When a team has rules, every agent's briefing tells it to propose changes to business systems before making them.
+
+## Where you see it
+
+- **Needs you** and **Questions**: changes waiting for you, with **Approve** and **Reject** and the time after which they are not approved.
+- **Results → Changes**: every change, newest first, with what became of it: *Approved by the team's rules*, *Approved by a person*, *Not approved* with the reason, or *Waiting for a person*.
+
+## What it does not do yet
+
+Sculptured records the decision and tells the agent; the agent makes the approved change with its own tools. Connectors that write approved changes into systems such as ERPNext and SAP, so that only Sculptured writes, are planned next.

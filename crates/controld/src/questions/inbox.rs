@@ -117,6 +117,7 @@ fn question_item(st: &AppState, q: QuestionRow) -> InboxItem {
         (QuestionState::Answered, _) => InboxKind::Unconfirmed,
         (QuestionState::Expired, _) => InboxKind::Expired,
         (_, QuestionSource::NativePermission) => InboxKind::Permission,
+        (_, QuestionSource::Approval) => InboxKind::Approval,
         _ => InboxKind::Question,
     };
     InboxItem {

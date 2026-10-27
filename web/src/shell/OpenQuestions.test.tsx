@@ -89,3 +89,39 @@ it('marks an urgent question as the agent says it is', async () => {
   render(<OpenQuestions seat="s-1" name="Planner" feed={[]} />);
   expect(await screen.findByText('Urgent, says the agent')).toBeInTheDocument();
 });
+
+const change = {
+  proposal_id: 'chg-1', system: 'ERP', reason: 'the press is down',
+  payload: { amount: 7300, supplier: 'Acme Hydraulics', item: 'SP-118' },
+  checks: [
+    { rule_id: 'limit', field: 'amount', passed: false, actual: 7300, words: 'amount is 7300, at most 5000' },
+    { rule_id: 'vendor', field: 'supplier', passed: true, actual: 'Acme Hydraulics', words: 'supplier is "Acme Hydraulics", one of Acme Hydraulics' },
+  ],
+};
+
+it('a proposed change shows its fields and rule results, and is rejected with a reason', async () => {
+  const posts = serve([question({ source: 'approval', deadline_ms: Date.now() + 60_000, prompt: { header: 'Approve a change', text: 'Order 2 SP-118 from Acme Hydraulics, $7300', options: [], allow_other: false, tool: 'create_purchase_order', tool_input: change } })]);
+  render(<OpenQuestions seat="s-1" name="Buyer" feed={[]} />);
+  expect(await screen.findByText('Buyer proposes a change')).toBeInTheDocument();
+  expect(screen.getByText('Order 2 SP-118 from Acme Hydraulics, $7300')).toBeInTheDocument();
+  expect(screen.getByRole('table', { name: 'The change, as it would be written' })).toHaveTextContent('supplierAcme Hydraulics');
+  const rules = screen.getByRole('list', { name: "The team's rules (checked by Sculptured)" });
+  expect(rules).toHaveTextContent('✗ fails: amount is 7300, at most 5000');
+  expect(rules).toHaveTextContent('✓ passes: supplier is');
+  expect(screen.getByText(/Not approved at .* if nobody answers/)).toBeInTheDocument();
+  await userEvent.type(screen.getByRole('textbox', { name: 'Reason (optional)' }), 'Over budget');
+  await userEvent.click(screen.getByRole('button', { name: 'Reject' }));
+  expect(posts[0].body.answer).toEqual({ kind: 'deny', reason: 'Over budget' });
+});
+
+it('a proposed change is approved with Approve, and one that timed out says it was not approved', async () => {
+  const posts = serve([question({ source: 'approval', prompt: { header: 'Approve a change', text: 'Order bearings', options: [], allow_other: false, tool: 'create_purchase_order', tool_input: change } })]);
+  const { unmount } = render(<OpenQuestions seat="s-1" name="Buyer" feed={[]} />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+  expect(posts[0].body.answer).toEqual({ kind: 'allow' });
+  unmount();
+  serve([question({ source: 'approval', state: 'expired', prompt: { header: 'Approve a change', text: 'Order bearings', options: [], allow_other: false, tool: 'create_purchase_order', tool_input: change } })]);
+  render(<OpenQuestions seat="s-1" name="Buyer" feed={[]} />);
+  expect(await screen.findByText('Nobody answered in time, so it was not approved.')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Deny now' })).toBeNull();
+});

@@ -108,6 +108,14 @@ const teamUrl = (id: string) => `/api/teams/${encodeURIComponent(id)}`;
 
 /** One version of a team's status page, as its owner agent wrote it (agent-reported). */
 export type StatusPage = { seq: number; at_ms: number; author: string; author_name: string; markdown: string; done: boolean };
+/** A change an agent proposed (`propose_change`), its rule results and what became of it (`GET /api/teams/:id/changes`). */
+export type ProposedChangeRow = {
+  id: string; at_ms: number; agent: string; agent_name: string; action: string; system: string | null;
+  summary: string; payload: Record<string, unknown>; reason: string | null;
+  checks?: import('./generated/RuleResult').RuleResult[];
+  decision?: { approved: boolean; by: import('./generated/ChangeDecider').ChangeDecider; note: string | null; at_ms: number };
+};
+export type TeamChanges = { changes: ProposedChangeRow[]; mandate: import('./generated/Mandate').Mandate | null };
 export type TeamStatus = {
   /** The agent that writes it; `chosen` when a person picked it, else Sculptured's default. */
   owner: { id: string; name: string; chosen: boolean } | null;
@@ -198,6 +206,8 @@ export const api = {
   /** The team's status page: who writes it, the page now and its earlier versions (newest first). */
   teamStatus: (id: string) => get<TeamStatus>(`${teamUrl(id)}/status`),
   teamStatusVersion: (id: string, seq: number) => get<StatusPage>(`${teamUrl(id)}/status/${seq}`),
+  /** The changes the team's agents proposed, newest first. */
+  teamChanges: (id: string) => get<TeamChanges>(`${teamUrl(id)}/changes`),
   /** What the team's agents know: the project maps made at each start, and lessons and decisions. */
   knowledge: (id: string) => get<import('./knowledge').Knowledge>(`${teamUrl(id)}/knowledge`),
   confirmDecision: (id: string, entry: string) => request<{ confirmed: string }>('POST', `${teamUrl(id)}/decisions/${encodeURIComponent(entry)}/confirm`, {}),

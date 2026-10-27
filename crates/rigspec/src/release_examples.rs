@@ -101,6 +101,7 @@ pub fn template(id: &str, team: &str, name: &str, practice: bool) -> Option<Team
         budget: Default::default(),
         input: None,
         schedules: vec![],
+        mandate: Default::default(),
         decision_log: false,
         limits: Default::default(),
         id: team.into(),
