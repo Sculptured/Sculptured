@@ -7,6 +7,7 @@ mod caps;
 pub mod component;
 pub mod contract;
 pub mod protection;
+pub mod result_check;
 pub mod skill;
 pub use component::{Component, ComponentKind};
 pub mod safety;
@@ -15,6 +16,7 @@ pub use budget::{
 };
 pub use contract::{Authority, DataAccess, SharedValue};
 pub use protection::{GuardRules, Protection};
+pub use result_check::ResultCheck;
 pub use safety::SafetyRule;
 pub use skill::Skill;
 mod dispatch;

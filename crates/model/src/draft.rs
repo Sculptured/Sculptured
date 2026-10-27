@@ -115,6 +115,10 @@ pub struct AgentAdvanced {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(as = "Option<bool>", optional)]
     pub writes_status: bool,
+    /// Checks its result must pass before its work is handed on (`result_check`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<crate::ResultCheck>>", optional)]
+    pub result_checks: Vec<crate::ResultCheck>,
 }
 
 /// Limits a person set on a team's spawned agents. None = no limit; Sculptured sets none of its own.

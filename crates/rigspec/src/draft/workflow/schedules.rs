@@ -1,8 +1,9 @@
-//! Validation of scheduled agent messages and of triggers (addresses other systems call).
+//! Validation of scheduled agent messages, triggers (addresses other systems call) and result checks.
 use model::{DraftIssue, ElementKind, ElementRef, IssueSeverity, TeamDraft};
 use std::collections::HashSet;
 
-/// A team's schedules: at most 8, unique ids, existing agents, every 5–1440 minutes, messages up to 4 KB.
+/// A team's schedules (at most 8, unique ids, existing agents, every 5–1440 minutes, messages up to 4 KB),
+/// its triggers and its agents' result checks.
 pub(in crate::draft) fn check_schedules(d: &TeamDraft) -> Vec<DraftIssue> {
     schedule_errors(d)
         .into_iter()
@@ -11,6 +12,11 @@ pub(in crate::draft) fn check_schedules(d: &TeamDraft) -> Vec<DraftIssue> {
             trigger_errors(d)
                 .into_iter()
                 .map(|m| ("trigger-invalid", m)),
+        )
+        .chain(
+            result_check_errors(d)
+                .into_iter()
+                .map(|m| ("result-checks-invalid", m)),
         )
         .map(|(code, message)| DraftIssue {
             element: ElementRef {
@@ -71,4 +77,22 @@ fn trigger_errors(d: &TeamDraft) -> Vec<String> {
         }
     }
     errors
+}
+
+/// Each agent's result checks: at most 16, unique ids, a field to check.
+fn result_check_errors(d: &TeamDraft) -> Vec<String> {
+    d.agents
+        .iter()
+        .filter(|a| {
+            let c = &a.advanced.result_checks;
+            let ids: HashSet<_> = c.iter().map(|x| &x.id).collect();
+            c.len() > 16 || ids.len() != c.len() || c.iter().any(|x| x.field.trim().is_empty())
+        })
+        .map(|a| {
+            format!(
+                "{}'s result checks need a field each, their own names, and at most 16.",
+                a.name
+            )
+        })
+        .collect()
 }

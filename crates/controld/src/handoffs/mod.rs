@@ -35,6 +35,8 @@
 mod operator;
 mod owed;
 mod plan;
+mod result_checks;
+pub use result_checks::briefing_line as result_checks_briefing;
 mod start_plan;
 mod starts;
 mod team;

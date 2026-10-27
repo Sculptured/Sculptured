@@ -471,6 +471,7 @@ fn connection_ends_models_and_resume_survive_a_round_trip() {
         check: None,
         briefing: None,
         writes_status: false,
+        result_checks: Vec::new(),
     };
     d.agents.push(helper(Some("build"), opus));
     d.agents[1].advanced.resume = ResumeBehaviour::CheckpointOnly;

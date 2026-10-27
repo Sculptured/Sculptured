@@ -19,6 +19,7 @@ import { KIND_LABEL, NOT_ENFORCED, WORDS } from '../vocab';
 import { BriefingField } from './BriefingField';
 import { StatusOwnerField } from './StatusOwnerField';
 import { ContractFields } from './ContractFields';
+import { ResultCheckFields } from './ResultCheckFields';
 import { FolderPicker, shortPath, useHome } from './FolderPicker';
 import { KindSwitch, modelLabel, ModelSelect } from './ModelControls';
 import { LOCK_REASON, nameOf, type Edit } from './Panels';
@@ -269,13 +270,14 @@ function HostedRunOn({ draft, a }: { draft: TeamDraft; a: DraftAgent }) {
   return <AgentRunOn team={draft.id} agent={a.id} name={a.name || 'This agent'} />;
 }
 
-/** Group, limits, check, briefing, skills and the raw configuration. */
+/** Group, limits, check, result checks, briefing, skills and the raw configuration. */
 export function AdvancedFields(p: Common) {
   return (
     <>
       <GroupField {...p} />
       <LimitsField {...p} />
       <CheckField {...p} />
+      <ResultCheckFields a={p.a} edit={p.edit} locked={p.locked} />
       <BriefingField a={p.a} edit={p.edit} locked={p.locked} />
       <StatusOwnerField {...p} />
       <SkillFields agent={p.a} edit={p.edit} locked={p.locked} />

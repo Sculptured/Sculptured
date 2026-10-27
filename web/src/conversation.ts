@@ -1,5 +1,6 @@
 import { splitTeamMessage } from './teamMessage';
 import { WORDS } from './vocab';
+import type { EventBody } from './generated/EventBody';
 import type { EventRecord } from './generated/EventRecord';
 import type { MessageIntent } from './generated/MessageIntent';
 import type { MessageState } from './generated/MessageState';
@@ -290,6 +291,9 @@ export function conversationItems(events: EventRecord[]): Item[] {
       case 'stall-suspected':
         notice(e.seq, `May be stalled (heuristic): ${b.reason}`, b.reason);
         break;
+      case 'result-checked':
+        notice(e.seq, resultCheckedText(b), undefined, !b.passed);
+        break;
       case 'context-ceiling-reached':
         notice(e.seq, `Context ${Math.round(b.used_tokens / 1000)}k passed the ${Math.round(b.ceiling / 1000)}k limit: this agent writes its notes and continues in a fresh conversation`);
         break;
@@ -298,6 +302,13 @@ export function conversationItems(events: EventRecord[]): Item[] {
     }
   }
   return items;
+}
+
+/** A result against the agent's result checks: passed, or what failed and whether it went back. */
+export function resultCheckedText(b: Extract<EventBody, { type: 'result-checked' }>): string {
+  if (b.passed) return '✓ Its result passed its checks and was handed on';
+  const failed = b.results.filter((r) => !r.passed).map((r) => r.words).join('; ');
+  return `✗ Its result did not pass its checks (${failed}): ${b.bounced ? 'sent back to it' : 'not handed on; it waits for you'}`;
 }
 
 /** The turn still in progress at the end of these events, if any. A session end closes it. */

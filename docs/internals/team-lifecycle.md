@@ -166,6 +166,7 @@ sequenceDiagram
 
 The dispatcher (`handoffs/`) works like this:
 - **Work turns.** An agent's work is the Job or handoff message it read. A turn that ends `completed` after reading it is a work turn, and its last reply is the result passed on. An interrupted or failed turn, or a dead process, leaves the work unfinished, and the agent is shown as stuck.
+- **Result checks.** An agent with `result_checks` finishes its work only with a completed turn whose result passes them (`handoffs/result_checks.rs`). A failing turn is recorded (`ResultChecked`), leaves the work unfinished ("its result did not pass its checks"), and the failures go back to the agent up to 3 times. A later passing turn finishes the work. **Hand over again** still passes any turn on.
 - **First handoff.** A downstream agent waits until every upstream agent has a result (`handoff-waiting` lists whom it waits for). Its first message then carries its Job and each upstream's latest result.
 - **Waves.** After that, "More work" moves in waves from one origin agent. Each downstream agent gets one message per wave once its upstreams in that wave have finished.
 - **Recording.** Each message is recorded as `message-queued` plus a `handed-over` record (start, sources, wave) in one transaction (`Store::record_handoff`). A turn is never handed to the same seat twice in one start. The dispatcher recomputes what is due from the store alone, so a controld restart, a lagged hub or a replayed event sends nothing twice.

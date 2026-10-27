@@ -90,6 +90,7 @@ impl Cx<'_> {
             },
             token_limit,
             writes_status: false,
+            result_checks: Vec::new(),
             check: a.checks.first().map(|c| c.command.clone()),
             data_access: a.data_access.as_ref().map(|d| model::DataAccess {
                 reads: d.reads.clone(),

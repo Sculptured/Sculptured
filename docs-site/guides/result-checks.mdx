@@ -1,0 +1,30 @@
+---
+title: Result checks
+description: Rules an agent's result must pass before its work is handed on. Sculptured checks them itself and sends a failing result back.
+---
+
+When one agent's work feeds another, such as a buyer whose quote goes to an approver, you can require that the result carries certain facts, within limits, before it moves on. **Result checks** are those rules. Sculptured checks them itself, not the agent, so a result that passes is **verified**.
+
+## How it works
+
+1. The agent is told before it starts to end its result with a fenced `json` block containing the fields you check.
+2. When it finishes its work, Sculptured reads the last `json` block in its reply and checks each rule.
+3. **Passes:** the work is handed on as usual.
+4. **Fails:** nothing is handed on. Sculptured sends the agent what failed and what its result must have, and it tries again. This happens up to three times.
+5. **Still failing after that:** the agent is shown as **stuck**, waiting for you. Send it a message, or choose **Hand over again** to pass its latest result on anyway.
+
+Every check is shown in the agent's conversation: **✓ Its result passed its checks**, or **✗ Its result did not pass its checks** with what failed.
+
+## Add result checks
+
+Open the agent's **Setup → Advanced → Result checks** and choose **Add a result check**. A check names a **field** of the JSON block and a test:
+
+| Test | Example |
+| --- | --- |
+| **is filled in** | `part_number` is filled in |
+| **is at most** / **is at least** | `price` is at most `5000` |
+| **is one of** | `supplier` is one of `Acme Hydraulics, Bolt & Co` |
+
+A field can name a nested value with dots, such as `quotes.0.price`. Numbers may be written as text: `"$4,200"` is 4200. The tests are the same as for [changes to business systems](/guides/changes).
+
+A result without a `json` block fails every check. An agent can have up to 16 checks. Result checks apply to teams that hand work along **hands work to** connections. Workflows have their own check stages.

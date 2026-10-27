@@ -5,7 +5,8 @@ import type { TeamDraft } from '../generated/TeamDraft';
 import { Btn } from '../shell/ui';
 import { LOCK_REASON, type Edit } from './Panels';
 
-const TESTS: { kind: TestKind; label: string }[] = [
+/** The tests a rule can make, in words. Result checks use them too. */
+export const TESTS: { kind: TestKind; label: string }[] = [
   { kind: 'at-most', label: 'is at most' },
   { kind: 'at-least', label: 'is at least' },
   { kind: 'one-of', label: 'is one of' },

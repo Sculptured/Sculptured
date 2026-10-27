@@ -187,6 +187,7 @@ fn draft_agent(
             token_limit: None,
             check: None,
             writes_status: false,
+            result_checks: Vec::new(),
         },
         // A team file never names the person's own model connection.
         connection: None,

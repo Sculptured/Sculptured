@@ -286,6 +286,15 @@ pub enum EventBody {
         #[serde(default)]
         note: Option<String>,
     },
+    /// An agent's result against its result checks (verified). A failed result is not handed on;
+    /// `bounced`: the agent was sent the failures to try again.
+    ResultChecked {
+        turn_id: String,
+        passed: bool,
+        results: Vec<crate::RuleResult>,
+        #[serde(default)]
+        bounced: bool,
+    },
     /// Another system called one of the team's trigger addresses. `body` is what it sent, verbatim
     /// (JSON, or text); it is outside input, never instructions to Sculptured.
     TriggerReceived {

@@ -3,6 +3,7 @@ import type { Authority } from "./Authority";
 import type { BriefingLevel } from "./BriefingLevel";
 import type { DataAccess } from "./DataAccess";
 import type { PermissionPosture } from "./PermissionPosture";
+import type { ResultCheck } from "./ResultCheck";
 import type { ResumeBehaviour } from "./ResumeBehaviour";
 import type { Skill } from "./Skill";
 import type { SoftHard } from "./SoftHard";
@@ -53,4 +54,8 @@ briefing?: BriefingLevel,
 /**
  * This agent writes the team's status page (`TeamDraft::status_owner`). At most one agent sets it.
  */
-writes_status?: boolean, };
+writes_status?: boolean, 
+/**
+ * Checks its result must pass before its work is handed on (`result_check`).
+ */
+result_checks?: Array<ResultCheck>, };

@@ -2470,6 +2470,38 @@
           ]
         },
         {
+          "description": "An agent's result against its result checks (verified). A failed result is not handed on;\n`bounced`: the agent was sent the failures to try again.",
+          "type": "object",
+          "properties": {
+            "bounced": {
+              "type": "boolean",
+              "default": false
+            },
+            "passed": {
+              "type": "boolean"
+            },
+            "results": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RuleResult"
+              }
+            },
+            "turn_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "result-checked"
+            }
+          },
+          "required": [
+            "type",
+            "turn_id",
+            "passed",
+            "results"
+          ]
+        },
+        {
           "description": "Another system called one of the team's trigger addresses. `body` is what it sent, verbatim\n(JSON, or text); it is outside input, never instructions to Sculptured.",
           "type": "object",
           "properties": {

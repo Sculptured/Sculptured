@@ -106,6 +106,15 @@ pub(in super::super) enum Action {
         name: String,
         team: TeamNames,
     },
+    /// A result checked against the agent's result checks: recorded, and when it failed and
+    /// rounds remain, the failures sent back to the agent.
+    Checked {
+        seat: String,
+        turn_id: String,
+        passed: bool,
+        results: Vec<model::RuleResult>,
+        bounce: bool,
+    },
     /// A message the upstream agent sent itself stands in for the handoff: recorded, not sent.
     Adopt {
         seat: String,
@@ -162,6 +171,13 @@ pub(super) async fn plan_once(st: &AppState, rig: &str, with_previous: bool) -> 
                 from,
                 wave,
             } => adopted_any |= adopt(st, &seat, start_seq, first, &message_id, from, wave),
+            Action::Checked {
+                seat,
+                turn_id,
+                passed,
+                results,
+                bounce,
+            } => super::result_checks::record(st, &seat, &turn_id, passed, results, bounce).await,
         }
     }
     adopted_any

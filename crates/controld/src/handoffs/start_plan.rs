@@ -105,6 +105,9 @@ impl<'a> StartPlan<'a> {
 
     pub(super) fn run(mut self, actions: &mut Vec<Action>) -> rusqlite::Result<()> {
         for b in crate::handoffs::team::topo_order(self.team.rig) {
+            if self.live() {
+                actions.extend(crate::handoffs::result_checks::due(&b, &self.work[&b]));
+            }
             match self.upstreams.get(&b).cloned() {
                 None => self.plan_head(&b, actions)?,
                 Some(ups) => self.plan_downstream(&b, &ups, actions)?,

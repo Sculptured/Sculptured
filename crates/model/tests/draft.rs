@@ -44,6 +44,7 @@ fn reviewer() -> DraftAgent {
             check: None,
             briefing: None,
             writes_status: false,
+            result_checks: Vec::new(),
         },
         connection: None,
     }

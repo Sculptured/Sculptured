@@ -1,4 +1,6 @@
+import type { AgentAdvanced } from '../generated/AgentAdvanced';
 import type { ChangeRule } from '../generated/ChangeRule';
+import type { ResultCheck } from '../generated/ResultCheck';
 import type { Mandate } from '../generated/Mandate';
 import type { RuleTest } from '../generated/RuleTest';
 import type { TeamDraft } from '../generated/TeamDraft';
@@ -49,3 +51,18 @@ export function withTestText(t: RuleTest, text: string): RuleTest {
   if (t.kind === 'one-of') return { kind: 'one-of', values: text.split(',').map((s) => s.trim()).filter(Boolean) };
   return t;
 }
+
+/** An agent's result checks, with one added, changed or removed (none leaves the field out). */
+const withChecks = (list: ResultCheck[]): Pick<AgentAdvanced, 'result_checks'> => ({ result_checks: list.length ? list : undefined });
+
+export function addResultCheck(list: ResultCheck[]): Pick<AgentAdvanced, 'result_checks'> {
+  const taken = new Set(list.map((c) => c.id));
+  let n = list.length + 1;
+  while (taken.has(`check-${n}`)) n++;
+  return withChecks([...list, { id: `check-${n}`, field: '', test: { kind: 'present' } }]);
+}
+
+export const updateResultCheck = (list: ResultCheck[], id: string, patch: Partial<Omit<ResultCheck, 'id'>>) =>
+  withChecks(list.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+
+export const removeResultCheck = (list: ResultCheck[], id: string) => withChecks(list.filter((c) => c.id !== id));

@@ -16,6 +16,20 @@ describe('conversationItems', () => {
     expect(tool.kind === 'tool' && tool.output).toBe('a.txt');
   });
 
+  it('says whether a result passed its checks, what failed, and whether it went back', () => {
+    const fail = { rule_id: 'price', field: 'price', passed: false, actual: 7300, words: 'price is 7300, at most 5000' };
+    const items = conversationItems([
+      ev(1, { type: 'result-checked', turn_id: 't1', passed: false, results: [fail], bounced: true }),
+      ev(2, { type: 'result-checked', turn_id: 't2', passed: false, results: [fail], bounced: false }),
+      ev(3, { type: 'result-checked', turn_id: 't3', passed: true, results: [], bounced: false }),
+    ]);
+    expect(items.map((i) => i.kind === 'notice' && [i.text, !!i.alarm])).toEqual([
+      ['✗ Its result did not pass its checks (price is 7300, at most 5000): sent back to it', true],
+      ['✗ Its result did not pass its checks (price is 7300, at most 5000): not handed on; it waits for you', true],
+      ['✓ Its result passed its checks and was handed on', false],
+    ]);
+  });
+
   it('moves message state forward only, and failed is terminal', () => {
     const consumedFirst = conversationItems([
       ev(1, { type: 'message-queued', message_id: 'm1', intent: 'instruct', text: 'hi' }),

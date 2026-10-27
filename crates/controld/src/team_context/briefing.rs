@@ -154,6 +154,7 @@ pub(crate) fn briefing_with(d: &TeamDraft, seat: &str, message: &str) -> Option<
     lines.extend(contract_lines(d, me));
     lines.extend(crate::status_page::briefing_line(d, me));
     lines.extend(crate::changes::briefing_line(d, me));
+    lines.extend(crate::handoffs::result_checks_briefing(d, me));
     Some(lines.join("\n\n"))
 }
 
@@ -555,6 +556,27 @@ mod tests {
         assert!(told(&d, "builder") && told(&d, "reviewer"));
         d.agents[0].advanced.briefing = Some(model::BriefingLevel::Minimal);
         assert!(told(&d, "builder"), "a minimal briefing too");
+    }
+
+    #[test]
+    fn an_agent_with_result_checks_is_told_how_to_end_its_result() {
+        let mut d =
+            rigspec::templates::template("builder-reviewer", "project", "My project", false)
+                .unwrap();
+        let line = "end your reply with a fenced json block whose fields are:\n- `price`: a number at most 5000";
+        let told =
+            |d: &TeamDraft, id: &str| briefing(d, &d.seat_id(id).unwrap()).unwrap().contains(line);
+        let builder = d.agents[0].id.clone();
+        assert!(!told(&d, &builder), "no checks: not mentioned");
+        d.agents[0].advanced.result_checks = vec![model::ResultCheck {
+            id: "price".into(),
+            field: "price".into(),
+            test: model::RuleTest::AtMost { value: 5000.0 },
+        }];
+        let reviewer = d.agents[1].id.clone();
+        assert!(told(&d, &builder) && !told(&d, &reviewer));
+        d.agents[0].advanced.briefing = Some(model::BriefingLevel::Minimal);
+        assert!(told(&d, &builder), "a minimal briefing too");
     }
 
     #[test]

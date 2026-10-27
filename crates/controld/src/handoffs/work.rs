@@ -1,7 +1,10 @@
 //! What each agent did in a start: its finished turns, the work it read, and the messages it got.
 use super::{HANDOFF_ACTOR, TEAM_START_ACTOR};
 use crate::store::{HandedOverRecord, Store};
-use model::{Actor, EventBody, EventRecord, HandoffSource, Subject, TurnStatus, Wave};
+use model::{
+    Actor, EventBody, EventRecord, HandoffSource, ResultCheck, RuleResult, Subject, TurnStatus,
+    Wave,
+};
 use std::collections::{HashMap, HashSet};
 
 /// One finished turn and its last reply.
@@ -48,6 +51,19 @@ impl Item {
     }
 }
 
+/// Why work whose result failed the agent's result checks did not finish.
+pub(super) const CHECKS_FAILED: &str = "its result did not pass its checks";
+
+/// A completed turn on the agent's work, against its result checks.
+#[derive(Clone, Debug)]
+pub(super) struct Checked {
+    pub(super) turn_id: String,
+    pub(super) passed: bool,
+    pub(super) results: Vec<RuleResult>,
+    /// Failed checks on the same work so far, this one included.
+    pub(super) failures: u32,
+}
+
 /// What one agent did in a start.
 #[derive(Clone, Debug, Default)]
 pub(super) struct SeatWork {
@@ -72,6 +88,10 @@ pub(super) struct SeatWork {
     pub(super) lost: HashSet<String>,
     /// Messages other agents sent it themselves: `(seq, message id, sender seat)`, oldest first.
     pub(super) from_agents: Vec<(i64, String, String)>,
+    /// Its completed turns on its work against its result checks, oldest first (none without checks).
+    pub(super) checked: Vec<Checked>,
+    /// Turns whose check is recorded (`ResultChecked`).
+    pub(super) checks_recorded: HashSet<String>,
 }
 
 /// Work read and not finished yet: the message, its wave, and why it did not finish (None while
@@ -80,6 +100,8 @@ struct Reading {
     message: String,
     wave: Option<Wave>,
     why: Option<&'static str>,
+    /// Its result failed the agent's checks this many times.
+    failures: u32,
 }
 
 /// One pass over a seat's events of a start, building its `SeatWork`.
@@ -95,6 +117,8 @@ struct Scan<'a> {
     reading: Option<Reading>,
     /// The running turn, the seq it started at, and its last reply so far.
     current: Option<(String, i64, Option<String>)>,
+    /// The agent's result checks (empty: every completed turn on its work finishes it).
+    checks: Vec<ResultCheck>,
 }
 
 impl Scan<'_> {
@@ -121,6 +145,9 @@ impl Scan<'_> {
             EventBody::TurnEnded { turn_id, status } => self.turn_ended(e.seq, turn_id, status),
             EventBody::HandoverRequested { turn_seq, .. } => {
                 self.out.requests.push((e.seq, turn_seq))
+            }
+            EventBody::ResultChecked { turn_id, .. } => {
+                self.out.checks_recorded.insert(turn_id);
             }
             _ => {}
         }
@@ -166,6 +193,7 @@ impl Scan<'_> {
                 message: message_id,
                 wave: wave.clone(),
                 why: None,
+                failures: 0,
             });
         }
     }
@@ -203,6 +231,17 @@ impl Scan<'_> {
         };
         match status {
             TurnStatus::Completed => {
+                if !self.passes_checks(&turn_id, text.as_deref()) {
+                    self.out.turns.push(Turn {
+                        seq,
+                        started,
+                        turn_id,
+                        text,
+                        work: false,
+                        wave: None,
+                    });
+                    return;
+                }
                 let finished = self.reading.take();
                 let work = finished.is_some();
                 self.out.turns.push(Turn {
@@ -217,6 +256,27 @@ impl Scan<'_> {
             TurnStatus::Interrupted => self.mark_unfinished("interrupted"),
             TurnStatus::Failed => self.mark_unfinished("failed"),
         }
+    }
+
+    /// Whether a completed turn on the agent's work passes its result checks (true without work or
+    /// checks). A failure leaves the work unfinished, so a later turn can finish it.
+    fn passes_checks(&mut self, turn_id: &str, text: Option<&str>) -> bool {
+        let Some(r) = self.reading.as_mut().filter(|_| !self.checks.is_empty()) else {
+            return true;
+        };
+        let results = model::result_check::check_result(&self.checks, text.unwrap_or(""));
+        let passed = results.iter().all(|x| x.passed);
+        if !passed {
+            r.failures += 1;
+            r.why = Some(CHECKS_FAILED);
+        }
+        self.out.checked.push(Checked {
+            turn_id: turn_id.to_string(),
+            passed,
+            results,
+            failures: r.failures,
+        });
+        passed
     }
 
     fn finish(mut self) -> SeatWork {
@@ -248,8 +308,16 @@ pub(super) fn seat_work(
         "turn-ended",
         "tenure-ended",
         "handover-requested",
+        "result-checked",
     ];
     let events = store.events_of_types(&Subject::Seat(seat.to_string()), start_seq, &types)?;
+    let checks = crate::seat_ids::rig_of(seat)
+        .and_then(|rig| store.draft(rig).ok().flatten())
+        .and_then(|d| {
+            d.agent_for_seat(seat)
+                .map(|a| a.advanced.result_checks.clone())
+        })
+        .unwrap_or_default();
     let mut scan = Scan {
         out: SeatWork::default(),
         waves: records
@@ -261,6 +329,7 @@ pub(super) fn seat_work(
         first_human_seen: false,
         reading: None,
         current: None,
+        checks,
     };
     for e in events {
         scan.event(e);

@@ -82,20 +82,24 @@ impl ChangeRule {
 
     #[must_use]
     pub fn check(&self, payload: &Value) -> RuleResult {
-        let actual = lookup(payload, &self.field)
-            .filter(|v| !is_empty(v))
-            .cloned();
-        let (passed, words) = match &actual {
-            None => (false, format!("{} is missing", self.field)),
-            Some(v) => self.test.judge(&self.field, v),
-        };
-        RuleResult {
-            rule_id: self.id.clone(),
-            field: self.field.clone(),
-            passed,
-            actual,
-            words,
-        }
+        check_field(&self.id, &self.field, &self.test, payload)
+    }
+}
+
+/// Rule `id`: `payload`'s `field` against `test`. A missing or empty field fails.
+#[must_use]
+pub fn check_field(id: &str, field: &str, test: &RuleTest, payload: &Value) -> RuleResult {
+    let actual = lookup(payload, field).filter(|v| !is_empty(v)).cloned();
+    let (passed, words) = match &actual {
+        None => (false, format!("{field} is missing")),
+        Some(v) => test.judge(field, v),
+    };
+    RuleResult {
+        rule_id: id.to_string(),
+        field: field.to_string(),
+        passed,
+        actual,
+        words,
     }
 }
 
