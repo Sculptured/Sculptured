@@ -35,6 +35,7 @@ Sources:
 ## Invariants
 
 - A proposal changes nothing. Sculptured has no connector yet, so the agent makes an approved change itself. Connectors that write approved changes (ERPNext first) are planned in `plans/2026-10-26-operations-systems-design.md`, outside the repository.
-- An agent cannot approve its own change. Only the mandate (rules evaluated by Sculptured) or a person approves.
+- An agent cannot approve its own change through its tools. Only the mandate (rules evaluated by Sculptured) or a person approves, and a person's decision is recorded as theirs (`Actor::Human`, operator provenance). No agent tool edits the team's draft, so none can change the mandate.
+- **The limit of that guarantee on a person's own computer.** Local Sculptured allows every request (`auth.rs`, `AuthPolicy::AllowAll`). An agent that runs commands without asking runs as the same user and could call the local API itself: answer its own approval or edit the mandate. On the hosted service every request must carry the gateway's signature, which agents never hold. Today's mitigation is a restricted agent, which asks before running a command. Closing this locally needs local sign-in, or a sandbox that blocks Sculptured's address (the `sandboxed` computer setting limits writes, not the network).
 - An unanswered approval is never approved. This is the opposite of a permission prompt, which D8 allows on timeout.
 - An empty mandate is left out of team files, and MADL does not carry it yet.

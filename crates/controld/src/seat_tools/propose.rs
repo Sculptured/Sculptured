@@ -188,9 +188,12 @@ fn decide(
     id: &str,
     (approved, by, note): Decision,
 ) -> Result<(), ToolError> {
-    let provenance = match by {
-        ChangeDecider::Person => Provenance::Operator,
-        ChangeDecider::Mandate | ChangeDecider::NobodyInTime => Provenance::Verified,
+    // A person's decision is theirs; Sculptured records the others.
+    let (actor, provenance) = match by {
+        ChangeDecider::Person => (Actor::Human("local".into()), Provenance::Operator),
+        ChangeDecider::Mandate | ChangeDecider::NobodyInTime => {
+            (Actor::System("controld".into()), Provenance::Verified)
+        }
     };
     let body = EventBody::ChangeDecided {
         proposal_id: id.to_string(),
@@ -198,5 +201,5 @@ fn decide(
         by,
         note,
     };
-    record(st, team, Actor::System("controld".into()), provenance, body)
+    record(st, team, actor, provenance, body)
 }
