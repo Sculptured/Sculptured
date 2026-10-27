@@ -245,6 +245,7 @@ pub fn to_draft(s: &Sketch, kinds: Kinds, folder: Option<&str>) -> Converted {
         input: None,
         schedules: vec![],
         mandate: Default::default(),
+        triggers: Vec::new(),
         decision_log: false,
         limits: Default::default(),
         workflow: None,

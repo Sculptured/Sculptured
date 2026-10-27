@@ -415,7 +415,7 @@ fn an_m1_store_gains_the_m2_tables_and_columns() {
         .unwrap();
     drop(Store::open(&path).unwrap());
     assert_eq!(version(&path), SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 29);
+    assert_eq!(SCHEMA_VERSION, 30);
     for (table, column) in [
         ("seats", "open_questions"),
         ("seats", "restore_offer"),
@@ -436,6 +436,7 @@ fn an_m1_store_gains_the_m2_tables_and_columns() {
     assert!(has_table(&path, "project_maps"));
     assert!(has_table(&path, "host_limits"));
     assert!(has_table(&path, "held_notes"));
+    assert!(has_table(&path, "trigger_keys"));
     assert!(has_table(&path, "workflow_dispatches"));
     assert!(has_table(&path, "settings"));
     assert!(has_table(&path, "plan_usage"));

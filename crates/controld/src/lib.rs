@@ -52,6 +52,7 @@ pub mod stream;
 mod team_context;
 pub mod teams;
 pub mod traces;
+pub mod triggers;
 pub mod usage;
 pub mod views;
 pub mod workflow;

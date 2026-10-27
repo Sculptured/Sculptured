@@ -286,6 +286,19 @@ pub enum EventBody {
         #[serde(default)]
         note: Option<String>,
     },
+    /// Another system called one of the team's trigger addresses. `body` is what it sent, verbatim
+    /// (JSON, or text); it is outside input, never instructions to Sculptured.
+    TriggerReceived {
+        trigger_id: String,
+        receipt_id: String,
+        body: serde_json::Value,
+    },
+    /// What came of a received event: `sent`, `started the team and sent`, or why not.
+    TriggerHandled {
+        receipt_id: String,
+        delivered: bool,
+        outcome: String,
+    },
     /// An agent report or tool call that failed validation (spec §6.3). Evidence; never interrupts the agent.
     ReportRejected {
         tool: String,

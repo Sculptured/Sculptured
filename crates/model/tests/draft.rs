@@ -59,6 +59,7 @@ fn draft() -> TeamDraft {
         input: None,
         schedules: vec![],
         mandate: Default::default(),
+        triggers: Vec::new(),
         decision_log: false,
         limits: Default::default(),
         workflow: None,

@@ -2470,6 +2470,54 @@
           ]
         },
         {
+          "description": "Another system called one of the team's trigger addresses. `body` is what it sent, verbatim\n(JSON, or text); it is outside input, never instructions to Sculptured.",
+          "type": "object",
+          "properties": {
+            "body": true,
+            "receipt_id": {
+              "type": "string"
+            },
+            "trigger_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "trigger-received"
+            }
+          },
+          "required": [
+            "type",
+            "trigger_id",
+            "receipt_id",
+            "body"
+          ]
+        },
+        {
+          "description": "What came of a received event: `sent`, `started the team and sent`, or why not.",
+          "type": "object",
+          "properties": {
+            "delivered": {
+              "type": "boolean"
+            },
+            "outcome": {
+              "type": "string"
+            },
+            "receipt_id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "trigger-handled"
+            }
+          },
+          "required": [
+            "type",
+            "receipt_id",
+            "delivered",
+            "outcome"
+          ]
+        },
+        {
           "description": "An agent report or tool call that failed validation (spec §6.3). Evidence; never interrupts the agent.",
           "type": "object",
           "properties": {

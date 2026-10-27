@@ -138,6 +138,7 @@ pub fn template(id: &str, team_id: &str, name: &str, practice: bool) -> Option<T
         input: None,
         schedules: vec![],
         mandate: Default::default(),
+        triggers: Vec::new(),
         decision_log: false,
         limits: Default::default(),
         workflow: None,

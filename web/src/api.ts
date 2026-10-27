@@ -115,6 +115,10 @@ export type ProposedChangeRow = {
   checks?: import('./generated/RuleResult').RuleResult[];
   decision?: { approved: boolean; by: import('./generated/ChangeDecider').ChangeDecider; note: string | null; at_ms: number };
 };
+/** A received event, with what came of it once known (`outcome`). */
+export type TriggerEvent = { id: string; trigger: string; at_ms: number; body: unknown; delivered?: boolean; outcome?: string };
+/** Each saved trigger's address (a path on this site) and the latest events received. */
+export type TeamTriggers = { triggers: { id: string; path: string }[]; received: TriggerEvent[] };
 export type TeamChanges = { changes: ProposedChangeRow[]; mandate: import('./generated/Mandate').Mandate | null };
 export type TeamStatus = {
   /** The agent that writes it; `chosen` when a person picked it, else Sculptured's default. */
@@ -208,6 +212,9 @@ export const api = {
   teamStatusVersion: (id: string, seq: number) => get<StatusPage>(`${teamUrl(id)}/status/${seq}`),
   /** The changes the team's agents proposed, newest first. */
   teamChanges: (id: string) => get<TeamChanges>(`${teamUrl(id)}/changes`),
+  teamTriggers: (id: string) => get<TeamTriggers>(`${teamUrl(id)}/triggers`),
+  newTriggerAddress: (id: string, trigger: string) =>
+    request<{ id: string; path: string }>('POST', `${teamUrl(id)}/triggers/${encodeURIComponent(trigger)}/new-address`, {}),
   /** What the team's agents know: the project maps made at each start, and lessons and decisions. */
   knowledge: (id: string) => get<import('./knowledge').Knowledge>(`${teamUrl(id)}/knowledge`),
   confirmDecision: (id: string, entry: string) => request<{ confirmed: string }>('POST', `${teamUrl(id)}/decisions/${encodeURIComponent(entry)}/confirm`, {}),

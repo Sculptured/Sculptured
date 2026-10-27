@@ -113,6 +113,17 @@
 .mandate-rule .fld-input { width: auto; min-width: 8rem; flex: 1 1 8rem; }
 .mandate-rule .fld-input:first-of-type { flex: 2 1 14rem; }
 
+/* Settings → Events from other systems: a trigger, its address and the latest events. */
+.trigger { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 8px; }
+.trigger:first-child { border-top: 0; padding-top: 0; }
+.trigger-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.trigger-head .fld-input { width: auto; min-width: 10rem; }
+.trigger-url { margin: 0; }
+.trigger-url code { overflow-wrap: anywhere; font-size: var(--text-sm, 0.875rem); }
+.trigger-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0; }
+.trigger-try pre, .trigger-events pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-sm, 0.875rem); margin: 4px 0; }
+.trigger-events { list-style: none; padding: 0; margin: 0; font-size: var(--text-sm, 0.875rem); }
+
 /* A proposed change: its fields and the team's rules as Sculptured checked them. */
 .change-fields { border-collapse: collapse; margin: 8px 0; font-size: var(--text-sm, 0.875rem); }
 .change-fields th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 12px 2px 0; vertical-align: top; }

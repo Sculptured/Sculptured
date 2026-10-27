@@ -9,7 +9,7 @@ use axum::extract::State;
 use axum::response::Response;
 use model::{ConnectionKind, TeamDraft};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::path::PathBuf;
 
 /// True when another agent of the team hands work to `agent`: its Job then arrives
@@ -231,6 +231,36 @@ pub(super) async fn start_team(
         Ok(json!({ "rig": build.rig.name, "warnings": build.warnings }))
     })
     .await
+}
+
+/// Starts team `id` as Start does, for an event from another system (`triggers`). Ok when it started or
+/// a start was already under way; otherwise the reason, in the words Start would show.
+pub(crate) async fn start_for_event(
+    st: &AppState,
+    id: &str,
+    request_id: String,
+) -> Result<(), String> {
+    let req = StartReq {
+        request_id,
+        revision: None,
+        over_plan_limit: false,
+        resume: false,
+    };
+    let res = start_team(State(st.clone()), Path(id.to_string()), Json(req)).await;
+    if res.status().is_success() {
+        return Ok(());
+    }
+    let body = axum::body::to_bytes(res.into_body(), 64 * 1024)
+        .await
+        .unwrap_or_default();
+    let err: Value = serde_json::from_slice(&body).unwrap_or_default();
+    if err["error"]["code"] == "team_running" {
+        return Ok(());
+    }
+    Err(err["error"]["message"]
+        .as_str()
+        .unwrap_or("Sculptured could not start the team")
+        .to_string())
 }
 
 #[derive(Deserialize, Serialize)]

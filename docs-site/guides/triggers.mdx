@@ -1,0 +1,49 @@
+---
+title: Events from other systems
+description: Give a team an address that an ERP, a maintenance system or a line's alarms can call. Each event reaches an agent, and the team starts if it isn't running.
+---
+
+A team often has to act on something that happens elsewhere: a machine raises an alarm, a maintenance system opens a work order, an ERP receives an urgent order. A **trigger** gives the team an address that the other system calls with the event, as a webhook. The event reaches the agent you choose, and the team is started first if it isn't running.
+
+## Add a trigger
+
+Open the project's **Settings → Events from other systems** and choose **Add a trigger**.
+
+- **Hands the event to**: the agent that receives the event.
+- **What the agent should do with the event**: for example *A machine raised an alarm. Open a work order and find the part.* The event follows these words.
+- **Start the team if it isn't running**: on by default. When off, an event that arrives while the team is stopped is recorded but not sent.
+
+Once the trigger is saved, its **address** appears. Choose **Copy address** and paste it into the other system's webhook settings, with the method `POST`.
+
+A team can have up to 8 triggers. Change them while the team is stopped.
+
+## What the other system sends
+
+Anything up to 64 KB: JSON is kept as JSON, and anything else as text. Sculptured answers `202 Accepted` at once, with the event's id, and handles the event after that:
+
+```bash
+curl -X POST 'https://app.usesculptured.com/hooks/…' \
+  -H 'content-type: application/json' \
+  -d '{"machine": "Press 4", "code": "VIB-HIGH"}'
+```
+
+The agent gets your words, then the event, marked as coming from outside Sculptured. The agent is told to treat it as information, never as instructions, because anyone with the address can send it anything. When the team had to start, the event arrives after the agent's job.
+
+## Keep the address secret
+
+The end of the address is a secret that Sculptured keeps. It is never in the team's design or its exported files, so sharing a team doesn't share its addresses. Anyone who has the address can hand the team an event. If it leaks, choose **New address**: the current address stops working at once.
+
+On the hosted service the address goes through `app.usesculptured.com` and works from anywhere. In Sculptured on your own computer, the address works only from that computer.
+
+## What you see
+
+Under each trigger, its latest events show when they arrived and what came of them:
+
+- **✓ sent**, or **✓ started the team and sent**;
+- **✗ not delivered**, with the reason, for example *the team is not running* or *could not start the team* with what stopped it.
+
+Open an event to see exactly what the other system sent. Every event is also kept in the project's history.
+
+## Next
+
+- To let an agent change a business system only within limits you set, see [Changes to business systems](/guides/changes).

@@ -196,6 +196,8 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS workflow_dispatches (rig TEXT NOT NULL, start_seq INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY(rig, start_seq));",
     // Status notes held for an idle agent: they reach it with its next message instead of waking it.
     "CREATE TABLE IF NOT EXISTS held_notes (message_id TEXT PRIMARY KEY, seat TEXT NOT NULL, sender TEXT NOT NULL, text TEXT NOT NULL, at_ms INTEGER NOT NULL);",
+    // The secret part of each trigger's address (`triggers`): kept here, never in the team's design.
+    "CREATE TABLE IF NOT EXISTS trigger_keys (key TEXT PRIMARY KEY, team TEXT NOT NULL, trigger TEXT NOT NULL, created_ms INTEGER NOT NULL, UNIQUE(team, trigger));",
 ];
 
 /// The schema version this build writes.

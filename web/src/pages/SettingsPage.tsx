@@ -15,6 +15,7 @@ import { ProjectFolder } from '../structure/ProjectFolder';
 import { ProtectionFields } from '../structure/ProtectionFields';
 import { TeamExport } from '../structure/TeamAdvanced';
 import { MandateFields } from '../structure/MandateFields';
+import { TriggerFields } from '../structure/TriggerFields';
 import { TeamLimitsFields } from '../structure/TeamLimitsFields';
 import { TraceSettings } from '../structure/TraceSettings';
 import { useProject, type Project } from './ProjectContext';
@@ -34,7 +35,7 @@ function Group({ title, hint, children }: { title: string; hint?: string; childr
 }
 
 /**
- * `/p/:team/settings`: the team as a whole. Name and folder, default models, run budget,
+ * `/p/:team/settings`: the team as a whole. Name and folder, default models, run budget, change rules, triggers,
  * workflow, git, export, and Hide or Move to Trash. Edits autosave like the board.
  */
 export function SettingsPage() {
@@ -56,6 +57,7 @@ export function SettingsPage() {
       <Group title="Default models" hint="Each agent uses these unless its group or its own setup picks another."><TeamModelFields {...c} /></Group>
       <Group title="Run budget"><BudgetFields {...c} /></Group>
       <Group title="Changes to business systems" hint="Agents propose each change to an order, a schedule or another system before making it. Sculptured checks these rules itself."><MandateFields {...c} /></Group>
+      <Group title="Events from other systems" hint="Another system, such as an ERP, a maintenance system or a line's alarms, posts to a trigger's address to hand an agent an event."><TriggerFields {...c} /></Group>
       <Shortcuts p={p} />
       <MoreSettings p={p} locked={locked} />
       <Group title="Export"><TeamExport teamId={p.team} draft={draft} flush={p.t.flush} /></Group>

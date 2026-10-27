@@ -17,6 +17,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 pub(crate) use folder_checks::folder_issues;
 use model::{DraftIssue, IssueSeverity, TeamDraft};
+pub(crate) use run::start_for_event;
 use run::{start_team, stop_team};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

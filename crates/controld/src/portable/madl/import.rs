@@ -51,6 +51,7 @@ pub fn from_madl(doc: &m::Document) -> Imported {
             max_child_levels: spawn_depth(doc),
         },
         mandate: Default::default(),
+        triggers: Vec::new(),
         decision_log: doc.channels.iter().any(|c| c.medium == "decision-log"),
         revision: 0,
         ..cx.defaults()
@@ -155,6 +156,7 @@ impl Cx<'_> {
             components: Vec::new(),
             budget: RunBudget::default(),
             mandate: Default::default(),
+            triggers: Vec::new(),
             decision_log: false,
             revision: 0,
         }

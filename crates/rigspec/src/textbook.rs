@@ -147,6 +147,7 @@ pub fn template(id: &str, name: &str, practice: bool) -> TeamDraft {
         input: None,
         schedules: vec![],
         mandate: Default::default(),
+        triggers: Vec::new(),
         decision_log: false,
         limits: Default::default(),
         workflow: Some(workflow),

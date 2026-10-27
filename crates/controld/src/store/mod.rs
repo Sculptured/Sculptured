@@ -12,6 +12,7 @@ pub mod account;
 mod collaboration;
 mod decisions;
 mod schedules;
+mod triggers;
 mod workflow;
 
 use crate::views::{Receipt, SeatView, StreamItem};

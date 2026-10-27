@@ -41,6 +41,7 @@ fn team(agents: Vec<DraftAgent>, connections: Vec<DraftConnection>) -> TeamDraft
         input: None,
         schedules: vec![],
         mandate: Default::default(),
+        triggers: Vec::new(),
         decision_log: false,
         limits: Default::default(),
         workflow: None,

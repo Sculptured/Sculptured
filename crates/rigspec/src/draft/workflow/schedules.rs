@@ -1,4 +1,4 @@
-//! Validation of scheduled agent messages.
+//! Validation of scheduled agent messages and of triggers (addresses other systems call).
 use model::{DraftIssue, ElementKind, ElementRef, IssueSeverity, TeamDraft};
 use std::collections::HashSet;
 
@@ -6,13 +6,19 @@ use std::collections::HashSet;
 pub(in crate::draft) fn check_schedules(d: &TeamDraft) -> Vec<DraftIssue> {
     schedule_errors(d)
         .into_iter()
-        .map(|message| DraftIssue {
+        .map(|m| ("schedule-invalid", m))
+        .chain(
+            trigger_errors(d)
+                .into_iter()
+                .map(|m| ("trigger-invalid", m)),
+        )
+        .map(|(code, message)| DraftIssue {
             element: ElementRef {
                 kind: ElementKind::Team,
                 id: d.id.clone(),
             },
             severity: IssueSeverity::Error,
-            code: "schedule-invalid".into(),
+            code: code.into(),
             message,
             detail: None,
             spec_path: None,
@@ -37,6 +43,31 @@ fn schedule_errors(d: &TeamDraft) -> Vec<String> {
             || s.message.len() > 4096
         {
             errors.push(format!("Schedule {} needs an existing agent, every 5–1440 minutes, and a message of 1–4096 bytes.", s.id));
+        }
+    }
+    errors
+}
+
+/// A team's triggers: at most 8, unique ids, existing agents, messages up to 4 KB.
+fn trigger_errors(d: &TeamDraft) -> Vec<String> {
+    let mut errors = Vec::new();
+    let ids: HashSet<_> = d.triggers.iter().map(|t| &t.id).collect();
+    if d.triggers.len() > 8 {
+        errors.push("Keep to 8 triggers.".to_string());
+    }
+    if ids.len() != d.triggers.len() {
+        errors.push("Give each trigger its own name.".to_string());
+    }
+    for t in &d.triggers {
+        if !model::valid_segment(&t.id)
+            || d.agent(&t.agent).is_none()
+            || t.message.trim().is_empty()
+            || t.message.len() > 4096
+        {
+            errors.push(format!(
+                "Trigger {} needs an existing agent and a message of 1–4096 bytes.",
+                t.id
+            ));
         }
     }
     errors

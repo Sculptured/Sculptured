@@ -45,7 +45,7 @@ pub use draft::{
     AgentAdvanced, AgentKind, ConnectionKind, DEFAULT_GROUP_ID, DraftAgent, DraftConnection,
     DraftGroup, DraftIssue, ElementKind, ElementRef, IssueSeverity, ModelDefaults,
     PermissionPosture, ResumeBehaviour, Schedule, TeamDraft, TeamInput, TeamLimits, TokenCount,
-    TokenLimit,
+    TokenLimit, Trigger,
 };
 pub use event::{
     Actor, ChangeDecider, ContextBasis, EventBody, EventRecord, HandoffSource, HandoffStuck,

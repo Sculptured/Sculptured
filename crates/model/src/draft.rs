@@ -356,6 +356,10 @@ pub struct TeamDraft {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<Schedule>>", optional)]
     pub schedules: Vec<Schedule>,
+    /// Addresses other systems call to hand the team an event (webhooks).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Trigger>>", optional)]
+    pub triggers: Vec<Trigger>,
     /// Limits on the agents this team's agents spawn (Advanced). Absent = no limits.
     #[serde(default, skip_serializing_if = "TeamLimits::is_empty")]
     #[ts(as = "Option<TeamLimits>", optional)]
@@ -600,6 +604,20 @@ pub struct DraftIssue {
     pub detail: Option<String>,
     /// RigSpec path the detail refers to, shown only under Advanced.
     pub spec_path: Option<String>,
+}
+
+/// An address another system calls (a webhook) to hand the team an event, such as a machine alarm or a
+/// new order. Its body reaches `agent` after `message`; a team that is not running is started first
+/// when `starts_team` is on. The address's secret is kept by Sculptured, never in the team's design.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, TS)]
+#[ts(export)]
+pub struct Trigger {
+    pub id: String,
+    pub agent: String,
+    /// What the agent is asked to do with the event.
+    pub message: String,
+    #[serde(default = "yes")]
+    pub starts_team: bool,
 }
 
 /// A message sent to `agent` every `every_minutes` while the team runs; skipped when the agent is busy.

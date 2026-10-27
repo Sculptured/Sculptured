@@ -12,6 +12,7 @@ import type { SafetyRule } from "./SafetyRule";
 import type { Schedule } from "./Schedule";
 import type { TeamInput } from "./TeamInput";
 import type { TeamLimits } from "./TeamLimits";
+import type { Trigger } from "./Trigger";
 import type { Workflow } from "./Workflow";
 
 export type TeamDraft = { workflow?: Workflow, input?: TeamInput, 
@@ -31,6 +32,10 @@ models?: ModelDefaults,
  * Messages sent to an agent every N minutes while the team runs (Advanced).
  */
 schedules?: Array<Schedule>, 
+/**
+ * Addresses other systems call to hand the team an event (webhooks).
+ */
+triggers?: Array<Trigger>, 
 /**
  * Limits on the agents this team's agents spawn (Advanced). Absent = no limits.
  */
