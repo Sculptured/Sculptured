@@ -56,6 +56,8 @@ pub struct AppState {
     pub analytics: Option<Arc<crate::analytics::Analytics>>,
     /// Hosted beta: where the person's model connections are read at launch (None: local mode).
     pub gateway: Option<Arc<crate::gateway::Gateway>>,
+    /// Local mode: arenad, which the Tests pages reach through `/api/arena` (None: hosted, or not wired).
+    pub arena: Option<Arc<crate::arena::Arena>>,
     /// Community on a self-run install (C5); None when hosted, where the gateway serves Community.
     pub community: Option<Arc<crate::community::CommunityLink>>,
 }
@@ -89,6 +91,7 @@ impl AppState {
             start_resumes: Arc::default(),
             analytics: None,
             gateway: None,
+            arena: None,
             community: None,
         }
     }
@@ -100,6 +103,11 @@ impl AppState {
 
     pub fn with_gateway(mut self, g: Arc<crate::gateway::Gateway>) -> Self {
         self.gateway = Some(g);
+        self
+    }
+
+    pub fn with_arena(mut self, a: Arc<crate::arena::Arena>) -> Self {
+        self.arena = Some(a);
         self
     }
 

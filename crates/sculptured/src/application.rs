@@ -468,6 +468,7 @@ pub(super) async fn serve(
             data_dir.clone(),
             community_origin,
         ))
+        .with_arena(controld::arena::Arena::from_env())
     };
     // `fallback` (not `not_found_service`) keeps status 200 for SPA deep links.
     let web_ui = Router::new()

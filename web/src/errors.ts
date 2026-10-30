@@ -123,6 +123,13 @@ export const ERROR_WORDS: Record<string, string> = {
   needs_computer: 'This needs your computer: your folders and agents run there, not on the server. Open Computers and connect your computer, then try again.',
   older_runner:
     "Sculptured's agent runner is from an older version. Stop all teams, then end the old agent runner: its process number is in the file hostd.pid, in the host-local folder of Sculptured's data folder. Sculptured starts the new runner within a minute.",
+  // Tests: arenad, the arena engine, through `/api/arena` (its own words travel as `raw` evidence).
+  arena_unreachable: 'The test engine is not running. Start arenad (in the arena folder: cd core && cargo run -p arenad), then try again.',
+  arena_not_found: 'That run or branch no longer exists. It may have been deleted.',
+  arena_busy: 'A branch of this run is still running. Wait for it to finish, then try again.',
+  arena_full: "The test databases have reached their space limit. Delete old runs to make room.",
+  arena_refused: 'The test engine did not accept this request.',
+  arena_failed: 'The test engine hit a problem with this request.',
   // Everything else.
   internal: 'Sculptured hit an internal problem. Try again; if it keeps happening, restart Sculptured.',
   login_required: 'Sign in to use Sculptured.',

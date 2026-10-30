@@ -28,6 +28,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { WorkflowPage } from './pages/WorkflowPage';
 import { SetupGate } from './setup/SetupGate';
 import { SetupPage } from './setup/SetupPage';
+import { TestsSection } from './tests/routes';
 
 /** Hosted beta admin page; anyone else goes home. */
 function AdminGuard() {
@@ -89,6 +90,7 @@ export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
         <Route path="/new" element={<NewProject />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/library/:collection" element={<LibraryRoute />} />
+        <Route path="/tests/*" element={<TestsSection />} />
         {ProjectRoutes()}
       </Route>
       <Route path="/library" element={<Navigate replace to="/library/groups" />} />

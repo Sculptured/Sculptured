@@ -1,0 +1,40 @@
+import { apiRequest } from '../api';
+import type {
+  BranchDetail, Change, CompareResponse, Event, ForkResponse, Health, NewRunResponse, RowsResponse,
+  RunSummary, StatusEvent, TaskSummary, Team,
+} from './types';
+
+/** arenad, through controld's pass-through (`crates/controld/src/arena.rs`). */
+const BASE = '/api/arena';
+const id = encodeURIComponent;
+
+export const arena = {
+  health: () => apiRequest<Health>('GET', `${BASE}/health`),
+  tasks: () => apiRequest<TaskSummary[]>('GET', `${BASE}/tasks`),
+  defaultTeam: () => apiRequest<Team>('GET', `${BASE}/team/default`),
+  runs: () => apiRequest<RunSummary[]>('GET', `${BASE}/runs`),
+  startRun: (task_id: string, team: Team) => apiRequest<NewRunResponse>('POST', `${BASE}/runs`, { task_id, team }),
+  deleteRun: (run: string) => apiRequest<{ dropped: number }>('DELETE', `${BASE}/runs/${id(run)}`),
+  branch: (b: string) => apiRequest<BranchDetail>('GET', `${BASE}/branches/${id(b)}`),
+  rows: (b: string, seq: number, keys: string[]) =>
+    apiRequest<RowsResponse>('GET', `${BASE}/branches/${id(b)}/rows?seq=${seq}&keys=${id(keys.join(','))}`),
+  fork: (b: string, at_seq: number, changes: Record<string, Change> = {}) =>
+    apiRequest<ForkResponse>('POST', `${BASE}/branches/${id(b)}/fork`, { at_seq, changes }),
+  compare: (a: string, b: string) => apiRequest<CompareResponse>('GET', `${BASE}/compare?a=${id(a)}&b=${id(b)}`),
+};
+
+/** Follows a running branch: each new step, then its status changes. Returns a function that stops. */
+export function follow(b: string, onEvent: (e: Event) => void, onStatus: (s: StatusEvent) => void): () => void {
+  const es = new EventSource(`${BASE}/branches/${id(b)}/stream`);
+  const listen = <T,>(name: string, fn: (v: T) => void) =>
+    es.addEventListener(name, (m) => {
+      try {
+        fn(JSON.parse((m as MessageEvent).data) as T);
+      } catch {
+        /* a malformed frame: skip it */
+      }
+    });
+  listen<Event>('event', onEvent);
+  listen<StatusEvent>('status', onStatus);
+  return () => es.close();
+}
