@@ -1,7 +1,7 @@
 import { apiRequest } from '../api';
 import type {
-  BranchDetail, Change, CompareResponse, Event, ForkResponse, Health, NewRunResponse, RowsResponse,
-  RunSummary, StatusEvent, TaskSummary, Team,
+  BranchDetail, Change, CompareResponse, Event, ForkResponse, Health, NewRunResponse, RestoreMode, RestorePlan,
+  RowsResponse, RunSummary, StatusEvent, TaskSummary, Team,
 } from './types';
 
 /** arenad, through controld's pass-through (`crates/controld/src/arena.rs`). */
@@ -18,8 +18,11 @@ export const arena = {
   branch: (b: string) => apiRequest<BranchDetail>('GET', `${BASE}/branches/${id(b)}`),
   rows: (b: string, seq: number, keys: string[]) =>
     apiRequest<RowsResponse>('GET', `${BASE}/branches/${id(b)}/rows?seq=${seq}&keys=${id(keys.join(','))}`),
-  fork: (b: string, at_seq: number, changes: Record<string, Change> = {}) =>
-    apiRequest<ForkResponse>('POST', `${BASE}/branches/${id(b)}/fork`, { at_seq, changes }),
+  fork: (b: string, at_seq: number, changes: Record<string, Change> = {}, restore: RestoreMode = 'exact') =>
+    apiRequest<ForkResponse>('POST', `${BASE}/branches/${id(b)}/fork`, { at_seq, changes, restore }),
+  /** How each part of a fork at `at_seq` would be restored; a 409 names the part that can't be. */
+  restorePlan: (b: string, at_seq: number, restore: RestoreMode) =>
+    apiRequest<RestorePlan>('GET', `${BASE}/branches/${id(b)}/restore-plan?at_seq=${at_seq}&restore=${restore}`),
   compare: (a: string, b: string) => apiRequest<CompareResponse>('GET', `${BASE}/compare?a=${id(a)}&b=${id(b)}`),
 };
 

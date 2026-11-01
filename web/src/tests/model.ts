@@ -1,3 +1,4 @@
+import { savedParts } from './restore';
 import type { AgentKind, AgentSpec, Branch, Change, Event, Team } from './types';
 
 /** What a step was, for its glyph (shape) and word; colour only repeats it. */
@@ -13,7 +14,7 @@ export interface Step {
   /** Recorded before this branch's fork point: reused from the parent, not run again. */
   inherited: boolean;
   failed: boolean;
-  /** A write whose database snapshot was taken (the branch can restart just after it). */
+  /** A step after which some part was saved (the branch can restart just after it). */
   snapshot: boolean;
 }
 
@@ -48,7 +49,7 @@ function stepOf(e: Event): Pick<Step, 'kind' | 'label' | 'failed' | 'snapshot'> 
         kind: wrote ? 'write' : 'read',
         label: typeof p.name === 'string' ? p.name : 'tool',
         failed: p.error != null,
-        snapshot: typeof p.snapshot === 'string' && p.snapshot !== '',
+        snapshot: savedParts(p).length > 0,
       };
     }
     default: return { kind: 'start', label: e.kind, failed: false, snapshot: false };

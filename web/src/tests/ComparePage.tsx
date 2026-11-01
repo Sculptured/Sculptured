@@ -3,9 +3,10 @@ import { Link, useParams } from 'react-router-dom';
 import { arena } from './api';
 import { branchNames, costSource, diffHunks, dollars, jsonDiff } from './model';
 import { runPath } from './paths';
-import { ErrorNote, StatusPill, pretty } from './shared';
+import { APPROXIMATE_NOTE, isApproximate, notComparedLine } from './restore';
+import { ApproximateMark, ErrorNote, StatusPill, pretty } from './shared';
 import { KIND } from './Swimlanes';
-import type { BranchDetail, CompareResponse, CompareSide, Event } from './types';
+import type { BranchDetail, CompareResponse, CompareSide, Event, RowDiff } from './types';
 
 /** "−62%" / "+8%" from a to b, or nothing when either side is missing. */
 function delta(a: number | null, b: number | null): { text: string; better: boolean } | null {
@@ -59,6 +60,26 @@ function Changes({ br }: { br: BranchDetail }) {
   );
 }
 
+/** "Final database: 2 rows differ"; never "identical" when a part was left out. */
+function rowsTitle(cmp: CompareResponse): string {
+  const n = cmp.differing_rows.length;
+  if (n) return `Final database: ${n} row${n === 1 ? '' : 's'} differ`;
+  return cmp.not_compared?.length ? 'Final database: no differences in the parts compared' : 'Final database: identical';
+}
+
+function RowDiffView({ r, nameA, nameB }: { r: RowDiff; nameA: string; nameB: string }) {
+  return (
+    <div className="tst-rowdiff">
+      <div className="mono tst-small">{r.key}{!r.a && <span className="muted"> (only in {nameB})</span>}{!r.b && <span className="muted"> (only in {nameA})</span>}</div>
+      <pre className="tst-json tst-diff">
+        {diffHunks(jsonDiff(r.a ?? undefined, r.b ?? undefined)).map((l, i) => l == null
+          ? <div key={i} className="dl-gap">⋯</div>
+          : <div key={i} className={l.op === '+' ? 'dl-add' : l.op === '-' ? 'dl-del' : 'dl-same'}>{l.op} {l.text}</div>)}
+      </pre>
+    </div>
+  );
+}
+
 /** `/tests/compare/:a/:b`: two branches of a run side by side. */
 export function ComparePage() {
   const { a = '', b = '' } = useParams();
@@ -86,6 +107,7 @@ export function ComparePage() {
     <Link className="tst-card tst-cmp-side" to={runPath(run, br.id)}>
       <span className="tst-cmp-name">{name(br)}</span>
       <StatusPill status={s.status} />
+      <ApproximateMark of={s} />
       <Changes br={br} />
       {br.fork_note && <span className="muted tst-small">{br.fork_note}</span>}
     </Link>
@@ -96,6 +118,7 @@ export function ComparePage() {
       <Crumbs />
       <h1 className="page-title">{name(x)} vs {name(y)}</h1>
       <div className="tst-cmp-sides">{side(x, cmp.a)}<span className="tst-vs" aria-hidden="true">→</span>{side(y, cmp.b)}</div>
+      {(isApproximate(cmp.a) || isApproximate(cmp.b)) && <div className="tst-note">{APPROXIMATE_NOTE}</div>}
       <section className="tst-card tst-cmp-metrics" aria-label="Totals">
         <div className="tst-metric tst-metric-head"><span /><span>{name(x)}</span><span>{name(y)}</span><span>Change</span></div>
         <Metric label="Time" a={cmp.a.seconds} b={cmp.b.seconds} fmt={(v) => `${v.toFixed(1)} s`} />
@@ -116,17 +139,9 @@ export function ComparePage() {
         )}
       </section>
       <section className="tst-card" aria-label="Database differences">
-        <h2 className="tst-h2">Final database: {cmp.differing_rows.length ? `${cmp.differing_rows.length} row${cmp.differing_rows.length === 1 ? '' : 's'} differ` : 'identical'}</h2>
-        {cmp.differing_rows.map((r) => (
-          <div key={r.key} className="tst-rowdiff">
-            <div className="mono tst-small">{r.key}{!r.a && <span className="muted"> (only in {name(y)})</span>}{!r.b && <span className="muted"> (only in {name(x)})</span>}</div>
-            <pre className="tst-json tst-diff">
-              {diffHunks(jsonDiff(r.a ?? undefined, r.b ?? undefined)).map((l, i) => l == null
-                ? <div key={i} className="dl-gap">⋯</div>
-                : <div key={i} className={l.op === '+' ? 'dl-add' : l.op === '-' ? 'dl-del' : 'dl-same'}>{l.op} {l.text}</div>)}
-            </pre>
-          </div>
-        ))}
+        <h2 className="tst-h2">{rowsTitle(cmp)}</h2>
+        {notComparedLine(cmp.not_compared, 'compare') && <p className="tst-small">{notComparedLine(cmp.not_compared, 'compare')}</p>}
+        {cmp.differing_rows.map((r) => <RowDiffView key={r.key} r={r} nameA={name(x)} nameB={name(y)} />)}
       </section>
     </main>
   );

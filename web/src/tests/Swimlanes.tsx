@@ -130,7 +130,7 @@ export function Legend() {
       {(['read', 'write', 'model', 'handoff', 'check'] as StepKind[]).map((k) => (
         <span key={k} className={`tst-legend-item k-${k}`}><span className="tst-glyph" aria-hidden="true">{KIND[k].glyph}</span>{KIND[k].word}</span>
       ))}
-      <span className="tst-legend-item"><span className="tst-snap static" aria-hidden="true" />Database saved</span>
+      <span className="tst-legend-item"><span className="tst-snap static" aria-hidden="true" />Saved after the step</span>
       <span className="tst-legend-item inherited"><span className="tst-hatch" aria-hidden="true" />Reused from the original</span>
     </div>
   );

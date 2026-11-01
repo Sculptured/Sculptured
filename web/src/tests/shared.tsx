@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError } from '../api';
 import { errorText } from '../errors';
-import { VendorMark } from '../shell/ui';
+import { Badge, VendorMark } from '../shell/ui';
 import { arena } from './api';
+import { APPROXIMATE_LABEL, isApproximate, planLine } from './restore';
 import { kindLabel } from './team';
-import type { AgentKind, BranchStatus, Health } from './types';
+import type { AgentKind, BranchStatus, Health, RestoredPart } from './types';
 
 const STATUS: Record<BranchStatus, { glyph: string; word: string; tone: string }> = {
   running: { glyph: '◐', word: 'Running', tone: 'working' },
@@ -23,6 +24,12 @@ export function StatusPill({ status, short }: { status: BranchStatus; short?: bo
       {short ? s.word.replace(' the check', '') : s.word}
     </span>
   );
+}
+
+/** "Approximate restore" on a branch (or compare side) some part of which was restored approximately. */
+export function ApproximateMark({ of }: { of: { restored?: RestoredPart[] | null } }) {
+  if (!isApproximate(of)) return null;
+  return <Badge tone="amber" title={of.restored?.map(planLine).join('\n')}>{APPROXIMATE_LABEL}</Badge>;
 }
 
 /** The provider tile and name for an agent's mode. */
@@ -73,7 +80,7 @@ export function useArenaHealth(): { health: Health | null | undefined; error: un
 
 const gb = (n: number) => { const v = n / 2 ** 30; return v >= 10 ? Math.round(v).toString() : (Math.round(v * 10) / 10).toString(); };
 
-/** Which agent modes the engine can run, and how much of its disk budget the test databases use. */
+/** Which agent modes the engine can run, and how much of its disk budget its saved worlds use. */
 export function EngineLine({ health }: { health: Health }) {
   const modes = [
     { on: health.claude, word: 'Claude Code', why: 'claude is not on this computer' },
@@ -87,7 +94,7 @@ export function EngineLine({ health }: { health: Health }) {
       {modes.map((m) => (
         <span key={m.word} className={m.on ? '' : 'muted'}>{m.on ? '✓' : '–'} {m.word}{m.on ? '' : ` (${m.why})`}</span>
       ))}
-      {health.disk && <span className="muted">Databases {gb(health.disk.bytes)} of {gb(health.disk.limit_bytes)} GB</span>}
+      {health.disk && <span className="muted">Saves {gb(health.disk.bytes)} of {gb(health.disk.limit_bytes)} GB</span>}
     </span>
   );
 }

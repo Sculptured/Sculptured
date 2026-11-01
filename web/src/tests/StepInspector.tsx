@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Btn } from '../shell/ui';
 import { arena } from './api';
 import { costSource, diffHunks, dollars, jsonDiff, rowKeys, stepBefore, type Step } from './model';
+import { notComparedLine, savedLine } from './restore';
 import { ErrorNote, pretty } from './shared';
 import { KIND } from './Swimlanes';
 import type { BranchDetail, Event } from './types';
@@ -98,8 +99,8 @@ function Body({ branch, event }: { branch: BranchDetail; event: Event }) {
           {writes.length > 0 && (
             <Section title={`Rows changed (${writes.length})`}>
               <RowChanges branch={branch} seq={event.seq} keys={writes.slice(0, 50)} />
-              {p.snapshot ? <p className="muted tst-small">The database was saved after this step, so a rerun can start from here.</p>
-                : p.snapshot_error ? <div className="tst-note tst-note-error"><span>The database could not be saved after this step, so a rerun can't start right after it.</span><span className="tst-evidence mono" data-raw-evidence>{String(p.snapshot_error)}</span></div>
+              {savedLine(p) ? <p className="muted tst-small">{savedLine(p)}, so a rerun can start from here.</p>
+                : p.snapshot_error ? <div className="tst-note tst-note-error"><span>The world could not be saved after this step, so a rerun can't start right after it.</span><span className="tst-evidence mono" data-raw-evidence>{String(p.snapshot_error)}</span></div>
                 : null}
             </Section>
           )}
@@ -133,6 +134,7 @@ function Body({ branch, event }: { branch: BranchDetail; event: Event }) {
         <>
           <p>{p.passed ? '✓ The final database matches what the task expects.' : '✕ The final database does not match what the task expects.'}</p>
           {Array.isArray(p.differing_rows) && p.differing_rows.length > 0 && <Section title={`Rows that differ (${p.differing_rows.length})`}><Json value={p.differing_rows} /></Section>}
+          {notComparedLine(p.unchecked, 'check') && <p className="tst-small">{notComparedLine(p.unchecked, 'check')}</p>}
         </>
       );
     case 'agent_end':

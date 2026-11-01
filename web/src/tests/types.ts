@@ -1,4 +1,4 @@
-// Mirrors arenad's model.rs / fork.rs / compare.rs (serde snake_case), reached through `/api/arena` (controld `arena.rs`).
+// Mirrors arenad's model.rs / fork.rs / compare.rs / recorded.rs (serde snake_case), reached through `/api/arena` (controld `arena.rs`).
 
 export type AgentKind = 'claude_code' | 'codex' | 'open';
 
@@ -13,6 +13,48 @@ export type EventKind =
   | 'handoff'
   | 'agent_end'
   | 'check';
+
+export type RestoreMode = 'exact' | 'approximate';
+/** How one part of a rerun's world is (or was) restored (`model.rs` `RestoredHow`). */
+export type RestoredHow = 'save' | 'replay' | 'approximate';
+
+export interface RestoredPart {
+  part: string;
+  how: RestoredHow;
+}
+
+/** One part of `GET /api/branches/{id}/restore-plan` (`fork/rerun.rs` `PartPlan`). */
+export interface PartPlan extends RestoredPart {
+  /** For a replay: a rough estimate of how long it takes. */
+  estimate_seconds?: number;
+}
+
+export interface RestorePlan {
+  parts: PartPlan[];
+}
+
+/** `{part: save}`. */
+export type Saves = Record<string, string>;
+
+/** A part of a benchmark's world. */
+export interface WorldPart {
+  part: string;
+  integration: string;
+  config?: unknown;
+}
+
+/** Payload of `run_start` (`runner.rs`); runs recorded before integrations have only `task_id` and `team`. */
+export interface RunStartPayload {
+  task_id: string;
+  team?: Team;
+  benchmark?: string;
+  world?: WorldPart[];
+  seed?: number;
+  base_seed?: number;
+  /** Each part's integration fingerprint at the run's start. */
+  fingerprints?: Record<string, unknown>;
+  saves?: Saves;
+}
 
 export interface AgentSpec {
   id: string;
@@ -50,9 +92,17 @@ export interface ToolCallPayload {
   error: string | null;
   reads: unknown;
   writes: unknown;
+  /** `saves.retail` when that part was saved; runs recorded before integrations have only this. */
   snapshot: string | null;
   snapshot_error?: string;
   tool_call_id: string | null;
+  /** The world part the tool ran on. */
+  part?: string;
+  /** The parts saved after this call (absent when nothing was saved). */
+  saves?: Saves;
+  /** The world clock when the call ran. */
+  clock_ms?: number;
+  paused_ms?: number;
 }
 
 export interface ModelCallPayload {
@@ -80,6 +130,10 @@ export interface CheckPayload {
   passed: boolean;
   gold_db: string | null;
   differing_rows: string[] | null;
+  /** Every part's final state. */
+  final_saves?: Saves;
+  /** Parts with no expected result to compare with (parts with replay). */
+  unchecked?: string[];
 }
 
 export interface Branch {
@@ -94,6 +148,10 @@ export interface Branch {
   error: string | null;
   created_at: string;
   ended_at: string | null;
+  /** The restore a fork asked for (null for a run's first branch; absent from older arenads). */
+  restore_mode?: RestoreMode | null;
+  /** How each part of a fork's world was restored (empty for a run's first branch). */
+  restored?: RestoredPart[];
 }
 
 /** GET /api/branches/{id}: the branch plus its events. */
@@ -120,13 +178,22 @@ export interface Health {
   claude: boolean;
   codex: boolean;
   disk?: DiskUsage;
+  benchmark?: BenchmarkInfo;
 }
 
-/** Space used by the arena's branch, snapshot and gold databases. */
+/** Space used by every save the arena keeps (the hub's and each integration's), and the limit. */
 export interface DiskUsage {
-  databases: number;
   bytes: number;
   limit_bytes: number;
+}
+
+/** The benchmark new runs use; `error` when it can't be described. */
+export interface BenchmarkInfo {
+  name: string;
+  version?: string;
+  tasks?: number;
+  world?: WorldPart[];
+  error?: string;
 }
 
 export interface TaskSummary {
@@ -153,6 +220,8 @@ export interface RowsResponse {
 
 export interface CompareSide {
   status: BranchStatus;
+  restore_mode?: RestoreMode | null;
+  restored?: RestoredPart[];
   seconds: number | null;
   tokens: number | null;
   cost_usd: number | null;
@@ -170,4 +239,6 @@ export interface CompareResponse {
   b: CompareSide;
   first_divergent_seq: number | null;
   differing_rows: RowDiff[];
+  /** Parts that keep no saves, so their final states could not be compared. */
+  not_compared?: string[];
 }

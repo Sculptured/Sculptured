@@ -5,7 +5,8 @@ import { arena, follow } from './api';
 import { branchNames, branchTree, bySteps, costSource, dollars, inOrder, layout, summarize } from './model';
 import { comparePath, runPath } from './paths';
 import { RerunPanel } from './RerunPanel';
-import { ErrorNote, Stat, StatusPill, useArenaHealth } from './shared';
+import { worldLine } from './restore';
+import { ApproximateMark, ErrorNote, Stat, StatusPill, useArenaHealth } from './shared';
 import { StepInspector } from './StepInspector';
 import { Legend, StepList, Swimlanes, type Scale } from './Swimlanes';
 import type { Branch, BranchDetail, Event } from './types';
@@ -106,6 +107,7 @@ export function RunPage() {
   const canRerun = detail.status === 'running' ? 'Wait for this branch to finish first.'
     : !event || event.kind === 'check' || event.kind === 'run_start' ? 'The final check can’t be rerun; pick a step an agent took.'
     : null;
+  const world = worldLine(detail.events);
   const parent = detail.parent_id ? siblings.find((b) => b.id === detail.parent_id) : null;
 
   return (
@@ -113,8 +115,9 @@ export function RunPage() {
       <Crumbs task={taskId} />
       <header className="tst-run-header">
         <div className="tst-run-heading">
-          <h1 className="page-title">Task {taskId ?? '?'} <StatusPill status={detail.status} /></h1>
+          <h1 className="page-title">Task {taskId ?? '?'} <StatusPill status={detail.status} /> <ApproximateMark of={detail} /></h1>
           {reason && <p className="muted tst-lede" title={reason}>{reason}</p>}
+          {world && <p className="muted tst-small tst-world" title={world}>{world}</p>}
         </div>
         <div className="tst-run-actions">
           {others.length > 0 && (
@@ -138,6 +141,7 @@ export function RunPage() {
               {depth > 0 && <span className="muted" aria-hidden="true">↳</span>}
               <span>{names.get(b.id)}</span>
               <StatusPill status={b.status} short />
+              <ApproximateMark of={b} />
             </Link>
           ))}
         </nav>

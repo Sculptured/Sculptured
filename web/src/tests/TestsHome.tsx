@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Btn, Icon } from '../shell/ui';
 import { arena } from './api';
 import { branchNames, branchTree } from './model';
-import { EngineLine, ErrorNote, HEALTH_CHANGED, KindMark, StatusPill, formatWhen, useArenaHealth } from './shared';
+import { ApproximateMark, EngineLine, ErrorNote, HEALTH_CHANGED, KindMark, StatusPill, formatWhen, useArenaHealth } from './shared';
 import { loadTeam } from './team';
 import type { Branch, RunSummary, TaskSummary, Team } from './types';
 import { runPath, comparePath } from './paths';
@@ -145,6 +145,7 @@ function RunCard({ run, reason, onChanged, onError }: { run: RunSummary; reason?
                 <span className="tst-tree" aria-hidden="true">{depth ? '└' : '●'}</span>
                 <strong className="tst-branch-name">{names.get(b.id)}</strong>
                 <StatusPill status={b.status} />
+                <ApproximateMark of={b} />
                 {b.fork_note && <span className="muted tst-fork-note">{b.fork_note}</span>}
                 <span className="tst-spacer" />
                 <span className="muted tst-small mono">{s != null ? `${s.toFixed(1)} s` : b.status === 'running' ? 'running' : ''}</span>
