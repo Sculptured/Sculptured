@@ -50,8 +50,8 @@ describe('ComparePage', () => {
 
   it('a part not compared never reads as identical', async () => {
     page();
-    const rows = await screen.findByRole('region', { name: 'Database differences' });
+    const rows = await screen.findByRole('region', { name: 'World differences' });
     expect(within(rows).getByText('Not compared: counter (it keeps no saves)')).toBeInTheDocument();
-    expect(within(rows).getByRole('heading')).toHaveTextContent('Final database: no differences in the parts compared');
+    expect(within(rows).getByRole('heading')).toHaveTextContent('Final world: no differences in the parts compared');
   });
 });

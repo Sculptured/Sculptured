@@ -47,7 +47,7 @@ export function TestsHome() {
       <header className="tst-head">
         <div>
           <h1 className="page-title"><Icon name="flask" size={20} /> Tests</h1>
-          <p className="muted tst-lede">Run a team on a task with its database recorded at every step. Go back to any step, change a prompt, model or agent, and rerun from there with the database as it was.</p>
+          <p className="muted tst-lede">Run a team on a task with its world saved at every step. Go back to any step, change a prompt, model or agent, and rerun from there with the world as it was.</p>
         </div>
         <Link className="btn btn-secondary" to="/tests/team"><Icon name="group" size={15} /> Test team</Link>
       </header>
@@ -180,7 +180,7 @@ function DeleteRun({ run, onDone, onError }: { run: RunSummary; onDone: () => vo
   if (!confirming) return <Btn size="sm" variant="ghost" icon="trash" onClick={() => setConfirming(true)}>Delete</Btn>;
   return (
     <span className="tst-confirm">
-      <span className="muted tst-small">Delete this run, its branches and their databases?</span>
+      <span className="muted tst-small">Delete this run, its branches and their saves?</span>
       <Btn size="sm" danger onClick={remove} disabled={busy}>{busy ? 'Deleting…' : 'Delete'}</Btn>
       <Btn size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Btn>
     </span>

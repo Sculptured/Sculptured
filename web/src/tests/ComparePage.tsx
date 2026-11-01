@@ -36,7 +36,7 @@ function stepLine(ev: Event | undefined) {
     <>
       <div><span aria-hidden="true">{KIND[kind].glyph}</span> <strong className="mono">{typeof p.name === 'string' ? p.name : KIND[kind].word}</strong> <span className="muted tst-small">step {ev.seq} · {ev.agent ?? 'check'}</span></div>
       {ev.kind === 'agent_end' ? <p className="muted">{p.ok ? 'Finished' : 'Stopped with an error'}{typeof p.tokens === 'number' ? ` · ${p.tokens.toLocaleString()} tokens` : ''}{typeof p.seconds === 'number' ? ` · ${p.seconds.toFixed(1)} s` : ''}</p>
-        : ev.kind === 'check' ? <p className="muted">{p.passed ? '✓ The final database matches what the task expects.' : '✕ The final database does not match what the task expects.'}</p>
+        : ev.kind === 'check' ? <p className="muted">{p.passed ? '✓ The final world matches what the task expects.' : '✕ The final world does not match what the task expects.'}</p>
         : <pre className="tst-json">{pretty(ev.kind === 'tool_call' ? p.args : ev.kind === 'handoff' ? p.note : ev.kind === 'model_call' ? (p.response as { choices?: { message?: unknown }[] } | undefined)?.choices?.[0]?.message ?? p.response : p)}</pre>}
     </>
   );
@@ -60,11 +60,11 @@ function Changes({ br }: { br: BranchDetail }) {
   );
 }
 
-/** "Final database: 2 rows differ"; never "identical" when a part was left out. */
+/** "Final world: 2 rows differ"; never "identical" when a part was left out. */
 function rowsTitle(cmp: CompareResponse): string {
   const n = cmp.differing_rows.length;
-  if (n) return `Final database: ${n} row${n === 1 ? '' : 's'} differ`;
-  return cmp.not_compared?.length ? 'Final database: no differences in the parts compared' : 'Final database: identical';
+  if (n) return `Final world: ${n} row${n === 1 ? '' : 's'} differ`;
+  return cmp.not_compared?.length ? 'Final world: no differences in the parts compared' : 'Final world: identical';
 }
 
 function RowDiffView({ r, nameA, nameB }: { r: RowDiff; nameA: string; nameB: string }) {
@@ -138,7 +138,7 @@ export function ComparePage() {
           </div>
         )}
       </section>
-      <section className="tst-card" aria-label="Database differences">
+      <section className="tst-card" aria-label="World differences">
         <h2 className="tst-h2">{rowsTitle(cmp)}</h2>
         {notComparedLine(cmp.not_compared, 'compare') && <p className="tst-small">{notComparedLine(cmp.not_compared, 'compare')}</p>}
         {cmp.differing_rows.map((r) => <RowDiffView key={r.key} r={r} nameA={name(x)} nameB={name(y)} />)}

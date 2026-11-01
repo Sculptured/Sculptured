@@ -13,7 +13,7 @@ export const REPLAY_NOTE = "A replayed part starts fresh with the run's seed and
 const LEGACY_PART = 'retail';
 
 /** True when some part of the branch (or compare side) was restored approximately. */
-export const isApproximate = (b: { restore_mode?: string | null; restored?: RestoredPart[] | null }) =>
+export const isApproximate = (b: { restored?: RestoredPart[] | null }) =>
   !!b.restored?.some((p) => p.how === 'approximate');
 
 const about = (s: number) => (s < 90 ? `about ${Math.max(1, Math.round(s))} s` : `about ${Math.round(s / 60)} min`);

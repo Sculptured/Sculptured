@@ -20,7 +20,8 @@ describe('isApproximate', () => {
     expect(APPROXIMATE_LABEL).toBe('Approximate restore');
     expect(isApproximate({ restored: [{ part: 'retail', how: 'save' }, { part: 'isaac', how: 'approximate' }] })).toBe(true);
     // Asked for approximate, but every part had an exact save: the rerun is exact.
-    expect(isApproximate({ restore_mode: 'approximate', restored: [{ part: 'retail', how: 'save' }] })).toBe(false);
+    const side = { restore_mode: 'approximate', restored: [{ part: 'retail', how: 'save' as const }] };
+    expect(isApproximate(side)).toBe(false);
     expect(isApproximate({ restored: [] })).toBe(false);
     expect(isApproximate({})).toBe(false);
   });

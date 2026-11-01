@@ -56,7 +56,7 @@ function RowChanges({ branch, seq, keys }: { branch: BranchDetail; seq: number; 
   );
 }
 
-/** Rows a step read, as they were just after it, on request (each read restores a copy of the database). */
+/** Rows a step read, as they were just after it, on request (each read restores a copy of the save). */
 function RowsRead({ branch, seq, keys, more }: { branch: BranchDetail; seq: number; keys: string[]; more: number }) {
   const [rows, setRows] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -132,7 +132,7 @@ function Body({ branch, event }: { branch: BranchDetail; event: Event }) {
     case 'check':
       return (
         <>
-          <p>{p.passed ? '✓ The final database matches what the task expects.' : '✕ The final database does not match what the task expects.'}</p>
+          <p>{p.passed ? '✓ The final world matches what the task expects.' : '✕ The final world does not match what the task expects.'}</p>
           {Array.isArray(p.differing_rows) && p.differing_rows.length > 0 && <Section title={`Rows that differ (${p.differing_rows.length})`}><Json value={p.differing_rows} /></Section>}
           {notComparedLine(p.unchecked, 'check') && <p className="tst-small">{notComparedLine(p.unchecked, 'check')}</p>}
         </>

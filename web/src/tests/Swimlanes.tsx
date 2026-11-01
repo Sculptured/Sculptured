@@ -6,8 +6,8 @@ import type { Team } from './types';
 export const KIND: Record<StepKind, { glyph: string; word: string }> = {
   start: { glyph: '▸', word: 'Agent starts' },
   model: { glyph: '◇', word: 'Model call' },
-  read: { glyph: '○', word: 'Reads the database' },
-  write: { glyph: '✎', word: 'Writes the database' },
+  read: { glyph: '○', word: 'Reads the world' },
+  write: { glyph: '✎', word: 'Writes to the world' },
   handoff: { glyph: '⇢', word: 'Hands work on' },
   end: { glyph: '■', word: 'Agent finishes' },
   check: { glyph: '✓', word: 'Final check' },
@@ -67,7 +67,7 @@ export function Swimlanes({ layout, team, scale, selected, onSelect }: {
         return [
           <div className="tst-lane-name" key={`${l.agent}-n`} style={{ gridRow: i + 2, gridColumn: 1 }}>
             <strong>{l.agent === CHECK_LANE ? 'Check' : a?.name ?? l.agent}</strong>
-            {a ? <KindMark kind={a.kind} /> : <span className="muted tst-small">database vs. expected</span>}
+            {a ? <KindMark kind={a.kind} /> : <span className="muted tst-small">world vs. expected</span>}
           </div>,
           <div className="tst-track" key={`${l.agent}-t`} style={{ gridRow: i + 2, gridColumn: 2 }} role="group" aria-label={`${a?.name ?? 'Check'} steps`}>
             {marks.map(([v]) => <span key={v} className="tst-grid" style={{ left: pct(v, span) }} />)}

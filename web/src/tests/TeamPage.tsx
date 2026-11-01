@@ -32,7 +32,7 @@ export function TeamPage() {
       <header className="tst-head">
         <div>
           <h1 className="page-title">Test team</h1>
-          <p className="muted tst-lede">Agents work in order, each handing its notes to the next. Only the last one may change the database. New runs use this team; it is kept in this browser.</p>
+          <p className="muted tst-lede">Agents work in order, each handing its notes to the next. Only the last one may change the world. New runs use this team; it is kept in this browser.</p>
         </div>
         <Btn variant="ghost" icon="undo" onClick={reset}>Reset to default</Btn>
       </header>
@@ -46,7 +46,7 @@ export function TeamPage() {
                 <span className="tst-order" aria-hidden="true">{i + 1}</span>
                 <input className="tst-agent-name" value={a.name} aria-label="Agent name" onChange={(e) => patch(i, { name: e.target.value })} />
                 <span className="tst-spacer" />
-                {i === team.agents.length - 1 && <span className="tst-badge">may change the database</span>}
+                {i === team.agents.length - 1 && <span className="tst-badge">may change the world</span>}
                 <Btn size="sm" variant="ghost" onClick={() => moveUp(i)} disabled={i === 0} tip={i === 0 ? 'Already first' : 'Move earlier'}>↑ Earlier</Btn>
                 <Btn size="sm" variant="ghost" icon="trash" onClick={() => remove(i)} disabled={team.agents.length === 1} tip={team.agents.length === 1 ? 'A team needs at least one agent' : 'Remove this agent'}>Remove</Btn>
               </header>

@@ -42,7 +42,7 @@ describe('layout', () => {
     expect(l.span).toBe(12000);
   });
 
-  it('tells reads, writes, failed calls and saved databases apart', () => {
+  it('tells reads, writes, failed calls and saved steps apart', () => {
     const s = (n: number) => inOrder(layout(events, team)).find((x) => x.seq === n)!;
     expect(s(2)).toMatchObject({ kind: 'read', label: 'get_order', snapshot: false, failed: false });
     expect(s(6)).toMatchObject({ kind: 'write', snapshot: true, failed: false });
