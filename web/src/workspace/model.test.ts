@@ -28,6 +28,13 @@ describe('movePane', () => {
     expect(inner.sizes).toEqual([0.25, 0.25, 0.5]);
   });
 
+  it('renormalises sizes when the moved pane leaves the same split', () => {
+    const root = split('row', 'row', [stack('a', ['p1']), stack('b', ['p2']), stack('c', ['p3'])], [0.2, 0.3, 0.5]);
+    const out = movePane(root, 'p3', 'a', 'right', counter()) as Split;
+    expect(out.kids.map((k) => k.id)).toEqual(['a', expect.any(String), 'b']);
+    [0.2, 0.2, 0.6].forEach((v, i) => expect(out.sizes[i]).toBeCloseTo(v));
+  });
+
   it('move_center_joins_tabs_and_activates', () => {
     const root = split('row', 'row', [stack('a', ['p1', 'p2']), stack('b', ['p3'])], [0.5, 0.5]);
     const out = movePane(root, 'p3', 'a', 'center') as Stack;

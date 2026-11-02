@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { saveLayouts, loadLayouts } from './store';
-import type { PageLayouts } from './model';
+import { panes, type PageLayouts } from './model';
 
 const defaults = (): PageLayouts => ({
   version: 1,
@@ -48,5 +48,41 @@ describe('workspace store', () => {
     expect(loadLayouts('control', defaults, known)).toEqual(mine);
     expect(loadLayouts('arena', () => mine, known)).toEqual(other);
     expect(localStorage.getItem('sculptured.workspace.v1.control')).not.toBeNull();
+  });
+
+  it('active_out_of_range_is_clamped', () => {
+    for (const active of [-3, 7]) {
+      const value = saved();
+      value.layouts[0].root = { kind: 'stack', id: 's', panes: [{ id: 'a', type: 'chat' }, { id: 'b', type: 'chat' }], active };
+      saveLayouts('control', value);
+      const root = loadLayouts('control', defaults, known).layouts[0].root;
+      expect((root as { active: number }).active).toBe(active < 0 ? 0 : 1);
+    }
+  });
+
+  it('duplicate_pane_ids_dropped_on_load', () => {
+    const value = saved();
+    value.layouts[0].root = {
+      kind: 'split', id: 'sp', dir: 'row', sizes: [0.5, 0.5],
+      kids: [
+        { kind: 'stack', id: 's1', panes: [{ id: 'a', type: 'chat' }, { id: 'a', type: 'log' }], active: 0 },
+        { kind: 'stack', id: 's2', panes: [{ id: 'b', type: 'chat' }], active: 0 },
+      ],
+    };
+    value.layouts[0].popped = [{ id: 'b', type: 'log' }, { id: 'c', type: 'log' }];
+    saveLayouts('control', value);
+    const out = loadLayouts('control', defaults, known).layouts[0];
+    expect(panes(out.root).map((p) => `${p.id}:${p.type}`)).toEqual(['a:chat', 'b:chat']);
+    expect(out.popped).toEqual([{ id: 'c', type: 'log' }]);
+  });
+
+  it('all_unknown_layout_falls_back_to_same_id_default', () => {
+    const value = saved();
+    value.layouts[0].root = { kind: 'stack', id: 's', panes: [{ id: 'b', type: 'gone' }], active: 0 };
+    saveLayouts('control', value);
+    const withMatch = () => ({ ...defaults(), layouts: [{ ...defaults().layouts[0], id: 'mine' }] });
+    expect(loadLayouts('control', withMatch, known).layouts[0]).toEqual(withMatch().layouts[0]);
+    const out = loadLayouts('control', defaults, known).layouts[0];
+    expect(out).toMatchObject({ id: 'mine', root: { kind: 'stack', panes: [] } });
   });
 });

@@ -167,10 +167,15 @@ export function setActive(root: Node, stackId: string, index: number): Node {
   return mapStacks(root, (s) => (s.id === stackId && s.panes.length ? { ...s, active: clampActive(s.panes, index) } : s));
 }
 
-export function dropUnknown(root: Node, known: (type: string) => boolean, newId: IdGen = uid): Node {
+/** Keeps only the panes `keep` accepts (visited in tree order), clamps every stack's active tab into range, and tidies. */
+export function dropPanes(root: Node, keep: (pane: PaneRef) => boolean, newId: IdGen = uid): Node {
   const filtered = mapStacks(root, (s) => {
-    const kept = s.panes.filter((p) => known(p.type));
-    return kept.length === s.panes.length ? s : { ...s, panes: kept, active: clampActive(kept, s.active) };
+    const kept = s.panes.filter(keep);
+    return { ...s, panes: kept, active: clampActive(kept, s.active) };
   });
   return tidy(filtered, newId);
+}
+
+export function dropUnknown(root: Node, known: (type: string) => boolean, newId: IdGen = uid): Node {
+  return dropPanes(root, (p) => known(p.type), newId);
 }
