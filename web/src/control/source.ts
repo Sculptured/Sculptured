@@ -1,3 +1,4 @@
+import type { ControlMode } from '../generated/ControlMode';
 import type { Layout, Step } from '../tests/model';
 import type { Branch, BranchDetail, Change, Comparison, RestoreMode, RestorePlan, WorldPartInfo } from '../tests/types';
 
@@ -8,17 +9,23 @@ import type { Branch, BranchDetail, Change, Comparison, RestoreMode, RestorePlan
 
 /**
  * Whether an action can run now. When it cannot, `why` says so in plain words shown to the user.
- * `note` (optional) says what it will do, for a confirm step ("Stops 3 agents").
+ * `note` (optional) says what it will do ("Stops 3 agents"), and `count` how many agents it acts on
+ * (for a confirm step's question; never read out of `note`).
  */
-export type Availability = { ok: true; note?: string } | { ok: false; why: string };
+export type Availability = { ok: true; note?: string; count?: number } | { ok: false; why: string };
 
 export type Tone = 'ok' | 'warn' | 'bad' | 'idle' | 'unknown';
 
-/** One agent: its status as a glyph plus a word (never colour alone), and what it is doing. */
+/**
+ * One agent: its status as a glyph plus a word (never colour alone), and what it is doing. `pause`
+ * says the operator's pause is under way or done (code reads it, never the word).
+ */
 export type AgentLine = {
   id: string;
   name: string;
-  status: { glyph: string; word: string; tone: Tone };
+  status: { glyph: string; word: string; tone: Tone; pause?: 'pausing' | 'paused' };
+  /** Its control mode (a deployment's; null: none); absent while unknown, and for a simulated run. */
+  controlMode?: ControlMode | null;
   /** What it is doing, in words (protocol-observed); absent when unknown. */
   activity?: string;
   /** Running totals as its CLI reported them; absent when unknown (never 0 for unknown). */

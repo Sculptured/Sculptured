@@ -27,8 +27,8 @@ describe('useDeploymentSource', () => {
     const s = result.current;
     expect([s.kind, s.title, s.running]).toEqual(['deployment', 'My team', true]);
     expect(s.agents).toEqual([
-      { id: A, name: 'Builder', status: { glyph: '●', word: 'running', tone: 'ok' }, activity: 'running a shell command', tokens: { in: 10, out: 20 } },
-      { id: B, name: 'b', status: { glyph: '✕', word: 'failed', tone: 'bad' }, activity: 'failed', alarm: { rule: 'failed', key: `${B}:1` } },
+      { id: A, name: 'Builder', status: { glyph: '●', word: 'running', tone: 'ok' }, controlMode: null, activity: 'running a shell command', tokens: { in: 10, out: 20 } },
+      { id: B, name: 'b', status: { glyph: '✕', word: 'failed', tone: 'bad' }, controlMode: null, activity: 'failed', alarm: { rule: 'failed', key: `${B}:1` } },
     ]);
     expect(s.feed.map((f) => [f.id, f.agent, f.kind, f.text, f.alarm])).toEqual([
       ['1', A, 'tool-called', 'Builder ran a shell command: ls', undefined],
@@ -101,7 +101,7 @@ describe('useDeploymentSource', () => {
     // Running: pressed twice, it stops once.
     vi.mocked(api.stopTeamNow).mockResolvedValue({ stopped: 2 });
     act(() => stream().emit('snapshot', snapshot()));
-    expect(result.current.team.emergencyStop.can).toEqual({ ok: true, note: 'Stops 2 agents' });
+    expect(result.current.team.emergencyStop.can).toEqual({ ok: true, note: 'Stops 2 agents', count: 2 });
     const stop = result.current.team.emergencyStop;
     let reports: unknown[] = [];
     await act(async () => { reports = await Promise.all([stop.run(), stop.run()]); });

@@ -60,6 +60,8 @@ export type ActivityView = 'progress' | 'events';
 
 type Props = {
   a: AgentRow; c: AgentControls; feed: EventRecord[]; epoch: number; handOverInline: boolean; askHandOver: number; askOnOpen?: boolean; onAsked?: () => void;
+  /** False where the caller shows the agent's controls itself (a Control pane): no second set here. */
+  actions?: boolean;
   /** Controlled Progress | Raw events (a Control pane keeps its own); without it, the page's `?view=`. */
   view?: ActivityView;
   onView?: (v: ActivityView) => void;
@@ -94,13 +96,13 @@ function Evidence({ a, feed, epoch, view }: { a: AgentRow; feed: EventRecord[]; 
  * The Activity tab: controls, the check, then what the agent did as a picture (progress, files built
  * and changed, checks) or, one step back, every raw event verbatim as evidence.
  */
-export function AgentActivity({ a, c, feed, epoch, handOverInline, askHandOver, askOnOpen, onAsked, view: given, onView }: Props) {
+export function AgentActivity({ a, c, feed, epoch, handOverInline, askHandOver, askOnOpen, onAsked, actions = true, view: given, onView }: Props) {
   const seat = a.seat!;
   const [view, setView] = useView(given, onView);
   return (
     <section className="ap-body ap-activity" aria-label="Activity">
       <div className="ap-section ap-controls">
-        <AgentActions c={c} name={a.name} />
+        {actions && <AgentActions c={c} name={a.name} />}
         {!handOverInline && <HandoffActions key={`h-${seat.id}`} a={a} part="hand-over" ask={askHandOver} askOnMount={askOnOpen} onAsked={onAsked} />}
         <CheckDetails seat={seat.id} check={seat.check} />
         <Meta a={a} />

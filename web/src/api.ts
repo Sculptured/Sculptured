@@ -199,7 +199,7 @@ export const api = {
   runCommunications: (id: string) => get<EventRecord[]>(`${teamUrl(id)}/communications?run=latest&brief=true`),
   /** The same, with the latest run's model-usage reports (tokens, and cost where a source prices it). */
   runUsage: (id: string) => get<EventRecord[]>(`${teamUrl(id)}/communications?run=latest&brief=true&usage=true`),
-  agentControl: (id: string) => get<{mode: string | null}>(`${seatUrl(id)}/control`),
+  agentControl: (id: string) => get<{mode: import('./generated/ControlMode').ControlMode | null}>(`${seatUrl(id)}/control`),
   /** Pause (stop at the next safe point, keeping the session), resume, or stop one agent. A pause, or
    * the resume of a paused agent, answers `{mode}` plus a `TeamControlResult` (the agents it covered). */
   controlAgent: (id: string, mode: SeatControlMode, requestId: string) => post(`${seatUrl(id)}/control`, requestId, {mode}),

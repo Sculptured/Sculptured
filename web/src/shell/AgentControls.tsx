@@ -2,14 +2,15 @@ import {DismissibleError} from './DismissibleError';
 import { TextArea } from './TextArea';
 import { errorText } from '../errors';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react';
-import { usePolled } from '../usePolling';
 import { api } from '../api';
+import type { ControlMode } from '../generated/ControlMode';
 import type { MessageIntent } from '../generated/MessageIntent';
 import type { SeatView } from '../generated/SeatView';
 import { LIFECYCLE, isStoppable } from '../status';
 import { useRequestOnce } from '../useRequestOnce';
 import { WORDS } from '../vocab';
 import { Btn } from './ui';
+import { useControlMode } from './useControlMode';
 
 /** Attention is included: its process may still be alive, and if it is not the host says so and the agent is recorded as stopped. */
 
@@ -19,7 +20,8 @@ function interruptBlocked(seat: SeatView): string {
   return seat.caps ? WORDS.cannotInterrupt : WORDS.interruptUnknown;
 }
 
-export function useAgentControls(seat: SeatView, fallbackFocus?: RefObject<HTMLElement | null>) {
+/** `knownMode`: the agent's control mode as the caller reads it (see useControlMode). */
+export function useAgentControls(seat: SeatView, fallbackFocus?: RefObject<HTMLElement | null>, knownMode?: ControlMode | null) {
   const ids = useId();
   const [interrupting, setInterrupting] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -27,10 +29,7 @@ export function useAgentControls(seat: SeatView, fallbackFocus?: RefObject<HTMLE
   const interruptOnce = useRequestOnce();
   const stopOnce = useRequestOnce();
   const wrapOnce = useRequestOnce();
-  const [controlMode, setControlMode] = useState<string | null>(null);
-  // A local change shows at once; each poll answer replaces it.
-  const polled = usePolled(() => api.agentControl(seat.id), 2000, [seat.id]);
-  useEffect(() => { if (polled.data) setControlMode(polled.data.mode); }, [polled.data]);
+  const [controlMode, setControlMode] = useControlMode(seat.id, knownMode);
   const wrap = async () => { setError(null); setStopping(true); try { await wrapOnce(id=>api.controlAgent(seat.id,"soft",id)); setControlMode("soft"); } catch(e) {setError(errorText(e));} finally {setStopping(false);} };
   const stoppedByMe = useRef(false);
   const stopBtn = useRef<HTMLButtonElement>(null);

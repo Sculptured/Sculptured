@@ -25,12 +25,12 @@ describe('deployment source controls', () => {
     vi.mocked(api.teamControls).mockResolvedValue({ [B]: 'paused' });
     const { result } = await open(snapshot());
     await waitFor(() => expect(result.current.agentControl(B, 'pause').can).toEqual({ ok: false, why: 'Already paused.' }));
-    expect(result.current.agents[1].status).toEqual({ glyph: '‖', word: 'paused', tone: 'idle' });
+    expect(result.current.agents[1].status).toEqual({ glyph: '‖', word: 'paused', tone: 'idle', pause: 'paused' });
     expect(result.current.agentControl(B, 'resume').can).toEqual({ ok: true });
     expect(result.current.agentControl(A, 'resume').can).toEqual({ ok: false, why: 'Not paused, so there is nothing to resume.' });
     expect(result.current.agentControl(A, 'stop').can).toEqual({ ok: true });
     expect(result.current.message(A, '  ').can).toEqual({ ok: false, why: 'Type a message to send.' });
-    expect(result.current.team.pauseAll.can).toEqual({ ok: true, note: 'Pauses 1 agent' });
+    expect(result.current.team.pauseAll.can).toEqual({ ok: true, note: 'Pauses 1 agent', count: 1 });
     const answer = { affected: [A], skipped: [{ seat: B, code: 'already_paused' as const, reason: 'server words' }], notes: [{ seat: A, reason: 'A note' }] };
     vi.mocked(api.pauseTeam).mockResolvedValue(answer as Answer);
     let report: unknown;
@@ -57,11 +57,11 @@ describe('deployment source controls', () => {
     vi.mocked(api.teamControls).mockResolvedValue({ [A]: 'soft', [B]: 'pausing' });
     const { result } = await open(snapshot());
     await waitFor(() => expect(result.current.agentControl(A, 'pause').can).toEqual({ ok: false, why: 'Already stopping.' }));
-    expect(result.current.agents[1].status).toEqual({ glyph: '⧗', word: 'pausing', tone: 'idle' });
+    expect(result.current.agents[1].status).toEqual({ glyph: '⧗', word: 'pausing', tone: 'idle', pause: 'pausing' });
     expect(result.current.team.pauseAll.can).toEqual({ ok: false, why: 'Already paused.' });
     vi.mocked(api.teamControls).mockResolvedValue({ [A]: 'budget' });
     act(() => stream().emit('event', { rig: 'r', event: ev(20, { type: 'seat-lifecycle-changed', lifecycle: 'running', reason: null }), seat: seatView('a') }));
-    await waitFor(() => expect(result.current.team.pauseAll.can).toEqual({ ok: true, note: 'Pauses 1 agent' }));
+    await waitFor(() => expect(result.current.team.pauseAll.can).toEqual({ ok: true, note: 'Pauses 1 agent', count: 1 }));
     expect(result.current.agentControl(A, 'pause').can).toEqual({ ok: false, why: 'Already stopping.' });
   });
 

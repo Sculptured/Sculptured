@@ -12,8 +12,8 @@ export function runStatus(s: Pick<ControlSource, 'agents' | 'running' | 'runStat
   if (s.runStatus) return s.runStatus;
   if (s.agents.length > 0 && s.agents.every((a) => a.status.tone === 'unknown')) return { glyph: '∅', word: 'unknown (not connected)', tone: 'unknown' };
   if (!s.running) return s.agents.length === 0 ? { glyph: '○', word: 'not started', tone: 'idle' } : { glyph: '■', word: 'stopped', tone: 'idle' };
-  const live = s.agents.filter((a) => a.status.tone === 'ok' || a.status.word === 'paused' || a.status.word === 'pausing');
-  if (live.length > 0 && live.every((a) => a.status.word === 'paused')) return { glyph: '‖', word: 'paused', tone: 'idle' };
+  const live = s.agents.filter((a) => a.status.tone === 'ok' || a.status.pause);
+  if (live.length > 0 && live.every((a) => a.status.pause === 'paused')) return { glyph: '‖', word: 'paused', tone: 'idle' };
   return { glyph: '●', word: 'running', tone: 'ok' };
 }
 

@@ -51,7 +51,9 @@ type Set = (patch: Partial<AgentSettings>) => void;
 
 function Views({ row, s, set }: { row: AgentRow; s: AgentSettings; set: Set }) {
   const p = useProject();
-  const c = useAgentControls(row.seat!);
+  const { source } = useControl();
+  // The team's controls already carry its mode: no poll of its own per pane.
+  const c = useAgentControls(row.seat!, undefined, source.agents.find((a) => a.id === row.id)?.controlMode ?? null);
   const feed = p.live?.feed[row.id] ?? [];
   const [search, setSearch] = useState<HTMLElement | null>(null);
   const inline = signedOut(row, feed);
@@ -67,7 +69,7 @@ function Views({ row, s, set }: { row: AgentRow; s: AgentSettings; set: Set }) {
       <div className="ctl-agent-body">
         {view === 'conversation'
           ? <AgentConversation key={row.id} a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} searchSlot={search} handOverInline={inline} askHandOver={0} />
-          : <AgentActivity key={row.id} a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} handOverInline={inline} askHandOver={0}
+          : <AgentActivity key={row.id} a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} handOverInline={inline} askHandOver={0} actions={false}
               view={s.activityView ?? 'progress'} onView={(activityView) => set({ activityView })} />}
       </div>
     </>

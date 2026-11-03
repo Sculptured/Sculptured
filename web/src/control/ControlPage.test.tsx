@@ -99,6 +99,33 @@ describe('Control page', () => {
     expect(header()).toHaveTextContent('Nothing is running');
   });
 
+  it('agent_detail_has_one_stop_and_it_asks_first', async () => {
+    vi.mocked(api.controlAgent).mockResolvedValue({});
+    await control();
+    const user = userEvent.setup();
+    const card = within(pane('System overview')).getByRole('button', { name: 'a — idle' });
+    act(() => card.focus());
+    await user.keyboard('{Enter}');
+    await user.click(layoutTab('Agent focus'));
+    const detail = pane('Agent detail');
+    await user.click(within(detail).getByRole('button', { name: 'Activity' }));
+    // One set of controls: the pane's own; the activity view adds no second Stop.
+    expect(within(detail).queryByRole('button', { name: 'Hard stop…' })).toBeNull();
+    expect(within(detail).getAllByRole('button', { name: 'Stop' })).toHaveLength(1);
+    await user.click(within(detail).getByRole('button', { name: 'Stop' }));
+    const ask = screen.getByRole('alertdialog', { name: 'Stop' });
+    expect(ask).toHaveTextContent('Stop a now?');
+    expect(within(ask).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(api.controlAgent).not.toHaveBeenCalled();
+    await user.click(within(detail).getByRole('button', { name: 'Stop' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Stop now' }));
+    await waitFor(() => expect(api.controlAgent).toHaveBeenCalledWith(A, 'hard', expect.any(String)));
+    expect(await within(detail).findByText(/Stopping a\./)).toBeInTheDocument();
+    // The pane reads the agent's mode from the team's controls, not a poll of its own.
+    expect(api.agentControl).not.toHaveBeenCalled();
+  });
+
   it('alarm_ack_persists', async () => {
     const failed = snapshot({ seats: [seatView('a', { lifecycle: 'failed' }), seatView('b')] });
     const first = await twoTeams('/p/r/control', failed).then(() => screen);
