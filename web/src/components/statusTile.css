@@ -1,0 +1,21 @@
+/* A status strip's reading (StatusTile): label over glyph and value, a colour bar on its left. Tokens only. */
+.status-tile {
+  display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  min-width: 84px; padding: 2px 10px;
+  border: 1px solid var(--line); border-left: 3px solid var(--tile, var(--line-2)); border-radius: var(--radius-sm);
+  background: var(--well); color: var(--text);
+}
+.status-tile-label { font-size: var(--text-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.status-tile-value { display: flex; align-items: baseline; gap: 0 var(--space-2); flex-wrap: wrap; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-sm); color: var(--text); white-space: nowrap; }
+.status-tile-value small { color: var(--muted); font-size: var(--text-xs); font-family: var(--font-ui); }
+.status-tile-ok { --tile: var(--status-working); }
+.status-tile-ok .status-tile-glyph { color: var(--status-working); }
+.status-tile-verified { --tile: var(--status-verified); }
+.status-tile-verified .status-tile-glyph { color: var(--status-verified); }
+.status-tile-warn { --tile: var(--status-waiting); }
+.status-tile-warn .status-tile-glyph { color: var(--status-waiting); }
+.status-tile-bad { --tile: var(--status-blocked); }
+.status-tile-bad .status-tile-value { color: var(--status-blocked); }
+.status-tile-idle { --tile: var(--line-3); }
+.status-tile-unknown { --tile: var(--status-unknown); }
+.status-tile-unknown .status-tile-glyph { color: var(--status-unknown); }

@@ -1,24 +1,11 @@
-import type { ReactNode } from 'react';
+import { StatusTile as Tile } from '../components/StatusTile';
 import { isArenaDown, type ArenaCtx } from './data';
 import { agoWords, sizeWords } from './words';
 
-type Tone = 'up' | 'warn' | 'down' | 'plain';
-type TileProps = { label: string; glyph: string; tone: Tone; children: ReactNode };
-
-/** One reading: a small caps label, then glyph and value. The glyph and the words carry it; colour only repeats them. */
-function Tile({ label, glyph, tone, children }: TileProps) {
-  return (
-    <li className={`arena-tile arena-tile-${tone}`}>
-      <span className="arena-tile-label">{label}</span>
-      <span className="arena-tile-value"><span aria-hidden="true">{glyph}</span> {children}</span>
-    </li>
-  );
-}
-
 function ArenaTile({ ctx }: { ctx: ArenaCtx }) {
   if (ctx.health === undefined) return <Tile label="Arena" glyph="◌" tone="plain">Asking</Tile>;
-  if (ctx.health) return <Tile label="Arena" glyph="●" tone="up">Up</Tile>;
-  return <Tile label="Arena" glyph="■" tone="down">{isArenaDown(ctx.healthError) ? 'Down' : 'Not answering'}</Tile>;
+  if (ctx.health) return <Tile label="Arena" glyph="●" tone="verified">Up</Tile>;
+  return <Tile label="Arena" glyph="■" tone="bad">{isArenaDown(ctx.healthError) ? 'Down' : 'Not answering'}</Tile>;
 }
 
 function PartsTile({ ctx }: { ctx: ArenaCtx }) {

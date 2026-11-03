@@ -192,3 +192,9 @@ export function dropPanes(root: Node, keep: (pane: PaneRef) => boolean, newId: I
 export function dropUnknown(root: Node, known: (type: string) => boolean, newId: IdGen = uid): Node {
   return dropPanes(root, (p) => known(p.type), newId);
 }
+
+/** For a page's default layouts: a stack of panes `[id, type]`, its id the first pane's with `-s`. */
+export const stackOf = (...list: [string, string][]): Stack => ({ kind: 'stack', id: `${list[0][0]}-s`, panes: list.map(([id, type]) => ({ id, type })), active: 0 });
+
+/** For a page's default layouts: a split of `kids` with their relative `sizes`. */
+export const splitOf = (id: string, dir: 'row' | 'col', kids: Node[], sizes: number[]): Split => ({ kind: 'split', id, dir, kids, sizes });

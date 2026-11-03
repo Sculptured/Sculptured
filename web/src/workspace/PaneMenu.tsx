@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { enabledItems, menuKeys, useDismissOutside } from './Menu';
 import type { Zone } from './model';
 import type { DropTarget } from './useDrag';
 
@@ -28,39 +29,6 @@ const ZONES: { zone: Zone; short: string; name: (t: string) => string }[] = [
   { zone: 'bottom', short: 'Below', name: (t) => `Below ${t}` },
   { zone: 'center', short: 'As a tab', name: (t) => `As a tab with ${t}` },
 ];
-
-const enabled = (box: HTMLElement | null) => [...(box?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
-
-/** Calls `dismiss` on a pointer press outside the menu and its opener. */
-export function useDismissOutside(box: RefObject<HTMLElement | null>, opener: RefObject<HTMLElement | null>, dismiss: () => void) {
-  const latest = useRef(dismiss);
-  useEffect(() => { latest.current = dismiss; });
-  useEffect(() => {
-    const away = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (!box.current?.contains(t) && !opener.current?.contains(t)) latest.current();
-    };
-    window.addEventListener('pointerdown', away, true);
-    return () => window.removeEventListener('pointerdown', away, true);
-  }, [box, opener]);
-}
-
-type Nav = { sub: boolean; open(): void; back(): void; dismiss(refocus: boolean): void };
-
-/** ↑/↓/Home/End move, → opens "Move to…", ← or Esc goes back, Esc on the top level closes, Tab leaves. */
-function keyHandler(box: RefObject<HTMLElement | null>, nav: Nav) {
-  return (e: React.KeyboardEvent) => {
-    const items = enabled(box.current);
-    const at = items.indexOf(document.activeElement as HTMLButtonElement);
-    const go = (n: number) => { e.preventDefault(); items[(n + items.length) % items.length]?.focus(); };
-    const moves: Record<string, () => void> = { ArrowDown: () => go(at + 1), ArrowUp: () => go(at - 1), Home: () => go(0), End: () => go(items.length - 1) };
-    if (moves[e.key] && items.length) return moves[e.key]();
-    if (e.key === 'ArrowRight' && !nav.sub && document.activeElement?.hasAttribute('aria-haspopup')) { e.preventDefault(); nav.open(); }
-    else if (e.key === 'ArrowLeft' && nav.sub) { e.preventDefault(); nav.back(); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (nav.sub) nav.back(); else nav.dismiss(true); }
-    else if (e.key === 'Tab') nav.dismiss(false);
-  };
-}
 
 function Item({ name, onClick, children, ...rest }: { name?: string; onClick(): void; children: React.ReactNode; disabled?: boolean; 'aria-haspopup'?: 'menu' }) {
   return (
@@ -109,10 +77,10 @@ export function PaneMenu(props: PaneMenuProps) {
   const box = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState(false);
   useDismissOutside(box, props.opener, () => props.onDismiss(false));
-  useEffect(() => { enabled(box.current)[sub ? 1 : 0]?.focus(); }, [sub]);
-  const nav: Nav = { sub, open: () => setSub(true), back: () => setSub(false), dismiss: props.onDismiss };
+  useEffect(() => { enabledItems(box.current)[sub ? 1 : 0]?.focus(); }, [sub]);
+  const nav = { sub, open: () => setSub(true), back: () => setSub(false), dismiss: props.onDismiss };
   return (
-    <div ref={box} role="menu" aria-label={`${props.paneTitle} options`} className="ws-menu" onKeyDown={keyHandler(box, nav)}>
+    <div ref={box} role="menu" aria-label={`${props.paneTitle} options`} className="ws-menu" onKeyDown={menuKeys(box, nav)}>
       {sub ? <MoveItems targets={props.targets} onMove={props.onMove} back={nav.back} /> : <MainItems {...props} open={nav.open} />}
     </div>
   );

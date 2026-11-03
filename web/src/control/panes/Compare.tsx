@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { canCompare, choice, MUST_FINISH } from '../../arena/compareRule';
 import { ArenaProblem } from '../../arena/gate';
 import { comparePath } from '../../arena/paths';
 import { branchTree } from '../../tests/model';
@@ -47,6 +48,10 @@ function useComparison(a: SimulatedRun, other: string | undefined, ready: boolea
   return read;
 }
 
+function BranchOption({ id, depth, label, disabled }: { id: string; depth: number; label: string; disabled: boolean }) {
+  return <option value={id} disabled={disabled}>{'  '.repeat(depth)}{label}</option>;
+}
+
 function Choose({ a, other, onChange }: { a: SimulatedRun; other?: string; onChange(id: string | undefined): void }) {
   const here = a.branch!.id;
   return (
@@ -54,7 +59,7 @@ function Choose({ a, other, onChange }: { a: SimulatedRun; other?: string; onCha
       <select value={other ?? ''} onChange={(e) => onChange(e.target.value || undefined)}>
         <option value="">Choose a branch</option>
         {branchTree(a.branches).filter(({ branch: b }) => b.id !== here).map(({ branch: b, depth }) => (
-          <option key={b.id} value={b.id} disabled={b.status === 'running'}>{'  '.repeat(depth)}{a.names.get(b.id) ?? b.id}{b.status === 'running' ? ' (running)' : ''}</option>
+          <BranchOption key={b.id} id={b.id} depth={depth} {...choice(a.names.get(b.id) ?? b.id, b.status)} />
         ))}
       </select>
     </label>
@@ -83,14 +88,13 @@ export function ComparePane({ settings, setSettings }: PaneProps) {
   const a = useControl().source.arena!;
   const b = a.branch!;
   const other = otherOf(a, s.other);
-  const otherRunning = a.branches.find((x) => x.id === other)?.status === 'running';
-  const ready = b.status !== 'running' && !otherRunning;
+  const ready = canCompare(b.status, a.branches.find((x) => x.id === other)?.status);
   const read = useComparison(a, other, ready);
   return (
     <div className="ctl-compare">
       <Choose a={a} other={other} onChange={(id) => setSettings({ ...s, other: id })} />
       {!other && <p className="ctl-empty">{a.branches.length > 1 ? 'Choose a branch of this run to compare with.' : 'This run has one branch. Fork from a step in the Timeline to have something to compare.'}</p>}
-      {other && !ready && <p className="ctl-empty">◌ Both branches must finish before they can be compared.</p>}
+      {other && !ready && <p className="ctl-empty">{MUST_FINISH}</p>}
       {read.state === 'loading' && <p className="ctl-empty">Comparing…</p>}
       {read.state === 'failed' && <div className="ctl-empty"><ArenaProblem error={read.error} /></div>}
       {read.state === 'ready' && other && <Result d={read.d} a={a} other={other} />}

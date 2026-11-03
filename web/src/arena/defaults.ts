@@ -1,8 +1,7 @@
-import type { Node, PageLayouts } from '../workspace/model';
+import { splitOf as split, stackOf, type PageLayouts } from '../workspace/model';
 
 /** A stack holding one pane; the pane's id is `id`, its stack's `id-s`. */
-const stack = (id: string, type: string): Node => ({ kind: 'stack', id: `${id}-s`, panes: [{ id, type }], active: 0 });
-const split = (id: string, dir: 'row' | 'col', kids: Node[], sizes: number[]): Node => ({ kind: 'split', id, dir, kids, sizes });
+const stack = (id: string, type: string) => stackOf([id, type]);
 
 /** Arena control's first-open layouts: Overview (Runs beside World over Engine) and Storage (Saves and disk beside Fork tree). */
 export function arenaDefaults(): PageLayouts {

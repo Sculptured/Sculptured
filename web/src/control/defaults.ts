@@ -1,9 +1,5 @@
-import type { Node, PageLayouts } from '../workspace/model';
+import { splitOf as split, stackOf as stack, type Node, type PageLayouts } from '../workspace/model';
 import type { ControlSource } from './source';
-
-/** A stack of panes `[id, type]`; its id is the first pane's with `-s`. */
-const stack = (...list: [string, string][]): Node => ({ kind: 'stack', id: `${list[0][0]}-s`, panes: list.map(([id, type]) => ({ id, type })), active: 0 });
-const split = (id: string, dir: 'row' | 'col', kids: Node[], sizes: number[]): Node => ({ kind: 'split', id, dir, kids, sizes });
 
 /**
  * Live: System overview (the live board, first; Raw events as its tab) beside Status (with

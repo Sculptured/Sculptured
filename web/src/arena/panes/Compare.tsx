@@ -7,6 +7,7 @@ import { branchNames } from '../../tests/model';
 import { notComparedLine } from '../../tests/restore';
 import { ApproximateMark, StatusPill } from '../../tests/shared';
 import type { CompareResponse, RunSummary } from '../../tests/types';
+import { canCompare, choice, MUST_FINISH } from '../compareRule';
 import { useArena } from '../data';
 import { ArenaGate, ArenaProblem } from '../gate';
 import { comparePath } from '../paths';
@@ -23,7 +24,10 @@ function BranchSelect({ label, runs, value, onChange }: { label: string; runs: R
           const names = branchNames(r.branches);
           return (
             <optgroup key={r.id} label={`Task ${r.task_id}`}>
-              {r.branches.map((b) => <option key={b.id} value={b.id}>{names.get(b.id)}</option>)}
+              {r.branches.map((b) => {
+                const c = choice(names.get(b.id) ?? b.id, b.status);
+                return <option key={b.id} value={b.id} disabled={c.disabled}>{c.label}</option>;
+              })}
             </optgroup>
           );
         })}
@@ -32,16 +36,17 @@ function BranchSelect({ label, runs, value, onChange }: { label: string; runs: R
   );
 }
 
-function useCompare(a?: string, b?: string) {
+/** Compares `a` with `b` once both are chosen, different, and `ready` (both finished). */
+function useCompare(a: string | undefined, b: string | undefined, ready: boolean) {
   const [cmp, setCmp] = useState<CompareResponse | null>(null);
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
     setCmp(null); setError(null);
-    if (!a || !b || a === b) return;
+    if (!a || !b || a === b || !ready) return;
     let alive = true;
     arena.compare(a, b).then((c) => { if (alive) setCmp(c); }).catch((e) => { if (alive) setError(e); });
     return () => { alive = false; };
-  }, [a, b]);
+  }, [a, b, ready]);
   return { cmp, error };
 }
 
@@ -62,7 +67,9 @@ function CompareBody({ settings, setSettings }: PaneProps<Chosen>) {
   const { runs: loaded } = useArena();
   const runs = loaded.value;
   const { a, b } = settings;
-  const { cmp, error } = useCompare(a, b);
+  const status = (id?: string) => runs?.flatMap((r) => r.branches).find((x) => x.id === id)?.status;
+  const ready = canCompare(status(a), status(b));
+  const { cmp, error } = useCompare(a, b, ready);
   if (!runs) return loaded.error ? <ArenaProblem error={loaded.error} /> : <p className="muted">Reading runs…</p>;
   return (
     <>
@@ -73,6 +80,7 @@ function CompareBody({ settings, setSettings }: PaneProps<Chosen>) {
       </div>
       {(!a || !b) && <p className="muted">Choose two branches to compare.</p>}
       {a && b && a === b && <p className="muted">Choose two different branches.</p>}
+      {a && b && a !== b && !ready && <p className="muted">{MUST_FINISH}</p>}
       <ArenaProblem error={error} />
       {cmp && a && b && <Summary cmp={cmp} a={a} b={b} />}
     </>

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { StatusTile as Tile } from '../components/StatusTile';
 import { compactNumber } from '../format';
 import { useMobile } from '../workspace/MobileWorkspace';
 import { ActionButton, OutcomeNote, type Outcome } from './ActionButton';
@@ -13,15 +14,6 @@ import type { TeamActions } from './source';
  * tokens and cost, the master caution), then the whole team's controls. Every reading is a glyph
  * and a word or a number; anything not known says "unknown".
  */
-
-function Tile({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
-  return (
-    <li className={`ctl-tile${className ? ` ${className}` : ''}`}>
-      <span className="ctl-tile-label">{label}</span>
-      <span className="ctl-tile-value">{children}</span>
-    </li>
-  );
-}
 
 /**
  * T+hh:mm:ss since the earliest current session started, ticking each second while the team runs.
@@ -69,7 +61,7 @@ function Strip({ ctx }: { ctx: ControlCtx }) {
   const counts = countsOf(source.agents);
   return (
     <ul className="ctl-strip" aria-label="Run status">
-      <Tile label="Run" className={`tone-${run.tone}`}><span className="ctl-glyph" aria-hidden="true">{run.glyph}</span> {run.word}</Tile>
+      <Tile label="Run" tone={run.tone} glyph={run.glyph}>{run.word}</Tile>
       <Tile label="Elapsed"><Clock startedAt={source.startedAt} endedAt={source.endedAt} running={source.running} unread={source.unread} /></Tile>
       <Tile label="Agents" className="ctl-tile-wide">
         {source.unread ? 'unknown' : counts.length === 0 ? 'none yet' : counts.map((c) => <span key={c.word} className={`ctl-count tone-${c.tone}`}><span className="ctl-glyph" aria-hidden="true">{c.glyph}</span> {c.n} {c.word}</span>)}
