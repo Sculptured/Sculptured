@@ -26,8 +26,12 @@ pub struct AppState {
     pub allowed_hosts: Arc<Vec<String>>,
     /// One lock per in-flight `request_id`, so concurrent duplicates execute once.
     pub request_locks: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
-    /// Rigs with a boot in flight; a second boot of the same rig is a no-op.
-    pub booting: Arc<Mutex<HashSet<String>>>,
+    /// Rigs with a boot in flight; a second boot of the same rig is a no-op. A team action (a pause, a
+    /// resume, a budget continuation, a stop) holds it too, with the safety-stop count when it was asked
+    /// for (`try_begin_team_action`): a safety stop does not wait for one (`collaboration::preempt`).
+    pub booting: Arc<Mutex<HashMap<String, Option<u64>>>>,
+    /// Safety stops so far, and the latest one of each team or agent (`mark_stopped`).
+    pub stops: Arc<Mutex<StopMarks>>,
     /// Login seam; AllowAll until a login system exists.
     pub auth: AuthPolicy,
     /// The user's home folder: root of the folder picker and working folder of Practice agents without one.
@@ -76,10 +80,9 @@ impl AppState {
             allowed_hosts: Arc::new(allowed_hosts),
             request_locks: Arc::default(),
             booting: Arc::default(),
+            stops: Arc::default(),
             auth: AuthPolicy::default(),
-            home: std::env::var_os("HOME")
-                .filter(|h| !h.is_empty())
-                .map(|h| Arc::new(PathBuf::from(h))),
+            home: home_dir(),
             handoffs_started: Arc::default(),
             handoffs_in_flight: Arc::default(),
             context_asked: Arc::default(),
@@ -152,19 +155,29 @@ impl AppState {
     /// The claim is released when the returned guard drops.
     #[must_use]
     pub fn try_begin_boot(&self, rig: &str) -> Option<BootGuard> {
-        if self
+        self.claim(rig, None)
+    }
+
+    /// Claims team `rig` for a team action asked for when the safety-stop count was `since`
+    /// (`stop_count`). None while anything else holds the claim.
+    #[must_use]
+    pub fn try_begin_team_action(&self, rig: &str, since: u64) -> Option<BootGuard> {
+        self.claim(rig, Some(since))
+    }
+
+    fn claim(&self, rig: &str, action: Option<u64>) -> Option<BootGuard> {
+        let mut booting = self
             .booting
             .lock()
-            .expect("booting mutex must not be poisoned")
-            .insert(rig.to_string())
-        {
-            Some(BootGuard {
-                st: self.clone(),
-                rig: rig.to_string(),
-            })
-        } else {
-            None
+            .expect("booting mutex must not be poisoned");
+        if booting.contains_key(rig) {
+            return None;
         }
+        booting.insert(rig.to_string(), action);
+        Some(BootGuard {
+            st: self.clone(),
+            rig: rig.to_string(),
+        })
     }
 
     /// True while a boot of `rig` is running (Task 11 answers 409 for a second one).
@@ -173,7 +186,81 @@ impl AppState {
         self.booting
             .lock()
             .expect("booting mutex must not be poisoned")
-            .contains(rig)
+            .contains_key(rig)
+    }
+
+    /// The claim on `rig` for a safety stop: Ok(Some) when it was free; Ok(None) when a team action
+    /// holds it (the stop goes ahead without it, and that action yields); Err while a boot or another
+    /// change holds it.
+    pub fn claim_or_preempt(&self, rig: &str) -> Result<Option<BootGuard>, TeamStarting> {
+        let since = self.stop_count();
+        if let Some(guard) = self.try_begin_team_action(rig, since) {
+            return Ok(Some(guard));
+        }
+        match self
+            .booting
+            .lock()
+            .expect("booting mutex must not be poisoned")
+            .get(rig)
+        {
+            Some(Some(_)) => Ok(None),
+            // Released meanwhile: claim it after all.
+            None => self
+                .try_begin_team_action(rig, since)
+                .map(Some)
+                .ok_or(TeamStarting),
+            Some(None) => Err(TeamStarting),
+        }
+    }
+
+    /// True while a team action (not a boot) holds the claim on `rig`.
+    #[must_use]
+    pub fn team_action_running(&self, rig: &str) -> bool {
+        matches!(
+            self.booting
+                .lock()
+                .expect("booting mutex must not be poisoned")
+                .get(rig),
+            Some(Some(_))
+        )
+    }
+
+    /// How many safety stops there have been: a team action notes it when it is asked for.
+    #[must_use]
+    pub fn stop_count(&self) -> u64 {
+        self.stops
+            .lock()
+            .expect("stops mutex must not be poisoned")
+            .count
+    }
+
+    /// Records a safety stop of each of `keys` (a team's id, or agents' ids).
+    pub fn mark_stopped<'a>(&self, keys: impl IntoIterator<Item = &'a str>) {
+        let mut stops = self.stops.lock().expect("stops mutex must not be poisoned");
+        stops.count += 1;
+        let n = stops.count;
+        for k in keys {
+            stops.latest.insert(k.to_string(), n);
+        }
+    }
+
+    /// True when team `rig`, or agent `seat`, had a safety stop after the team action that holds the
+    /// claim on `rig` was asked for (false when no team action holds it).
+    #[must_use]
+    pub fn stopped_during_action(&self, rig: &str, seat: &str) -> bool {
+        let since = match self
+            .booting
+            .lock()
+            .expect("booting mutex must not be poisoned")
+            .get(rig)
+        {
+            Some(Some(since)) => *since,
+            _ => return false,
+        };
+        let stops = self.stops.lock().expect("stops mutex must not be poisoned");
+        [rig, seat]
+            .iter()
+            .any(|k| stops.latest.get(*k).is_some_and(|n| *n > since))
     }
 
     /// Appends a controld-originated event and publishes it while still holding the
@@ -198,6 +285,23 @@ impl AppState {
             let _ = self.hub.send(item);
         }
     }
+}
+
+fn home_dir() -> Option<Arc<PathBuf>> {
+    std::env::var_os("HOME")
+        .filter(|h| !h.is_empty())
+        .map(|h| Arc::new(PathBuf::from(h)))
+}
+
+/// A boot or another change (not a team action) holds a team's claim.
+#[derive(Debug)]
+pub struct TeamStarting;
+
+/// Safety stops: how many so far, and the latest one (by that count) of each team or agent.
+#[derive(Default)]
+pub struct StopMarks {
+    count: u64,
+    latest: HashMap<String, u64>,
 }
 
 /// Holds a rig's boot claim; removes the rig from the booting set on drop, however the boot ends.

@@ -62,10 +62,12 @@ pub async fn control_seat(
     if control == Control::Resume {
         return undo_stop(st, &view).await;
     }
-    let _claim = claim_for_stop(st, &view.rig)?;
     if control == Control::Hard {
-        return hard_stop(st, seat).await.map(|()| None);
+        // A safety stop: it does not wait for a pause, resume or continuation (`preempt`).
+        let claim = claim_for_stop(st, &view.rig)?;
+        return hard_stop(st, seat, claim.is_none()).await.map(|()| None);
     }
+    let _claim = super::pausing::claim(st, &view.rig)?;
     record(st, seat, ControlMode::Soft)?;
     if view.lifecycle != SeatLifecycle::Running {
         return Ok(None);
@@ -93,22 +95,21 @@ async fn undo_stop(st: &AppState, seen: &SeatView) -> Result<Option<TeamControlR
     }
     refuse_if_budget_exhausted(st, &view.id)?;
     if view.lifecycle != SeatLifecycle::Running {
-        return reconciler::restart_seat_claimed(st, &view.id, claim)
+        return reconciler::restart_seat_claimed(st, &view.id, &claim)
             .await
             .map(|()| None);
     }
-    st.store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .clear_control(&view.id)?;
+    super::preempt::clear_unless_stopped(st, &view.id)?;
     Ok(None)
 }
 
-fn claim_for_stop(st: &AppState, rig: &str) -> Result<BootGuard, ApiError> {
-    st.try_begin_boot(rig).ok_or_else(|| {
+/// A safety stop's hold on the team: its claim when free, none while a team action holds it (the
+/// stop goes ahead and that action yields, see `preempt`). Refused only while the team starts.
+fn claim_for_stop(st: &AppState, rig: &str) -> Result<Option<BootGuard>, ApiError> {
+    st.claim_or_preempt(rig).map_err(|_| {
         ApiError::conflict(
             "team_starting",
-            "Project is changing. Retry the stop after that operation finishes.",
+            "This team is still starting. Stop it once it has started.",
         )
     })
 }
@@ -131,19 +132,21 @@ pub(super) fn refuse_if_budget_exhausted(st: &AppState, seat: &str) -> Result<()
 
 /// Stops `seat` now with every agent it started (descendants must not continue after a hard stop of
 /// their parent). The caller holds the team's claim.
-async fn hard_stop(st: &AppState, seat: &str) -> Result<(), ApiError> {
+async fn hard_stop(st: &AppState, seat: &str, preempting: bool) -> Result<(), ApiError> {
     // The agents it started first (the latest first), then the agent itself.
     let mut ids = super::token_limits::with_descendants(
         &st.store.lock().expect("store mutex must not be poisoned"),
         seat,
     )?;
     ids.reverse();
-    stop_all_now(st, &ids).await
+    stop_all_now(st, &ids, preempting).await
 }
 
 /// Records a hard stop of each of `ids`, then stops them all at once: each stop interrupts at once and
-/// forces after 2 s, whatever the others do.
-async fn stop_all_now(st: &AppState, ids: &[String]) -> Result<(), ApiError> {
+/// forces after 2 s, whatever the others do. `preempting`: a team action holds the claim; an agent it
+/// is starting cannot be stopped yet, and that action stops it once it is up (`preempt`).
+async fn stop_all_now(st: &AppState, ids: &[String], preempting: bool) -> Result<(), ApiError> {
+    st.mark_stopped(ids.iter().map(String::as_str));
     for id in ids {
         record(st, id, ControlMode::Hard)?;
     }
@@ -151,7 +154,9 @@ async fn stop_all_now(st: &AppState, ids: &[String]) -> Result<(), ApiError> {
     let failures: Vec<String> = ids
         .iter()
         .zip(futures::future::join_all(stops).await)
-        .filter_map(|(id, r)| r.err().map(|e| format!("{id}: {}", e.message)))
+        .filter_map(|(id, r)| r.err().map(|e| (id, e)))
+        .filter(|(id, _)| !(preempting && starting(st, id)))
+        .map(|(id, e)| format!("{id}: {}", e.message))
         .collect();
     if failures.is_empty() {
         Ok(())
@@ -160,10 +165,14 @@ async fn stop_all_now(st: &AppState, ids: &[String]) -> Result<(), ApiError> {
     }
 }
 
+fn starting(st: &AppState, seat: &str) -> bool {
+    reconciler::lifecycle(st, seat) == Some(SeatLifecycle::Launching)
+}
+
 /// The end of a soft stop's wrap-up: stopped now, unless it was undone (Resume) meanwhile. A team
 /// that is changing is left for the next tick.
 async fn finish_soft_stop(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
-    let Some(_claim) = st.try_begin_boot(&view.rig) else {
+    let Some(_claim) = st.try_begin_team_action(&view.rig, st.stop_count()) else {
         return Ok(());
     };
     let store_mode = || {
@@ -175,7 +184,7 @@ async fn finish_soft_stop(st: &AppState, view: &SeatView) -> Result<(), ApiError
     if store_mode()? != Some(ControlMode::Soft) {
         return Ok(());
     }
-    hard_stop(st, &view.id).await?;
+    hard_stop(st, &view.id, false).await?;
     st.store
         .lock()
         .expect("store mutex must not be poisoned")
@@ -220,9 +229,18 @@ fn checkpoint_text(seat: &str) -> String {
 
 const SOFT_TEXT: &str = "Soft stop requested by You. Wrap up the CURRENT assignment quickly within approximately 5,000 additional output tokens. Do not begin new research, broad refactors, new tasks or child agents. Save the current work, summarize exact artifact paths/revision, checks actually run, remaining problems and what the next agent needs. If appropriate, call complete_work with the honest outcome or send_agent_message to the next agent/your parent. Never claim success to finish faster. End your turn. The runner will stop this session after the wrap-up turn, the observed token budget, or 5 minutes. Usage reports may arrive late; the 5K threshold is approximate.";
 /// Stops `seats` (all of team `rig`) and every agent they started, now and all at once, like Ctrl+C,
-/// under one claim on the team (separate `control_agent` calls would refuse each other).
+/// under one claim on the team (separate `control_agent` calls would refuse each other). A team
+/// action under way (a pause, a resume, a budget continuation) does not hold it up: it is told the
+/// whole team stopped, so it starts or continues none of its agents (`preempt`).
 pub async fn stop_now(st: &AppState, rig: &str, seats: &[String]) -> Result<(), ApiError> {
-    let _claim = claim_for_stop(st, rig)?;
+    st.mark_stopped([rig]);
+    stop_agents_now(st, rig, seats).await
+}
+
+/// `stop_now` for some agents of team `rig` (an agent's own limit): a team action under way leaves
+/// only them, and the agents they started, alone.
+pub async fn stop_agents_now(st: &AppState, rig: &str, seats: &[String]) -> Result<(), ApiError> {
+    let claim = claim_for_stop(st, rig)?;
     let mut all: Vec<String> = Vec::new();
     {
         let store = st.store.lock().expect("store mutex must not be poisoned");
@@ -235,7 +253,7 @@ pub async fn stop_now(st: &AppState, rig: &str, seats: &[String]) -> Result<(), 
             );
         }
     }
-    stop_all_now(st, &all).await
+    stop_all_now(st, &all, claim.is_none()).await
 }
 
 pub(super) fn record(st: &AppState, seat: &str, mode: ControlMode) -> Result<(), ApiError> {

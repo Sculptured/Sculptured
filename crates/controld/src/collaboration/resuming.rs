@@ -2,7 +2,7 @@
 //! agent starts again in its own session (fresh from its note without one), with the agents it
 //! started that paused with it.
 use super::controls::{note_path, record, refuse_if_budget_exhausted};
-use super::pausing::{SeatNote, SkipCode, TeamControlResult, failure_reason};
+use super::pausing::{SeatNote, TeamControlResult, failure_reason, skip_code};
 use crate::error::ApiError;
 use crate::state::AppState;
 use crate::store::ControlMode;
@@ -23,7 +23,7 @@ pub(super) async fn resume_seat(
     for child in paused_descendants(st, &view.id)? {
         match continue_seat(st, &child).await {
             Ok(told) => resumed(&mut out, &child.id, told),
-            Err(e) => out.skip(&child.id, SkipCode::Failed, failure_reason(&e)),
+            Err(e) => out.skip(&child.id, skip_code(&e), failure_reason(&e)),
         }
     }
     Ok(out)
@@ -77,10 +77,7 @@ async fn continue_seat(st: &AppState, view: &SeatView) -> Result<bool, ApiError>
 
 /// A pause still wrapping up: the agent is not stopped, and goes on with its job.
 async fn call_off_pause(st: &AppState, seat: &str) -> Result<bool, ApiError> {
-    st.store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .clear_control(seat)?;
+    super::preempt::clear_unless_stopped(st, seat)?;
     let text = format!("Pause called off by You. {CONTINUE}");
     Ok(tell(st, seat, text).await)
 }
@@ -104,7 +101,10 @@ async fn restart_paused(st: &AppState, view: &SeatView) -> Result<bool, ApiError
         ));
     }
     if let Err(e) = crate::budget::pause::relaunch(st, &view.id, ContinueMode::Resume).await {
-        record(st, &view.id, ControlMode::Paused)?;
+        // A safety stop that came meanwhile keeps its own record.
+        if e.code != "stopped_meanwhile" {
+            record(st, &view.id, ControlMode::Paused)?;
+        }
         return Err(e);
     }
     let text = format!(

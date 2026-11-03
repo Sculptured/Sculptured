@@ -24,6 +24,13 @@ describe('errorText: server errors in plain words', () => {
     expect(STARTING_REASON).toBe('Starting… you can stop the team once it has started');
   });
 
+  it('a team action that holds the team says so, not that the team is starting', () => {
+    expect(errorText(new ApiError(409, 'team_busy', raw))).toBe(
+      'Another team action is running (pause, resume, or continuing after a budget). Try again in a moment.',
+    );
+    expect(errorText(new ApiError(409, 'stopped_meanwhile', raw))).toMatch(/stays stopped/);
+  });
+
   it('a name taken by another team does not suggest renaming, since a team id never changes', () => {
     const text = errorText(new ApiError(409, 'rig_name_taken', raw));
     expect(text).not.toMatch(/pick another name|rename/i);

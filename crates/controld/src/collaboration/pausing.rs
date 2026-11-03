@@ -115,23 +115,30 @@ pub(super) fn pause_refusal(
     })
 }
 
+/// A pause or resume that did not happen: a safety stop that came meanwhile is a stop, not a failure.
+pub(super) fn skip_code(e: &ApiError) -> SkipCode {
+    if e.code == "stopped_meanwhile" {
+        SkipCode::AlreadyStopping
+    } else {
+        SkipCode::Failed
+    }
+}
+
 /// A plain reason for a pause or resume that failed (never the server's own text).
 pub(super) fn failure_reason(e: &ApiError) -> &'static str {
     match &*e.code {
         "budget_exhausted" => "It reached its output budget",
         "team_not_running" => "The team is stopped. Start it to run its agents",
         "agent_settling" => "It is still stopping or starting. Try again in a moment",
+        "stopped_meanwhile" => "It was stopped meanwhile, so it stays stopped",
         _ => "It could not be done. Try again; its reason is shown on the agent",
     }
 }
 
+/// The team's claim for a team action. Refused while another one runs, or while the team starts.
 pub(super) fn claim(st: &AppState, rig: &str) -> Result<BootGuard, ApiError> {
-    st.try_begin_boot(rig).ok_or_else(|| {
-        ApiError::conflict(
-            "team_starting",
-            "Project is changing. Retry after that operation finishes.",
-        )
-    })
+    st.try_begin_team_action(rig, st.stop_count())
+        .ok_or_else(|| super::preempt::busy(st, rig))
 }
 
 /// A pause, or the resume of a paused agent, under the team's claim; None for any other control. The
@@ -198,7 +205,7 @@ async fn pause_seat(st: &AppState, view: &SeatView) -> Result<TeamControlResult,
 /// Asks a running agent with no other stop in progress to wrap up for a pause. Nothing is recorded
 /// when the request cannot be sent.
 pub(super) async fn begin_pause(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
-    record(st, &view.id, ControlMode::Pausing)?;
+    super::preempt::record_unless_stopped(st, &view.id, ControlMode::Pausing)?;
     let sent = send_wrap_up(st, view, pause_text(&view.id)).await;
     if sent.is_err() {
         st.store
@@ -266,7 +273,7 @@ fn descendants_of_pause(st: &AppState, seat: &str) -> Result<Vec<Descendant>, Ap
 /// another way, stopped as that stop would. Called off meanwhile, nothing happens; a team that is
 /// changing, or a stop that failed, is retried next tick.
 pub(super) async fn finish_pause(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
-    let Some(_claim) = st.try_begin_boot(&view.rig) else {
+    let Some(_claim) = st.try_begin_team_action(&view.rig, st.stop_count()) else {
         return Ok(());
     };
     if control_of(st, &view.id)? != Some(ControlMode::Pausing) {
@@ -288,16 +295,29 @@ pub(super) async fn finish_pause(st: &AppState, view: &SeatView) -> Result<(), A
         st.store
             .lock()
             .expect("store mutex must not be poisoned")
-            .set_control_mode(&view.id, ControlMode::Paused)?;
+            .set_control_mode(&view.id, paused_or_stopped(st, &view.id))?;
     }
     Ok(())
+}
+
+/// What a finished pause leaves: paused, unless a safety stop came meanwhile (that wins: stopped).
+fn paused_or_stopped(st: &AppState, seat: &str) -> ControlMode {
+    if super::preempt::preempted(st, seat) {
+        ControlMode::Hard
+    } else {
+        ControlMode::Paused
+    }
 }
 
 /// Records what a pause does to each live descendant without a stop of its own: paused with it, or
 /// (below an agent stopping another way) stopped as that stop would. Returns the ones recorded.
 fn record_descendants<'a>(st: &AppState, live: &'a [Descendant]) -> Result<Vec<&'a str>, ApiError> {
     let mut recorded = Vec::new();
-    for d in live.iter().filter(|d| d.own.is_none()) {
+    // One a safety stop covered meanwhile keeps that stop.
+    for d in live
+        .iter()
+        .filter(|d| d.own.is_none() && !super::preempt::preempted(st, &d.id))
+    {
         let mode = if d.pauses {
             ControlMode::Paused
         } else {

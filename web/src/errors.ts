@@ -95,6 +95,7 @@ export const ERROR_WORDS: Record<string, string> = {
   project_running: 'Stop this project before moving it to Trash. Hiding it leaves agents running.',
   // Teams.
   team_starting: STARTING_REASON,
+  team_busy: 'Another team action is running (pause, resume, or continuing after a budget). Try again in a moment.',
   team_running: 'This team is running. Stop it first to add, remove or reconnect agents, or to start it again.',
   rig_running: 'This team is already running. Stop it before starting it again.',
   team_not_started: 'This team has not been started yet.',
@@ -125,6 +126,7 @@ export const ERROR_WORDS: Record<string, string> = {
   fork_unsupported: 'This agent cannot copy its session. Start a fresh session instead.',
   agent_not_running: 'The agent is not running, so that cannot be done now.',
   agent_settling: 'The agent is still stopping or starting. Try again once it has settled.',
+  stopped_meanwhile: 'The agent was stopped while that was under way, so it stays stopped.',
   agent_stopping: 'The agent is already stopping, so it cannot be paused. Wait for it to stop, then start it again.',
   team_not_running: 'This team is not running. Start the team first.',
   no_restore_needed: 'No agent here waits for a decision about bringing it back any more. Reload the page.',

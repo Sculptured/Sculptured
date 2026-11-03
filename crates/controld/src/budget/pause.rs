@@ -244,12 +244,15 @@ pub(crate) async fn relaunch(
     seat: &str,
     mode: ContinueMode,
 ) -> Result<(), ApiError> {
-    let session = {
-        let store = st.store.lock().expect("store mutex must not be poisoned");
-        store.clear_control(seat)?;
-        store.seat(seat)?.and_then(|v| v.native_session_id)
-    };
-    match (mode, session) {
+    // A safety stop since the team action began leaves it stopped (`collaboration::preempt`).
+    crate::collaboration::preempt::clear_unless_stopped(st, seat)?;
+    let session = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .seat(seat)?
+        .and_then(|v| v.native_session_id);
+    let started = match (mode, session) {
         (ContinueMode::Resume, Some(id)) => {
             let baseline = Some(crate::restore::usage_baseline(st, seat)?);
             crate::restore::relaunch_and_send(
@@ -267,7 +270,10 @@ pub(crate) async fn relaunch(
             crate::restore::relaunch_and_send(st, seat, LaunchMode::Fresh, TenureCause::Fresh, None)
                 .await
         }
-    }
+    };
+    started?;
+    // A stop that came while it started may have reached it before it was up.
+    crate::collaboration::preempt::stop_if_stopped(st, seat).await
 }
 
 pub fn routes() -> Router<AppState> {

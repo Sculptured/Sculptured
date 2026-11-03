@@ -321,7 +321,9 @@ pub async fn check(st: &AppState) {
     };
     for (rig, seat, why) in hard {
         tracing::info!(%seat, %why, "agent limit: stop now");
-        if let Err(e) = super::stop_now(st, &rig, std::slice::from_ref(&seat)).await {
+        if let Err(e) =
+            super::controls::stop_agents_now(st, &rig, std::slice::from_ref(&seat)).await
+        {
             tracing::warn!(%seat, error = %e.message, "agent-limit stop will retry");
         }
     }

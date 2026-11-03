@@ -3,6 +3,7 @@ pub mod context_ceiling;
 mod controls;
 pub(crate) mod history;
 mod pausing;
+pub(crate) mod preempt;
 mod resuming;
 pub mod silence;
 mod team_pausing;

@@ -2,7 +2,7 @@
 //! one claim on the team (modelled on stop-now).
 use super::pausing::{
     PAUSES_WITH_PARENT, STOPS_WITH_PARENT, SkipCode, TeamControlResult, begin_pause, claim,
-    control_of, failure_reason, is_paused, pause_refusal,
+    control_of, failure_reason, is_paused, pause_refusal, skip_code,
 };
 use super::resuming::{paused_descendants, resume_seat};
 use crate::error::ApiError;
@@ -14,7 +14,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
@@ -118,13 +118,14 @@ impl<'a> PausePlan<'a> {
 /// Pauses every running agent of team `rig` that no other stop or pause covers.
 async fn pause_all(st: &AppState, rig: &str) -> Result<TeamControlResult, ApiError> {
     let mut out = TeamControlResult::default();
+    // The claim first: what the team looks like is read only once nothing else changes it.
+    let _claim = claim(st, rig)?;
     let Some(seats) = team_seats(st, rig)? else {
         return Ok(out);
     };
-    let _claim = claim(st, rig)?;
     let plan = PausePlan::new(st, &seats)?;
     let skips: Vec<Option<Skip>> = (0..seats.len()).map(|i| plan.skip(i)).collect();
-    let mut failed = HashSet::new();
+    let mut not_paused = HashMap::new();
     for (i, seat) in seats
         .iter()
         .enumerate()
@@ -133,35 +134,39 @@ async fn pause_all(st: &AppState, rig: &str) -> Result<TeamControlResult, ApiErr
         match begin_pause(st, &seat.view).await {
             Ok(()) => out.affected.push(seat.view.id.clone()),
             Err(e) => {
-                out.skip(&seat.view.id, SkipCode::Failed, failure_reason(&e));
-                failed.insert(i);
+                let stopped = e.code == "stopped_meanwhile";
+                out.skip(&seat.view.id, skip_code(&e), failure_reason(&e));
+                not_paused.insert(i, stopped);
             }
         }
     }
-    report_skips(&plan, skips, &failed, &mut out);
+    report_skips(&plan, skips, &not_paused, &mut out);
     Ok(out)
 }
 
 /// Notes each agent Pause all did not ask to pause. One that was to pause with an agent whose pause
-/// could not begin keeps running, and says so.
+/// could not begin keeps running, and says so; one whose ancestor a safety stop stopped meanwhile
+/// stopped with it. `not_paused`: the agents whose pause did not begin (true: stopped meanwhile).
 fn report_skips(
     plan: &PausePlan,
     skips: Vec<Option<Skip>>,
-    failed: &HashSet<usize>,
+    not_paused: &HashMap<usize, bool>,
     out: &mut TeamControlResult,
 ) {
     for (i, skip) in skips.into_iter().enumerate() {
         let Some((code, why)) = skip else { continue };
         let id = &plan.seats[i].view.id;
-        if code == SkipCode::StartedByAgent
-            && plan
-                .pausing_ancestor(i)
-                .is_some_and(|p| failed.contains(&p))
-        {
-            let why = "The agent that started it could not be paused, so it keeps running";
-            out.skip(id, SkipCode::Failed, why);
-        } else {
-            out.skip(id, code, why);
+        let ancestor = (code == SkipCode::StartedByAgent)
+            .then(|| plan.pausing_ancestor(i))
+            .flatten()
+            .and_then(|p| not_paused.get(&p));
+        match ancestor {
+            Some(true) => out.skip(id, SkipCode::AlreadyStopping, STOPS_WITH_PARENT),
+            Some(false) => {
+                let why = "The agent that started it could not be paused, so it keeps running";
+                out.skip(id, SkipCode::Failed, why);
+            }
+            None => out.skip(id, code, why),
         }
     }
 }
@@ -192,10 +197,11 @@ fn resume_roots<'a>(
 /// with that agent.
 async fn resume_all(st: &AppState, rig: &str) -> Result<TeamControlResult, ApiError> {
     let mut out = TeamControlResult::default();
+    // The claim first: what the team looks like is read only once nothing else changes it.
+    let _claim = claim(st, rig)?;
     let Some(seats) = team_seats(st, rig)? else {
         return Ok(out);
     };
-    let _claim = claim(st, rig)?;
     let mut covered: HashSet<String> = HashSet::new();
     for view in resume_roots(st, &seats, &mut out)? {
         // Never twice: a root already resumed with the agent that started it.
@@ -224,7 +230,7 @@ fn resume_failed(
     out: &mut TeamControlResult,
     covered: &mut HashSet<String>,
 ) -> Result<(), ApiError> {
-    out.skip(&view.id, SkipCode::Failed, failure_reason(e));
+    out.skip(&view.id, skip_code(e), failure_reason(e));
     for child in paused_descendants(st, &view.id)? {
         covered.insert(child.id.clone());
         let why = "It resumes with the agent that started it";

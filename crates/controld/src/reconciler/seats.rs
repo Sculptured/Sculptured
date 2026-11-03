@@ -19,14 +19,14 @@ pub async fn restart_seat(st: &AppState, seat_id: &str) -> Result<(), ApiError> 
             "This team is still starting. Restart the agent once it has finished starting.",
         )
     })?;
-    restart_seat_claimed(st, seat_id, claim).await
+    restart_seat_claimed(st, seat_id, &claim).await
 }
 
 /// Restarts an agent under an existing team claim. State is read only after the claim is held.
 pub(crate) async fn restart_seat_claimed(
     st: &AppState,
     seat_id: &str,
-    _claim: crate::state::BootGuard,
+    _claim: &crate::state::BootGuard,
 ) -> Result<(), ApiError> {
     let view = st
         .store
@@ -66,10 +66,8 @@ pub(crate) async fn restart_seat_claimed(
         .find(|s| s.id == seat_id)
         .cloned()
         .ok_or_else(|| ApiError::not_found(format!("no agent {seat_id:?}")))?;
-    st.store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .clear_control(seat_id)?;
+    // Under a team action, a safety stop since it began leaves the agent stopped.
+    crate::collaboration::preempt::clear_unless_stopped(st, seat_id)?;
     let spec_dir = crate::launch::spec_dir(st, &view.rig);
     // Held from before the relaunch until what it is owed has been sent.
     let restarting = crate::handoffs::Restarting::new(st, seat_id);
@@ -92,7 +90,7 @@ pub(crate) async fn restart_seat_claimed(
         restarting,
         crate::handoffs::OwedMode::Fresh,
     ));
-    Ok(())
+    crate::collaboration::preempt::stop_if_stopped(st, seat_id).await
 }
 
 /// Stops a seat's process. A host that says the seat is not running has nothing to

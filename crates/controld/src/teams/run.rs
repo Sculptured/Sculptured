@@ -294,6 +294,9 @@ pub(super) async fn stop_team(
         // run: it is refused while a start holds the claim, and a start that comes while
         // the stop runs is refused as `team_running`.
         let Some(_stopping) = st2.try_begin_boot(&id) else {
+            if st2.team_action_running(&id) {
+                return Err(crate::collaboration::preempt::busy(&st2, &id));
+            }
             return Err(ApiError::conflict(
                 "team_starting",
                 "This team is still starting. Stop it once it has finished starting.",
