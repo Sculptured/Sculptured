@@ -3,8 +3,9 @@ use model::EventRecord;
 use rusqlite::{OptionalExtension, params};
 
 /// Why an agent is being stopped (`agent_controls.mode`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export)]
 pub enum ControlMode {
     /// Asked to wrap up; stopped after its wrap-up turn, about 5,000 more output tokens, or 5 minutes.
     Soft,
@@ -151,6 +152,17 @@ impl Store {
         self.conn
             .execute("DELETE FROM agent_controls WHERE seat=?1", [seat])
             .map(|_| ())
+    }
+    /// The control mode of every agent of team `rig` that has one.
+    pub fn controls_of(&self, rig: &str) -> rusqlite::Result<Vec<(String, ControlMode)>> {
+        self.conn
+            .prepare(
+                "SELECT c.seat, c.mode FROM agent_controls c JOIN seats s ON s.id=c.seat WHERE s.rig=?1",
+            )?
+            .query_map([rig], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            // An unknown word in an old database still means "stopped", as in `control`.
+            .map(|r| r.map(|(seat, m)| (seat, ControlMode::parse(&m).unwrap_or(ControlMode::Hard))))
+            .collect()
     }
     pub fn clear_controls_of(&self, rig: &str) -> rusqlite::Result<()> {
         self.conn

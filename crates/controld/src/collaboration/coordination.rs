@@ -27,9 +27,19 @@ pub fn routes() -> Router<AppState> {
             "/api/teams/{id}/children",
             crate::collaboration::get(children),
         )
+        .merge(control_routes())
+}
+
+/// One agent's control (ask and read), and every agent's control mode in a team.
+fn control_routes() -> Router<AppState> {
+    Router::new()
         .route(
             "/api/seats/{id}/control",
             crate::collaboration::post(control).get(control_status),
+        )
+        .route(
+            "/api/teams/{id}/controls",
+            crate::collaboration::get(team_controls),
         )
 }
 #[derive(Serialize, Deserialize)]
@@ -147,6 +157,23 @@ pub(super) async fn control_status(State(st): State<AppState>, Path(id): Path<St
             .expect("store mutex must not be poisoned")
             .control(&id)
             .map(|mode| json!({"mode":mode}))
+            .map_err(ApiError::from),
+    )
+}
+
+/// Each agent of a team with a control mode (stopping, stopped, pausing or paused by the operator or a
+/// budget), by agent id. An agent without one is absent. (A newtype: serialized as the map itself.)
+#[derive(Serialize, ts_rs::TS)]
+#[ts(export)]
+pub struct TeamControls(pub std::collections::BTreeMap<String, crate::store::ControlMode>);
+
+pub(super) async fn team_controls(State(st): State<AppState>, Path(id): Path<String>) -> Response {
+    crate::collaboration::respond(
+        st.store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .controls_of(&id)
+            .map(|modes| TeamControls(modes.into_iter().collect()))
             .map_err(ApiError::from),
     )
 }
