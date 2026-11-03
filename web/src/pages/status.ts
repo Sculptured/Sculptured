@@ -1,6 +1,6 @@
 import type { IconName } from '../shell/icons';
 import type { TeamRow } from '../shell/model';
-import { allAgentsFinished } from '../shell/runFinished';
+import { allAgentsFinished } from '../shell/runFinishedModel';
 import { hasProcess } from '../status';
 
 export type StatusTone = 'needs-you' | 'waiting' | 'working' | 'done' | 'idle';

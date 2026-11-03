@@ -6,7 +6,7 @@ import type { TeamDraft } from '../generated/TeamDraft';
 import { shortAge } from '../herdr';
 import { canReceive } from '../shell/Broadcast';
 import type { AgentRow } from '../shell/model';
-import { lastReply } from '../shell/runFinished';
+import { lastReply } from '../shell/runFinishedModel';
 import { useShell } from '../shell/ShellContext';
 import { Btn, Icon, StateMark, StuckMark, VendorMark, WaitingMark } from '../shell/ui';
 import { shortPath, useHome } from '../structure/FolderPicker';

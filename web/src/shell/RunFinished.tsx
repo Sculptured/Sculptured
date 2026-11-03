@@ -4,7 +4,7 @@ import { api } from '../api';
 import type { GitSnapshot } from '../generated/GitSnapshot';
 import { plural } from '../format';
 import type { AgentRow } from './model';
-import { allAgentsFinished, checkLine, finishedKey, finishedLine, lastReply } from './runFinished';
+import { allAgentsFinished, checkLine, finishedKey, finishedLine, lastReply } from './runFinishedModel';
 import { Icon, StateMark } from './ui';
 
 const STILL_RUNNING = 'Every agent finished its turn; the team is still running.';

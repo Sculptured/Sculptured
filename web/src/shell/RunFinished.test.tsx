@@ -8,7 +8,7 @@ import { agentState, vendor } from '../herdr';
 import { seatView } from '../test-fixtures';
 import type { AgentRow } from './model';
 import { RunFinishedBar, RunSummary, SETTLE_MS } from './RunFinished';
-import { allAgentsFinished, checkLine } from './runFinished';
+import { allAgentsFinished, checkLine } from './runFinishedModel';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
