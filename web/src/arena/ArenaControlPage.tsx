@@ -2,22 +2,32 @@ import { useParams } from 'react-router-dom';
 import { Icon } from '../shell/ui';
 import { PopOutPane } from '../workspace/PopOutPane';
 import { WorkspacePage } from '../workspace/WorkspacePage';
-import { useArenaData } from './data';
+import { isArenaDown, useArenaData, type ArenaCtx } from './data';
 import { arenaDefaults } from './defaults';
+import { ArenaDownBanner } from './gate';
 import { arenaPanePath } from './paths';
 import { arenaRegistry } from './registry';
+import { StatusStrip } from './StatusStrip';
 import '../tests/tests.css';
 import './arena.css';
 
 /** The workspace's name for its layouts and its selection channel. */
 export const ARENA_PAGE = 'arena';
 
-function Header() {
+/** While Arena is not answering, one alarm for the whole page; the panes only say "Offline". */
+function DownBanner({ ctx }: { ctx: ArenaCtx }) {
+  return ctx.health === null && isArenaDown(ctx.healthError) ? <ArenaDownBanner error={ctx.healthError} /> : null;
+}
+
+function Header({ ctx }: { ctx: ArenaCtx }) {
   return (
-    <div className="arena-head">
-      <h1 className="page-title"><Icon name="flask" size={18} /> Arena control</h1>
-      <p className="muted tst-small">Run a team in a simulated world saved at every step. Go back to any step, change it, and rerun from there.</p>
-    </div>
+    <>
+      <div className="arena-head">
+        <h1 className="arena-title"><Icon name="flask" size={16} /> Arena control</h1>
+        <StatusStrip ctx={ctx} />
+      </div>
+      <DownBanner ctx={ctx} />
+    </>
   );
 }
 
@@ -26,7 +36,7 @@ export function ArenaControlPage() {
   const ctx = useArenaData();
   return (
     <main className="arena-page">
-      <WorkspacePage page={ARENA_PAGE} registry={arenaRegistry} ctx={ctx} defaults={arenaDefaults} paneRoute={arenaPanePath} header={<Header />} />
+      <WorkspacePage page={ARENA_PAGE} registry={arenaRegistry} ctx={ctx} defaults={arenaDefaults} paneRoute={arenaPanePath} header={<Header ctx={ctx} />} />
     </main>
   );
 }
@@ -35,5 +45,10 @@ export function ArenaControlPage() {
 export function ArenaPanePage() {
   const { instance = '' } = useParams();
   const ctx = useArenaData();
-  return <main className="arena-page arena-popout"><PopOutPane page={ARENA_PAGE} registry={arenaRegistry} ctx={ctx} instance={instance} /></main>;
+  return (
+    <main className="arena-page arena-popout">
+      <DownBanner ctx={ctx} />
+      <PopOutPane page={ARENA_PAGE} registry={arenaRegistry} ctx={ctx} instance={instance} />
+    </main>
+  );
 }

@@ -7,7 +7,7 @@ import { APPROXIMATE_LABEL, isApproximate, planLine } from './restore';
 import { kindLabel } from './team';
 import type { AgentKind, BranchStatus, Health, RestoredPart } from './types';
 
-const STATUS: Record<BranchStatus, { glyph: string; word: string; tone: string }> = {
+export const BRANCH_STATUS: Record<BranchStatus, { glyph: string; word: string; tone: string }> = {
   running: { glyph: '◐', word: 'Running', tone: 'working' },
   passed: { glyph: '✓', word: 'Passed the check', tone: 'done' },
   failed: { glyph: '✕', word: 'Failed the check', tone: 'failed' },
@@ -17,7 +17,7 @@ const STATUS: Record<BranchStatus, { glyph: string; word: string; tone: string }
 
 /** A branch's status: its shape and its word, then colour. */
 export function StatusPill({ status, short }: { status: BranchStatus; short?: boolean }) {
-  const s = STATUS[status];
+  const s = BRANCH_STATUS[status];
   return (
     <span className={`tst-status tst-${s.tone}`}>
       <span aria-hidden="true">{s.glyph}</span>

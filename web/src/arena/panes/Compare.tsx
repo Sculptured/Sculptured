@@ -59,13 +59,14 @@ function Summary({ cmp, a, b }: { cmp: CompareResponse; a: string; b: string }) 
 }
 
 function CompareBody({ settings, setSettings }: PaneProps<Chosen>) {
-  const { runs, runsError } = useArena();
+  const { runs: loaded } = useArena();
+  const runs = loaded.value;
   const { a, b } = settings;
   const { cmp, error } = useCompare(a, b);
-  if (runsError && !runs) return <ArenaProblem error={runsError} />;
-  if (!runs) return <p className="muted">Reading runs…</p>;
+  if (!runs) return loaded.error ? <ArenaProblem error={loaded.error} /> : <p className="muted">Reading runs…</p>;
   return (
     <>
+      <ArenaProblem error={loaded.error} />
       <div className="tst-row">
         <BranchSelect label="First" runs={runs} value={a} onChange={(v) => setSettings({ ...settings, a: v || undefined })} />
         <BranchSelect label="Second" runs={runs} value={b} onChange={(v) => setSettings({ ...settings, b: v || undefined })} />

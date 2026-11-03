@@ -1,46 +1,105 @@
-/* Arena control (`/arena`): the page around its workspace, and the bodies of its panes. Tokens only. */
+/* Arena control (`/arena`): the page around its workspace, its status strip, and the bodies of its
+   panes, kept dense like an operations console. Tokens only. */
 
 .arena-page { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 .arena-page > .workspace { flex: 1; }
 .arena-popout { height: 100vh; }
-.arena-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1) var(--space-3); padding: var(--space-2) var(--space-3); }
-.arena-head .page-title { margin: 0; font-size: var(--text-lg); display: inline-flex; align-items: center; gap: var(--space-2); }
-.arena-head p { margin: 0; }
+.arena-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.arena-warn { color: var(--status-waiting); }
 
-.arena-pane { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2); min-width: 0; }
+/* Header: title, then the status strip. */
+.arena-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: 6px var(--space-3); }
+.arena-title { margin: 0; display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-md); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text); }
+.arena-strip { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.arena-tile { display: flex; flex-direction: column; gap: 1px; min-width: 96px; padding: 3px 10px; border: 1px solid var(--line-2); border-left: 3px solid var(--tile, var(--line-3)); border-radius: var(--radius-sm); background: var(--well); }
+.arena-tile-label { font-size: var(--text-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.arena-tile-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-sm); color: var(--text); white-space: nowrap; }
+.arena-tile-up { --tile: var(--status-verified); }
+.arena-tile-up .arena-tile-value span { color: var(--status-verified); }
+.arena-tile-warn { --tile: var(--status-waiting); }
+.arena-tile-warn .arena-tile-value span { color: var(--status-waiting); }
+.arena-tile-down { --tile: var(--status-blocked); }
+.arena-tile-down .arena-tile-value { color: var(--status-blocked); }
+
+/* Arena down: one alarm across the page; panes say "Offline". */
+.arena-alarm { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--space-3); padding: 6px var(--space-3); border-top: 1px solid var(--red-line); border-bottom: 1px solid var(--red-line); background: var(--red-soft); }
+.arena-alarm-head { font-weight: var(--weight-semibold); color: var(--status-blocked); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.arena-alarm code, .arena-offline code { padding: 1px 6px; border-radius: var(--radius-sm); background: var(--panel); border: 1px solid var(--line); }
+.arena-offline { margin: 0; color: var(--muted); font-family: var(--font-mono); font-size: var(--text-sm); }
+.arena-offline span { color: var(--status-blocked); }
+
+/* Pane bodies */
+.arena-pane { display: flex; flex-direction: column; gap: var(--space-2); padding: 4px; min-width: 0; font-size: var(--text-sm); container-type: inline-size; }
 .arena-pad { padding: var(--space-2); }
 .arena-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
-.arena-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.arena-item { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--well); padding: var(--space-2) var(--space-3); min-width: 0; }
-.arena-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-width: 0; }
-.arena-item p { margin: var(--space-1) 0 0; }
+.arena-inline { display: inline-flex; align-items: center; gap: var(--space-2); }
+.arena-inline select { font: inherit; color: var(--text); background: var(--well); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 3px 6px; max-width: 280px; }
+.arena-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.arena-item { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--well); padding: 6px var(--space-2); min-width: 0; }
+.arena-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--space-2); min-width: 0; }
+.arena-item p { margin: 4px 0 0; }
 
-/* "Arena is not running": a plain notice with the command to start it. */
-.arena-down { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--line-2); border-radius: var(--radius-md); background: var(--well); }
-.arena-down p { margin: 0; }
-.arena-down-head { font-weight: var(--weight-semibold); color: var(--status-unknown); }
-.arena-down code { padding: 1px 6px; border-radius: var(--radius-sm); background: var(--panel); border: 1px solid var(--line); }
+/* Tables: thin caps headers, hairline rows, numbers right-aligned in mono. */
+.arena-table-wrap { overflow-x: auto; min-width: 0; }
+.arena-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.arena-table th { text-align: left; font-weight: var(--weight-medium); font-size: var(--text-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--muted); padding: 4px var(--space-2); border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.arena-table td { padding: 5px var(--space-2); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.arena-table tbody tr:hover td { background: var(--hover); }
+.arena-table th.arena-num { text-align: right; }
+.arena-subrow td { padding-top: 0; color: var(--muted); }
+.arena-task { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-actions { text-align: right; white-space: nowrap; }
+.arena-counts { display: inline-flex; gap: 0 4px; white-space: nowrap; }
+.arena-count { color: var(--c); font-variant-numeric: tabular-nums; }
+.arena-sep { color: var(--muted); margin-right: 4px; }
+
+/* New run: one line */
+.arena-bar-new { display: flex; flex-direction: column; gap: var(--space-2); padding: 6px var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--well); }
+.arena-chain { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.arena-team { display: flex; flex-direction: column; gap: var(--space-2); }
 
 /* World */
-.arena-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px var(--space-3); margin: var(--space-2) 0 0; font-size: var(--text-sm); }
-.arena-facts dt { color: var(--muted); }
-.arena-facts dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
-.arena-chip { padding: 0 8px; border-radius: var(--radius-pill); border: 1px solid var(--accent-line); background: var(--accent-soft); }
-.arena-chip-none { border-color: var(--line-2); background: transparent; color: var(--muted); }
+.arena-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.arena-chip { padding: 0 8px; border-radius: var(--radius-pill); border: 1px solid var(--accent-line); background: var(--accent-soft); white-space: nowrap; }
+.arena-chip-none { border: 1px dashed var(--status-waiting); background: transparent; color: var(--status-waiting); }
 .arena-tools summary { cursor: pointer; }
-.arena-tools ul { margin: 4px 0 0; padding-left: var(--space-4); }
+.arena-tools ul { margin: 4px 0 0; padding-left: var(--space-4); text-align: left; }
 
-/* Saves and disk */
-.arena-total p { margin: 0 0 var(--space-1); }
-.arena-total meter { width: 100%; height: 10px; }
+/* Saves and disk: one bar split by integration, a tick at the limit. */
+.arena-total p { margin: 0 0 4px; }
+.arena-stack { position: relative; display: flex; height: 12px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--well); overflow: visible; }
+.arena-seg { height: 100%; background: var(--seg); }
+.arena-seg + .arena-seg { box-shadow: inset 1px 0 0 var(--bg); }
+.arena-limit { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); }
+.arena-limit-note { margin: 2px 0 0; text-align: right; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.arena-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--seg); vertical-align: middle; }
 .arena-cleanup { display: flex; flex-direction: column; gap: var(--space-2); }
 
-/* Fork tree */
-.arena-tree { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.arena-tree li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--space-2); }
+/* Engine */
+.arena-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px var(--space-3); margin: 0; }
+.arena-grid dt { color: var(--muted); font-size: var(--text-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; align-self: center; }
+.arena-grid dd { margin: 0; }
+.arena-grid dd.arena-num { text-align: left; }
+.arena-grid-row { display: contents; }
+.arena-up { color: var(--status-verified); font-weight: var(--weight-semibold); }
 
-/* Runs */
-.arena-new { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
-.arena-team { display: flex; flex-direction: column; gap: var(--space-2); }
+/* Fork tree */
+.arena-tree { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.arena-tree li { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-2); }
+.arena-tree .arena-num { min-width: 72px; }
+
 .arena-compare { display: flex; flex-direction: column; gap: var(--space-2); }
 .arena-compare p { margin: 0; }
+
+/* A narrow pane (a phone, or a pane squeezed by the layout): each table row becomes a wrapped line, numbers labelled. */
+@container (max-width: 560px) {
+  .arena-table thead { display: none; }
+  .arena-table, .arena-table tbody { display: block; }
+  .arena-table tr { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-2); padding: 6px var(--space-1); border-bottom: 1px solid var(--line); }
+  .arena-table td { display: block; padding: 0; border: 0; }
+  .arena-table td.arena-num { text-align: left; }
+  .arena-table td[data-label]::before { content: attr(data-label) ' '; color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+  .arena-task { max-width: none; flex-basis: 100%; white-space: normal; }
+  .arena-actions { margin-left: auto; }
+  .arena-subrow td { white-space: normal; }
+}

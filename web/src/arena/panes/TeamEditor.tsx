@@ -10,9 +10,13 @@ import type { AgentKind, AgentSpec, Team } from '../../tests/types';
  */
 export function useTestTeam(onError: (e: unknown) => void) {
   const [team, setTeam] = useState<Team | null>(null);
+  // Only the user's edits are kept; the default stays unstored, so it follows Arena's.
+  const [edited, setEdited] = useState(false);
   useEffect(() => { loadTeam().then(setTeam).catch(onError); }, [onError]);
-  const update = (fn: (t: Team) => Team) => setTeam((t) => { if (!t) return t; const next = fn(t); saveTeam(next); return next; });
+  useEffect(() => { if (edited && team) saveTeam(team); }, [edited, team]);
+  const update = (fn: (t: Team) => Team) => { setEdited(true); setTeam((t) => (t ? fn(t) : t)); };
   const reset = async () => {
+    setEdited(false);
     clearStoredTeam();
     try { setTeam(await arena.defaultTeam()); } catch (e) { onError(e); }
   };

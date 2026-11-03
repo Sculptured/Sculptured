@@ -4,22 +4,27 @@ import { ARENA_DOWN, ARENA_START_COMMAND } from '../errors';
 import { ErrorNote } from '../tests/shared';
 import { isArenaDown, useArena } from './data';
 
-/** Arena is not answering: say so plainly, with how to start it. What controld saw is evidence. */
-export function ArenaDown({ error }: { error?: unknown }) {
+/** The page-level alarm while Arena is not answering: say so plainly, with how to start it. What controld saw is evidence. */
+export function ArenaDownBanner({ error }: { error: unknown }) {
   const raw = error instanceof ApiError ? error.raw : undefined;
   return (
-    <div className="arena-down" role="status">
-      <p className="arena-down-head"><span aria-hidden="true">■</span> {ARENA_DOWN}</p>
-      <p>Start it in the arena folder with <code className="mono">{ARENA_START_COMMAND}</code>. This page checks again every 15 seconds.</p>
-      {raw && <p className="tst-evidence mono tst-small" data-raw-evidence>Arena said: {raw}</p>}
+    <div className="arena-alarm" role="alert">
+      <span className="arena-alarm-head"><span aria-hidden="true">■</span> {ARENA_DOWN}</span>
+      <span>Start it in the arena folder with <code className="mono">{ARENA_START_COMMAND}</code>. This page checks again every 15 seconds.</span>
+      {raw && <span className="tst-evidence mono tst-small" data-raw-evidence>Arena said: {raw}</span>}
     </div>
   );
 }
 
-/** Any Arena error: "not running" when it is that, otherwise its plain sentence. */
+/** A pane's place-holder while Arena is not answering; the banner above says why and how to start it. */
+export function Offline() {
+  return <p className="arena-offline" role="status"><span aria-hidden="true">■</span> Offline: {ARENA_DOWN}.</p>;
+}
+
+/** Any Arena error: "Offline" when Arena is not answering, otherwise its plain sentence. */
 export function ArenaProblem({ error, text }: { error: unknown; text?: string }) {
   if (error == null) return null;
-  return isArenaDown(error) ? <ArenaDown error={error} /> : <ErrorNote error={error} text={text} />;
+  return isArenaDown(error) ? <Offline /> : <ErrorNote error={error} text={text} />;
 }
 
 /** A pane's body once Arena answers; before that, "asking", or why it isn't answering. */

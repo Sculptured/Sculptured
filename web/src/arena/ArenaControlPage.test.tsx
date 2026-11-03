@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openRigWords } from '../test-vocab';
+import { HEALTH_CHANGED } from '../tests/shared';
 import type { Branch, RunSummary } from '../tests/types';
 import { FakeChannel } from '../workspace/testkit';
 import { ArenaPanePage } from './ArenaControlPage';
@@ -41,12 +42,17 @@ const DOWN: [number, unknown] = [503, { error: { code: 'arena_unreachable', mess
 let runs: RunSummary[];
 let gcReply: [number, unknown];
 let down: boolean;
+/** Paths that answer 500 (arena_failed) for now. */
+let failing: Set<string>;
+/** Whether DELETE empties the runs list (false: the next read still lists the run). */
+let deleteClears: boolean;
 let calls: { method: string; url: string }[];
 
 function answer(method: string, url: string): [number, unknown] {
   if (down) return DOWN;
   const path = url.replace('/api/arena', '');
-  if (method === 'DELETE' && path === '/runs/r1') { runs = []; return [200, { dropped: 2 }]; }
+  if (failing.has(path)) return [500, { error: { code: 'arena_failed', message: 'failed', raw: `${path} broke` } }];
+  if (method === 'DELETE' && path === '/runs/r1') { if (deleteClears) runs = []; return [200, { dropped: 2 }]; }
   if (method === 'POST' && path === '/gc') return gcReply;
   const table: Record<string, unknown> = {
     '/health': HEALTH, '/runs': runs, '/tasks': [{ id: '27', reason: 'Swap the boots.' }], '/team/default': team, '/world': WORLD, '/usage': USAGE,
@@ -61,6 +67,8 @@ beforeEach(() => {
   runs = [{ id: 'r1', task_id: '27', created_at: at(0), branches: [branch('b1', null, null, 0), branch('b2', 'b1', 5, 30)] }];
   gcReply = [200, { removed: ['s-old-1', 's-old-2'], freed_bytes: 512 * 2 ** 20, errors: [] }];
   down = false;
+  failing = new Set();
+  deleteClears = true;
   calls = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
@@ -77,6 +85,8 @@ const page = (path = '/arena') => render(
   </MemoryRouter>,
 );
 const pane = (title: string) => screen.getByRole('region', { name: title });
+const healthCheck = () => act(() => { window.dispatchEvent(new Event(HEALTH_CHANGED)); });
+const reads = (path: string) => calls.filter((c) => c.method === 'GET' && c.url.endsWith(path)).length;
 const layoutTab = (name: string) => within(screen.getByRole('tablist', { name: 'Layouts' })).getByRole('tab', { name });
 
 function Where() {
@@ -91,12 +101,25 @@ describe('Arena control', () => {
     expect(within(screen.getByRole('tablist', { name: 'Layouts' })).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overview', 'Storage']);
     expect(layoutTab('Overview')).toHaveAttribute('aria-selected', 'true');
     for (const title of ['Runs', 'World', 'Engine']) expect(pane(title)).toBeInTheDocument();
-    // Runs beside a column of World over Engine.
+    // On screen: Runs beside a column of World over Engine.
+    const row = container.querySelector('.ws > .ws-split-row')!;
+    const cells = [...row.children].filter((c) => c.classList.contains('ws-cell')) as HTMLElement[];
+    expect(cells).toHaveLength(2);
+    expect(cells[0].querySelector(':scope > section')).toBe(pane('Runs'));
+    const col = cells[1].querySelector(':scope > .ws-split-col')!;
+    expect([...col.querySelectorAll(':scope > .ws-cell > section')]).toEqual([pane('World'), pane('Engine')]);
+    // jsdom drops the cells' flex shorthand, so the shares are read from the layout itself.
     const root = arenaDefaults().layouts[0].root;
-    expect(root.kind === 'split' && root.dir).toBe('row');
-    expect(root.kind === 'split' && root.kids.map((k) => (k.kind === 'split' ? k.dir : k.panes[0].type))).toEqual(['arena.runs', 'col']);
-    expect(await within(pane('Engine')).findByText('Arena running')).toBeInTheDocument();
+    expect(root.kind === 'split' && root.sizes).toEqual([0.45, 0.55]);
+    expect(await within(pane('Engine')).findByText('Can run', { exact: false })).toBeInTheDocument();
     expect(await within(pane('Runs')).findByRole('link', { name: 'Task 27' })).toHaveAttribute('href', '/arena/runs/r1/b1');
+    const strip = within(screen.getByRole('list', { name: 'Arena status' }));
+    expect(await strip.findByText('3/4 answering')).toBeInTheDocument();
+    expect(strip.getByText('Up')).toBeInTheDocument();
+    expect(strip.getByText('15% of 10 GB')).toBeInTheDocument();
+    expect(strip.getByText('0 branches')).toBeInTheDocument();
+    expect(within(pane('Engine')).getByText('Up')).toBeInTheDocument();
+    expect(within(pane('Engine')).getByText(/Can't run: codex is not on this computer/)).toBeInTheDocument();
     expect(openRigWords(container)).toEqual([]);
   });
 
@@ -118,17 +141,18 @@ describe('Arena control', () => {
   it('world_pane_shows_restore_words', async () => {
     page();
     const world = pane('World');
-    const part = async (name: string) => within(await within(world).findByRole('listitem', { name: `Part ${name}` }));
+    const part = async (name: string) => within(await within(world).findByRole('row', { name: `Part ${name}` }));
     expect((await part('retail')).getByText('Exact from a save')).toBeInTheDocument();
     expect((await part('retail')).getByText('✓')).toBeInTheDocument();
     expect((await part('plant')).getByText('Exact by replay')).toBeInTheDocument();
     expect((await part('plant')).getByText('Approximate')).toBeInTheDocument();
-    expect((await part('plant')).getByText('Uses the arena clock')).toBeInTheDocument();
-    expect((await part('ledger')).getByText("Can't be restored")).toBeInTheDocument();
-    const mail = await part('mail');
-    expect(mail.getByText('Not answering')).toBeInTheDocument();
-    expect(mail.getByText('connect ECONNREFUSED 127.0.0.1:7001')).toHaveAttribute('data-raw-evidence');
-    expect(mail.getByText(/did not describe itself/)).toBeInTheDocument();
+    expect((await part('plant')).getByText('Arena clock')).toBeInTheDocument();
+    expect((await part('plant')).getByText('isaac@6.2')).toBeInTheDocument();
+    expect((await part('ledger')).getByText("Can't be restored").parentElement).toHaveTextContent("⊘ Can't be restored");
+    expect((await part('mail')).getByText('Not answering')).toBeInTheDocument();
+    // What a silent part said sits in the row under it, as evidence.
+    expect(within(world).getByText('connect ECONNREFUSED 127.0.0.1:7001')).toHaveAttribute('data-raw-evidence');
+    expect(within(world).getByText(/did not describe itself/)).toBeInTheDocument();
   });
 
   it('storage_clean_up', async () => {
@@ -153,6 +177,7 @@ describe('Arena control', () => {
     expect(within(storage).getByText('gc timed out')).toHaveAttribute('data-raw-evidence');
     expect(calls.filter((c) => c.method === 'POST' && c.url.endsWith('/gc'))).toHaveLength(2);
     await waitFor(() => expect(calls.filter((c) => c.url.endsWith('/usage')).length).toBeGreaterThan(usageReads));
+    expect(within(screen.getByRole('list', { name: 'Arena status' })).getByText('just now · freed 512 MB')).toBeInTheDocument();
   });
 
   it('storage clean up waits for running branches, and says why', async () => {
@@ -170,11 +195,15 @@ describe('Arena control', () => {
     down = true;
     const user = userEvent.setup();
     const { container } = page();
+    // One alarm for the page, with how to start Arena; each pane only says it is offline.
+    const banner = await screen.findByRole('alert');
+    expect(banner).toHaveTextContent('Arena is not running');
+    expect(within(banner).getByText('cd core && cargo run -p arenad')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Arena status' })).getByText('Down')).toBeInTheDocument();
     // The pane on show in that stack (a stack keeps its other tabs' bodies, hidden).
     const shown = (title: string) => within(pane(title).querySelector<HTMLElement>('.ws-pane.is-on')!);
     const plain = async (title: string) => {
-      expect(await shown(title).findByText('Arena is not running')).toBeInTheDocument();
-      expect(shown(title).getByText('cd core && cargo run -p arenad')).toBeInTheDocument();
+      expect(await shown(title).findByText(/Offline: Arena is not running/)).toBeInTheDocument();
     };
     for (const title of ['Runs', 'World', 'Engine']) await plain(title);
     await user.click(layoutTab('Storage'));
@@ -182,6 +211,7 @@ describe('Arena control', () => {
     await user.click(screen.getByRole('button', { name: '+ Add pane' }));
     await user.click(screen.getByRole('menuitem', { name: /Compare/ }));
     await plain('Compare');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
     // arenad's own words only as evidence.
     for (const n of within(container).getAllByText(/connection refused/)) expect(n).toHaveAttribute('data-raw-evidence');
     expect(openRigWords(container)).toEqual([]);
@@ -233,7 +263,7 @@ describe('Arena control', () => {
 
   it('a popped-out pane renders on its own route', async () => {
     const first = page();
-    await within(pane('World')).findByRole('listitem', { name: 'Part retail' });
+    await within(pane('World')).findByRole('row', { name: 'Part retail' });
     first.unmount();
     render(
       <MemoryRouter initialEntries={['/arena/pane/ov-world']}>
@@ -241,6 +271,60 @@ describe('Arena control', () => {
       </MemoryRouter>,
     );
     expect(screen.getByRole('heading', { name: 'World' })).toBeInTheDocument();
-    expect(await screen.findByRole('listitem', { name: 'Part plant' })).toBeInTheDocument();
+    expect(await screen.findByRole('row', { name: 'Part plant' })).toBeInTheDocument();
+  });
+
+  it('a delete that succeeded never offers Delete again before the run goes', async () => {
+    deleteClears = false;
+    const user = userEvent.setup();
+    page();
+    const runsPane = pane('Runs');
+    await within(runsPane).findByRole('link', { name: 'Task 27' });
+    await user.click(within(runsPane).getByRole('button', { name: 'Delete' }));
+    await user.click(within(runsPane).getByRole('button', { name: 'Delete run' }));
+    await waitFor(() => expect(reads('/runs')).toBeGreaterThan(1));
+    expect(within(runsPane).getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    expect(within(runsPane).queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(1);
+  });
+
+  it('runs table counts branches by status and shows the first run time', async () => {
+    runs[0].branches.push({ ...branch('b3', 'b1', 7, 60), status: 'failed' });
+    page();
+    const row = within(await within(pane('Runs')).findByRole('row', { name: 'Run of task 27' }));
+    expect(row.getByText(/1 failed/)).toHaveTextContent('✕ 1 failed');
+    expect(row.getByText(/2 passed/)).toHaveTextContent('✓ 2 passed');
+    expect(row.getByText('10.0 s')).toBeInTheDocument();
+    expect(row.getByText(/ ago$|^just now$/)).toBeInTheDocument();
+    expect(within(pane('Runs')).getByRole('columnheader', { name: 'Took' })).toBeInTheDocument();
+    // No cost column: the runs list carries no cost, so none is shown.
+    expect(within(pane('Runs')).queryByRole('columnheader', { name: /Cost/ })).toBeNull();
+  });
+
+  it('each health check re-reads runs, usage and the world', async () => {
+    page();
+    await within(pane('Runs')).findByRole('link', { name: 'Task 27' });
+    await waitFor(() => expect(reads('/world')).toBe(1));
+    const before = [reads('/runs'), reads('/usage'), reads('/world')];
+    await healthCheck();
+    await waitFor(() => expect([reads('/runs'), reads('/usage'), reads('/world')]).toEqual(before.map((n) => n + 1)));
+  });
+
+  it('a failed re-read shows its problem above the last answer', async () => {
+    const user = userEvent.setup();
+    page();
+    await user.click(layoutTab('Storage'));
+    const tree = pane('Fork tree');
+    const storage = pane('Saves and disk');
+    await within(tree).findByText('Forked from Original at step 5');
+    await within(storage).findByText('Saves use 1.5 GB of 10 GB');
+    failing = new Set(['/runs', '/usage']);
+    await healthCheck();
+    expect(await within(tree).findByText('Arena hit a problem with this request.')).toBeInTheDocument();
+    expect(within(tree).getByText('Forked from Original at step 5')).toBeInTheDocument();
+    expect(within(storage).getByText('Arena hit a problem with this request.')).toBeInTheDocument();
+    expect(within(storage).getByText('Saves use 1.5 GB of 10 GB')).toBeInTheDocument();
+    const note = within(tree).getByText('Arena hit a problem with this request.');
+    expect(note.compareDocumentPosition(within(tree).getByText('Forked from Original at step 5')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

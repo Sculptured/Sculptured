@@ -1,47 +1,55 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { ARENA_GC_WORDS, errorTextWith } from '../../errors';
 import { plural } from '../../format';
 import { Btn } from '../../shell/ui';
 import { arena } from '../../tests/api';
-import { HEALTH_CHANGED } from '../../tests/shared';
-import type { GcResponse, IntegrationUsage, UsageResponse } from '../../tests/types';
+import type { GcResponse, UsageResponse } from '../../tests/types';
 import { useArena } from '../data';
 import { ArenaGate, ArenaProblem } from '../gate';
 import { sizeWords } from '../words';
 
-function useUsage() {
-  const [usage, setUsage] = useState<UsageResponse | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const load = useCallback(() => {
-    arena.usage().then((u) => { setUsage(u); setError(null); }).catch(setError);
-  }, []);
-  useEffect(load, [load]);
-  return { usage, error, load };
-}
+const SERIES = 6;
+const seg = (i: number) => ({ '--seg': `var(--series-${(i % SERIES) + 1})` }) as CSSProperties;
+const pct = (n: number, of: number) => `${Math.min(100, (100 * n) / of)}%`;
 
-function Total({ usage }: { usage: UsageResponse }) {
+/** Saves against the limit: one bar split by integration, with a tick at the limit. */
+function UsageBar({ usage }: { usage: UsageResponse }) {
+  const scale = Math.max(usage.total_bytes, usage.limit_bytes, 1);
   const share = usage.limit_bytes > 0 ? Math.round((100 * usage.total_bytes) / usage.limit_bytes) : null;
   return (
     <div className="arena-total">
-      <p><strong>Saves use {sizeWords(usage.total_bytes)} of {sizeWords(usage.limit_bytes)}</strong>{share != null && <span className="muted"> ({share}%)</span>}</p>
-      <meter min={0} max={usage.limit_bytes} value={usage.total_bytes} aria-label="Disk used by saves" />
+      <p className="arena-row">
+        <strong>Saves use {sizeWords(usage.total_bytes)} of {sizeWords(usage.limit_bytes)}</strong>
+        {share != null && <span className={`arena-num${share >= 90 ? ' arena-warn' : ' muted'}`}>{share >= 90 && <span aria-hidden="true">⚠ </span>}{share}%</span>}
+      </p>
+      <div className="arena-stack" role="img" aria-label={`Saves use ${share ?? '?'}% of the limit`}>
+        {usage.integrations.map((r, i) => (r.bytes > 0 ? <span key={r.integration} className="arena-seg" style={{ ...seg(i), width: pct(r.bytes, scale) }} title={`${r.integration}: ${sizeWords(r.bytes)}`} /> : null))}
+        <span className="arena-limit" style={{ left: pct(usage.limit_bytes, scale) }} title={`Limit ${sizeWords(usage.limit_bytes)}`} />
+      </div>
+      <p className="arena-limit-note"><span aria-hidden="true">▏</span>limit {sizeWords(usage.limit_bytes)}</p>
     </div>
   );
 }
 
-function Integration({ row }: { row: IntegrationUsage }) {
+/** Each integration: its colour in the bar, the parts that use it, and its bytes (or why they're unknown). */
+function Legend({ usage }: { usage: UsageResponse }) {
   return (
-    <li className="arena-item">
-      <div className="arena-item-head">
-        <strong className="mono">{row.integration}</strong>
-        <span className="muted tst-small">used by {row.parts.join(', ')}</span>
-        <span className="tst-spacer" />
-        {row.error
-          ? <span className="tst-status tst-blocked"><span aria-hidden="true">⚠</span>Not answering</span>
-          : <span>{sizeWords(row.bytes)}</span>}
-      </div>
-      {row.error && <p className="tst-small">Its size is unknown and not in the total. It said: <span className="tst-evidence mono" data-raw-evidence>{row.error}</span></p>}
-    </li>
+    <table className="arena-table" aria-label="Saves by integration">
+      <thead><tr><th>Integration</th><th>Used by</th><th className="arena-num">Size</th></tr></thead>
+      <tbody>
+        {usage.integrations.map((r, i) => (
+          <tr key={r.integration}>
+            <td><span className="arena-swatch" style={seg(i)} aria-hidden="true" /> <span className="mono">{r.integration}</span></td>
+            <td className="muted">{r.parts.join(', ')}</td>
+            <td className="arena-num">
+              {r.error
+                ? <><span className="tst-status tst-blocked"><span aria-hidden="true">⚠</span>Not answering</span> <span className="tst-evidence mono tst-small" data-raw-evidence>{r.error}</span></>
+                : sizeWords(r.bytes)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -58,25 +66,25 @@ function Freed({ result }: { result: GcResponse }) {
 }
 
 /** "Clean up": runs Arena's cleanup and says what it freed. Not while a branch is running. */
-function CleanUp({ onDone }: { onDone(): void }) {
-  const { runs } = useArena();
+function CleanUp() {
+  const { runs, cleanedUp } = useArena();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<GcResponse | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const running = !!runs?.some((r) => r.branches.some((b) => b.status === 'running'));
+  const running = !!runs.value?.some((r) => r.branches.some((b) => b.status === 'running'));
   const run = async () => {
     setBusy(true); setError(null); setResult(null);
     try {
-      setResult(await arena.gc());
-      window.dispatchEvent(new Event(HEALTH_CHANGED));
-      onDone();
+      const r = await arena.gc();
+      setResult(r);
+      cleanedUp({ at: Date.now(), freed_bytes: r.freed_bytes });
     } catch (e) { setError(e); }
     setBusy(false);
   };
   return (
     <section className="arena-cleanup" aria-label="Clean up">
       <div className="arena-row">
-        <Btn icon="trash" onClick={run} disabled={busy || running}>{busy ? 'Cleaning up…' : 'Clean up'}</Btn>
+        <Btn size="sm" icon="trash" onClick={run} disabled={busy || running}>{busy ? 'Cleaning up…' : 'Clean up'}</Btn>
         <span className="muted tst-small">{running ? "Can't clean up while a run is going." : 'Removes saves no recorded run uses. Every run keeps its own.'}</span>
       </div>
       {result && <Freed result={result} />}
@@ -85,15 +93,16 @@ function CleanUp({ onDone }: { onDone(): void }) {
   );
 }
 
+/** A failed re-read shows above the last answer, never silently stale. */
 function StorageBody() {
-  const { usage, error, load } = useUsage();
-  if (error && !usage) return <ArenaProblem error={error} />;
-  if (!usage) return <p className="muted">Measuring saves…</p>;
+  const { usage } = useArena();
   return (
     <>
-      <Total usage={usage} />
-      <ul className="arena-list" aria-label="Saves by integration">{usage.integrations.map((r) => <Integration key={r.integration} row={r} />)}</ul>
-      <CleanUp onDone={load} />
+      <ArenaProblem error={usage.error} />
+      {!usage.value && !usage.error && <p className="muted">Measuring saves…</p>}
+      {usage.value && <UsageBar usage={usage.value} />}
+      {usage.value && <Legend usage={usage.value} />}
+      {usage.value && <CleanUp />}
     </>
   );
 }

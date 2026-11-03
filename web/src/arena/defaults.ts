@@ -12,7 +12,7 @@ export function arenaDefaults(): PageLayouts {
     layouts: [
       {
         id: 'overview', name: 'Overview', popped: [],
-        root: split('ov', 'row', [stack('ov-runs', 'arena.runs'), split('ov-side', 'col', [stack('ov-world', 'arena.world'), stack('ov-engine', 'arena.engine')], [0.6, 0.4])], [0.55, 0.45]),
+        root: split('ov', 'row', [stack('ov-runs', 'arena.runs'), split('ov-side', 'col', [stack('ov-world', 'arena.world'), stack('ov-engine', 'arena.engine')], [0.7, 0.3])], [0.45, 0.55]),
       },
       {
         id: 'storage', name: 'Storage', popped: [],
