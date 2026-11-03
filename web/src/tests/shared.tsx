@@ -4,6 +4,7 @@ import { errorText } from '../errors';
 import { Badge, VendorMark } from '../shell/ui';
 import { arena } from './api';
 import { APPROXIMATE_LABEL, isApproximate, planLine } from './restore';
+import { providerId, providerName } from './providers';
 import { kindLabel } from './team';
 import type { AgentKind, BranchStatus, Health, RestoredPart } from './types';
 
@@ -32,15 +33,17 @@ export function ApproximateMark({ of }: { of: { restored?: RestoredPart[] | null
   return <Badge tone="amber" title={of.restored?.map(planLine).join('\n')}>{APPROXIMATE_LABEL}</Badge>;
 }
 
-/** The provider tile and name for an agent's mode. */
-export function KindMark({ kind, model }: { kind: AgentKind; model?: string | null }) {
+/** The vendor tile and name for an agent's mode; an API-mode agent's provider and model follow its mode. */
+export function KindMark({ kind, model, provider }: { kind: AgentKind; model?: string | null; provider?: string | null }) {
+  const via = kind === 'open' ? providerName(providerId(provider)) : null;
   const v = kind === 'claude_code' ? { mark: '✳', name: 'Claude', cls: 'v-claude' }
     : kind === 'codex' ? { mark: '◈', name: 'Codex', cls: 'v-codex' }
-    : { mark: '▪', name: 'OpenRouter', cls: 'v-other' };
+    : { mark: '▪', name: via ?? 'API mode', cls: 'v-other' };
   return (
     <span className="tst-kind">
       <VendorMark v={v} size="xs" />
       <span>{kindLabel(kind)}</span>
+      {via && <span>· {via}</span>}
       {model && <span className="mono muted">{model}</span>}
     </span>
   );
@@ -85,7 +88,7 @@ export function EngineLine({ health }: { health: Health }) {
   const modes = [
     { on: health.claude, word: 'Claude Code', why: 'claude is not on this computer' },
     { on: health.codex, word: 'Codex', why: 'codex is not on this computer' },
-    { on: health.open_available, word: 'OpenRouter', why: 'needs OPENROUTER_API_KEY when arenad starts' },
+    { on: health.open_available, word: 'API mode', why: 'no model provider is set up' },
   ];
   return (
     <span className="tst-engine">

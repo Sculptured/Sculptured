@@ -1,6 +1,6 @@
 import { apiRequest } from '../api';
 import type {
-  BranchDetail, Change, CompareResponse, Event, ForkResponse, GcResponse, Health, NewRunResponse, RestoreMode, RestorePlan,
+  BranchDetail, Change, CompareResponse, Event, ForkResponse, GcResponse, Health, NewRunResponse, ProviderStatus, RestoreMode, RestorePlan,
   RowsResponse, RunSummary, StatusEvent, TaskSummary, Team, UsageResponse, WorldResponse,
 } from './types';
 
@@ -10,6 +10,8 @@ const id = encodeURIComponent;
 
 export const arena = {
   health: () => apiRequest<Health>('GET', `${BASE}/health`),
+  /** Every model provider; asks local servers (and OpenAI/Anthropic when keyed) for their models, 3 s each. */
+  providers: () => apiRequest<ProviderStatus[]>('GET', `${BASE}/providers`),
   tasks: () => apiRequest<TaskSummary[]>('GET', `${BASE}/tasks`),
   defaultTeam: () => apiRequest<Team>('GET', `${BASE}/team/default`),
   runs: () => apiRequest<RunSummary[]>('GET', `${BASE}/runs`),

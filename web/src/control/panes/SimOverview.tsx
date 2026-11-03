@@ -24,7 +24,7 @@ function AgentRow({ a, b, picked, pick }: { a: AgentLine; b: BranchDetail; picke
   return (
     <tr className={picked ? 'is-picked' : undefined}>
       <td><button type="button" className="ctl-key" aria-pressed={picked} onClick={pick}>{a.name}</button></td>
-      <td>{spec ? <KindMark kind={spec.kind} model={spec.model} /> : <span className="ctl-muted">unknown</span>}</td>
+      <td>{spec ? <KindMark kind={spec.kind} model={spec.model} provider={spec.provider} /> : <span className="ctl-muted">unknown</span>}</td>
       <td><span className={`ctl-glyph tone-${a.status.tone}`} aria-hidden="true">{a.status.glyph}</span> {a.status.word}{a.activity ? <span className="ctl-muted"> · {a.activity}</span> : null}</td>
       <td className="ctl-num">{own.length}</td>
       <td className="ctl-num">{typeof p.tokens === 'number' ? compactNumber(p.tokens) : 'unknown'}</td>

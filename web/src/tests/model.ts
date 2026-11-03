@@ -1,3 +1,4 @@
+import { LOCAL_COST_SOURCE, providerId, providerOf } from './providers';
 import { savedParts } from './restore';
 import type { AgentKind, AgentSpec, Branch, Change, Event, Team } from './types';
 
@@ -110,6 +111,7 @@ export function ticks(span: number): [number, string][] {
 export function costSource(source: string | null | undefined): string {
   if (source === 'api_equivalent_estimate') return 'API-equivalent estimate';
   if (source === 'openrouter') return 'reported by OpenRouter';
+  if (source === LOCAL_COST_SOURCE) return 'no API charge (local server)';
   if (source === 'mixed') return 'mixed sources';
   return '';
 }
@@ -130,12 +132,16 @@ export interface Summary {
   steps: number;
 }
 
+/** How long the branch ran (until now while it runs), and whether it still is. */
+function branchTiming(branch: Pick<Branch, 'created_at' | 'ended_at' | 'status'>, now: number): { seconds: number | null; live: boolean } {
+  const start = Date.parse(branch.created_at);
+  const live = !branch.ended_at && branch.status === 'running';
+  const end = branch.ended_at ? Date.parse(branch.ended_at) : live ? now : NaN;
+  return { seconds: Number.isNaN(start) || Number.isNaN(end) ? null : (end - start) / 1000, live };
+}
+
 /** Same arithmetic as arenad's compare: this branch's own events only (seq >= start_seq). */
-export function summarize(
-  branch: Pick<Branch, 'start_seq' | 'created_at' | 'ended_at' | 'status'>,
-  events: Event[],
-  now: number = Date.now(),
-): Summary {
+export function summarize(branch: Pick<Branch, 'start_seq' | 'created_at' | 'ended_at' | 'status'>, events: Event[], now: number = Date.now()): Summary {
   const from = branch.start_seq ?? 0;
   let tokens = 0;
   let cost: number | null = 0;
@@ -154,12 +160,8 @@ export function summarize(
     cost = cost != null && typeof p.cost_usd === 'number' ? cost + p.cost_usd : null;
     if (typeof p.cost_source === 'string' && !sources.includes(p.cost_source)) sources.push(p.cost_source);
   }
-  const start = Date.parse(branch.created_at);
-  const live = !branch.ended_at && branch.status === 'running';
-  const end = branch.ended_at ? Date.parse(branch.ended_at) : live ? now : NaN;
-  const seconds = Number.isNaN(start) || Number.isNaN(end) ? null : (end - start) / 1000;
   return {
-    seconds, live, tokens,
+    ...branchTiming(branch, now), tokens,
     cost_usd: ended === 0 ? null : cost,
     cost_source: sources.length === 0 ? null : sources.length === 1 ? sources[0] : 'mixed',
     rows_written: written.size,
@@ -196,7 +198,9 @@ export function branchNames(branches: Pick<Branch, 'id' | 'parent_id' | 'created
 /**
  * Only fields that really changed. Prompts compare trimmed. A cleared model that was set is sent as ""
  * (explicit clear); blank on an unset model is no change. A mode change resets the model in arenad,
- * so a blank model next to it sends just the mode.
+ * so a blank model next to it sends just the mode. A provider (API mode only) is sent only when it
+ * differs from the agent's (absent is `openrouter`), never blank, and always with its model: the old
+ * model belongs to the old provider.
  */
 export function changedFields(agents: AgentSpec[], edits: Record<string, Change>): Record<string, Change> {
   const out: Record<string, Change> = {};
@@ -206,8 +210,12 @@ export function changedFields(agents: AgentSpec[], edits: Record<string, Change>
     const c: Change = {};
     if (e.prompt != null && e.prompt.trim() !== a.prompt.trim()) c.prompt = e.prompt.trim();
     const kindChanged = e.kind != null && e.kind !== (a.kind as AgentKind);
+    const providerChanged = (e.kind ?? a.kind) === 'open' && e.provider != null && providerId(e.provider) !== providerOf(a);
     const m = e.model?.trim();
-    if (m != null && m !== (a.model ?? '') && (m !== '' || !kindChanged)) c.model = m;
+    if (providerChanged) {
+      c.provider = providerId(e.provider);
+      c.model = m ?? '';
+    } else if (m != null && m !== (a.model ?? '') && (m !== '' || !kindChanged)) c.model = m;
     if (kindChanged) c.kind = e.kind;
     if (Object.keys(c).length) out[a.id] = c;
   }

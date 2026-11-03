@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArenaProblem } from '../arena/gate';
 import { Btn } from '../shell/ui';
+import { costIsUnknown, providerName } from './providers';
 import { costSource, diffHunks, dollars, jsonDiff, rowKeys, stepBefore, type Step } from './model';
 import { notComparedLine, savedLine } from './restore';
 import { pretty } from './shared';
@@ -112,7 +113,7 @@ type P = {
   part?: string; error?: unknown; snapshot_error?: unknown; writes?: unknown; reads?: unknown; args?: unknown; result?: unknown;
   saves?: Record<string, string>; snapshot?: string | null;
   request?: { messages?: unknown }; response?: { choices?: { message?: unknown }[] };
-  cost_usd?: number | null; cost_source?: string | null; note?: unknown;
+  cost_usd?: number | null; cost_source?: string | null; note?: unknown; provider?: string;
   passed?: boolean; differing_rows?: unknown; unchecked?: string[] | null;
   ok?: boolean; seconds?: number | null; tokens?: number | null;
 };
@@ -143,6 +144,12 @@ function ToolCall({ branch, event, p }: { branch: BranchDetail; event: Event; p:
   );
 }
 
+/** A model call's cost and its source; OpenAI and Anthropic report no price, so theirs is unknown. */
+function callCost(p: P): string {
+  if (p.cost_usd != null) return `${dollars(p.cost_usd)} (${costSource(p.cost_source)})`;
+  return p.provider && costIsUnknown(p.provider) ? `Cost unknown: ${providerName(p.provider)} reports no price.` : 'No dollar figure for this call.';
+}
+
 function ModelCall({ p }: { p: P }) {
   const msgs: unknown[] = Array.isArray(p.request?.messages) ? p.request.messages : [];
   return (
@@ -156,7 +163,7 @@ function ModelCall({ p }: { p: P }) {
           </div>
         ))}
       </Section>
-      <p className="muted tst-small">{p.cost_usd != null ? `${dollars(p.cost_usd)} (${costSource(p.cost_source)})` : 'No dollar figure for this call.'}</p>
+      <p className="muted tst-small">{callCost(p)}</p>
     </>
   );
 }

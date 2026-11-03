@@ -116,7 +116,7 @@ function SideColumn({ a, b, tl, step, forking, close }: Side) {
     nav(runPath(r.run, r.branch), { state: { notice: r.notice } });
   };
   if (forking) {
-    return <RerunPanel key={b.id} agents={b.team.agents} seq={tl.cursor} running={b.status === 'running'} openAvailable={a.openAvailable} plan={tl.plan} start={start} onClose={close} />;
+    return <RerunPanel key={b.id} agents={b.team.agents} seq={tl.cursor} running={b.status === 'running'} openAvailable={a.openAvailable} providers={a.providers} plan={tl.plan} start={start} onClose={close} />;
   }
   return <div className="tst-card"><StepInspector branch={b} event={b.events.find((e) => e.seq === tl.cursor) ?? null} step={step ?? null} rows={rows} /></div>;
 }

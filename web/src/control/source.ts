@@ -1,6 +1,6 @@
 import type { ControlMode } from '../generated/ControlMode';
 import type { Layout, Step } from '../tests/model';
-import type { Branch, BranchDetail, Change, Comparison, RestoreMode, RestorePlan, WorldPartInfo } from '../tests/types';
+import type { Branch, BranchDetail, Change, Comparison, ProviderStatus, RestoreMode, RestorePlan, WorldPartInfo } from '../tests/types';
 
 /**
  * What the Control panes read: one interface over a deployment (a Sculptured team running for real)
@@ -125,6 +125,8 @@ export type SimulatedRun = {
   names: Map<string, string>;
   parts: WorldPartInfo[] | null;
   openAvailable: boolean;
+  /** The health check's model providers (local servers not checked), when Arena lists them. */
+  providers?: ProviderStatus[];
   error?: unknown;
   /** The task's own words for what the run had to do, when Arena has them. */
   reason?: string;

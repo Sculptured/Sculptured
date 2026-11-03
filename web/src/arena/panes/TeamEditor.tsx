@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Btn, Icon } from '../../shell/ui';
 import { arena } from '../../tests/api';
-import { DEFAULT_OPENROUTER_MODEL, KINDS, clearStoredTeam, loadTeam, saveTeam, slug, withSlugIds } from '../../tests/team';
-import type { AgentKind, AgentSpec, Team } from '../../tests/types';
+import { ModelHint, ModelInput, ProviderSelect } from '../../tests/ProviderFields';
+import { providerOf } from '../../tests/providers';
+import { KINDS, clearStoredTeam, loadTeam, saveTeam, slug, withSlugIds } from '../../tests/team';
+import type { AgentKind, AgentSpec, ProviderStatus, Team } from '../../tests/types';
 
 /**
  * The team new runs use: kept in this browser, saved as it changes; Reset goes back to Arena's
@@ -23,32 +25,34 @@ export function useTestTeam(onError: (e: unknown) => void) {
   return { team, update, reset };
 }
 
-type Edit = { team: Team; update(fn: (t: Team) => Team): void; reset(): void; openOk: boolean };
-type AgentEdit = { a: AgentSpec; i: number; count: number; openOk: boolean; patch(p: Partial<AgentSpec>): void; up(): void; remove(): void };
+type Edit = { team: Team; update(fn: (t: Team) => Team): void; reset(): void; openOk: boolean; list: ProviderStatus[] };
+type AgentEdit = { a: AgentSpec; i: number; count: number; openOk: boolean; list: ProviderStatus[]; patch(p: Partial<AgentSpec>): void; up(): void; remove(): void };
 
-function KindAndModel({ a, openOk, patch }: Pick<AgentEdit, 'a' | 'openOk' | 'patch'>) {
+/** Mode, then (API mode) provider and model; a CLI agent's model is the CLI's. A new mode or provider starts from its default model. */
+function KindAndModel({ a, openOk, list, patch }: Pick<AgentEdit, 'a' | 'openOk' | 'list' | 'patch'>) {
+  const provider = a.kind === 'open' ? providerOf(a) : null;
   return (
-    <div className="tst-row">
-      <label className="tst-field">
-        <span className="tst-label">Agent</span>
-        <select value={a.kind} onChange={(e) => patch({ kind: e.target.value as AgentKind, model: null })}>
-          {KINDS.map((k) => (
-            <option key={k.value} value={k.value} disabled={k.value === 'open' && !openOk && a.kind !== 'open'}>
-              {k.label}{k.value === 'open' && !openOk ? ' (needs OPENROUTER_API_KEY)' : ''}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="tst-field tst-grow">
-        <span className="tst-label">Model</span>
-        <input className="mono" value={a.model ?? ''} placeholder={a.kind === 'open' ? `${DEFAULT_OPENROUTER_MODEL} (default)` : 'default for this agent'}
-          onChange={(e) => patch({ model: e.target.value.trim() === '' ? null : e.target.value })} />
-      </label>
-    </div>
+    <>
+      <div className="tst-row">
+        <label className="tst-field">
+          <span className="tst-label">Agent</span>
+          <select value={a.kind} onChange={(e) => patch({ kind: e.target.value as AgentKind, model: null, provider: undefined })}>
+            {KINDS.map((k) => (
+              <option key={k.value} value={k.value} disabled={k.value === 'open' && !openOk && a.kind !== 'open'}>
+                {k.label}{k.value === 'open' && !openOk ? ' (no model provider is available)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        {provider && <ProviderSelect value={provider} list={list} onChange={(id) => patch({ provider: id, model: null })} />}
+        <ModelInput provider={provider} value={a.model ?? ''} list={list} onChange={(m) => patch({ model: m.trim() === '' ? null : m })} />
+      </div>
+      {provider && <ModelHint provider={provider} model={a.model} list={list} />}
+    </>
   );
 }
 
-function AgentCard({ a, i, count, openOk, patch, up, remove }: AgentEdit) {
+function AgentCard({ a, i, count, openOk, list, patch, up, remove }: AgentEdit) {
   return (
     <li className="tst-card tst-agent">
       <header className="tst-agent-head">
@@ -59,8 +63,7 @@ function AgentCard({ a, i, count, openOk, patch, up, remove }: AgentEdit) {
         <Btn size="sm" variant="ghost" onClick={up} disabled={i === 0}>{i === 0 ? 'Already first' : '↑ Earlier'}</Btn>
         <Btn size="sm" variant="ghost" icon="trash" onClick={remove} disabled={count === 1}>{count === 1 ? 'A team needs one agent' : 'Remove'}</Btn>
       </header>
-      <KindAndModel a={a} openOk={openOk} patch={patch} />
-      {a.kind === 'open' && <p className="muted tst-small">Any model id from openrouter.ai/models, such as <span className="mono">{DEFAULT_OPENROUTER_MODEL}</span>. Every model call is recorded.</p>}
+      <KindAndModel a={a} openOk={openOk} list={list} patch={patch} />
       <label className="tst-field">
         <span className="tst-label">Instructions</span>
         <textarea rows={4} value={a.prompt} placeholder="Leave empty to use the default for its place in the chain" onChange={(e) => patch({ prompt: e.target.value })} />
@@ -73,10 +76,10 @@ const newAgent = (as: AgentSpec[]): AgentSpec =>
   ({ id: slug('agent', new Set(as.map((a) => a.id))), name: `Agent ${as.length + 1}`, kind: 'claude_code', model: null, prompt: '' });
 
 /** The agents of the team, in order: each hands its notes to the next, and only the last may change the world. */
-export function TeamEditor({ team, update, reset, openOk }: Edit) {
+export function TeamEditor({ team, update, reset, openOk, list }: Edit) {
   const setAgents = (fn: (a: AgentSpec[]) => AgentSpec[]) => update((t) => ({ ...t, agents: withSlugIds(fn(t.agents)) }));
   const card = (a: AgentSpec, i: number) => (
-    <AgentCard key={i} a={a} i={i} count={team.agents.length} openOk={openOk}
+    <AgentCard key={i} a={a} i={i} count={team.agents.length} openOk={openOk} list={list}
       patch={(p) => setAgents((as) => as.map((x, j) => (j === i ? { ...x, ...p } : x)))}
       up={() => setAgents((as) => { const n = [...as]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; })}
       remove={() => setAgents((as) => as.filter((_, j) => j !== i))} />

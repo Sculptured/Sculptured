@@ -85,6 +85,7 @@ function arenaOf(run: string, branchId: string, d: ArenaRunData): NonNullable<Co
   const branches = d.branches.length ? d.branches : d.detail ? [d.detail] : [];
   return {
     run, branchId, branches, names: branchNames(branches), parts: d.parts, openAvailable: !!d.health?.open_available, reconnects: d.reconnects,
+    ...(d.health?.providers ? { providers: d.health.providers } : {}),
     ...(d.reason ? { reason: d.reason } : {}),
     ...(d.detail ? { branch: d.detail } : {}),
     // Why the branch can't be read, or (once it is) that Arena stopped answering since.

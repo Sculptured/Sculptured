@@ -117,7 +117,7 @@ function RunsBody() {
   const tasks = useTasks(setError);
   return (
     <>
-      <NewRun tasks={tasks} openOk={!!health?.open_available} onError={setError} />
+      <NewRun tasks={tasks} health={health} onError={setError} />
       <ArenaProblem error={error} />
       <ArenaProblem error={runs.error} />
       {runs.value?.length === 0 && <p className="muted">No runs yet. Pick a task above and start one. Every step is recorded, so you can rerun from any of them.</p>}
