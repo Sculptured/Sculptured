@@ -5,12 +5,19 @@ export type Split = { kind: 'split'; id: string; dir: 'row' | 'col'; kids: Node[
 export type Node = Stack | Split;
 export type Zone = 'left' | 'right' | 'top' | 'bottom' | 'center';
 export type Layout = { id: string; name: string; root: Node; popped: PaneRef[] };
-export type PageLayouts = { version: 1; active: string; layouts: Layout[] };
+/** `look`: the workspace's own look. Absent means Mission; 'app' follows the app-wide look. */
+export type PageLayouts = { version: 1; active: string; layouts: Layout[]; look?: 'mission' | 'app' };
 /** Makes ids for new stacks and splits; tests pass a counter. */
 export type IdGen = () => string;
 
 export const MIN_SIZE = 0.15;
-const uid: IdGen = () => crypto.randomUUID();
+/** A fresh id. Falls back when crypto.randomUUID is missing (an insecure origin, an old browser). */
+export function freshId(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  return `id-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+}
+const uid: IdGen = freshId;
 
 export function emptyStack(newId: IdGen = uid): Stack {
   return { kind: 'stack', id: newId(), panes: [], active: 0 };
@@ -161,6 +168,10 @@ export function resize(root: Node, splitId: string, index: number, delta: number
   sizes[index] = a + d;
   sizes[index + 1] = b - d;
   return { ...root, sizes };
+}
+
+export function setPaneSettings(node: Node, paneId: string, settings: Record<string, unknown>): Node {
+  return mapStacks(node, (s) => (s.panes.some((p) => p.id === paneId) ? { ...s, panes: s.panes.map((p) => (p.id === paneId ? { ...p, settings } : p)) } : s));
 }
 
 export function setActive(root: Node, stackId: string, index: number): Node {

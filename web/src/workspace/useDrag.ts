@@ -61,9 +61,14 @@ export function useDrag(root: RefObject<HTMLElement | null>, callbacks: Callback
     if (e.button !== 0) return;
     stop.current?.();
     let over: DropTarget | null = null;
+    let shown = false;
     const onMove = (_dx: number, _dy: number, ev: PointerEvent) => {
       const hit = targetAt(root.current, ev.clientX, ev.clientY);
-      over = hit && !cbs.current.noop(paneId, hit) ? hit : null;
+      const next = hit && !cbs.current.noop(paneId, hit) ? hit : null;
+      // Re-render only when the target changes, not on every pointer move.
+      if (shown && next?.stackId === over?.stackId && next?.zone === over?.zone) return;
+      over = next;
+      shown = true;
       setDrag({ paneId, over });
     };
     const onEnd = (moved: boolean) => {

@@ -214,6 +214,53 @@ describe('Workspace', () => {
     expect(scroller.scrollTop).toBe(40);
   });
 
+  it('drag_into_centre_then_left_and_top', () => {
+    const { last } = setup(row('r', st('s1', ['a']), st('s2', ['b', 'c'])));
+    boxes({ s1: [0, 0, 400, 300], s2: [400, 0, 400, 300] });
+    grab(tab('Logs'), 20, 10);
+    move(600, 150);
+    expect(overlay()?.dataset.dropZone).toBe('center');
+    release(600, 150);
+    expect(shape(last()!)).toEqual([['b', 'c', 'a']]);
+
+    boxes({ s2: [0, 0, 800, 300] });
+    grab(tab('World'), 100, 10);
+    move(10, 150);
+    expect(overlay()?.dataset.dropZone).toBe('left');
+    release(10, 150);
+    expect(shape(last()!)).toEqual([['c'], ['b', 'a']]);
+
+    const [left, right] = stacks(last()!).map((s) => s.id);
+    boxes({ [left]: [0, 0, 400, 300], [right]: [400, 0, 400, 300] });
+    grab(tab('Agents'), 420, 10);
+    move(200, 10);
+    expect(overlay()?.dataset.dropZone).toBe('top');
+    release(200, 10);
+    const root = last() as Split;
+    expect(shape(root)).toEqual([['b'], ['c'], ['a']]);
+    expect(root.kids[0]).toMatchObject({ kind: 'split', dir: 'col' });
+  });
+
+  it('focus_stays_in_stack_after_close', async () => {
+    const user = userEvent.setup();
+    setup(row('r', st('s1', ['a', 'b']), st('s2', ['c'])), { onPopOut: vi.fn() });
+    const logsMenu = screen.getByRole('button', { name: 'Logs options' });
+    await user.click(logsMenu);
+    await user.click(screen.getByRole('menuitem', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(logsMenu).toHaveFocus();
+    await user.click(logsMenu);
+    await user.click(screen.getByRole('menuitem', { name: 'Pop out' }));
+    expect(logsMenu).toHaveFocus();
+
+    await user.click(screen.getByRole('button', { name: 'Close Logs' }));
+    expect(tab('Agents')).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: 'Agents options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Close' }));
+    expect(tab('World')).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it('empty_stack_message', () => {
     setup(emptyStack(() => 'e1'));
     expect(screen.getByText('Empty. Use Add pane.')).toBeInTheDocument();

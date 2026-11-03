@@ -10,10 +10,11 @@ export const FONTS = {
   plex: { label: 'IBM Plex Sans', value: '"IBM Plex Sans", system-ui, sans-serif' },
   humanist: { label: 'Humanist', value: '"Aptos", "Trebuchet MS", system-ui, sans-serif' },
 } as const;
-/** Looks (tokens.css). Coastal is dark only; Standard comes in light and dark. */
+/** Looks (tokens.css). Coastal and Mission are dark only; Standard comes in light and dark. */
 export const LOOKS = {
-  coastal: { label: 'Coastal', note: 'Dark sea-glass.' },
-  standard: { label: 'Standard', note: 'Neutral and flat, in light or dark.' },
+  coastal: { label: 'Coastal', note: 'Dark sea-glass.', darkOnly: true },
+  standard: { label: 'Standard', note: 'Neutral and flat, in light or dark.', darkOnly: false },
+  mission: { label: 'Mission', note: 'Near-black with a cyan accent, like a control room.', darkOnly: true },
 } as const;
 export const MODES = { system: 'System', light: 'Light', dark: 'Dark' } as const;
 export type Look = keyof typeof LOOKS;
@@ -37,9 +38,9 @@ export function readAppearance(): Appearance {
   }
 }
 
-/** The colour scheme the page shows: Coastal is always dark; Standard follows the mode or the system. */
+/** The colour scheme the page shows: Coastal and Mission are always dark; Standard follows the mode or the system. */
 export function resolvedScheme(value: Pick<Appearance, 'look' | 'mode'>): 'light' | 'dark' {
-  if (value.look === 'coastal') return 'dark';
+  if (LOOKS[value.look].darkOnly) return 'dark';
   if (value.mode !== 'system') return value.mode;
   return globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
@@ -52,7 +53,7 @@ export function applyAppearance(value: Appearance) {
   // Mirrors public/appearance-boot.js, which sets the same attributes before first paint.
   root.dataset.look = value.look;
   root.dataset.mode = value.mode;
-  document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', value.look === 'coastal' ? 'dark' : value.mode === 'system' ? 'light dark' : value.mode);
+  document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', LOOKS[value.look].darkOnly ? 'dark' : value.mode === 'system' ? 'light dark' : value.mode);
 }
 
 export function saveAppearance(value: Appearance) {

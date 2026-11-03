@@ -145,7 +145,7 @@ export function StackView({ stack }: { stack: Stack }) {
         )}
       </div>
       {menu && pane && <StackMenu stack={stack} pane={pane} opener={opener} close={close} edit={setEditing} />}
-      {pane && type?.Settings && editing === pane.id && <SettingsPanel pane={pane} type={type} done={() => setEditing(null)} />}
+      {pane && type?.Settings && editing === pane.id && <SettingsPanel pane={pane} type={type} done={() => { setEditing(null); opener.current?.focus(); }} />}
       {pane ? <div ref={slot} className="ws-body" /> : <p className="ws-empty">Empty. Use Add pane.</p>}
       {over && <DropOverlay zone={over} />}
     </section>

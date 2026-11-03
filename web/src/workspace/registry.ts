@@ -9,6 +9,11 @@ export type PaneType = {
   glyph: string;
   /** Several copies may be open at once (duplicate, or "Add pane" again). */
   multi?: boolean;
+  /**
+   * Reads the shared selection (useSelection). The pane then gets a "Follow selection" setting,
+   * on by default; with it off, the pane keeps what it showed and ignores new selections.
+   */
+  selection?: boolean;
   /** Page-specific context; without it the pane applies everywhere. */
   appliesTo?: (ctx: unknown) => boolean;
   defaultSettings?: Record<string, unknown>;
@@ -26,6 +31,6 @@ export function createRegistry(types: PaneType[]) {
 
 export type Registry = ReturnType<typeof createRegistry>;
 
-/** The page's live context (selection, deployment kind…), for pane bodies that need it. */
+/** The page's live context (deployment kind, data…), for pane bodies that need it. The selection is useSelection. */
 export const PaneContext = createContext<unknown>(undefined);
 export const usePaneContext = <T = unknown>() => useContext(PaneContext) as T;

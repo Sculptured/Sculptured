@@ -31,7 +31,8 @@ const ZONES: { zone: Zone; short: string; name: (t: string) => string }[] = [
 
 const enabled = (box: HTMLElement | null) => [...(box?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
 
-function useDismissOutside(box: RefObject<HTMLElement | null>, opener: RefObject<HTMLElement | null>, dismiss: () => void) {
+/** Calls `dismiss` on a pointer press outside the menu and its opener. */
+export function useDismissOutside(box: RefObject<HTMLElement | null>, opener: RefObject<HTMLElement | null>, dismiss: () => void) {
   const latest = useRef(dismiss);
   useEffect(() => { latest.current = dismiss; });
   useEffect(() => {

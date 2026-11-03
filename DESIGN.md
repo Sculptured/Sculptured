@@ -1,6 +1,6 @@
 ---
 name: Sculptured
-description: A visual workspace for teams of agents. One token layer, two looks (Coastal and Standard), with honest status.
+description: A visual workspace for teams of agents. One token layer, three looks (Coastal, Standard and Mission), with honest status.
 colors:
   # Coastal (default look, dark only). :root in web/src/tokens.css
   coastal-bg: "#111b22"
@@ -61,6 +61,28 @@ colors:
   standard-dark-amber: "#e5b04a"
   standard-dark-violet: "#b49cf4"
   standard-dark-canvas-bg: "#121418"
+  # Mission (dark only). :root[data-look='mission'] and .workspace[data-look='mission']
+  mission-bg: "#0a0f14"
+  mission-panel: "#101820"
+  mission-raised: "#15202a"
+  mission-raised-2: "#1b2833"
+  mission-hover: "#1f2e3a"
+  mission-well: "#0c131a"
+  mission-line: "#1e2c38"
+  mission-line-2: "#2a3d4c"
+  mission-line-3: "#4f6577"
+  mission-text: "#c9d6e0"
+  mission-muted: "#8296a7"
+  mission-text-disabled: "#5f7486"
+  mission-accent: "#3fd0ff"
+  mission-accent-strong: "#74ddff"
+  mission-accent-ink: "#04141c"
+  mission-accent-deep: "#0e4a63"
+  mission-red: "#ff6170"
+  mission-green: "#3ddc84"
+  mission-amber: "#ffb020"
+  mission-violet: "#b48cff"
+  mission-blue: "#5aa9ff"
 typography:
   display:
     fontFamily: "Inter, Segoe UI Variable, Segoe UI, system-ui, sans-serif"
@@ -106,6 +128,9 @@ rounded:
   standard-sm: "4px"
   standard-md: "6px"
   standard-lg: "8px"
+  mission-sm: "4px"
+  mission-md: "6px"
+  mission-lg: "8px"
 spacing:
   space-1: "4px"
   space-2: "8px"
@@ -199,20 +224,20 @@ components:
 
 Sculptured is a working instrument: a board where a team of agents is laid out, started, watched and steered. The system exists so that the board, and the state of each agent on it, reads at a glance and never overstates what is known. The chrome around the board stays quiet. The board (dot grid, tinted groups, cards, handoff lines) is the only expressive surface. Density is that of a desktop tool: a 13px default UI size (user-adjustable 12 to 16px), 30px controls and rows, and tabular numbers wherever counts, clocks, tokens or costs change.
 
-The system ships two looks over one token layer. **Coastal** is the default and incumbent identity: dark only, "ink, chalk and quiet sea-glass", with translucent glass bars, soft depth and a pale sea-glass accent. **Standard** is the category standard played straight, with Linear and GitHub Primer as the craft bar: neutral, flat and exact, white or near-black surfaces, hairline borders, one indigo accent, light and dark. Standard refuses the dark-glass AI-dashboard look: it has no glass, no gradients, and shadows only on things that float. Both looks render the same components from the same CSS. Only tokens change, plus three Standard-only elements (the header status pill, the footer usage strip, and the plain brand mark).
+The system ships two looks over one token layer. **Coastal** is the default and incumbent identity: dark only, "ink, chalk and quiet sea-glass", with translucent glass bars, soft depth and a pale sea-glass accent. **Standard** is the category standard played straight, with Linear and GitHub Primer as the craft bar: neutral, flat and exact, white or near-black surfaces, hairline borders, one indigo accent, light and dark. Standard refuses the dark-glass AI-dashboard look: it has no glass, no gradients, and shadows only on things that float. **Mission** is the control-room look of the Control workspaces: near-black, hairline lines, one cyan accent and bright status hues, flat and dark only. All looks render the same components from the same CSS. Only tokens change, plus three Standard-only elements (the header status pill, the footer usage strip, and the plain brand mark).
 
 Honesty is the one rule above taste. Status is always a glyph plus a word, never colour alone. What an agent says about itself is "reported" and grey. Green is reserved for a check Sculptured ran that passed. Missing information says "unknown".
 
 **Key Characteristics:**
 - One token layer (`web/src/tokens.css`). Component CSS reads tokens only. There is no raw hex outside the token file, except a third-party sign-in button in `hosted/hosted.css`.
-- Two looks, switched by `data-look` on `<html>`. Standard has light and dark, set by `data-mode` or the system.
+- Three looks, switched by `data-look` on `<html>`. Standard has light and dark, set by `data-mode` or the system. Mission can also be set on a workspace's root element alone.
 - Six-step type scale relative to the user's UI size. Inter for the chrome, JetBrains Mono only for code, paths, ids and key caps.
 - A 4px spacing grid. Controls are 30px tall (26px small).
 - Status is shape plus text. Reported completion is grey and verified is green.
 - Progressive disclosure, never removal: newcomers see a few featured choices, and everything else is one labelled step back.
 - Keyboard depth for experts: Ctrl K palette with `>` and `@`, Shift-click and marquee multi-select, and messaging several agents at once.
 
-### Two looks, one token layer
+### Three looks, one token layer
 
 The token file is layered so that a look is a single override block:
 
@@ -227,6 +252,16 @@ The token file is layered so that a look is a single override block:
 
 **Accessibility preferences.** `prefers-reduced-transparency: reduce` and the "solid surfaces" setting replace glass with `--glass-solid`. In Coastal, `prefers-contrast: more` raises `--muted` and the line tokens. Every animation sits under `prefers-reduced-motion: no-preference`.
 
+### Mission look
+
+Mission is what an operator watching a live team sees: a ship's bridge or a mission-control room, dense and calm, where the only bright things are the accent and the states that need attention. It is the default look of every Control workspace (Control and Arena control), and a third app-wide look in Appearance and the palette.
+
+- **Where it applies.** Its token block in `tokens.css` has two selectors: `:root[data-look='mission']` (the app-wide look) and `.workspace[data-look='mission']` (the root element of `web/src/workspace/WorkspacePage.tsx` and `PopOutPane.tsx`). A workspace's own "Look" setting is Mission by default; "Follow app look" leaves `data-look` off the workspace root, so it inherits whatever `<html>` has. The setting is saved with the page's layouts.
+- **Every token, not only the canonical ones.** On an element, a derived token inherited from `:root` (`--accent-soft`, the `--status-*` tokens, `--r`) still carries the app look's colours, because `var()` is resolved where a custom property is declared. So the Mission block sets every colour, depth, radius and material token, derived ones included. Type, space and motion are shared with the other looks: same fonts, same scale.
+- **Palette.** Ground `mission-bg` (#0a0f14), panels a step lighter (`mission-panel`, `mission-raised`), hairlines `mission-line`. Text `mission-text` (#c9d6e0) and `mission-muted` (#8296a7) are at least 4.5:1 on every surface, the hover fill included. One accent, cyan `mission-accent` (#3fd0ff), with dark `mission-accent-ink` text on accent fills. Status hues are bright and far apart: red `mission-red` (#ff6170), amber `mission-amber` (#ffb020), green `mission-green` (#3ddc84), violet `mission-violet` (#b48cff); each is at least 4.5:1 as text on every surface. The Shape-Plus-Word and Grey Done rules hold unchanged.
+- **Material.** Flat like Standard: no glass, no blur, no gradients, `--wash` 0, shadows only on things that float. Radii are 4, 6 and 8px. `prefers-contrast: more` raises muted text and lines, as in Coastal.
+- **Numbers.** The workspace sets tabular numbers on its root, so clocks and counts never jitter.
+
 ### Motion
 
 Motion is short, eased and informative. State transitions use `--dur-fast` (120ms) for background, border, colour and shadow changes on buttons, rows and tabs. `--dur` (180ms) is the standard duration, and `--ease-out` (`cubic-bezier(0.2, 0.8, 0.2, 1)`) is the curve. Popovers, menus, tooltips and dialog panels enter with a 140ms "pop-in" (4px rise, 0.985 scale). Overlays fade in over 120ms. The selection bar and its popovers rise 3px over `--dur-fast`. Live meaning is the only looping motion: the working glyph spins (0.9s), the needs-you glyph pulses (1.6s), a needs-you card breathes a red halo (2s), a flowing handoff line runs dashes (0.9s), and a just-travelled handoff pulses three times. In Logos board style, a working agent's logo loops slowly (`--logo-walk` 1.2s for the Claude Code guy, whose two leg pairs step in turn, `--logo-turn` 4.8s for the Codex mark, `--logo-breathe` for any other mark, and a `--logo-orbit` 3.2s arc round the disc); it stops while the tab is hidden, and off-screen nodes are not drawn. With reduced motion, all of it stops and the static glyph (`⣟` for working) and a still working ring still carry the state.
@@ -236,6 +271,7 @@ Motion is short, eased and informative. State transitions use `--dur-fast` (120m
 Each look has a quiet neutral ground, one accent, and four status hues that only ever colour a glyph and a word.
 
 ### Primary
+- **Cyan** (Mission `mission-accent`): the same roles as below, in the Control workspaces and when Mission is the app look.
 - **Sea-glass** (Coastal `coastal-accent`): focus rings, the current tab underline, selected cards and the selection ring, primary-button fill (with dark `coastal-accent-ink` text), caret, group tint. Hover on accent fills uses `--accent-strong`. Text selection uses `--accent-deep`.
 - **Quiet Indigo** (Standard `standard-light-accent`, lifted to `standard-dark-accent` in dark): the same roles. In Standard dark the primary-button fill stays the saturated indigo (`standard-dark-accent-fill`) so white text keeps its contrast, while text-level accents use the lifted indigo. Group labels on the light board use a deeper indigo (`standard-light-group-label`).
 

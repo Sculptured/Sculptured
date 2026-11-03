@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { closePane, duplicatePane, movePane, panes, resize, setActive, stacks, type Node, type PaneRef, type Split } from './model';
+import { closePane, duplicatePane, freshId, movePane, panes, resize, setActive, setPaneSettings, stacks, type Node, type PaneRef, type Split } from './model';
 import type { MoveTarget } from './PaneMenu';
 import { PaneContext, type Registry } from './registry';
 import { Splitter } from './Splitter';
@@ -18,10 +18,23 @@ export type WorkspaceProps = {
 
 type Live = { root: Node; seen: Node; onChange(root: Node): void; onPopOut?(paneId: string): void };
 
-function withSettings(node: Node, paneId: string, settings: Record<string, unknown>): Node {
-  if (node.kind === 'split') return { ...node, kids: node.kids.map((k) => withSettings(k, paneId, settings)) };
-  if (!node.panes.some((p) => p.id === paneId)) return node;
-  return { ...node, panes: node.panes.map((p) => (p.id === paneId ? { ...p, settings } : p)) };
+/** Where focus goes once a pane leaves: a tab beside it, else the nearest other stack's active tab. */
+type FocusWant = { tab: string } | { more: string };
+
+function focusAfterClose(root: Node, paneId: string): FocusWant | null {
+  const all = stacks(root);
+  const at = all.findIndex((s) => s.panes.some((p) => p.id === paneId));
+  const own = all[at];
+  if (!own) return null;
+  const i = own.panes.findIndex((p) => p.id === paneId);
+  const beside = own.panes[i + 1] ?? own.panes[i - 1];
+  if (beside) return { tab: beside.id };
+  const other = all[at - 1] ?? all[at + 1];
+  return other?.panes.length ? { tab: other.panes[other.active].id } : null;
+}
+
+function stackOf(root: Node, paneId: string): string | undefined {
+  return stacks(root).find((s) => s.panes.some((p) => p.id === paneId))?.id;
 }
 
 function findSplit(node: Node, id: string): Split | undefined {
@@ -62,7 +75,7 @@ function useLive(props: WorkspaceProps): RefObject<Live> {
   return live;
 }
 
-function useActions(live: RefObject<Live>, focusTab: (paneId: string) => void): Actions {
+function useActions(live: RefObject<Live>, focus: (want: FocusWant | null) => void): Actions {
   return useMemo(() => {
     const now = () => live.current.root;
     const apply = (next: Node) => {
@@ -72,15 +85,15 @@ function useActions(live: RefObject<Live>, focusTab: (paneId: string) => void): 
     };
     return {
       activate: (stackId, index) => apply(setActive(now(), stackId, index)),
-      close: (paneId) => apply(closePane(now(), paneId)),
-      duplicate: (paneId) => { const id = crypto.randomUUID(); apply(duplicatePane(now(), paneId, id)); focusTab(id); },
-      move: (paneId, t) => { apply(movePane(now(), paneId, t.stackId, t.zone)); focusTab(paneId); },
-      setSettings: (paneId, settings) => apply(withSettings(now(), paneId, settings)),
+      close: (paneId) => { const want = focusAfterClose(now(), paneId); apply(closePane(now(), paneId)); focus(want); },
+      duplicate: (paneId) => { const id = freshId(); apply(duplicatePane(now(), paneId, id)); focus({ tab: id }); },
+      move: (paneId, t) => { apply(movePane(now(), paneId, t.stackId, t.zone)); focus({ tab: paneId }); },
+      setSettings: (paneId, settings) => apply(setPaneSettings(now(), paneId, settings)),
       resize: (splitId, index, delta) => apply(resize(now(), splitId, index, delta)),
       sizeOf: (splitId, index) => findSplit(now(), splitId)?.sizes[index] ?? 0,
-      popOut: (paneId) => live.current.onPopOut?.(paneId),
+      popOut: (paneId) => { const stackId = stackOf(now(), paneId); live.current.onPopOut?.(paneId); if (stackId) focus({ more: stackId }); },
     };
-  }, [live, focusTab]);
+  }, [live, focus]);
 }
 
 const scrolled = new WeakMap<HTMLElement, { top: number; left: number }>();
@@ -127,12 +140,17 @@ function usePaneHosts(root: Node) {
   return { hostFor, place };
 }
 
-/** After a keyboard move or a duplicate, focus follows the pane to its tab. */
-function useFocusTab(el: RefObject<HTMLElement | null>, root: Node) {
-  const [want, setWant] = useState<string | null>(null);
+/**
+ * After a keyboard move or a duplicate, focus follows the pane to its tab. After a close it goes
+ * to a neighbouring tab, and after a pop out to the stack's ⋯ button, so it never drops to the
+ * page. A target that is gone by then falls back to the first tab still on screen.
+ */
+function useFocusAfter(el: RefObject<HTMLElement | null>, root: Node) {
+  const [want, setWant] = useState<FocusWant | null>(null);
   useEffect(() => {
     if (!want) return;
-    el.current?.querySelector<HTMLElement>(`[data-tab="${CSS.escape(want)}"]`)?.focus();
+    const q = 'tab' in want ? `[data-tab="${CSS.escape(want.tab)}"]` : `[data-stack="${CSS.escape(want.more)}"] .ws-more`;
+    (el.current?.querySelector<HTMLElement>(q) ?? el.current?.querySelector<HTMLElement>('[role="tab"]'))?.focus();
     setWant(null);
   }, [el, want, root]);
   return setWant;
@@ -165,12 +183,18 @@ function NodeView({ node, api }: { node: Node; api: WorkspaceApi }) {
   return node.kind === 'stack' ? <StackView stack={node} /> : <SplitView split={node} api={api} />;
 }
 
-/** The docking workspace: drag panes by their tab to split or join, resize, close, duplicate and configure them. */
+/**
+ * The docking workspace: drag panes by their tab to split or join, resize, close, duplicate and configure them.
+ *
+ * Controlled, and the parent must accept every `onChange`: quick successive edits build on the
+ * last change before the parent re-renders, so a vetoed change would leave this view ahead of
+ * `root` until the next new `root` arrives. WorkspacePage always accepts.
+ */
 export function Workspace(props: WorkspaceProps) {
   const { root, registry } = props;
   const el = useRef<HTMLDivElement>(null);
   const live = useLive(props);
-  const act = useActions(live, useFocusTab(el, root));
+  const act = useActions(live, useFocusAfter(el, root));
   const { hostFor, place } = usePaneHosts(root);
   const { drag, start } = useDrag(el, {
     noop: (paneId, t) => movePane(live.current.root, paneId, t.stackId, t.zone) === live.current.root,

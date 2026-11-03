@@ -6,6 +6,7 @@
  *
  * Adding another look: add ONE block at the end of this file,
  *   :root[data-look="<name>"] { color-scheme: …; --bg: …; --panel: …; … }
+ * (Mission's block also applies on an element, so it sets every token, derived ones included.)
  * overriding tokens only, and set `document.documentElement.dataset.look = '<name>'`.
  * Component CSS must never need to change for a new look. Override the canonical tokens; the
  * derived ones (soft tints, status, aliases) follow automatically because they are defined
@@ -401,4 +402,150 @@
   --accent-fill: #5e6ad2; --accent-fill-strong: #6c77da;
   --btn-primary-shadow: none;
   --brand-mark-bg: #5e6ad2;
+}
+
+/*
+ * ── Look: Mission ───────────────────────────────────────────────────────────────────────────
+ * Mission control: near-black, hairline lines, one cyan accent and bright status hues, for
+ * watching a live team on one dense screen. Dark only and flat (no glass, no gradients).
+ * The Control workspaces use it by default on their own root (`.workspace[data-look='mission']`,
+ * see web/src/workspace/WorkspacePage.tsx), and it is also a third app-wide look.
+ *
+ * Every token is set here, derived ones included: on the workspace element a derived token
+ * inherited from :root would still carry the app look's colours, because var() resolves where
+ * the custom property is declared. Text contrast is at least 4.5:1 on every surface.
+ */
+:root[data-look='mission'],
+.workspace[data-look='mission'] {
+  color-scheme: dark;
+
+  --bg: #0a0f14;
+  --panel: #101820;
+  --raised: #15202a;
+  --raised-2: #1b2833;
+  --hover: #1f2e3a;
+  --well: #0c131a;
+  --scrim: rgb(2 5 8 / 70%);
+  --glass: var(--panel);
+  --glass-solid: var(--panel);
+  --glass-border: var(--line);
+  --app-tint: var(--bg);
+
+  --line: #1e2c38;
+  --line-2: #2a3d4c;
+  --line-3: #4f6577;
+
+  --text: #c9d6e0;
+  --muted: #8296a7;
+  --faint: var(--muted);
+  --text-disabled: #5f7486;
+
+  --accent: #3fd0ff;
+  --accent-strong: #74ddff;
+  --accent-ink: #04141c;
+  --accent-deep: #0e4a63;
+  --on-hue: #071018;
+
+  --red: #ff6170;
+  --green: #3ddc84;
+  --amber: #ffb020;
+  --violet: #b48cff;
+  --blue: #5aa9ff;
+
+  --claude: #f39a74;
+  --codex: #79b0ff;
+  --opencode: #9ad67a;
+  --practice: #4fd6c8;
+  --other: #a9b6c2;
+
+  --k-read: var(--blue);
+  --k-edit: #ffc76a;
+  --k-bash: var(--violet);
+  --k-search: var(--practice);
+  --k-web: #ff8fd0;
+  --k-task: var(--claude);
+  --k-other: #93a6b6;
+  --series-1: #b39cff;
+  --series-2: #4fb8ff;
+  --series-3: #3fd6b8;
+  --series-4: #ffc35a;
+  --series-5: #ff9a6b;
+  --series-6: #a6d96a;
+
+  --light: #fff;
+  --shade: #000;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --shadow-control: 0 0 0 0 transparent;
+  --shadow-card: 0 0 0 0 transparent;
+  --shadow-pop: 0 0 0 1px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 50%);
+  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 55%), 0 32px 80px -16px rgb(0 0 0 / 65%);
+
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 45%, transparent);
+  --red-soft: color-mix(in srgb, var(--red) 14%, transparent);
+  --red-line: color-mix(in srgb, var(--red) 45%, transparent);
+  --green-soft: color-mix(in srgb, var(--green) 12%, transparent);
+  --green-line: color-mix(in srgb, var(--green) 40%, transparent);
+  --amber-soft: color-mix(in srgb, var(--amber) 13%, transparent);
+  --amber-line: color-mix(in srgb, var(--amber) 45%, transparent);
+  --violet-soft: color-mix(in srgb, var(--violet) 12%, transparent);
+  --focus-ring: var(--accent);
+  --selection: var(--accent-deep);
+  --scrollbar: var(--line-2);
+  --scrollbar-hover: var(--line-3);
+
+  --status-working: var(--accent);
+  --status-needs-you: var(--red);
+  --status-blocked: var(--red);
+  --status-failed: var(--red);
+  --status-waiting: var(--amber);
+  --status-done: var(--muted);
+  --status-verified: var(--green);
+  --status-unknown: var(--violet);
+  --status-idle: var(--muted);
+
+  --glass-blur: none;
+  --overlay-blur: none;
+  --overlay-blur-sm: none;
+  --app-bg: var(--bg);
+  --sidebar-bg: var(--panel);
+  --sidebar-line: var(--line);
+  --nav-current-bg: var(--accent-soft);
+  --nav-current-ring: inset 0 0 0 1px var(--accent-line);
+  --sidebar-shadow: none;
+  --panel-shadow: none;
+  --canvas-bg: var(--bg);
+  --canvas-dot: color-mix(in srgb, var(--line-3) 30%, transparent);
+  --canvas-dot-size: 24px;
+  --group-bg: color-mix(in srgb, var(--accent) 5%, transparent);
+  --group-line: transparent;
+  --group-label: var(--accent);
+  --card-bg: var(--panel);
+  --card-bg-needs-you: color-mix(in srgb, var(--red) 9%, var(--panel));
+  --card-bg-idle: var(--panel);
+  --accent-fill: var(--accent);
+  --accent-fill-strong: var(--accent-strong);
+  --btn-primary-shadow: none;
+  --brand-mark-bg: var(--accent);
+  --brand-mark-shadow: none;
+  --emblem-bg: var(--light);
+  --mask-solid: #000;
+  --wash: 0;
+  --avatar-bg: var(--accent-deep);
+  --avatar-ink: var(--light);
+
+  --r-sm: var(--radius-sm);
+  --r: var(--radius-md);
+  --r-lg: var(--radius-lg);
+  --surface: var(--panel);
+  --border: var(--line);
+}
+/* The OS asking for more contrast: stronger secondary text and lines in Mission too. */
+@media (prefers-contrast: more) {
+  :root[data-look='mission'],
+  .workspace[data-look='mission'] { --muted: #a9bccb; --line: #34495a; --line-2: #4f6577; --line-3: #7590a4; }
 }
