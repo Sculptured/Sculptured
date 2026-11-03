@@ -74,7 +74,7 @@ describe('the frame: one top bar, then a project tab row, then the page', () => 
     expect(within(list).getAllByRole('link').map((l) => l.textContent)).toEqual(['qRunning · none working', 'rRunning · none working']);
     expect(within(bar).getByRole('link', { name: /New project/ })).toHaveAttribute('href', '/new');
     await user.click(within(list).getByRole('link', { name: /^q/ }));
-    expect(where()).toBe('/p/q/board');
+    expect(where()).toBe('/p/q/control');
     // The app menu: appearance and keys, Community.
     await user.click(within(bar).getByLabelText('App menu'));
     for (const name of ['Appearance…', 'Keyboard shortcuts']) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe('the frame: one top bar, then a project tab row, then the page', () => 
 });
 
 describe('Projects home', () => {
-  it('lists every project with its status, agents and last activity; a name opens its board', async () => {
+  it('lists every project with its status, agents and last activity; a name opens its landing page, Control', async () => {
     const q = snapQ({ seats: [viewQ('x'), viewQ('y', { lifecycle: 'attention', lifecycle_reason: 'asks a question' })] });
     await twoTeams('/', undefined, q);
     expect(screen.getByRole('heading', { level: 1, name: 'Projects' })).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('Projects home', () => {
     // One primary action on the page: New project.
     expect(screen.getAllByRole('link', { name: 'New project' }).filter((l) => l.classList.contains('btn-primary'))).toHaveLength(1);
     await userEvent.setup().click(within(rows[1]).getByRole('link', { name: 'r' }));
-    expect(where()).toBe('/p/r/board');
+    expect(where()).toBe('/p/r/control');
     expect(openRigWords(document.querySelector<HTMLElement>('.app')!)).toEqual([]);
   });
 

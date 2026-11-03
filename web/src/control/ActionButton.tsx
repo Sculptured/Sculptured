@@ -1,13 +1,22 @@
 import { useId, useState } from 'react';
 import { ActionError, type Action, type ActionReport } from './source';
 
-/** What an action did, as plain lines: its report (with each agent it left alone, and notes), or its failure. */
-export type Outcome = { tone: 'done' | 'bad'; text: string; lines: string[] };
+/** One line under an outcome: an agent and what to know about it. `raw`: the server's own words (evidence). */
+export type OutcomeLine = { name: string; text: string; raw: boolean };
+
+/**
+ * What an action did, as plain lines: its report (with each agent it left alone, and notes), why it
+ * did nothing (`refused`, never shown as a success), or its failure.
+ */
+export type Outcome = { tone: 'done' | 'refused' | 'bad'; text: string; lines: OutcomeLine[] };
 
 export function outcomeOf(r: ActionReport | void, doneText?: string): Outcome | null {
   if (!r) return doneText ? { tone: 'done', text: doneText, lines: [] } : null;
-  const lines = [...r.skipped.map((s) => `${s.name}: ${s.reason}`), ...(r.notes ?? []).map((n) => `${n.name}: ${n.text}`)];
-  return { tone: 'done', text: r.text, lines };
+  const lines = [
+    ...r.skipped.map((s) => ({ name: s.name, text: s.reason, raw: !!s.raw })),
+    ...(r.notes ?? []).map((n) => ({ name: n.name, text: n.text, raw: true })),
+  ];
+  return { tone: r.refused ? 'refused' : 'done', text: r.text, lines };
 }
 
 export const failureOf = (e: unknown): Outcome => ({ tone: 'bad', text: e instanceof ActionError ? e.message : 'That did not work. Try again.', lines: [] });
@@ -22,34 +31,52 @@ export function useRunAction(onOutcome: (o: Outcome | null) => void, doneText?: 
   return { busy, run };
 }
 
-type Props = { action: Action; label: string; glyph: string; className?: string; onOutcome(o: Outcome | null): void; doneText?: string; onPress?(): void };
+type Props = {
+  action: Action;
+  label: string;
+  glyph: string;
+  className?: string;
+  onOutcome(o: Outcome | null): void;
+  doneText?: string;
+  /** Replaces running it at once (a confirm step). */
+  onPress?(): void;
+  /** Whether its confirm step is open. */
+  expanded?: boolean;
+  /** A shorter caption for its reason, when the full reason is plain elsewhere (it stays the tooltip). */
+  shortWhy?: (why: string) => string | null;
+};
 
-/**
- * A control's button with its state in words: while it cannot run, it is disabled and says why in
- * visible text beside it. `onPress` replaces running it at once (a confirm step).
- */
-export function ActionButton({ action, label, glyph, className, onOutcome, doneText, onPress }: Props) {
+/** A control's button with its state in words: while it cannot run, it is disabled and says why in visible text beside it. */
+export function ActionButton({ action, label, glyph, className, onOutcome, doneText, onPress, expanded, shortWhy }: Props) {
   const id = useId();
   const { busy, run } = useRunAction(onOutcome, doneText);
   const why = action.can.ok ? null : action.can.why;
+  const caption = why ? (shortWhy?.(why) ?? why) : null;
   return (
     <span className="ctl-act">
       <button type="button" className={`btn btn-sm ${className ?? 'btn-secondary'}`} disabled={!!why || busy} aria-describedby={why ? id : undefined}
-        onClick={() => (onPress ? onPress() : void run(action))}>
+        aria-expanded={expanded} title={caption !== why ? (why ?? undefined) : undefined} onClick={() => (onPress ? onPress() : void run(action))}>
         <span aria-hidden="true">{glyph}</span> {label}
       </button>
-      {why && <span id={id} className="ctl-why">{why}</span>}
+      {why && <span id={id} className="ctl-why">{caption}{caption !== why && <span className="sr-only">: {why}</span>}</span>}
     </span>
   );
 }
 
 /** An outcome's lines under the controls: what happened, every agent left alone and why. */
+const MARK = { done: '', refused: '◇ ', bad: '▲ ' } as const;
+const TONE = { done: '', refused: ' tone-warn', bad: ' tone-bad' } as const;
+
 export function OutcomeNote({ o, dismiss }: { o: Outcome | null; dismiss(): void }) {
   if (!o) return null;
   return (
-    <div className={`ctl-outcome${o.tone === 'bad' ? ' tone-bad' : ''}`} role={o.tone === 'bad' ? 'alert' : 'status'}>
-      <p>{o.tone === 'bad' ? '▲ ' : ''}{o.text}</p>
-      {o.lines.length > 0 && <ul>{o.lines.map((l) => <li key={l}>{l}</li>)}</ul>}
+    <div className={`ctl-outcome${TONE[o.tone]}`} role={o.tone === 'bad' ? 'alert' : 'status'}>
+      <p>{MARK[o.tone]}{o.text}</p>
+      {o.lines.length > 0 && (
+        <ul aria-label="Each agent">
+          {o.lines.map((l, i) => <li key={i}>{l.name}: {l.raw ? <span data-raw-evidence>{l.text}</span> : l.text}</li>)}
+        </ul>
+      )}
       <button type="button" className="btn btn-sm btn-ghost" onClick={dismiss}>Dismiss</button>
     </div>
   );

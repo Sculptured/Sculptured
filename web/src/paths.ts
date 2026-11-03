@@ -24,6 +24,8 @@ export const RESULTS_SECTIONS: { id: ResultsSection; label: string }[] = [
   { id: 'history', label: 'History' },
 ];
 
+/** A project's own address: it opens the project's landing page, Control. Links to "the project" use this. */
+export const projectPath = (team: string) => `/p/${enc(team)}`;
 /** The project's landing page: its Control workspace, whose default layout shows the live board first. */
 export const controlPath = (team: string) => `/p/${enc(team)}/control`;
 /** Where a popped-out Control pane opens: that pane alone, without the app's bars. */

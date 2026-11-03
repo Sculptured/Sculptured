@@ -8,7 +8,7 @@ export type MakeAction = (key: string, can: Availability, busyWords: string, cal
 
 /**
  * Makes `Action`s that run once at a time. While one runs, its `can` says `busyWords` and `run()`
- * returns the same promise; an action that cannot run resolves with its reason and calls nothing.
+ * returns the same promise; an action that cannot run resolves with its reason (`refused`) and calls nothing.
  * Each action keeps its request id across a network failure (a retry executes once) and renews it
  * once the server answers. Failures reject with an `ActionError` in plain words. `after` runs when
  * each action settles (to reload what it changed).
@@ -35,6 +35,6 @@ export function useActionRunner(after: () => void): MakeAction {
   }, [after]);
   return useCallback((key, can, busyWords, call) => ({
     can: busy[key] ? { ok: false, why: busy[key] } : can,
-    run: () => flights.current.get(key) ?? (can.ok ? start(key, busyWords, call) : Promise.resolve({ text: can.why, skipped: [] })),
+    run: () => flights.current.get(key) ?? (can.ok ? start(key, busyWords, call) : Promise.resolve({ text: can.why, skipped: [], refused: true as const })),
   }), [busy, start]);
 }

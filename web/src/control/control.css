@@ -77,7 +77,9 @@
 .ctl-outcome p { margin: 0; }
 .ctl-outcome ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 0 var(--space-3); color: var(--muted); }
 .ctl-outcome .btn { margin-left: auto; }
+.ctl-outcome.tone-bad, .ctl-outcome.tone-warn { color: var(--text); }
 .ctl-outcome.tone-bad p { color: var(--status-failed); }
+.ctl-outcome.tone-warn p { color: var(--status-waiting); }
 .ctl-problems { margin: 0; padding: 4px var(--space-2); list-style: none; border-top: 1px solid var(--amber-line); background: var(--amber-soft); font-size: var(--text-sm); }
 
 /* ── Shared pane parts ── */
@@ -126,22 +128,24 @@
 .ctl-mark.is-lit { color: var(--status-failed); }
 
 /* ── Timeline: thin lanes, turns as bars, marks as ticks, the cursor across ── */
-.ctl-timeline { display: flex; flex-direction: column; min-width: 0; font-size: var(--text-xs); }
+.ctl-timeline { display: flex; flex-direction: column; min-width: 0; height: 100%; min-height: 0; font-size: var(--text-xs); }
+.ctl-cursor-none { color: var(--muted); }
 .ctl-axis, .ctl-lane { display: grid; grid-template-columns: minmax(120px, 22%) minmax(0, 1fr); gap: var(--space-2); align-items: center; }
 .ctl-axis { padding-bottom: 2px; border-bottom: 1px solid var(--line-2); color: var(--accent); font-family: var(--font-mono); }
 .ctl-axis-ticks { display: flex; justify-content: space-between; }
-.ctl-lanes { list-style: none; margin: 0; padding: 0; }
-.ctl-lane { min-height: 20px; border-bottom: 1px solid var(--line); }
+/* Lanes share the pane's height, each between 20 and 36px. */
+.ctl-lanes { display: flex; flex-direction: column; flex: 1; min-height: 0; list-style: none; margin: 0; padding: 0; }
+.ctl-lane { flex: 1 1 20px; min-height: 20px; max-height: 36px; border-bottom: 1px solid var(--line); }
 .ctl-lane.is-picked { background: var(--accent-soft); }
 .ctl-lane-name { display: flex; align-items: baseline; gap: 4px; min-width: 0; white-space: nowrap; overflow: hidden; }
 .ctl-lane-who { flex: 0 1 auto; min-width: 4ch; color: var(--text); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; }
 .ctl-lane-word { flex: 0 10 auto; min-width: 0; color: var(--muted); font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ctl-track { position: relative; height: 14px; border-radius: 2px; background: var(--well); cursor: crosshair; outline: none; }
+.ctl-track { position: relative; height: 64%; min-height: 14px; border-radius: 2px; background: var(--well); cursor: crosshair; outline: none; }
 .ctl-track:focus-visible { box-shadow: 0 0 0 2px var(--focus-ring); }
-.ctl-bar { position: absolute; top: 3px; height: 8px; border-radius: 2px; background: var(--accent-line); border: 1px solid var(--accent); }
-.ctl-tick { position: absolute; top: 2px; width: 1px; height: 10px; background: var(--line-3); }
+.ctl-bar { position: absolute; top: 22%; height: 56%; border-radius: 2px; background: var(--accent-line); border: 1px solid var(--accent); }
+.ctl-tick { position: absolute; top: 15%; width: 1px; height: 70%; background: var(--line-3); }
 .ctl-tick.is-ask { width: 2px; background: var(--status-waiting); }
-.ctl-tick.is-alarm { top: 0; width: 3px; height: 14px; margin-left: -1px; background: var(--status-failed); }
+.ctl-tick.is-alarm { top: 0; width: 3px; height: 100%; margin-left: -1px; background: var(--status-failed); }
 .ctl-cursor { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--accent); box-shadow: 0 0 4px var(--accent); pointer-events: none; }
 
 /* ── Alarms ── */
@@ -194,7 +198,7 @@
 .ctl-agent { display: flex; flex-direction: column; gap: 4px; height: 100%; min-height: 0; }
 .ctl-agent-head { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
 .ctl-agent-name { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ctl-agent-head .ctl-link { margin-left: auto; }
+.ctl-agent-head .ctl-follow { margin-left: auto; font-size: var(--text-xs); color: var(--muted); }
 .ctl-agent-controls { display: flex; flex-direction: column; gap: 2px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .ctl-message { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px; flex: 1 1 260px; min-width: 0; }
 .ctl-message input { flex: 1; min-width: 12ch; }
@@ -224,3 +228,21 @@
 @media (prefers-reduced-motion: reduce) {
   .ctl-caution.is-lit .ctl-caution-glyph { animation: none; }
 }
+
+/* Approve is outlined, so red and amber stay the loudest things on screen. */
+.ctl-approve { border-color: var(--accent-line); color: var(--accent); }
+
+/* A phone: the header is one line, the rest of the readings one step back. */
+.ctl-head-line { display: flex; align-items: center; gap: var(--space-2); padding: 4px var(--space-2); font-size: var(--text-sm); white-space: nowrap; }
+.ctl-line-run { font-family: var(--font-mono); }
+.ctl-head-line .ctl-clock { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.ctl-head-line .ctl-caution { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 8px; margin-left: auto; }
+.ctl-head-line .ctl-caution-word, .ctl-head-line .ctl-caution-sub { display: none; }
+.ctl-head-line .ctl-caution-glyph, .ctl-head-line .ctl-caution-count { font-size: var(--text-sm); }
+.ctl-head-line { flex-wrap: wrap; }
+.ctl-head-line .ctl-act { flex-direction: row; align-items: center; gap: 4px; max-width: none; }
+.ctl-head-line .ctl-confirm { left: auto; right: 0; }
+.ctl-head-more { padding: 0 var(--space-2) 4px; border-top: 1px solid var(--line); }
+.ctl-head-more > summary { padding: 4px 0; color: var(--muted); font-size: var(--text-xs); cursor: pointer; }
+.ctl-head-more .ctl-strip { margin-bottom: 4px; }
+.ctl-clock.is-quiet { color: var(--muted); }

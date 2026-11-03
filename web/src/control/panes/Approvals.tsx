@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { questionsPath } from '../../paths';
 import { nameIn, useControl } from '../context';
-import type { Approval } from '../source';
+import { ActionError, type Approval } from '../source';
 
 /**
  * Approvals: what agents wait on the operator for. A proposed change or a tool request is approved,
@@ -23,7 +23,7 @@ function useDecide(id: string) {
       await source.decide(id, d);
       setPhase({ kind: 'idle' });
     } catch (e) {
-      setPhase({ kind: 'failed', why: e instanceof Error ? e.message : 'Could not send the decision.' });
+      setPhase({ kind: 'failed', why: e instanceof ActionError ? e.message : 'Could not send the decision. Try again.' });
     }
   };
   return { phase, setPhase, send };
@@ -52,7 +52,7 @@ function Decide({ a }: { a: Approval }) {
   const busy = phase.kind === 'sending';
   return (
     <span className="ctl-decide">
-      <button type="button" className="btn btn-sm btn-primary primary" disabled={busy} onClick={() => void send({ allow: true })}>Approve</button>
+      <button type="button" className="btn btn-sm btn-secondary ctl-approve" disabled={busy} onClick={() => void send({ allow: true })}>Approve</button>
       <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setPhase({ kind: 'rejecting', reason: '' })}>Reject…</button>
       {busy && <span className="ctl-why" role="status">Sending…</span>}
       {phase.kind === 'failed' && <span className="ctl-why tone-bad" role="alert">▲ {phase.why}</span>}

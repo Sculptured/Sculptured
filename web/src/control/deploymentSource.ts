@@ -111,17 +111,19 @@ function messageAction(c: Ctx, agent: string, text: string): Action {
 export const START_ELSEWHERE = 'Start the team from its project page.';
 
 /**
- * Start goes through the project bar (its save, confirmation and refusals), read when pressed: it
- * says why it cannot start, or where to start without one. Pause all, Resume all and Emergency stop
+ * Start goes through the project bar (its save, confirmation and refusals): the bar's reason disables
+ * it up front, and is read again when pressed; without a bar it says where to start. Pause all, Resume all and Emergency stop
  * use the team routes.
  */
 function teamActions(c: Ctx, seats: SeatView[], loading: boolean, run: RefObject<RunHandle | null>): TeamActions {
   const can = teamCan(seats, c.modes, loading);
+  // The project bar's own reason (a design to fix, a CLI to set up) disables Start up front.
+  const barWhy = run.current?.startReason;
   return {
-    start: c.act('team:start', can.start, 'Starting…', async () => {
+    start: c.act('team:start', can.start.ok && barWhy ? { ok: false, why: barWhy } : can.start, 'Starting…', async () => {
       const bar = run.current;
-      if (!bar) return { text: START_ELSEWHERE, skipped: [] };
-      if (bar.startReason) return { text: bar.startReason, skipped: [] };
+      if (!bar) return { text: START_ELSEWHERE, skipped: [], refused: true };
+      if (bar.startReason) return { text: bar.startReason, skipped: [], refused: true };
       bar.askStart();
     }),
     pauseAll: c.act('team:pause', can.pauseAll, 'Pausing…', async (rid) => controlReport('Paused', await api.pauseTeam(c.team, rid), c.nameOf)),

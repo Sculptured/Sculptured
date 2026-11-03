@@ -2,7 +2,7 @@ import {DismissibleError} from '../shell/DismissibleError';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { boardPath } from '../paths';
+import { projectPath } from '../paths';
 import { diagnosticsOf, errorText } from '../errors';
 import type { Diagnostic } from '../generated/Diagnostic';
 import { Btn } from '../shell/ui';
@@ -28,7 +28,7 @@ function useBoot(path: string) {
       const r = await bootOnce((id) => api.boot(path.trim(), id));
       const notes = specNotes(r.diagnostics ?? []);
       if (notes.some((d) => d.severity === 'warning')) setBooted({ rig: r.rig, notes });
-      else navigate(boardPath(r.rig));
+      else navigate(projectPath(r.rig));
     } catch (err) {
       setError(err as Error);
     } finally {
@@ -38,30 +38,37 @@ function useBoot(path: string) {
   return { busy, error, booted, boot };
 }
 
+/** The file path field and Start team, with why it cannot start yet. */
+function BootForm({ path, setPath, busy, boot }: { path: string; setPath(p: string): void; busy: boolean; boot(e: FormEvent): void }) {
+  const bootReason = busy ? 'Starting…' : !path.trim() ? 'Enter a team file path to start.' : null;
+  return (
+    <form onSubmit={boot} className="boot-form" aria-label="Start a team from a file">
+      <h2 className="sub-title">Start a team from a file</h2>
+      <div className="boot-line">
+        <label htmlFor="spec-path" className="prompt">
+          Team file
+        </label>
+        <input id="spec-path" className="field" value={path} onChange={(e) => setPath(e.target.value)} placeholder="/absolute/path/to/team file" spellCheck={false} required />
+        <Btn type="submit" variant="primary" icon="play" disabled={busy || !path.trim()} aria-describedby={bootReason ? 'boot-reason' : undefined}>
+          Start team
+        </Btn>
+      </div>
+      {bootReason && (
+        <p id="boot-reason" className="reason">
+          {bootReason}
+        </p>
+      )}
+    </form>
+  );
+}
+
 /** The expert path: team files and their problems use spec words, so all of it is under Advanced. */
 export function StartFromFile({ bare = false }: { bare?: boolean }) {
   const [path, setPath] = useState('');
   const { busy, error, booted, boot } = useBoot(path);
-  const bootReason = busy ? 'Starting…' : !path.trim() ? 'Enter a team file path to start.' : null;
   const body = (
     <>
-      <form onSubmit={boot} className="boot-form" aria-label="Start a team from a file">
-        <h2 className="sub-title">Start a team from a file</h2>
-        <div className="boot-line">
-          <label htmlFor="spec-path" className="prompt">
-            Team file
-          </label>
-          <input id="spec-path" className="field" value={path} onChange={(e) => setPath(e.target.value)} placeholder="/absolute/path/to/team file" spellCheck={false} required />
-          <Btn type="submit" variant="primary" icon="play" disabled={busy || !path.trim()} aria-describedby={bootReason ? 'boot-reason' : undefined}>
-            Start team
-          </Btn>
-        </div>
-        {bootReason && (
-          <p id="boot-reason" className="reason">
-            {bootReason}
-          </p>
-        )}
-      </form>
+      <BootForm path={path} setPath={setPath} busy={busy} boot={boot} />
       {booted && <BootWarnings booted={booted} />}
       {error && <BootError error={error} />}
     </>
@@ -82,7 +89,7 @@ function BootWarnings({ booted }: { booted: Booted }) {
         Started {booted.rig}. The team file has {booted.notes.filter((d) => d.severity === 'warning').length === 1 ? 'a warning' : 'warnings'}:
       </p>
       <SpecNoteList notes={booted.notes} />
-      <Link to={boardPath(booted.rig)} className="btn btn-secondary">
+      <Link to={projectPath(booted.rig)} className="btn btn-secondary">
         Open {booted.rig}
       </Link>
     </section>

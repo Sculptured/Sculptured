@@ -3,7 +3,7 @@ import { ARENA_PATH } from '../arena/paths';
 import { useHosted } from '../hosted/HostedGate';
 import { teamStatus } from '../pages/status';
 import { StatusBadge } from '../pages/StatusBadge';
-import { boardPath, DOCS_URL } from '../paths';
+import { DOCS_URL, projectPath } from '../paths';
 import { openAppearance } from './AppearanceControl';
 import { BrandMark } from './BrandMark';
 import { SignInAlert } from './CliAccounts';
@@ -73,7 +73,7 @@ export function ProjectSwitcher({ team, rows }: { team?: string; rows: TeamRow[]
         <ul aria-label="Projects">
           {rows.map((r) => (
             <li key={r.rig}>
-              <Link to={boardPath(r.rig)} aria-current={r.rig === team ? 'page' : undefined}>
+              <Link to={projectPath(r.rig)} aria-current={r.rig === team ? 'page' : undefined}>
                 <span className="tb-p-name">{r.title}</span>
                 <StatusBadge s={teamStatus(r)} />
               </Link>

@@ -50,12 +50,15 @@ export type Approval = { id: string; agent?: string; title: string; detail?: str
 
 /**
  * What an action did, in plain words, with every agent it left alone and why, and (`notes`) anything
- * to know about an agent it did act on.
+ * to know about an agent it did act on. `refused`: it did nothing, and `text` says why (it could not
+ * run); never shown as a success. A skipped agent's `raw` reason is the server's own words (evidence),
+ * as are `notes`.
  */
 export type ActionReport = {
   text: string;
-  skipped: { agent: string; name: string; reason: string }[];
+  skipped: { agent: string; name: string; reason: string; raw?: true }[];
   notes?: { agent: string; name: string; text: string }[];
+  refused?: true;
 };
 
 /**

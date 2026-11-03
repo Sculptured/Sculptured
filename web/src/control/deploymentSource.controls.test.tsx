@@ -88,12 +88,16 @@ describe('deployment source controls', () => {
   it('messages are instructions, and Start asks the project bar when pressed', async () => {
     vi.mocked(api.send).mockResolvedValue({ message_id: 'm1' });
     const stopped = snapshot({ seats: [seatView('a', { lifecycle: 'stopped' }), seatView('b', { lifecycle: 'stopped' })] });
-    const { result } = await open(stopped);
+    const { result, rerender } = await open(stopped);
     expect(result.current.message(A, 'Check the tests').can).toEqual({ ok: false, why: 'Status: stopped; messages can only be sent to a running agent.' });
     const askStart = vi.fn();
     run.current = { live: false, startReason: 'Fix 2 things first', stopReason: null, askStart, askStop: vi.fn() };
-    await expect(result.current.team.start.run()).resolves.toEqual({ text: 'Fix 2 things first', skipped: [] });
+    await expect(result.current.team.start.run()).resolves.toEqual({ text: 'Fix 2 things first', skipped: [], refused: true });
+    // The bar's reason disables Start up front, once the source reads it again.
+    rerender();
+    expect(result.current.team.start.can).toEqual({ ok: false, why: 'Fix 2 things first' });
     run.current = { ...run.current, startReason: null };
+    rerender();
     await act(async () => { await result.current.team.start.run(); });
     expect(askStart).toHaveBeenCalledTimes(1);
     act(() => stream().emit('snapshot', snapshot()));

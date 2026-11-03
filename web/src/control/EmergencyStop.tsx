@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { ActionButton, failureOf, outcomeOf, type Outcome } from './ActionButton';
 import type { Action } from './source';
 
@@ -8,11 +8,32 @@ export function countIn(note: string | undefined): number | null {
   return m ? Number(m[0]) : null;
 }
 
+/** The confirm question: one agent by itself, else how many. */
+export function stopQuestion(n: number | null): string {
+  if (n === 1) return 'Stop the agent now?';
+  return n !== null ? `Stop all ${n} agents now?` : 'Stop all agents now?';
+}
+
+/** Tab and Shift+Tab stay inside `box`; Esc closes. */
+function trapKeys(box: RefObject<HTMLElement | null>, close: () => void) {
+  return (e: KeyboardEvent) => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
+    if (e.key !== 'Tab' || !box.current) return;
+    const items = [...box.current.querySelectorAll<HTMLElement>('button:not(:disabled)')];
+    if (items.length === 0) return;
+    const [first, last] = [items[0], items[items.length - 1]];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+}
+
 type ConfirmProps = { action: Action; close(): void; onOutcome(o: Outcome | null): void };
 
-/** The confirm step: "Stop all N agents now?", Stop now and Cancel (focused first; Esc cancels). Stop now sends once. */
+/** The confirm step: Stop now and Cancel (focused first). Focus stays inside; Esc cancels. Stop now sends once. */
 function Confirm({ action, close, onOutcome }: ConfirmProps) {
+  const box = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
+  const qid = useId();
   const [sending, setSending] = useState(false);
   useEffect(() => cancel.current?.focus(), []);
   const n = countIn(action.can.ok ? action.can.note : undefined);
@@ -22,27 +43,45 @@ function Confirm({ action, close, onOutcome }: ConfirmProps) {
     close();
   };
   return (
-    <div className="ctl-confirm" role="alertdialog" aria-label="Emergency stop" aria-describedby="ctl-estop-q"
-      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}>
-      <p id="ctl-estop-q" className="ctl-confirm-q">{n !== null ? `Stop all ${n} agents now?` : 'Stop all agents now?'}</p>
-      <p className="ctl-note">Each stops at once, with every agent it started. Their sessions are not kept.</p>
+    <div ref={box} className="ctl-confirm" role="alertdialog" aria-modal="false" aria-label="Emergency stop" aria-describedby={qid} onKeyDown={trapKeys(box, close)}>
+      <p id={qid} className="ctl-confirm-q">{stopQuestion(n)}</p>
+      <p className="ctl-note">{n === 1 ? 'It stops at once, with every agent it started.' : 'Each stops at once, with every agent it started.'} Sessions are not kept.</p>
       <div className="ctl-row">
         <button type="button" className="btn btn-sm btn-danger danger" disabled={sending} onClick={() => void stop()}>{sending ? 'Stopping…' : 'Stop now'}</button>
-        <button ref={cancel} type="button" className="btn btn-secondary btn-sm" disabled={sending} onClick={close}>Cancel</button>
+        <button ref={cancel} type="button" className="btn btn-sm btn-secondary" disabled={sending} onClick={close}>Cancel</button>
       </div>
     </div>
   );
 }
 
-/** Emergency stop: disabled with its reason when nothing runs; otherwise it asks first. */
+/** A press outside `box` while `on` calls `close`. */
+function useOutsideClose(box: RefObject<HTMLElement | null>, on: boolean, close: () => void) {
+  const latest = useRef(close);
+  useEffect(() => { latest.current = close; });
+  useEffect(() => {
+    if (!on) return;
+    const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) latest.current(); };
+    document.addEventListener('pointerdown', down);
+    return () => document.removeEventListener('pointerdown', down);
+  }, [box, on]);
+}
+
+/**
+ * Emergency stop: disabled with its reason when nothing runs; otherwise it asks first. The question
+ * closes for good once the stop can no longer run (it never reopens by itself), on Cancel, Esc, or a
+ * press outside it.
+ */
 export function EmergencyStop({ action, onOutcome }: { action: Action; onOutcome(o: Outcome | null): void }) {
   const [asking, setAsking] = useState(false);
-  const opener = useRef<HTMLSpanElement>(null);
-  const close = () => { setAsking(false); opener.current?.querySelector('button')?.focus(); };
+  const box = useRef<HTMLSpanElement>(null);
+  if (asking && !action.can.ok) setAsking(false);
+  const close = () => { setAsking(false); box.current?.querySelector('button')?.focus(); };
+  useOutsideClose(box, asking, () => setAsking(false));
   return (
-    <span ref={opener} className="ctl-estop">
-      <ActionButton action={action} label="Emergency stop" glyph="■" className="btn-danger danger ctl-estop-btn" onOutcome={onOutcome} onPress={() => setAsking((a) => !a)} />
-      {asking && action.can.ok && <Confirm action={action} close={close} onOutcome={onOutcome} />}
+    <span ref={box} className="ctl-estop">
+      <ActionButton action={action} label="Emergency stop" glyph="■" className="btn-danger danger ctl-estop-btn" onOutcome={onOutcome} onPress={() => setAsking((a) => !a)}
+        expanded={asking} />
+      {asking && <Confirm action={action} close={close} onOutcome={onOutcome} />}
     </span>
   );
 }

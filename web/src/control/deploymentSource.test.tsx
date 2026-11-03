@@ -93,8 +93,8 @@ describe('useDeploymentSource', () => {
     expect(s.team.resumeAll.can).toEqual({ ok: false, why: 'Nothing is paused' });
     expect(s.team.start.can).toEqual({ ok: true });
     // Without the project bar, Start says where to start (read when pressed).
-    await expect(s.team.start.run()).resolves.toEqual({ text: 'Start the team from its project page.', skipped: [] });
-    await expect(s.team.emergencyStop.run()).resolves.toEqual({ text: 'Nothing is running', skipped: [] });
+    await expect(s.team.start.run()).resolves.toEqual({ text: 'Start the team from its project page.', skipped: [], refused: true });
+    await expect(s.team.emergencyStop.run()).resolves.toEqual({ text: 'Nothing is running', skipped: [], refused: true });
     expect(api.stopTeamNow).not.toHaveBeenCalled();
 
     // Running: pressed twice, it stops once.

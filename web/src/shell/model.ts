@@ -17,7 +17,7 @@ import { isDone } from '../seen';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { DEFAULT_GROUP_ID, nameMap, seatIdFor } from '../draft/ids';
 import type { Teams } from '../useTeams';
-import { agentPagePath, agentTabOf, boardPath } from '../paths';
+import { agentPagePath, agentTabOf, projectPath } from '../paths';
 import { displayName, labelNames, nameForId, type NameMap } from '../vocab';
 
 export type AgentRow = {
@@ -128,6 +128,48 @@ function runtimeOf(compiled: CompiledRig, seat: string) {
   return m.get(seat);
 }
 
+/** The one line under an agent: stalled, stuck in a handoff, waiting on others, or its own summary. */
+function summaryFor(seat: SeatView | undefined, state: AgentRow['state'], stuck: HandoffStuck | undefined, waitingFor: string[]): string {
+  if (seat?.stalled && seat.lifecycle === 'running') return `stalled: ${seat.stalled.reason}`;
+  if (stuck && state.key === 'stuck') return stuckWords(stuck);
+  return waitingFor.length > 0 ? waitingWords(waitingFor) : summaryOf(seat, state);
+}
+
+/** How many agents work below this one, and whose accounts they use. */
+function downstreamFor(compiled: CompiledRig, id: string): AgentRow['downstream'] {
+  const below = downstreamOf(compiled, id);
+  const accounts = (['claude-code', 'codex'] as const).filter((r) => below.some((x) => runtimeOf(compiled, x) === r)).map((r) => (r === 'codex' ? 'Codex' : 'Claude'));
+  return { count: below.length, accounts };
+}
+
+type TeamView = { rig: string; compiled: CompiledRig; seats: Record<string, SeatView>; activity: Record<string, AgentActivity>; names: NameMap; groups: Record<string, string> };
+
+function agentRow(t: TeamView, spec: CompiledRig['seats'][number]): AgentRow {
+  const seat = t.seats[spec.id];
+  const act = t.activity[spec.id];
+  const state = agentState(seat, isDone(spec.id, act?.lastTurnEndSeq ?? null));
+  const nameOf = (id: string) => (t.seats[id] ? displayName(t.seats[id], t.names) : nameForId(id, t.names));
+  const waitingFor = (seat?.waiting_for ?? []).map(nameOf);
+  const stuck = seat?.handoff_stuck ?? undefined;
+  return {
+    id: spec.id,
+    rig: t.rig,
+    name: nameOf(spec.id),
+    group: t.groups[spec.pod] ?? 'unknown',
+    folder: seat?.cwd ?? spec.cwd,
+    seat,
+    state,
+    vendor: vendor(seat?.runtime ?? spec.runtime),
+    summary: summaryFor(seat, state, stuck, waitingFor),
+    lastMs: seat?.last_event_ms ?? null,
+    activity: act,
+    waitingFor,
+    stuck,
+    handsTo: t.compiled.edges.filter((e) => e.kind === 'delegates_to' && e.from === spec.id && e.to !== spec.id).map((e) => nameOf(e.to)),
+    downstream: downstreamFor(t.compiled, spec.id),
+  };
+}
+
 /** One row per agent of a team, in declaration order. */
 export function teamAgents(
   rig: string,
@@ -137,38 +179,7 @@ export function teamAgents(
   names: NameMap = {},
 ): AgentRow[] {
   const groups = Object.fromEntries(compiled.pods.map((p) => [p.id, p.label]));
-  return compiled.seats.map((spec): AgentRow => {
-    const seat = seats[spec.id];
-    const act = activity[spec.id];
-    const state = agentState(seat, isDone(spec.id, act?.lastTurnEndSeq ?? null));
-    const nameOf = (id: string) => (seats[id] ? displayName(seats[id], names) : nameForId(id, names));
-    const waitingFor = (seat?.waiting_for ?? []).map(nameOf);
-    const stuck = seat?.handoff_stuck ?? undefined;
-    const handsTo = compiled.edges.filter((e) => e.kind === 'delegates_to' && e.from === spec.id && e.to !== spec.id).map((e) => nameOf(e.to));
-    const below = downstreamOf(compiled, spec.id);
-    return {
-      id: spec.id,
-      rig,
-      name: seat ? displayName(seat, names) : nameForId(spec.id, names),
-      group: groups[spec.pod] ?? 'unknown',
-      folder: seat?.cwd ?? spec.cwd,
-      seat,
-      state,
-      vendor: vendor(seat?.runtime ?? spec.runtime),
-      summary: seat?.stalled && seat.lifecycle === 'running' ? `stalled: ${seat.stalled.reason}` : stuck && state.key === 'stuck' ? stuckWords(stuck) : waitingFor.length > 0 ? waitingWords(waitingFor) : summaryOf(seat, state),
-      lastMs: seat?.last_event_ms ?? null,
-      activity: act,
-      waitingFor,
-      stuck,
-      handsTo,
-      downstream: {
-        count: below.length,
-        accounts: (['claude-code', 'codex'] as const)
-          .filter((r) => below.some((id) => runtimeOf(compiled, id) === r))
-          .map((r) => (r === 'codex' ? 'Codex' : 'Claude')),
-      },
-    };
-  });
+  return compiled.seats.map((spec) => agentRow({ rig, compiled, seats, activity, names, groups }, spec));
 }
 
 export function buildTeams(
@@ -183,7 +194,7 @@ export function buildTeams(
     const t = teams[rig];
     const snap = t?.state.snapshot;
     if (!snap) {
-      rows.push({ rig, agents: [], counts: emptyCounts(), connected: !!t?.connected, loaded: false, names: {}, title: titles[rig] ?? rig, href: boardPath(rig) });
+      rows.push({ rig, agents: [], counts: emptyCounts(), connected: !!t?.connected, loaded: false, names: {}, title: titles[rig] ?? rig, href: projectPath(rig) });
       continue;
     }
     const names = { ...labelNames(snap.rig), ...(extraNames[rig] ?? {}) };
@@ -191,8 +202,8 @@ export function buildTeams(
     const agents = teamAgents(rig, snap.rig, t.state.seats, activity, names).map((a) => ({ ...a, teamRunning: running }));
     const counts = emptyCounts();
     for (const a of agents) counts[a.state.key]++;
-    // A running team opens on its Run board; any other opens on its design.
-    rows.push({ rig, agents: sortAgents(agents, (a) => a.state.key), counts, connected: t.connected, loaded: true, names, title: titles[rig] ?? rig, href: boardPath(rig) });
+    // A project opens on its landing page, Control.
+    rows.push({ rig, agents: sortAgents(agents, (a) => a.state.key), counts, connected: t.connected, loaded: true, names, title: titles[rig] ?? rig, href: projectPath(rig) });
   }
   return rows;
 }
@@ -247,7 +258,7 @@ export function draftTeamRow(d: TeamDraft): TeamRow {
   });
   const counts = emptyCounts();
   counts.planned = agents.length;
-  return { rig: d.id, agents, counts, connected: false, loaded: true, names: nameMap(d), title: d.name.trim() || 'Unnamed team', href: boardPath(d.id), draftOnly: true };
+  return { rig: d.id, agents, counts, connected: false, loaded: true, names: nameMap(d), title: d.name.trim() || 'Unnamed team', href: projectPath(d.id), draftOnly: true };
 }
 
 

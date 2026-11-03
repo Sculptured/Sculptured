@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { compactNumber } from '../format';
+import { useMobile } from '../workspace/MobileWorkspace';
 import { ActionButton, OutcomeNote, type Outcome } from './ActionButton';
 import { span, type ControlCtx } from './context';
 import { EmergencyStop } from './EmergencyStop';
@@ -21,15 +22,15 @@ function Tile({ label, children, className }: { label: string; children: ReactNo
 }
 
 /** T+hh:mm:ss since the earliest current session started, ticking each second while the team runs. */
-function Elapsed({ startedAt, running }: { startedAt?: number; running: boolean }) {
+function Clock({ startedAt, running }: { startedAt?: number; running: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!running || startedAt === undefined) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [running, startedAt]);
-  if (!running || startedAt === undefined) return <Tile label="Elapsed" className="is-quiet"><span className="ctl-clock">T+ --:--:--</span> <small>{running ? 'unknown' : 'not running'}</small></Tile>;
-  return <Tile label="Elapsed"><span className="ctl-clock" role="timer" aria-label={`Running for ${span(now - startedAt)}`}>T+{span(now - startedAt)}</span></Tile>;
+  if (!running || startedAt === undefined) return <><span className="ctl-clock is-quiet">T+ --:--:--</span> <small>{running ? 'unknown' : 'not running'}</small></>;
+  return <span className="ctl-clock" role="timer" aria-label={`Running for ${span(now - startedAt)}`}>T+{span(now - startedAt)}</span>;
 }
 
 function Caution({ ctx }: { ctx: ControlCtx }) {
@@ -54,7 +55,7 @@ function Strip({ ctx }: { ctx: ControlCtx }) {
   return (
     <ul className="ctl-strip" aria-label="Run status">
       <Tile label="Run" className={`tone-${run.tone}`}><span className="ctl-glyph" aria-hidden="true">{run.glyph}</span> {run.word}</Tile>
-      <Elapsed startedAt={source.startedAt} running={source.running} />
+      <Tile label="Elapsed"><Clock startedAt={source.startedAt} running={source.running} /></Tile>
       <Tile label="Agents" className="ctl-tile-wide">
         {counts.length === 0 ? 'none yet' : counts.map((c) => <span key={c.word} className={`ctl-count tone-${c.tone}`}><span className="ctl-glyph" aria-hidden="true">{c.glyph}</span> {c.n} {c.word}</span>)}
       </Tile>
@@ -64,30 +65,59 @@ function Strip({ ctx }: { ctx: ControlCtx }) {
   );
 }
 
-function TeamControls({ ctx, onOutcome }: { ctx: ControlCtx; onOutcome(o: Outcome | null): void }) {
+function TeamControls({ ctx, onOutcome, withStop = true }: { ctx: ControlCtx; onOutcome(o: Outcome | null): void; withStop?: boolean }) {
   const t = ctx.source.team;
   return (
     <div className="ctl-controls" role="group" aria-label="Team controls">
-      <ActionButton action={t.start} label="Start" glyph="▶" className="btn-primary primary" onOutcome={onOutcome} />
+      <ActionButton action={t.start} label="Start" glyph="▶" className="btn-primary primary" onOutcome={onOutcome} shortWhy={() => (ctx.source.running ? 'Running' : null)} />
       <ActionButton action={t.pauseAll} label="Pause all" glyph="‖" onOutcome={onOutcome} />
       <ActionButton action={t.resumeAll} label="Resume all" glyph="▶" onOutcome={onOutcome} />
-      <EmergencyStop action={t.emergencyStop} onOutcome={onOutcome} />
+      {withStop && <EmergencyStop action={t.emergencyStop} onOutcome={onOutcome} />}
     </div>
+  );
+}
+
+type RowProps = { ctx: ControlCtx; onOutcome(o: Outcome | null): void };
+
+function Wide({ ctx, onOutcome }: RowProps) {
+  return (
+    <div className="ctl-head-row">
+      <Strip ctx={ctx} />
+      <div className="ctl-head-right">
+        <Caution ctx={ctx} />
+        <TeamControls ctx={ctx} onOutcome={onOutcome} />
+      </div>
+    </div>
+  );
+}
+
+/** A phone: one line (the run, the clock, the caution's count, Emergency stop); the rest one step back. */
+function Narrow({ ctx, onOutcome }: RowProps) {
+  const run = runStatus(ctx.source);
+  return (
+    <>
+      <div className="ctl-head-line">
+        <span className={`ctl-line-run tone-${run.tone}`}><span aria-hidden="true">{run.glyph}</span> {run.word}</span>
+        <Clock startedAt={ctx.source.startedAt} running={ctx.source.running} />
+        <Caution ctx={ctx} />
+        <EmergencyStop action={ctx.source.team.emergencyStop} onOutcome={onOutcome} />
+      </div>
+      <details className="ctl-head-more">
+        <summary>Agents, tokens, cost and team controls</summary>
+        <Strip ctx={ctx} />
+        <TeamControls ctx={ctx} onOutcome={onOutcome} withStop={false} />
+      </details>
+    </>
   );
 }
 
 export function ControlHeader({ ctx }: { ctx: ControlCtx }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const problems = ctx.source.problems ?? [];
+  const Row = useMobile() ? Narrow : Wide;
   return (
     <div className="ctl-head">
-      <div className="ctl-head-row">
-        <Strip ctx={ctx} />
-        <div className="ctl-head-right">
-          <Caution ctx={ctx} />
-          <TeamControls ctx={ctx} onOutcome={setOutcome} />
-        </div>
-      </div>
+      <Row ctx={ctx} onOutcome={setOutcome} />
       <OutcomeNote o={outcome} dismiss={() => setOutcome(null)} />
       {problems.length > 0 && (
         <ul className="ctl-problems" role="status" aria-label="Not loaded">

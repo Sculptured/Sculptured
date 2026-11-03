@@ -19,7 +19,7 @@ function renderAt(url: string) {
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route path="/" element={<StartFromFile />} />
-        <Route path="/p/:team/board" element={<p>rig page</p>} />
+        <Route path="/p/:team" element={<p>rig page</p>} />
       </Routes>
       <Where />
     </MemoryRouter>,
@@ -95,7 +95,7 @@ describe('Start a team from a file (New project · Advanced)', () => {
     await user.type(await screen.findByLabelText('Team file'), '/tmp/mini.yaml');
     await user.click(screen.getByRole('button', { name: 'Start team' }));
     expect(await screen.findByText('rig page')).toBeInTheDocument();
-    expect(screen.getByTestId('where')).toHaveTextContent('/p/mini/board');
+    expect(screen.getByTestId('where')).toHaveTextContent('/p/mini');
   });
 
   // I4: a successful boot's warnings are shown until the operator navigates.
@@ -119,7 +119,7 @@ describe('Start a team from a file (New project · Advanced)', () => {
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/);
     await user.click(screen.getByRole('link', { name: 'Open mini' }));
     expect(await screen.findByText('rig page')).toBeInTheDocument();
-    expect(screen.getByTestId('where')).toHaveTextContent('/p/mini/board');
+    expect(screen.getByTestId('where')).toHaveTextContent('/p/mini');
   });
 
   it('navigates straight to the rig when the boot has only not-enforced notes', async () => {

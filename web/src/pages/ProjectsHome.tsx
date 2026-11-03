@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { shortAge } from '../herdr';
-import { agentsPath, boardPath } from '../paths';
+import { agentsPath, boardPath, projectPath } from '../paths';
 import { DismissibleError } from '../shell/DismissibleError';
 import type { TeamRow } from '../shell/model';
 import { useShell } from '../shell/ShellContext';
@@ -61,59 +61,75 @@ export function useCreated() {
   };
 }
 
-function ProjectTable({ rows, v }: { rows: TeamRow[]; v: ReturnType<typeof useProjectVisibility> }) {
-  const shell = useShell();
-  const navigate = useNavigate();
-  const ask = (team: string, action: 'start' | 'stop') => {
-    shell.pending.current = { team, action, until: Date.now() + 10_000 };
-    navigate(boardPath(team));
-  };
-  const picks = usePicks(rows.map((r) => r.rig));
-  const chosen = rows.filter((r) => picks.has(r.rig));
+type Visibility = ReturnType<typeof useProjectVisibility>;
+
+/** Hide, or move to the Trash, every ticked project. */
+function BulkBar({ chosen, picks, v }: { chosen: TeamRow[]; picks: Picks; v: Visibility }) {
   const anyLive = chosen.some(running);
   const bulk = v.busy === 'bulk';
+  if (chosen.length === 0) return null;
+  return (
+    <div className="bulk-bar">
+      <span role="status" aria-label="Selected projects">{chosen.length} selected</span>
+      <Btn size="sm" disabled={bulk} onClick={() => void v.changeMany(chosen.map((r) => r.rig), 'hidden').then((ok) => ok && picks.clear())}>Hide selected</Btn>
+      <Btn size="sm" icon="trash" disabled={bulk || anyLive} onClick={() => void v.changeMany(chosen.map((r) => r.rig), 'trashed').then((ok) => ok && picks.clear())}>Move selected to Trash</Btn>
+      <Btn size="sm" variant="ghost" onClick={picks.clear}>Clear selection</Btn>
+      {anyLive && <small className="muted">Stop running projects before moving them to the Trash.</small>}
+    </div>
+  );
+}
+
+function RowActions({ r, live, v, ask }: { r: TeamRow; live: boolean; v: Visibility; ask: (team: string, action: 'start' | 'stop') => void }) {
+  const shell = useShell();
+  const canStart = !live && shell.isTeam(r.rig);
+  return (
+    <td className="col-act">
+      {live && <Btn size="sm" icon="stop" onClick={() => ask(r.rig, 'stop')}>Stop…</Btn>}
+      {canStart && <Btn size="sm" icon="play" onClick={() => ask(r.rig, 'start')}>Start…</Btn>}
+      <details className="project-menu top-menu">
+        <summary aria-label={`Manage ${r.title}`} data-tip="Project actions"><Icon name="more" size={15} /></summary>
+        <div className="top-menu-body">
+          <button type="button" disabled={v.busy === r.rig} onClick={() => void v.change(r.rig, 'hidden')}>Hide</button>
+          <button type="button" disabled={v.busy === r.rig || live} onClick={() => void v.change(r.rig, 'trashed')}>Move to Trash</button>
+          {live && <small>Stop the team before moving it to the Trash.</small>}
+        </div>
+      </details>
+    </td>
+  );
+}
+
+/** A project's row: its name opens the project's landing page (Control). */
+function ProjectRow({ r, picks, v, ask }: { r: TeamRow; picks: Picks; v: Visibility; ask: (team: string, action: 'start' | 'stop') => void }) {
+  const shell = useShell();
+  const summary = shell.summaries?.find((s) => s.id === r.rig);
+  const last = lastActivity(r, summary?.updated_at_ms);
+  return (
+    <tr data-team={r.rig} className={picks.has(r.rig) ? 'picked' : undefined}>
+      <td className="col-pick"><input type="checkbox" aria-label={`Select ${r.title}`} checked={picks.has(r.rig)} onChange={() => picks.toggle(r.rig)} /></td>
+      <td><Link to={projectPath(r.rig)} className="pt-name">{r.title}</Link></td>
+      <td><StatusBadge s={teamStatus(r)} /></td>
+      <td className="col-num"><Link to={agentsPath(r.rig)} className="muted" aria-label={`${r.agents.length} agents in ${r.title}`}>{r.agents.length}</Link></td>
+      <td className="col-age muted">{last ? `${shortAge(last, shell.now)} ago` : 'unknown'}</td>
+      <RowActions r={r} live={running(r)} v={v} ask={ask} />
+    </tr>
+  );
+}
+
+function ProjectTable({ rows, v }: { rows: TeamRow[]; v: Visibility }) {
+  const shell = useShell();
+  const navigate = useNavigate();
+  // Start and Stop ask on the project's landing page (Control), which shows the team live.
+  const ask = (team: string, action: 'start' | 'stop') => {
+    shell.pending.current = { team, action, until: Date.now() + 10_000 };
+    navigate(projectPath(team));
+  };
+  const picks = usePicks(rows.map((r) => r.rig));
   return (
     <div className="table-wrap">
-      {chosen.length > 0 && (
-        <div className="bulk-bar">
-          <span role="status" aria-label="Selected projects">{chosen.length} selected</span>
-          <Btn size="sm" disabled={bulk} onClick={() => void v.changeMany(chosen.map((r) => r.rig), 'hidden').then((ok) => ok && picks.clear())}>Hide selected</Btn>
-          <Btn size="sm" icon="trash" disabled={bulk || anyLive} onClick={() => void v.changeMany(chosen.map((r) => r.rig), 'trashed').then((ok) => ok && picks.clear())}>Move selected to Trash</Btn>
-          <Btn size="sm" variant="ghost" onClick={picks.clear}>Clear selection</Btn>
-          {anyLive && <small className="muted">Stop running projects before moving them to the Trash.</small>}
-        </div>
-      )}
+      <BulkBar chosen={rows.filter((r) => picks.has(r.rig))} picks={picks} v={v} />
       <table className="data-table projects-table">
         <thead><tr><th className="col-pick"><AllBox label="Select all projects" picks={picks} /></th><th>Name</th><th>Status</th><th className="col-num">Agents</th><th className="col-age">Last activity</th><th className="col-act"><span className="sr-only">Actions</span></th></tr></thead>
-        <tbody>
-          {rows.map((r) => {
-            const summary = shell.summaries?.find((s) => s.id === r.rig);
-            const last = lastActivity(r, summary?.updated_at_ms);
-            const live = running(r);
-            const canStart = !live && shell.isTeam(r.rig);
-            return (
-              <tr key={r.rig} data-team={r.rig} className={picks.has(r.rig) ? 'picked' : undefined}>
-                <td className="col-pick"><input type="checkbox" aria-label={`Select ${r.title}`} checked={picks.has(r.rig)} onChange={() => picks.toggle(r.rig)} /></td>
-                <td><Link to={boardPath(r.rig)} className="pt-name">{r.title}</Link></td>
-                <td><StatusBadge s={teamStatus(r)} /></td>
-                <td className="col-num"><Link to={agentsPath(r.rig)} className="muted" aria-label={`${r.agents.length} agents in ${r.title}`}>{r.agents.length}</Link></td>
-                <td className="col-age muted">{last ? `${shortAge(last, shell.now)} ago` : 'unknown'}</td>
-                <td className="col-act">
-                  {live && <Btn size="sm" icon="stop" onClick={() => ask(r.rig, 'stop')}>Stop…</Btn>}
-                  {canStart && <Btn size="sm" icon="play" onClick={() => ask(r.rig, 'start')}>Start…</Btn>}
-                  <details className="project-menu top-menu">
-                    <summary aria-label={`Manage ${r.title}`} data-tip="Project actions"><Icon name="more" size={15} /></summary>
-                    <div className="top-menu-body">
-                      <button type="button" disabled={v.busy === r.rig} onClick={() => void v.change(r.rig, 'hidden')}>Hide</button>
-                      <button type="button" disabled={v.busy === r.rig || live} onClick={() => void v.change(r.rig, 'trashed')}>Move to Trash</button>
-                      {live && <small>Stop the team before moving it to the Trash.</small>}
-                    </div>
-                  </details>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
+        <tbody>{rows.map((r) => <ProjectRow key={r.rig} r={r} picks={picks} v={v} ask={ask} />)}</tbody>
       </table>
       {rows.length === 0 && <p className="muted empty-line">{PROJECT_WORDS.noProjects}</p>}
     </div>

@@ -112,7 +112,7 @@ type ControlResult = Pick<TeamControlResult, 'affected' | 'skipped'> & { notes?:
 
 /** What a pause or resume did, with each agent it left alone and why (errors.ts words for each code). */
 export function controlReport(verb: 'Paused' | 'Resumed', r: ControlResult, nameOf: (id: string) => string): ActionReport {
-  const skipped = r.skipped.map((s) => ({ agent: s.seat, name: nameOf(s.seat), reason: SKIP_WORDS[s.code] ?? s.reason }));
+  const skipped = r.skipped.map((s) => ({ agent: s.seat, name: nameOf(s.seat), reason: SKIP_WORDS[s.code] ?? s.reason, ...(SKIP_WORDS[s.code] ? {} : { raw: true as const }) }));
   const notes = (r.notes ?? []).map((n) => ({ agent: n.seat, name: nameOf(n.seat), text: n.reason }));
   const n = r.affected.length;
   const head = n > 0 ? `${verb} ${plural(n, 'agent')}` : `No agent was ${verb.toLowerCase()}`;

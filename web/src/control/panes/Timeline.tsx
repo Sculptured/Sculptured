@@ -62,7 +62,7 @@ function AgentLabel({ a, picked }: { a: AgentLine; picked: boolean }) {
 function Axis({ range, cursor }: { range: Range; cursor?: number }) {
   return (
     <div className="ctl-axis" aria-hidden="true">
-      <span className="ctl-lane-name">{cursor !== undefined ? <>▼ {clockAt(cursor)}</> : 'Cursor: none'}</span>
+      <span className="ctl-lane-name">{cursor !== undefined ? <>▼ {clockAt(cursor)}</> : <span className="ctl-cursor-none">Cursor —</span>}</span>
       <span className="ctl-axis-ticks">{axisOf(range).map((t) => <span key={t} className="ctl-t">{clockAt(t)}</span>)}</span>
     </div>
   );

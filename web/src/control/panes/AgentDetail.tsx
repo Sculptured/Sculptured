@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useProject } from '../../pages/ProjectContext';
-import { AgentActivity } from '../../pages/AgentActivity';
+import { AgentActivity, type ActivityView } from '../../pages/AgentActivity';
 import { AgentConversation } from '../../pages/AgentConversation';
 import { agentPagePath } from '../../paths';
 import { useAgentControls } from '../../shell/AgentControls';
@@ -15,14 +15,16 @@ import { AgentControlsBar } from './AgentControlsBar';
 
 /**
  * Agent detail: one agent's conversation or activity, with its controls (pause, resume, stop, send a
- * message). It shows the selected agent; with "Follow selection" off, the one picked in Settings.
- * Several can be open side by side.
+ * message). Following the selection (the default), it shows the selected agent; with Follow off, the
+ * agent it was showing, or the one picked in Settings. Several can be open side by side, each with its
+ * own view.
  */
 
-export type AgentSettings = { view?: 'conversation' | 'activity'; agent?: string; follow?: boolean };
+export type AgentSettings = { view?: 'conversation' | 'activity'; activityView?: ActivityView; agent?: string; follow?: boolean };
 
 function useAgent(s: AgentSettings): string | undefined {
   const { selection } = useSelection();
+  // With Follow off and no agent picked, the selection stays at what this pane last followed.
   return s.follow === false ? (s.agent ?? selection.agent) : selection.agent;
 }
 
@@ -45,59 +47,84 @@ function Pick() {
   );
 }
 
-function Views({ row, view, setView }: { row: AgentRow; view: 'conversation' | 'activity'; setView(v: 'conversation' | 'activity'): void }) {
+type Set = (patch: Partial<AgentSettings>) => void;
+
+function Views({ row, s, set }: { row: AgentRow; s: AgentSettings; set: Set }) {
   const p = useProject();
   const c = useAgentControls(row.seat!);
   const feed = p.live?.feed[row.id] ?? [];
   const [search, setSearch] = useState<HTMLElement | null>(null);
   const inline = signedOut(row, feed);
+  const view = s.view ?? 'conversation';
   return (
     <>
       <div className="ctl-views" role="group" aria-label="Show">
         {(['conversation', 'activity'] as const).map((v) => (
-          <button key={v} type="button" className={`ctl-seg${view === v ? ' is-on' : ''}`} aria-pressed={view === v} onClick={() => setView(v)}>{v === 'conversation' ? 'Conversation' : 'Activity'}</button>
+          <button key={v} type="button" className={`ctl-seg${view === v ? ' is-on' : ''}`} aria-pressed={view === v} onClick={() => set({ view: v })}>{v === 'conversation' ? 'Conversation' : 'Activity'}</button>
         ))}
         <span className="pane-search" ref={setSearch} />
       </div>
       <div className="ctl-agent-body">
         {view === 'conversation'
           ? <AgentConversation key={row.id} a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} searchSlot={search} handOverInline={inline} askHandOver={0} />
-          : <AgentActivity key={row.id} a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} handOverInline={inline} askHandOver={0} />}
+          : <AgentActivity key={row.id} a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} handOverInline={inline} askHandOver={0}
+              view={s.activityView ?? 'progress'} onView={(activityView) => set({ activityView })} />}
       </div>
     </>
   );
 }
 
+/** Follow selection, in view: turning it off keeps this agent here. */
+function FollowSwitch({ agent, s, set }: { agent: string; s: AgentSettings; set: Set }) {
+  const on = s.follow !== false;
+  return (
+    <label className="ctl-check ctl-follow">
+      <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked ? { follow: true, agent: undefined } : { follow: false, agent })} />
+      Follow selection
+    </label>
+  );
+}
+
+function Head({ agent, s, set }: { agent: string; s: AgentSettings; set: Set }) {
+  const p = useProject();
+  const { source } = useControl();
+  const line = source.agents.find((a) => a.id === agent)!;
+  return (
+    <header className="ctl-agent-head">
+      <span className={`ctl-glyph tone-${line.status.tone}`} aria-hidden="true">{line.status.glyph}</span>
+      <h3 className="ctl-agent-name">{line.name}</h3>
+      <span className="ctl-lane-word">{line.status.word}{line.activity && line.activity !== line.status.word ? ` · ${line.activity}` : ''}</span>
+      <FollowSwitch agent={agent} s={s} set={set} />
+      <Link className="ctl-link" to={agentPagePath(p.team, agent)}>Full page</Link>
+    </header>
+  );
+}
+
 export function AgentDetailPane({ settings, setSettings }: PaneProps) {
   const s = settings as AgentSettings;
-  const p = useProject();
   const shell = useShell();
   const { source } = useControl();
   const agent = useAgent(s);
-  const line = agent ? source.agents.find((a) => a.id === agent) : undefined;
-  if (!agent || !line) return <Pick />;
+  if (!agent || !source.agents.some((a) => a.id === agent)) return <Pick />;
   const row = shell.byId[agent];
+  const set: Set = (patch) => setSettings({ ...s, ...patch });
   return (
     <div className="ctl-agent" data-agent-detail={agent}>
-      <header className="ctl-agent-head">
-        <span className={`ctl-glyph tone-${line.status.tone}`} aria-hidden="true">{line.status.glyph}</span>
-        <h3 className="ctl-agent-name">{line.name}</h3>
-        <span className="ctl-lane-word">{line.status.word}{line.activity && line.activity !== line.status.word ? ` · ${line.activity}` : ''}</span>
-        <Link className="ctl-link" to={agentPagePath(p.team, agent)}>Full page</Link>
-      </header>
+      <Head agent={agent} s={s} set={set} />
       <AgentControlsBar agent={agent} withMessage={!row?.seat || s.view === 'activity'} />
-      {row?.seat ? <Views row={row} view={s.view ?? 'conversation'} setView={(view) => setSettings({ ...s, view })} /> : <p className="ctl-empty">Its conversation shows here once it has run.</p>}
+      {row?.seat ? <Views row={row} s={s} set={set} /> : <p className="ctl-empty">Its conversation shows here once it has run.</p>}
     </div>
   );
 }
 
+/** Picking an agent turns Follow off (this pane keeps it); "The selected one" turns Follow back on. */
 export function AgentSettingsForm({ settings, setSettings }: PaneProps) {
   const s = settings as AgentSettings;
   const { source } = useControl();
   return (
-    <label className="ctl-field">Agent when not following
-      <select value={s.agent ?? ''} onChange={(e) => setSettings({ ...s, agent: e.target.value || undefined, follow: e.target.value ? false : s.follow })}>
-        <option value="">The selected one</option>
+    <label className="ctl-field">Agent
+      <select value={s.follow === false ? (s.agent ?? '') : ''} onChange={(e) => setSettings(e.target.value ? { ...s, agent: e.target.value, follow: false } : { ...s, agent: undefined, follow: true })}>
+        <option value="">The selected one (follow selection)</option>
         {source.agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
       </select>
     </label>

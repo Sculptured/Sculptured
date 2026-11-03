@@ -45,22 +45,12 @@ export function ProjectBar() {
   const stop = useStop(p);
   usePendingAction(p, start.ask, stop.ask, start.reason, stop.live);
   useRunHandle(start, stop);
-  const status = !p.started && p.builtHere ? draftStatus(p.draft ? blockingCount(p) : null) : teamStatus(p.row);
-  const fix = !p.started && blockingCount(p) > 0;
   return (
     <div className="project-head">
       <div className="project-bar">
         <h1 className="pb-name" title={p.title}>{p.draft ? <RenameProject draft={p.draft} edit={p.t.edit} /> : p.title}</h1>
         <Tabs team={p.team} />
-        <div className="pb-right">
-          {fix ? (
-            <Link to={boardPath(p.team, 'design')} id={`${ids}-why`} className="pb-status-link" data-tip={start.reason ?? undefined}><StatusBadge s={status} /></Link>
-          ) : (
-            <span id={`${ids}-why`}><StatusBadge s={status} /></span>
-          )}
-          {start.reason && <span id={`${ids}-start`} className="sr-only">Start team: {start.reason}</span>}
-          <Primary p={p} start={start} stop={stop} why={`${ids}-start`} />
-        </div>
+        <BarRight p={p} start={start} stop={stop} ids={ids} />
       </div>
       <Notices p={p} start={start} stop={stop} />
       {start.dialog}
@@ -81,6 +71,28 @@ function useRunHandle(start: StartApi, stop: StopApi) {
   const shell = useShell();
   shell.refs.run.current = { live: stop.live, startReason: start.reason, stopReason: stop.reason, askStart: start.ask, askStop: stop.ask };
   useEffect(() => () => { shell.refs.run.current = null; }, [shell.refs.run]);
+}
+
+/**
+ * The status and the one primary action. On Control its header shows both (the run's status, the
+ * master caution, Start and Emergency stop), so the bar leaves them out there.
+ */
+function BarRight({ p, start, stop, ids }: { p: Project; start: StartApi; stop: StopApi; ids: string }) {
+  const onControl = !!useMatch('/p/:team/control/*');
+  const status = !p.started && p.builtHere ? draftStatus(p.draft ? blockingCount(p) : null) : teamStatus(p.row);
+  const fix = !p.started && blockingCount(p) > 0;
+  if (onControl) return null;
+  return (
+    <div className="pb-right">
+      {fix ? (
+        <Link to={boardPath(p.team, 'design')} id={`${ids}-why`} className="pb-status-link" data-tip={start.reason ?? undefined}><StatusBadge s={status} /></Link>
+      ) : (
+        <span id={`${ids}-why`}><StatusBadge s={status} /></span>
+      )}
+      {start.reason && <span id={`${ids}-start`} className="sr-only">Start team: {start.reason}</span>}
+      <Primary p={p} start={start} stop={stop} why={`${ids}-start`} />
+    </div>
+  );
 }
 
 type StartApi = ReturnType<typeof useStart>;

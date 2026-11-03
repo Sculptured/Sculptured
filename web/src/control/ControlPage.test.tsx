@@ -2,57 +2,26 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
-import type { EventRecord } from '../generated/EventRecord';
-import { resetSeenCache } from '../seen';
-import { forgetViewports } from '../shell/LiveGraph';
 import { renderApp, stream, twoTeams, where } from '../shell/shellHarness';
-import { ev, seatView, snapshot } from '../test-fixtures';
+import { seatView, snapshot } from '../test-fixtures';
 import { openRigWords } from '../test-vocab';
 import { saveLayouts } from '../workspace/store';
-import { FakeChannel } from '../workspace/testkit';
 import { controlPage } from './ControlPage';
 import { controlDefaults } from './defaults';
-import { question, resetFakes } from './testHarness';
+import { A, control, header, layoutTab, pane, paneTab, resetControl } from './pageHarness';
+import { question } from './testHarness';
 import { ackKey } from './useAlarms';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
+  // The calls the Control page makes (CONTROL_API in pageHarness; vi.mock is hoisted, so listed here).
   const fns = ['listRigs', 'latestSeatEvents', 'teamQuestions', 'answer', 'teamUsage', 'teamBudget', 'runUsage', 'teamControls', 'controlAgent', 'agentControl',
     'pauseTeam', 'resumeTeam', 'stopTeamNow', 'send', 'machineMetrics', 'runCommunications', 'managedChildren', 'teamRecent', 'deployments', 'seatQuestions'];
   return { ...m, api: { ...m.api, ...Object.fromEntries(fns.map((f) => [f, vi.fn()])) } };
 });
 
-const A = 'dev.a@r';
-const turn = (seq: number, type: 'turn-started' | 'turn-ended', seat = A): EventRecord =>
-  ev(seq, type === 'turn-started' ? { type, turn_id: `t${seq}` } as EventRecord['body'] : { type, turn_id: `t${seq}`, status: 'completed' } as EventRecord['body'], seat);
-
-beforeEach(() => {
-  resetFakes();
-  forgetViewports();
-  localStorage.clear();
-  resetSeenCache();
-  FakeChannel.open.clear();
-  vi.stubGlobal('BroadcastChannel', FakeChannel);
-  vi.mocked(api.latestSeatEvents).mockImplementation(async (id: string) => (id === A ? [turn(1, 'turn-started'), turn(2, 'turn-ended')] : []));
-  vi.mocked(api.machineMetrics).mockResolvedValue([]);
-  vi.mocked(api.runCommunications).mockResolvedValue([]);
-  vi.mocked(api.managedChildren).mockResolvedValue([]);
-  vi.mocked(api.agentControl).mockResolvedValue({ mode: null } as never);
-  vi.mocked(api.teamRecent).mockResolvedValue({});
-  vi.mocked(api.deployments).mockResolvedValue([]);
-  vi.mocked(api.seatQuestions).mockResolvedValue([]);
-});
+beforeEach(resetControl);
 afterEach(() => vi.unstubAllGlobals());
-
-const pane = (title: string) => screen.getByRole('region', { name: title });
-const layoutTab = (name: string) => within(screen.getByRole('tablist', { name: 'Layouts' })).getByRole('tab', { name });
-const paneTab = (title: string) => screen.getByRole('tab', { name: new RegExp(title) });
-const header = () => screen.getByRole('group', { name: 'Team controls' });
-
-async function control(snap = snapshot()) {
-  await twoTeams('/p/r/control', snap);
-  await act(async () => {});
-}
 
 describe('Control page', () => {
   it('default_live_layout_shows_board_first', async () => {

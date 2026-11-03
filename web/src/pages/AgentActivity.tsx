@@ -56,18 +56,47 @@ function Meta({ a }: { a: AgentRow }) {
   );
 }
 
-type Props = { a: AgentRow; c: AgentControls; feed: EventRecord[]; epoch: number; handOverInline: boolean; askHandOver: number; askOnOpen?: boolean; onAsked?: () => void };
+export type ActivityView = 'progress' | 'events';
+
+type Props = {
+  a: AgentRow; c: AgentControls; feed: EventRecord[]; epoch: number; handOverInline: boolean; askHandOver: number; askOnOpen?: boolean; onAsked?: () => void;
+  /** Controlled Progress | Raw events (a Control pane keeps its own); without it, the page's `?view=`. */
+  view?: ActivityView;
+  onView?: (v: ActivityView) => void;
+};
+
+/** Progress or Raw events: the caller's, else the address's `?view=events`. */
+function useView(view: ActivityView | undefined, onView: ((v: ActivityView) => void) | undefined): [ActivityView, (v: ActivityView) => void] {
+  const [params, setParams] = useSearchParams();
+  if (view && onView) return [view, onView];
+  return [params.get('view') === 'events' ? 'events' : 'progress', (v) => setParams(v === 'events' ? { view: 'events' } : {}, { replace: true })];
+}
+
+function Evidence({ a, feed, epoch, view }: { a: AgentRow; feed: EventRecord[]; epoch: number; view: ActivityView }) {
+  const seat = a.seat!;
+  const navigate = useNavigate();
+  const showInTranscript = useCallback((key: string) => navigate(transcriptItemPath(a.rig, a.id, key), { state: { from: 'visual' } }), [navigate, a.rig, a.id]);
+  if (view === 'events')
+    return (
+      <div className="ap-events">
+        <p className="ux-raw-note muted">Raw events: what was recorded for this agent, shown verbatim as evidence.</p>
+        <EventsTab key={seat.id} seatId={seat.id} feed={feed} epoch={epoch} />
+      </div>
+    );
+  return (
+    <div className="ap-progress">
+      <VisualProgress key={seat.id} seatId={seat.id} feed={feed} epoch={epoch} state={a.state} onJump={showInTranscript} />
+    </div>
+  );
+}
 
 /**
  * The Activity tab: controls, the check, then what the agent did as a picture (progress, files built
  * and changed, checks) or, one step back, every raw event verbatim as evidence.
  */
-export function AgentActivity({ a, c, feed, epoch, handOverInline, askHandOver, askOnOpen, onAsked }: Props) {
+export function AgentActivity({ a, c, feed, epoch, handOverInline, askHandOver, askOnOpen, onAsked, view: given, onView }: Props) {
   const seat = a.seat!;
-  const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
-  const view = params.get('view') === 'events' ? 'events' : 'progress';
-  const showInTranscript = useCallback((key: string) => navigate(transcriptItemPath(a.rig, a.id, key), { state: { from: 'visual' } }), [navigate, a.rig, a.id]);
+  const [view, setView] = useView(given, onView);
   return (
     <section className="ap-body ap-activity" aria-label="Activity">
       <div className="ap-section ap-controls">
@@ -78,19 +107,10 @@ export function AgentActivity({ a, c, feed, epoch, handOverInline, askHandOver, 
         <Detail a={a} />
       </div>
       <div className="ap-view-row">
-        <Segmented label="Show" value={view} onChange={(v) => setParams(v === 'events' ? { view: 'events' } : {}, { replace: true })}
+        <Segmented label="Show" value={view} onChange={setView}
           options={[{ value: 'progress', label: 'Progress', icon: 'activity' }, { value: 'events', label: 'Raw events', icon: 'file-text', tip: 'Every recorded event, verbatim (evidence)' }]} />
       </div>
-      {view === 'events' ? (
-        <div className="ap-events">
-          <p className="ux-raw-note muted">Raw events: what was recorded for this agent, shown verbatim as evidence.</p>
-          <EventsTab key={seat.id} seatId={seat.id} feed={feed} epoch={epoch} />
-        </div>
-      ) : (
-        <div className="ap-progress">
-          <VisualProgress key={seat.id} seatId={seat.id} feed={feed} epoch={epoch} state={a.state} onJump={showInTranscript} />
-        </div>
-      )}
+      <Evidence a={a} feed={feed} epoch={epoch} view={view} />
     </section>
   );
 }
