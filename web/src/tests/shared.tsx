@@ -46,22 +46,22 @@ export function KindMark({ kind, model }: { kind: AgentKind; model?: string | nu
   );
 }
 
-/** A plain sentence for any error; the engine's own words follow as evidence when it gave some. */
-export function ErrorNote({ error }: { error: unknown }) {
+/** A plain sentence for any error (`text`, else `errorText`); Arena's own words follow as evidence when it gave some. */
+export function ErrorNote({ error, text }: { error: unknown; text?: string }) {
   if (error == null) return null;
   const raw = error instanceof ApiError ? error.raw : undefined;
   return (
     <div className="tst-note tst-note-error" role="alert">
-      <span>{errorText(error)}</span>
-      {raw && <span className="tst-evidence mono" data-raw-evidence>Test engine: {raw}</span>}
+      <span>{text ?? errorText(error)}</span>
+      {raw && <span className="tst-evidence mono" data-raw-evidence>Arena said: {raw}</span>}
     </div>
   );
 }
 
-/** Tells the rest of the Tests pages to re-read the engine's status (disk use changes after a delete). */
+/** Tells the Arena pages to re-read Arena's status (disk use changes after a delete or a cleanup). */
 export const HEALTH_CHANGED = 'sculptured:tests-health';
 
-/** The engine's status: undefined while asking, null when it is not answering. */
+/** Arena's status: undefined while asking, null when it is not answering. */
 export function useArenaHealth(): { health: Health | null | undefined; error: unknown } {
   const [health, setHealth] = useState<Health | null | undefined>(undefined);
   const [error, setError] = useState<unknown>(null);
@@ -80,7 +80,7 @@ export function useArenaHealth(): { health: Health | null | undefined; error: un
 
 const gb = (n: number) => { const v = n / 2 ** 30; return v >= 10 ? Math.round(v).toString() : (Math.round(v * 10) / 10).toString(); };
 
-/** Which agent modes the engine can run, and how much of its disk budget its saved worlds use. */
+/** Which agent modes Arena can run, and how much of its disk budget its saved worlds use. */
 export function EngineLine({ health }: { health: Health }) {
   const modes = [
     { on: health.claude, word: 'Claude Code', why: 'claude is not on this computer' },
@@ -90,7 +90,7 @@ export function EngineLine({ health }: { health: Health }) {
   return (
     <span className="tst-engine">
       <span className="tst-engine-dot" aria-hidden="true">●</span>
-      <span>Test engine running</span>
+      <span>Arena running</span>
       {modes.map((m) => (
         <span key={m.word} className={m.on ? '' : 'muted'}>{m.on ? '✓' : '–'} {m.word}{m.on ? '' : ` (${m.why})`}</span>
       ))}

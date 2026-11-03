@@ -1,7 +1,7 @@
 import { apiRequest } from '../api';
 import type {
-  BranchDetail, Change, CompareResponse, Event, ForkResponse, Health, NewRunResponse, RestoreMode, RestorePlan,
-  RowsResponse, RunSummary, StatusEvent, TaskSummary, Team,
+  BranchDetail, Change, CompareResponse, Event, ForkResponse, GcResponse, Health, NewRunResponse, RestoreMode, RestorePlan,
+  RowsResponse, RunSummary, StatusEvent, TaskSummary, Team, UsageResponse, WorldResponse,
 } from './types';
 
 /** arenad, through controld's pass-through (`crates/controld/src/arena.rs`). */
@@ -24,6 +24,12 @@ export const arena = {
   restorePlan: (b: string, at_seq: number, restore: RestoreMode) =>
     apiRequest<RestorePlan>('GET', `${BASE}/branches/${id(b)}/restore-plan?at_seq=${at_seq}&restore=${restore}`),
   compare: (a: string, b: string) => apiRequest<CompareResponse>('GET', `${BASE}/compare?a=${id(a)}&b=${id(b)}`),
+  /** The benchmark's parts, each with what its integration says about itself. */
+  world: () => apiRequest<WorldResponse>('GET', `${BASE}/world`),
+  /** Bytes each integration keeps, the total and the limit. */
+  usage: () => apiRequest<UsageResponse>('GET', `${BASE}/usage`),
+  /** Drops the saves no recorded run uses; a 409 while a run is going or a cleanup is running. */
+  gc: () => apiRequest<GcResponse>('POST', `${BASE}/gc`),
 };
 
 /** Follows a running branch: each new step, then its status changes. Returns a function that stops. */

@@ -1,4 +1,5 @@
 import { Link, NavLink } from 'react-router-dom';
+import { ARENA_PATH } from '../arena/paths';
 import { useHosted } from '../hosted/HostedGate';
 import { teamStatus } from '../pages/status';
 import { StatusBadge } from '../pages/StatusBadge';
@@ -19,7 +20,7 @@ type Props = {
   onHelp: () => void;
 };
 
-/** The one bar on every page: home, the project switcher, Tests, Library, Community, Account, Docs, Ctrl K and the app menu. */
+/** The one bar on every page: home, the project switcher, Arena, Library, Community, Account, Docs, Ctrl K and the app menu. */
 export function TopBar({ team, rows, onCommand, onHelp }: Props) {
   return (
     <header className="topbar">
@@ -29,7 +30,7 @@ export function TopBar({ team, rows, onCommand, onHelp }: Props) {
       </Link>
       <ProjectSwitcher team={team} rows={rows} />
       <nav className="tb-nav" aria-label="Go to">
-        <NavLink to="/tests" className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Tests</NavLink>
+        <NavLink to={ARENA_PATH} className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Arena</NavLink>
         <NavLink to="/library/groups" className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Library</NavLink>
         <NavLink to="/community" className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Community</NavLink>
         <AccountLink />
@@ -96,7 +97,7 @@ function AppMenu({ onHelp }: { onHelp: () => void }) {
     <details className="top-menu tb-app">
       <summary aria-label="App menu" data-tip="App menu"><Icon name="more" size={16} /></summary>
       <div className="top-menu-body tb-app-items" onClick={closeMenu}>
-        <Link to="/tests" className="tb-narrow-only">Tests</Link>
+        <Link to={ARENA_PATH} className="tb-narrow-only">Arena</Link>
         <Link to="/library/groups" className="tb-narrow-only">Library</Link>
         <Link to="/account" className="tb-narrow-only">Account</Link>
         <a href={DOCS_URL} className="tb-narrow-only" target="_blank" rel="noreferrer">Docs</a>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { arena } from './api';
 import { branchNames, costSource, diffHunks, dollars, jsonDiff } from './model';
-import { runPath } from './paths';
+import { ARENA_PATH, runPath } from './paths';
 import { APPROXIMATE_NOTE, isApproximate, notComparedLine } from './restore';
 import { ApproximateMark, ErrorNote, StatusPill, pretty } from './shared';
 import { KIND } from './Swimlanes';
@@ -80,10 +80,11 @@ function RowDiffView({ r, nameA, nameB }: { r: RowDiff; nameA: string; nameB: st
   );
 }
 
-/** `/tests/compare/:a/:b`: two branches of a run side by side. */
-export function ComparePage() {
-  const { a = '', b = '' } = useParams();
-  const [data, setData] = useState<{ cmp: CompareResponse; x: BranchDetail; y: BranchDetail; names: Map<string, string>; run: string } | null>(null);
+type Loaded = { cmp: CompareResponse; x: BranchDetail; y: BranchDetail; names: Map<string, string>; run: string };
+
+/** The comparison and both branches, with the run's branch names. */
+function useComparison(a: string, b: string) {
+  const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<unknown>(null);
   useEffect(() => {
     let alive = true;
@@ -97,38 +98,45 @@ export function ComparePage() {
       .catch((e) => { if (alive) setError(e); });
     return () => { alive = false; };
   }, [a, b]);
+  return { data, error };
+}
 
-  if (!data) {
-    return <main className="page page-wide tst-page"><Crumbs />{error ? <ErrorNote error={error} /> : <p className="muted">Comparing…</p>}</main>;
-  }
-  const { cmp, x, y, names, run } = data;
-  const name = (br: BranchDetail) => names.get(br.id) ?? br.id.slice(0, 8);
-  const side = (br: BranchDetail, s: CompareSide) => (
-    <Link className="tst-card tst-cmp-side" to={runPath(run, br.id)}>
-      <span className="tst-cmp-name">{name(br)}</span>
+const nameOf = (d: Loaded) => (br: BranchDetail) => d.names.get(br.id) ?? br.id.slice(0, 8);
+
+function Side({ d, br, s }: { d: Loaded; br: BranchDetail; s: CompareSide }) {
+  return (
+    <Link className="tst-card tst-cmp-side" to={runPath(d.run, br.id)}>
+      <span className="tst-cmp-name">{nameOf(d)(br)}</span>
       <StatusPill status={s.status} />
       <ApproximateMark of={s} />
       <Changes br={br} />
       {br.fork_note && <span className="muted tst-small">{br.fork_note}</span>}
     </Link>
   );
+}
+
+function Totals({ d }: { d: Loaded }) {
+  const { cmp, x, y } = d;
+  const name = nameOf(d);
+  const source = [cmp.a, cmp.b].some((s) => s.cost_usd == null) ? 'A side without a dollar figure reports tokens only.'
+    : `Cost: ${costSource(cmp.a.cost_source) || 'unknown source'}${cmp.a.cost_source !== cmp.b.cost_source ? ` vs ${costSource(cmp.b.cost_source) || 'unknown source'}` : ''}.`;
+  return (
+    <section className="tst-card tst-cmp-metrics" aria-label="Totals">
+      <div className="tst-metric tst-metric-head"><span /><span>{name(x)}</span><span>{name(y)}</span><span>Change</span></div>
+      <Metric label="Time" a={cmp.a.seconds} b={cmp.b.seconds} fmt={(v) => `${v.toFixed(1)} s`} />
+      <Metric label="Tokens" a={cmp.a.tokens} b={cmp.b.tokens} fmt={(v) => v.toLocaleString()} />
+      <Metric label="Cost" a={cmp.a.cost_usd} b={cmp.b.cost_usd} fmt={dollars} />
+      <p className="muted tst-small">Each branch counts only the steps it ran itself. {source}</p>
+    </section>
+  );
+}
+
+function Differences({ d }: { d: Loaded }) {
+  const { cmp, x, y } = d;
+  const name = nameOf(d);
   const div = cmp.first_divergent_seq;
   return (
-    <main className="page page-wide tst-page">
-      <Crumbs />
-      <h1 className="page-title">{name(x)} vs {name(y)}</h1>
-      <div className="tst-cmp-sides">{side(x, cmp.a)}<span className="tst-vs" aria-hidden="true">→</span>{side(y, cmp.b)}</div>
-      {(isApproximate(cmp.a) || isApproximate(cmp.b)) && <div className="tst-note">{APPROXIMATE_NOTE}</div>}
-      <section className="tst-card tst-cmp-metrics" aria-label="Totals">
-        <div className="tst-metric tst-metric-head"><span /><span>{name(x)}</span><span>{name(y)}</span><span>Change</span></div>
-        <Metric label="Time" a={cmp.a.seconds} b={cmp.b.seconds} fmt={(v) => `${v.toFixed(1)} s`} />
-        <Metric label="Tokens" a={cmp.a.tokens} b={cmp.b.tokens} fmt={(v) => v.toLocaleString()} />
-        <Metric label="Cost" a={cmp.a.cost_usd} b={cmp.b.cost_usd} fmt={dollars} />
-        <p className="muted tst-small">
-          Each branch counts only the steps it ran itself.{' '}
-          {[cmp.a, cmp.b].some((s) => s.cost_usd == null) ? 'A side without a dollar figure reports tokens only.' : `Cost: ${costSource(cmp.a.cost_source) || 'unknown source'}${cmp.a.cost_source !== cmp.b.cost_source ? ` vs ${costSource(cmp.b.cost_source) || 'unknown source'}` : ''}.`}
-        </p>
-      </section>
+    <>
       <section className="tst-card" aria-label="Where they differ">
         <h2 className="tst-h2">{div != null ? `They first differ at step ${div}` : 'They take the same steps'}</h2>
         {div != null && (
@@ -143,10 +151,30 @@ export function ComparePage() {
         {notComparedLine(cmp.not_compared, 'compare') && <p className="tst-small">{notComparedLine(cmp.not_compared, 'compare')}</p>}
         {cmp.differing_rows.map((r) => <RowDiffView key={r.key} r={r} nameA={name(x)} nameB={name(y)} />)}
       </section>
+    </>
+  );
+}
+
+/** `/arena/compare/:a/:b`: two branches of a run side by side. */
+export function ComparePage() {
+  const { a = '', b = '' } = useParams();
+  const { data, error } = useComparison(a, b);
+  if (!data) {
+    return <main className="page page-wide tst-page"><Crumbs />{error ? <ErrorNote error={error} /> : <p className="muted">Comparing…</p>}</main>;
+  }
+  const name = nameOf(data);
+  return (
+    <main className="page page-wide tst-page">
+      <Crumbs />
+      <h1 className="page-title">{name(data.x)} vs {name(data.y)}</h1>
+      <div className="tst-cmp-sides"><Side d={data} br={data.x} s={data.cmp.a} /><span className="tst-vs" aria-hidden="true">→</span><Side d={data} br={data.y} s={data.cmp.b} /></div>
+      {(isApproximate(data.cmp.a) || isApproximate(data.cmp.b)) && <div className="tst-note">{APPROXIMATE_NOTE}</div>}
+      <Totals d={data} />
+      <Differences d={data} />
     </main>
   );
 }
 
 function Crumbs() {
-  return <nav className="tst-crumbs" aria-label="Breadcrumb"><Link to="/tests">Tests</Link><span aria-hidden="true">/</span><span>Compare</span></nav>;
+  return <nav className="tst-crumbs" aria-label="Breadcrumb"><Link to={ARENA_PATH}>Arena</Link><span aria-hidden="true">/</span><span>Compare</span></nav>;
 }

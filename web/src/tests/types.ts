@@ -242,3 +242,50 @@ export interface CompareResponse {
   /** Parts that keep no saves, so their final states could not be compared. */
   not_compared?: string[];
 }
+
+/** How an integration can put a part back (`parts::proto::Restore`). */
+export type ExactKind = 'save' | 'replay' | 'none';
+export interface PartRestore {
+  exact: ExactKind;
+  approximate: boolean;
+}
+
+/**
+ * One part of `GET /api/world` (arenad `api/world.rs` `PartInfo`). A part whose integration did
+ * not answer has only `name`, `integration`, `answered: false` and `error`.
+ */
+export interface WorldPartInfo {
+  name: string;
+  integration: string;
+  answered: boolean;
+  error?: string;
+  version?: string;
+  restore?: PartRestore;
+  uses_clock?: boolean;
+  tools?: string[];
+}
+
+export interface WorldResponse {
+  parts: WorldPartInfo[];
+}
+
+/** One integration of `GET /api/usage`: the parts that use it and the bytes it keeps, or why it can't say. */
+export interface IntegrationUsage {
+  integration: string;
+  parts: string[];
+  bytes: number;
+  error?: string;
+}
+
+export interface UsageResponse {
+  integrations: IntegrationUsage[];
+  total_bytes: number;
+  limit_bytes: number;
+}
+
+/** `POST /api/gc`: the saves whose folders went, the bytes freed, and the integrations whose cleanup failed. */
+export interface GcResponse {
+  removed: string[];
+  freed_bytes: number;
+  errors: { integration: string; message: string }[];
+}

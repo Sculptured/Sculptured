@@ -34,8 +34,8 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const page = () => render(
-  <MemoryRouter initialEntries={['/tests/compare/b1/b2']}>
-    <Routes><Route path="/tests/compare/:a/:b" element={<ComparePage />} /></Routes>
+  <MemoryRouter initialEntries={['/arena/compare/b1/b2']}>
+    <Routes><Route path="/arena/compare/:a/:b" element={<ComparePage />} /></Routes>
   </MemoryRouter>,
 );
 

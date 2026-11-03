@@ -1,0 +1,46 @@
+/* Arena control (`/arena`): the page around its workspace, and the bodies of its panes. Tokens only. */
+
+.arena-page { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
+.arena-page > .workspace { flex: 1; }
+.arena-popout { height: 100vh; }
+.arena-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-1) var(--space-3); padding: var(--space-2) var(--space-3); }
+.arena-head .page-title { margin: 0; font-size: var(--text-lg); display: inline-flex; align-items: center; gap: var(--space-2); }
+.arena-head p { margin: 0; }
+
+.arena-pane { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2); min-width: 0; }
+.arena-pad { padding: var(--space-2); }
+.arena-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.arena-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.arena-item { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--well); padding: var(--space-2) var(--space-3); min-width: 0; }
+.arena-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-width: 0; }
+.arena-item p { margin: var(--space-1) 0 0; }
+
+/* "Arena is not running": a plain notice with the command to start it. */
+.arena-down { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--line-2); border-radius: var(--radius-md); background: var(--well); }
+.arena-down p { margin: 0; }
+.arena-down-head { font-weight: var(--weight-semibold); color: var(--status-unknown); }
+.arena-down code { padding: 1px 6px; border-radius: var(--radius-sm); background: var(--panel); border: 1px solid var(--line); }
+
+/* World */
+.arena-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px var(--space-3); margin: var(--space-2) 0 0; font-size: var(--text-sm); }
+.arena-facts dt { color: var(--muted); }
+.arena-facts dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.arena-chip { padding: 0 8px; border-radius: var(--radius-pill); border: 1px solid var(--accent-line); background: var(--accent-soft); }
+.arena-chip-none { border-color: var(--line-2); background: transparent; color: var(--muted); }
+.arena-tools summary { cursor: pointer; }
+.arena-tools ul { margin: 4px 0 0; padding-left: var(--space-4); }
+
+/* Saves and disk */
+.arena-total p { margin: 0 0 var(--space-1); }
+.arena-total meter { width: 100%; height: 10px; }
+.arena-cleanup { display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* Fork tree */
+.arena-tree { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.arena-tree li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--space-2); }
+
+/* Runs */
+.arena-new { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
+.arena-team { display: flex; flex-direction: column; gap: var(--space-2); }
+.arena-compare { display: flex; flex-direction: column; gap: var(--space-2); }
+.arena-compare p { margin: 0; }

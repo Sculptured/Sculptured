@@ -28,7 +28,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { WorkflowPage } from './pages/WorkflowPage';
 import { SetupGate } from './setup/SetupGate';
 import { SetupPage } from './setup/SetupPage';
-import { TestsSection } from './tests/routes';
+import { ArenaPanePage } from './arena/ArenaControlPage';
+import { ArenaSection, TestsRedirect } from './arena/routes';
 
 /** Hosted beta admin page; anyone else goes home. */
 function AdminGuard() {
@@ -72,6 +73,25 @@ function ProjectRoutes() {
   );
 }
 
+/** Old addresses, each sent on to the page that does its job now. */
+function LegacyRoutes() {
+  return (
+    <>
+      <Route path="/library" element={<Navigate replace to="/library/groups" />} />
+      <Route path="/tests/*" element={<TestsRedirect />} />
+      <Route path="/team/:team/structure" element={<Legacy to="design" />} />
+      <Route path="/team/:team/progress" element={<Legacy to="results" />} />
+      <Route path="/team/:team/git" element={<Legacy to="git" />} />
+      <Route path="/team/:team/live" element={<Legacy to="board" />} />
+      <Route path="/team/:team" element={<Legacy to="board" />} />
+      <Route path="/rig/:rig" element={<Legacy to="board" />} />
+      <Route path="/rig/:rig/agent/:seat" element={<Legacy to="agent" />} />
+      <Route path="/rig/:rig/agent/:seat/:tab" element={<Legacy to="agent" />} />
+      <Route path="/rig/:rig/seat/*" element={<Legacy to="agent" />} />
+    </>
+  );
+}
+
 export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
   return (
     <Routes>
@@ -84,25 +104,17 @@ export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
       <Route path="/computers" element={<ComputersPage />} />
       <Route path="/ops" element={<OpsPage />} />
       <Route path="/what-we-record" element={<WhatWeRecord />} />
+      <Route path="/arena/pane/:instance" element={<ArenaPanePage />} />
       <Route element={<CommunityHost openStream={openStream} />}><Route path="/community/*" element={<CommunitySection />} /></Route>
       <Route element={<Shell openStream={openStream} />}>
         <Route path="/" element={<ProjectsHome />} />
         <Route path="/new" element={<NewProject />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/library/:collection" element={<LibraryRoute />} />
-        <Route path="/tests/*" element={<TestsSection />} />
+        <Route path="/arena/*" element={<ArenaSection />} />
         {ProjectRoutes()}
       </Route>
-      <Route path="/library" element={<Navigate replace to="/library/groups" />} />
-      <Route path="/team/:team/structure" element={<Legacy to="design" />} />
-      <Route path="/team/:team/progress" element={<Legacy to="results" />} />
-      <Route path="/team/:team/git" element={<Legacy to="git" />} />
-      <Route path="/team/:team/live" element={<Legacy to="board" />} />
-      <Route path="/team/:team" element={<Legacy to="board" />} />
-      <Route path="/rig/:rig" element={<Legacy to="board" />} />
-      <Route path="/rig/:rig/agent/:seat" element={<Legacy to="agent" />} />
-      <Route path="/rig/:rig/agent/:seat/:tab" element={<Legacy to="agent" />} />
-      <Route path="/rig/:rig/seat/*" element={<Legacy to="agent" />} />
+      {LegacyRoutes()}
       <Route path="*" element={<Navigate replace to="/" />} />
     </Routes>
   );

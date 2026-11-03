@@ -80,9 +80,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const page = (path = '/tests/runs/r1/b1') => render(
+const page = (path = '/arena/runs/r1/b1') => render(
   <MemoryRouter initialEntries={[path]}>
-    <Routes><Route path="/tests/runs/:run/:branch" element={<RunPage />} /></Routes>
+    <Routes><Route path="/arena/runs/:run/:branch" element={<RunPage />} /></Routes>
   </MemoryRouter>,
 );
 
@@ -109,13 +109,13 @@ describe('RunPage', () => {
   });
 
   it('the final check cannot be rerun, and says why', async () => {
-    page('/tests/runs/r1/b1?step=8');
+    page('/arena/runs/r1/b1?step=8');
     expect(await screen.findByText(/The final check can’t be rerun/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Change & rerun from here/ })).toBeDisabled();
   });
 
   it('rerun panel shows per-part plan', async () => {
-    page('/tests/runs/r1/b1?step=6');
+    page('/arena/runs/r1/b1?step=6');
     await userEvent.click(await screen.findByRole('button', { name: /Change & rerun from here/ }));
     const panel = screen.getByRole('region', { name: 'Change and rerun from step 6' });
     expect(await within(panel).findByText('retail: from its save')).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe('RunPage', () => {
 
   it('exact refusal disables start with reason', async () => {
     plans.exact = [409, { error: { code: 'arena_busy', message: REFUSAL, raw: REFUSAL } }];
-    page('/tests/runs/r1/b1?step=6');
+    page('/arena/runs/r1/b1?step=6');
     await userEvent.click(await screen.findByRole('button', { name: /Change & rerun from here/ }));
     const panel = screen.getByRole('region', { name: 'Change and rerun from step 6' });
     expect(await within(panel).findByText(REFUSAL)).toBeInTheDocument();
@@ -143,7 +143,7 @@ describe('RunPage', () => {
 
   it('approximate branch is labelled', async () => {
     runs = [{ id: 'r1', task_id: '27', created_at: at(0), branches: [branch, child] }];
-    page('/tests/runs/r1/b2');
+    page('/arena/runs/r1/b2');
     const heading = await screen.findByRole('heading', { name: /Task 27/ });
     expect(within(heading).getByText('Approximate restore')).toBeInTheDocument();
     const bar = await screen.findByRole('navigation', { name: 'Branches of this run' });
@@ -151,7 +151,7 @@ describe('RunPage', () => {
   });
 
   it('a step that saved several parts lists them', async () => {
-    page('/tests/runs/r1/b1?step=6');
+    page('/arena/runs/r1/b1?step=6');
     const side = await screen.findByRole('complementary', { name: 'Selected step' });
     expect(await within(side).findByText(/^Saved after this step: plant, retail/)).toBeInTheDocument();
   });

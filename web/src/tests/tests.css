@@ -1,4 +1,4 @@
-/* Tests (`/tests/*`): runs of a test team against arenad. Only Sculptured's tokens, so both looks apply. */
+/* Arena (`/arena/*`): runs of a test team against arenad. Only Sculptured's tokens, so both looks apply. */
 
 .tst-page { display: flex; flex-direction: column; gap: var(--space-4); }
 .tst-run-page { max-width: 1480px; }
