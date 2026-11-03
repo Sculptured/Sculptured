@@ -3,6 +3,7 @@ import type { PaneProps } from '../../workspace/registry';
 import { useSelection } from '../../workspace/selection';
 import { alarmIdOf, clockAt, useControl } from '../context';
 import type { AgentLine } from '../source';
+import { SimTimeline } from './SimTimeline';
 import { alarmMarks, axisOf, inRange, marksOf, pct, rangeOf, stepTime, turnsOf, WINDOWS, type Bar, type Mark, type Range, type Window } from './timelineModel';
 
 /**
@@ -11,8 +12,9 @@ import { alarmMarks, axisOf, inRange, marksOf, pct, rangeOf, stepTime, turnsOf, 
  * the keyboard each lane is a slider (arrows, Shift for bigger steps, Home and End).
  */
 
-export type TimelineSettings = { window?: Window; hiddenLanes?: string[]; alarmsLane?: boolean };
-export const TIMELINE_DEFAULTS: TimelineSettings = { window: 'all', hiddenLanes: [], alarmsLane: true };
+/** `scale` and `view` are a simulated run's (its steps by step or on time, as lanes or a list). */
+export type TimelineSettings = { window?: Window; hiddenLanes?: string[]; alarmsLane?: boolean; scale?: 'step' | 'time'; view?: 'lanes' | 'list' };
+export const TIMELINE_DEFAULTS: TimelineSettings = { window: 'all', hiddenLanes: [], alarmsLane: true, scale: 'step', view: 'lanes' };
 
 type LaneProps = { label: React.ReactNode; name: string; agent?: string; range: Range; bars: Bar[]; marks: Mark[]; cursor?: number; picked: boolean };
 
@@ -68,7 +70,13 @@ function Axis({ range, cursor }: { range: Range; cursor?: number }) {
   );
 }
 
-export function TimelinePane({ settings }: PaneProps) {
+/** A deployment's timeline, or a simulated run's replay (its steps, saves and Fork from here). */
+export function TimelinePane(props: PaneProps) {
+  const { source } = useControl();
+  return source.kind === 'simulated' ? <SimTimeline {...props} /> : <LiveTimeline {...props} />;
+}
+
+function LiveTimeline({ settings }: PaneProps) {
   const s = settings as TimelineSettings;
   const { source, alarms, now } = useControl();
   const { selection } = useSelection();
@@ -103,11 +111,13 @@ export function TimelineSettingsForm({ settings, setSettings }: PaneProps) {
   const toggle = (id: string, on: boolean) => setSettings({ ...s, hiddenLanes: on ? [...hidden].filter((x) => x !== id) : [...hidden, id] });
   return (
     <>
-      <label className="ctl-field">Show
-        <select value={s.window ?? 'all'} onChange={(e) => setSettings({ ...s, window: e.target.value as Window })}>
-          {WINDOWS.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
-        </select>
-      </label>
+      {source.kind === 'deployment' && (
+        <label className="ctl-field">Show
+          <select value={s.window ?? 'all'} onChange={(e) => setSettings({ ...s, window: e.target.value as Window })}>
+            {WINDOWS.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+          </select>
+        </label>
+      )}
       <fieldset className="ctl-fieldset">
         <legend>Lanes</legend>
         {source.agents.map((a) => <label key={a.id} className="ctl-check"><input type="checkbox" checked={!hidden.has(a.id)} onChange={(e) => toggle(a.id, e.target.checked)} />{a.name}</label>)}

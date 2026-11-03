@@ -7,12 +7,13 @@ import type { FeedItem } from '../source';
 
 /** Event kinds in groups the Settings can hide, by the record's own type. Anything else is "other". */
 const GROUPS: { id: string; label: string; kinds: RegExp }[] = [
-  { id: 'status', label: 'Status changes', kinds: /^(seat-|tenure-|rig-|team-|restore-|new-session|features-|model-|stall-|context-ceiling|limit-|budget-|events-lost)/ },
-  { id: 'turns', label: 'Turns and replies', kinds: /^(turn-|agent-text|thinking-recorded)/ },
-  { id: 'tools', label: 'Tool use', kinds: /^(tool-|protection-applied|action-interpreted)/ },
-  { id: 'messages', label: 'Messages and handoffs', kinds: /^(message-|handoff-|handed-over|handover-|trigger-)/ },
+  // A simulated run's kinds (Arena's: run_start, agent_start, model_call…) sit in the same groups.
+  { id: 'status', label: 'Status changes', kinds: /^(seat-|tenure-|rig-|team-|restore-|new-session|features-|model-|stall-|context-ceiling|limit-|budget-|events-lost|run_start$|agent_start$|agent_end$|run-error$)/ },
+  { id: 'turns', label: 'Turns and replies', kinds: /^(turn-|agent-text|thinking-recorded|model_call$)/ },
+  { id: 'tools', label: 'Tool use', kinds: /^(tool-|tool_call$|protection-applied|action-interpreted)/ },
+  { id: 'messages', label: 'Messages and handoffs', kinds: /^(message-|handoff|handed-over|handover-|trigger-)/ },
   { id: 'questions', label: 'Questions and changes', kinds: /^(question-|change-)/ },
-  { id: 'results', label: 'Reports and checks', kinds: /^(findings-reported|status-page-written|result-checked|check-|report-rejected)/ },
+  { id: 'results', label: 'Reports and checks', kinds: /^(findings-reported|status-page-written|result-checked|check|report-rejected)/ },
   { id: 'usage', label: 'Token reports', kinds: /^(usage-reported|context-reported|plan-usage-reported)$/ },
 ];
 const OTHER = { id: 'other', label: 'Other' };

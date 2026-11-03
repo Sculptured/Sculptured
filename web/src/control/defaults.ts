@@ -26,8 +26,28 @@ function cost(kind: ControlSource['kind']): Node {
   return split('cost', 'row', [stack(['cost-metrics', 'metrics']), stack(['cost-results', 'results'])], [1, 1.4]);
 }
 
+/** Replay (a simulated run): the Timeline large, over World state beside Compare. */
+const replay = (): Node => split('replay', 'col', [stack(['replay-timeline', 'timeline']), split('replay-bottom', 'row', [stack(['replay-world', 'world']), stack(['replay-compare', 'compare'])], [1, 1])], [2.2, 1]);
+
+/**
+ * A simulated run's first-open layouts: Replay first, then Live and Cost (Agent focus and Results
+ * are a deployment's: an Arena run's agents have no conversation or results to show there).
+ */
+function simulatedDefaults(): PageLayouts {
+  return {
+    version: 1,
+    active: 'replay',
+    layouts: [
+      { id: 'replay', name: 'Replay', root: replay(), popped: [] },
+      { id: 'live', name: 'Live', root: live(), popped: [] },
+      { id: 'cost', name: 'Cost', root: cost('simulated'), popped: [] },
+    ],
+  };
+}
+
 /** Control's first-open layouts. Pane ids are unique across layouts (a popped-out pane is found by id). */
 export function controlDefaults(kind: ControlSource['kind']): PageLayouts {
+  if (kind === 'simulated') return simulatedDefaults();
   return {
     version: 1,
     active: 'live',

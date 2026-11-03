@@ -80,7 +80,16 @@ function RowDiffView({ r, nameA, nameB }: { r: RowDiff; nameA: string; nameB: st
   );
 }
 
-type Loaded = { cmp: CompareResponse; x: BranchDetail; y: BranchDetail; names: Map<string, string>; run: string };
+/** Two branches compared: the comparison, both branches, their run's branch names and the run. */
+export type Comparison = { cmp: CompareResponse; x: BranchDetail; y: BranchDetail; names: Map<string, string>; run: string };
+type Loaded = Comparison;
+
+/** Reads the comparison of `a` with `b`, both branches and their run's branch names. */
+export async function loadComparison(a: string, b: string): Promise<Comparison> {
+  const [cmp, x, y, runs] = await Promise.all([arena.compare(a, b), arena.branch(a), arena.branch(b), arena.runs()]);
+  const run = runs.find((r) => r.branches.some((br) => br.id === a));
+  return { cmp, x, y, names: branchNames(run?.branches ?? [x, y]), run: run?.id ?? x.run_id };
+}
 
 /** The comparison and both branches, with the run's branch names. */
 function useComparison(a: string, b: string) {
@@ -89,13 +98,7 @@ function useComparison(a: string, b: string) {
   useEffect(() => {
     let alive = true;
     setData(null); setError(null);
-    Promise.all([arena.compare(a, b), arena.branch(a), arena.branch(b), arena.runs()])
-      .then(([cmp, x, y, runs]) => {
-        if (!alive) return;
-        const run = runs.find((r) => r.branches.some((br) => br.id === a));
-        setData({ cmp, x, y, names: branchNames(run?.branches ?? [x, y]), run: run?.id ?? x.run_id });
-      })
-      .catch((e) => { if (alive) setError(e); });
+    loadComparison(a, b).then((d) => { if (alive) setData(d); }).catch((e) => { if (alive) setError(e); });
     return () => { alive = false; };
   }, [a, b]);
   return { data, error };
@@ -115,7 +118,7 @@ function Side({ d, br, s }: { d: Loaded; br: BranchDetail; s: CompareSide }) {
   );
 }
 
-function Totals({ d }: { d: Loaded }) {
+export function Totals({ d }: { d: Loaded }) {
   const { cmp, x, y } = d;
   const name = nameOf(d);
   const source = [cmp.a, cmp.b].some((s) => s.cost_usd == null) ? 'A side without a dollar figure reports tokens only.'
@@ -131,7 +134,7 @@ function Totals({ d }: { d: Loaded }) {
   );
 }
 
-function Differences({ d }: { d: Loaded }) {
+export function Differences({ d }: { d: Loaded }) {
   const { cmp, x, y } = d;
   const name = nameOf(d);
   const div = cmp.first_divergent_seq;

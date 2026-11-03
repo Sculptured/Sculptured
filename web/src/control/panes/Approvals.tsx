@@ -47,6 +47,7 @@ function Decide({ a }: { a: Approval }) {
   const { team } = useControl();
   const { phase, setPhase, send } = useDecide(a.id);
   if (a.kind === 'answer') return <Link className="btn btn-secondary btn-sm" to={questionsPath(team)}>Answer in Needs you</Link>;
+  if (a.can && !a.can.ok) return <span className="ctl-why">{a.can.why}</span>;
   if (phase.kind === 'rejecting')
     return <RejectForm reason={phase.reason} set={(reason) => setPhase({ kind: 'rejecting', reason })} send={() => void send({ allow: false, reason: phase.reason.trim() })} cancel={() => setPhase({ kind: 'idle' })} />;
   const busy = phase.kind === 'sending';

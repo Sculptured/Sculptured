@@ -32,8 +32,12 @@ function TeamReadings() {
   const last = rate.at(-1);
   return (
     <div className="ctl-readings" role="group" aria-label="Team">
-      <Reading label="Tokens in" value={m.tokensIn !== undefined ? compactNumber(m.tokensIn) : UNKNOWN} note="as reported" />
-      <Reading label="Tokens out" value={m.tokensOut !== undefined ? compactNumber(m.tokensOut) : UNKNOWN} note="as reported" />
+      {m.tokensIn === undefined && m.tokens !== undefined
+        ? <Reading label="Tokens" value={compactNumber(m.tokens)} note="in and out, as each agent reported at its end" />
+        : <>
+          <Reading label="Tokens in" value={m.tokensIn !== undefined ? compactNumber(m.tokensIn) : UNKNOWN} note="as reported" />
+          <Reading label="Tokens out" value={m.tokensOut !== undefined ? compactNumber(m.tokensOut) : UNKNOWN} note="as reported" />
+        </>}
       <Reading label="Cost" value={m.costUsd !== undefined ? `$${m.costUsd.toFixed(2)}` : UNKNOWN} note={m.costUsd !== undefined ? 'estimated, latest run' : 'not every report was priced'} />
       <Reading label="Tool calls / min" value={last !== undefined ? String(last) : UNKNOWN} note={`this minute · ${rate.reduce((n, x) => n + x, 0)} in the last ${rate.length} min`}>
         <Spark values={rate} label={`Tool calls per minute over the last ${rate.length} minutes: ${rate.join(', ')}`} />

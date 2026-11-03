@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { plural } from '../format';
 import { useProject, type Project } from '../pages/ProjectContext';
@@ -30,17 +30,27 @@ export function useControlCtx(team: string, source: ControlSource, show: (type: 
   return { kind: source.kind, team, source, alarms, show, now, ...(startFix ? { startFix } : {}) };
 }
 
-type Props = { team: string; source: ControlSource; paneRoute(instance: string): string; startFix?: ControlCtx['startFix'] };
+type Props = {
+  /** Names the alarms' acknowledgements and rules (a team, or an Arena branch). */
+  team: string;
+  source: ControlSource;
+  paneRoute(instance: string): string;
+  startFix?: ControlCtx['startFix'];
+  /** The workspace's layouts and selection channel; the team's own (`control.<team>`) unless given. */
+  page?: string;
+  /** Above the header's status strip: what the run is (a simulated run's branch bar). */
+  lead?: ReactNode;
+};
 
 /** The Control workspace over any source (a deployment here; a simulated run in Arena). */
-export function ControlWorkspace({ team, source, paneRoute, startFix }: Props) {
+export function ControlWorkspace({ team, source, paneRoute, startFix, page, lead }: Props) {
   const handle = useRef<WorkspaceHandle>(null);
   const show = useCallback((type: string) => handle.current?.show(type), []);
   const ctx = useControlCtx(team, source, show, startFix);
   const defaults = useMemo(() => () => controlDefaults(source.kind), [source.kind]);
   return (
-    <WorkspacePage page={controlPage(team)} registry={controlRegistry} ctx={ctx} defaults={defaults} paneRoute={paneRoute} handle={handle}
-      header={<ControlHeader ctx={ctx} />} />
+    <WorkspacePage page={page ?? controlPage(team)} registry={controlRegistry} ctx={ctx} defaults={defaults} paneRoute={paneRoute} handle={handle}
+      header={<>{lead}<ControlHeader ctx={ctx} /></>} />
   );
 }
 

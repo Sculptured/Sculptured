@@ -16,8 +16,9 @@ export const arena = {
   startRun: (task_id: string, team: Team) => apiRequest<NewRunResponse>('POST', `${BASE}/runs`, { task_id, team }),
   deleteRun: (run: string) => apiRequest<{ dropped: number }>('DELETE', `${BASE}/runs/${id(run)}`),
   branch: (b: string) => apiRequest<BranchDetail>('GET', `${BASE}/branches/${id(b)}`),
-  rows: (b: string, seq: number, keys: string[]) =>
-    apiRequest<RowsResponse>('GET', `${BASE}/branches/${id(b)}/rows?seq=${seq}&keys=${id(keys.join(','))}`),
+  /** The rows `keys` as saved just after step `seq`, in `part` (else the step's part). */
+  rows: (b: string, seq: number, keys: string[], part?: string) =>
+    apiRequest<RowsResponse>('GET', `${BASE}/branches/${id(b)}/rows?seq=${seq}&keys=${id(keys.join(','))}${part ? `&part=${id(part)}` : ''}`),
   fork: (b: string, at_seq: number, changes: Record<string, Change> = {}, restore: RestoreMode = 'exact') =>
     apiRequest<ForkResponse>('POST', `${BASE}/branches/${id(b)}/fork`, { at_seq, changes, restore }),
   /** How each part of a fork at `at_seq` would be restored; a 409 names the part that can't be. */

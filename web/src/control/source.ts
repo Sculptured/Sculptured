@@ -1,5 +1,6 @@
-import type { Step } from '../tests/model';
-import type { RestorePlan } from '../tests/types';
+import type { Comparison } from '../tests/ComparePage';
+import type { Layout, Step } from '../tests/model';
+import type { Branch, BranchDetail, Change, RestoreMode, RestorePlan, WorldPartInfo } from '../tests/types';
 
 /**
  * What the Control panes read: one interface over a deployment (a Sculptured team running for real)
@@ -46,7 +47,15 @@ export type FeedItem = { id: string; at: number; agent?: string; kind: string; t
  * (`answer`), which `decide` refuses: it is answered in Needs you. `title` and `detail` are the agent's
  * own words (agent-reported evidence).
  */
-export type Approval = { id: string; agent?: string; title: string; detail?: string; kind: 'change' | 'question' | 'answer' };
+export type Approval = {
+  id: string;
+  agent?: string;
+  title: string;
+  detail?: string;
+  kind: 'change' | 'question' | 'answer';
+  /** Whether the operator can decide it here; when not, the pane shows `why` instead of the buttons. */
+  can?: Availability;
+};
 
 /**
  * What an action did, in plain words, with every agent it left alone and why, and (`notes`) anything
@@ -79,14 +88,38 @@ export class ActionError extends Error {
 /** `stop` is the graceful stop (agents finish their turn, then stop); `emergencyStop` stops them at once. */
 export type TeamActions = Record<'start' | 'stop' | 'pauseAll' | 'resumeAll' | 'emergencyStop', Action>;
 
-/** A simulated run's timeline: its steps and saves, a cursor, the restore plan and fork. */
+/**
+ * A simulated run's timeline: its steps (in order) and saves (the steps after which some part was
+ * saved), a cursor (a step's seq), the restore plan and fork. `layout` is the same steps in lanes,
+ * one per agent then the check. `plan` asks for an exact restore unless told otherwise. A fork's
+ * `notice` says where it started, in plain words.
+ */
 export type SimulatedTimeline = {
   steps: Step[];
   saves: number[];
   cursor: number;
   setCursor(seq: number): void;
-  plan(seq: number): Promise<RestorePlan>;
-  fork(seq: number, changes: unknown, restore: 'exact' | 'approximate'): Promise<{ run: string; branch: string }>;
+  plan(seq: number, restore?: RestoreMode): Promise<RestorePlan>;
+  fork(seq: number, changes: Record<string, Change>, restore: RestoreMode): Promise<{ run: string; branch: string; notice: string }>;
+  layout: Layout;
+};
+
+/**
+ * The Arena run behind a simulated source: the branch (absent until it loads, or when it can't),
+ * its run's branches with their short names, what each part of the world says about itself (null
+ * until Arena answers), and whether OpenRouter agents can run. `error` is why the branch is not
+ * on screen (Arena not answering, or another failure); `compare` reads this branch against another.
+ */
+export type SimulatedRun = {
+  run: string;
+  branchId: string;
+  branch?: BranchDetail;
+  branches: Branch[];
+  names: Map<string, string>;
+  parts: WorldPartInfo[] | null;
+  openAvailable: boolean;
+  error?: unknown;
+  compare(other: string): Promise<Comparison>;
 };
 
 export type ControlSource = {
@@ -96,6 +129,10 @@ export type ControlSource = {
   running: boolean;
   /** When the earliest current session of a running agent started; absent when unknown. */
   startedAt?: number;
+  /** When a run that has finished ended (a simulated branch); the header then shows how long it ran. */
+  endedAt?: number;
+  /** The run's own status when the source knows it better than its agents say (a simulated branch's outcome). */
+  runStatus?: { glyph: string; word: string; tone: Tone };
   agents: AgentLine[];
   feed: FeedItem[];
   approvals: Approval[];
@@ -103,12 +140,20 @@ export type ControlSource = {
   agentControl(agent: string, action: 'pause' | 'resume' | 'stop'): Action;
   message(agent: string, text: string): Action;
   team: TeamActions;
-  /** Tokens and cost are absent when unknown. `toolCallsPerMin`: the last 15 minutes, oldest first. */
-  metrics: { tokensIn?: number; tokensOut?: number; costUsd?: number; toolCallsPerMin: number[] };
+  /**
+   * Tokens and cost are absent when unknown. `tokens` is the total where only that was reported (an
+   * Arena run's agents). `toolCallsPerMin`: the last 15 minutes, oldest first.
+   */
+  metrics: { tokensIn?: number; tokensOut?: number; tokens?: number; costUsd?: number; toolCallsPerMin: number[] };
   /** What could not be loaded, in plain words (the rest of the source is then incomplete). */
   problems?: string[];
   /** Simulated only. */
   timeline?: SimulatedTimeline;
-  /** Simulated only: the world's rows at the cursor. */
-  world?: { rows(key?: string): Promise<Record<string, unknown>> };
+  /**
+   * Simulated only: the world's rows at the cursor's save, for `key`, or else for every key the run
+   * had touched by then. `save` is that save's step (null before anything was saved).
+   */
+  world?: { save: number | null; rows(key?: string): Promise<Record<string, unknown>> };
+  /** Simulated only: the Arena run. */
+  arena?: SimulatedRun;
 };

@@ -60,7 +60,14 @@ function useOutsideClose(box: RefObject<HTMLElement | null>, on: boolean, close:
   }, [box, on]);
 }
 
-type Props = { action: Action; onOutcome(o: Outcome | null): void; /** Where focus goes once the stop is sent (its button is then disabled). */ afterStop(): void };
+type Props = {
+  action: Action;
+  onOutcome(o: Outcome | null): void;
+  /** Where focus goes once the stop is sent (its button is then disabled). */
+  afterStop(): void;
+  /** A shorter caption for its reason, when the reason is said once beside the controls. */
+  shortWhy?: (why: string) => string | null;
+};
 
 /**
  * Emergency stop: disabled with its reason when nothing runs; otherwise it asks first, naming how many
@@ -68,7 +75,7 @@ type Props = { action: Action; onOutcome(o: Outcome | null): void; /** Where foc
  * never reopens by itself), on Cancel, Esc, or a press outside it. While its own stop is being sent it
  * stays, saying "Stopping…", then closes.
  */
-export function EmergencyStop({ action, onOutcome, afterStop }: Props) {
+export function EmergencyStop({ action, onOutcome, afterStop, shortWhy }: Props) {
   const [asking, setAsking] = useState<{ n: number | null } | null>(null);
   const [sending, setSending] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
@@ -86,7 +93,7 @@ export function EmergencyStop({ action, onOutcome, afterStop }: Props) {
   const open = () => setAsking((a) => (a ? null : { n: countIn(action.can.ok ? action.can.note : undefined) }));
   return (
     <span ref={box} className="ctl-estop">
-      <ActionButton action={action} label="Emergency stop" glyph="■" className="btn-danger danger ctl-estop-btn" onOutcome={onOutcome} onPress={open} expanded={!!asking} />
+      <ActionButton action={action} label="Emergency stop" glyph="■" className="btn-danger danger ctl-estop-btn" onOutcome={onOutcome} onPress={open} expanded={!!asking} shortWhy={shortWhy} />
       {asking && <Confirm n={asking.n} sending={sending} stop={() => void stop()} close={close} />}
     </span>
   );

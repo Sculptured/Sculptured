@@ -240,7 +240,7 @@
 .ctl-head-line .ctl-caution-word, .ctl-head-line .ctl-caution-sub { display: none; }
 .ctl-head-line .ctl-caution-glyph, .ctl-head-line .ctl-caution-count { font-size: var(--text-sm); }
 .ctl-head-line { flex-wrap: wrap; }
-.ctl-head-line .ctl-act { flex-direction: row; align-items: center; gap: 4px; max-width: none; }
+.ctl-head-line .ctl-act { flex-direction: row; align-items: center; gap: 4px; max-width: none; min-width: 0; white-space: normal; }
 .ctl-head-line .ctl-confirm { left: auto; right: 0; }
 .ctl-head-more { padding: 0 var(--space-2) 4px; border-top: 1px solid var(--line); }
 .ctl-head-more > summary { padding: 4px 0; color: var(--muted); font-size: var(--text-xs); cursor: pointer; }

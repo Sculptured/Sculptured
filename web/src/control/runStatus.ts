@@ -4,8 +4,12 @@ import type { AgentLine, ControlSource, Tone } from './source';
 
 export type Reading = { glyph: string; word: string; tone: Tone };
 
-/** The run as a glyph plus a word: not started, stopped, paused (every live agent), or running. */
-export function runStatus(s: Pick<ControlSource, 'agents' | 'running'>): Reading {
+/**
+ * The run as a glyph plus a word: the source's own word when it knows better (a simulated branch's
+ * outcome), else not started, stopped, paused (every live agent), or running.
+ */
+export function runStatus(s: Pick<ControlSource, 'agents' | 'running' | 'runStatus'>): Reading {
+  if (s.runStatus) return s.runStatus;
   if (s.agents.length > 0 && s.agents.every((a) => a.status.tone === 'unknown')) return { glyph: '∅', word: 'unknown (not connected)', tone: 'unknown' };
   if (!s.running) return s.agents.length === 0 ? { glyph: '○', word: 'not started', tone: 'idle' } : { glyph: '■', word: 'stopped', tone: 'idle' };
   const live = s.agents.filter((a) => a.status.tone === 'ok' || a.status.word === 'paused' || a.status.word === 'pausing');

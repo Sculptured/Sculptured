@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { Btn } from '../shell/ui';
-import { arena } from './api';
 import { changedFields } from './model';
-import { RestoreChoice, blockedReason, useRestorePlan } from './RestoreChoice';
+import { RestoreChoice, blockedReason, useRestorePlan, type PlanLoader } from './RestoreChoice';
 import { ErrorNote } from './shared';
 import { DEFAULT_OPENROUTER_MODEL, KINDS } from './team';
-import type { AgentKind, AgentSpec, BranchDetail, Change, ForkResponse, RestoreMode } from './types';
+import type { AgentKind, AgentSpec, Change, RestoreMode } from './types';
 
 /** The agent's mode and model; a new mode starts from that mode's default model. */
 function ModeAndModel({ agent: a, edit: e, openAvailable, onEdit }: { agent: AgentSpec; edit: Change; openAvailable: boolean; onEdit: (patch: Change) => void }) {
@@ -33,7 +32,7 @@ function ModeAndModel({ agent: a, edit: e, openAvailable, onEdit }: { agent: Age
   );
 }
 
-/** One agent's mode, model and instructions, as edited for the rerun. */
+/** One agent's mode, model and instructions, as edited for the fork. */
 function AgentEdit({ agent: a, edit: e, changed, openAvailable, onEdit }: {
   agent: AgentSpec;
   edit: Change;
@@ -50,41 +49,56 @@ function AgentEdit({ agent: a, edit: e, changed, openAvailable, onEdit }: {
       <ModeAndModel agent={a} edit={e} openAvailable={openAvailable} onEdit={onEdit} />
       <label className="tst-field">
         <span className="tst-label">Instructions</span>
-        <textarea rows={5} value={e.prompt ?? a.prompt} onChange={(ev) => onEdit({ prompt: ev.target.value })} />
+        <textarea rows={3} value={e.prompt ?? a.prompt} onChange={(ev) => onEdit({ prompt: ev.target.value })} />
       </label>
     </div>
   );
 }
 
-/** The panel's state: the edits, the restore mode and its plan, and starting the rerun. */
-function useRerun(branch: BranchDetail, seq: number, onDone: (r: ForkResponse) => void) {
+/** Starts the fork with the changed fields and the restore mode; rejects with why it could not. */
+export type ForkStarter = (changes: Record<string, Change>, mode: RestoreMode) => Promise<void>;
+
+type PanelProps = {
+  /** The branch's agents as they ran. */
+  agents: AgentSpec[];
+  seq: number;
+  /** The branch is still running (a fork waits for it). */
+  running: boolean;
+  openAvailable: boolean;
+  plan: PlanLoader;
+  start: ForkStarter;
+  onClose: () => void;
+};
+
+/** The panel's state: the edits, the restore mode and its plan, and starting the fork. */
+function useFork({ agents, seq, running, plan: load, start }: PanelProps) {
   const [edits, setEdits] = useState<Record<string, Change>>({});
   const [restore, setRestore] = useState<RestoreMode>('exact');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const plan = useRestorePlan(branch.id, seq, restore);
-  const changes = changedFields(branch.team.agents, edits);
+  const plan = useRestorePlan(load, seq, restore);
+  const changes = changedFields(agents, edits);
   const edit = (id: string, patch: Change) => setEdits((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
   const go = async () => {
     setBusy(true);
     setError(null);
     try {
-      onDone(await arena.fork(branch.id, seq, changes, restore));
+      await start(changes, restore);
     } catch (e) {
       setError(e);
       setBusy(false);
     }
   };
-  return { edits, edit, changes, restore, setRestore, plan, busy, error, go, blocked: blockedReason(plan, branch.status === 'running') };
+  return { edits, edit, changes, restore, setRestore, plan, busy, error, go, blocked: blockedReason(plan, running) };
 }
 
 function RerunHead({ seq, onClose }: { seq: number; onClose: () => void }) {
   return (
     <header className="tst-rerun-head">
       <div>
-        <h2 className="tst-h2">Change &amp; rerun from step {seq}</h2>
+        <h2 className="tst-h2">Fork from step {seq}</h2>
         <p className="muted tst-small">
-          Step {seq} runs again with your changes, on the world as it was just before it. Steps before it are reused, not rerun.
+          Step {seq} runs again with your changes, on the world as it was just before it. Steps before it are reused, not run again.
           A Claude Code or Codex agent can't resume mid-way, so a change to one restarts it from its own first step.
         </p>
       </div>
@@ -94,43 +108,39 @@ function RerunHead({ seq, onClose }: { seq: number; onClose: () => void }) {
 }
 
 /** The start button: disabled, saying why, while the branch runs or the restore is refused. */
-function RerunFoot({ changes: n, busy, blocked, onGo }: { changes: number; busy: boolean; blocked: string | null; onGo: () => void }) {
+function ForkFoot({ changes: n, busy, blocked, onGo }: { changes: number; busy: boolean; blocked: string | null; onGo: () => void }) {
   return (
     <footer className="tst-rerun-foot">
       <Btn variant="primary" icon="play" onClick={onGo} disabled={busy || blocked != null}>
-        {busy ? 'Starting…' : n ? `Rerun with ${n} change${n === 1 ? '' : 's'}` : 'Rerun unchanged'}
+        {busy ? 'Forking…' : n ? `Fork with ${n} change${n === 1 ? '' : 's'}` : 'Fork unchanged'}
       </Btn>
       {blocked && <span className="tst-small" role="status">{blocked}</span>}
-      {!n && !blocked && <span className="muted tst-small">With no changes, the rerun shows how much the result varies on its own.</span>}
+      {!n && !blocked && <span className="muted tst-small">With no changes, the fork shows how much the result varies on its own.</span>}
     </footer>
   );
 }
 
 /**
- * Change one or more agents and rerun from a step. The step is done again with the change, on the
+ * Change one or more agents and fork from a step. The step is done again with the change, on the
  * world as it was just before it, restored exactly or approximately; everything earlier is reused.
  * Only edited fields are sent.
  */
-export function RerunPanel({ branch, seq, openAvailable, onDone, onClose }: {
-  branch: BranchDetail;
-  seq: number;
-  openAvailable: boolean;
-  onDone: (r: ForkResponse) => void;
-  onClose: () => void;
-}) {
-  const r = useRerun(branch, seq, onDone);
+export function RerunPanel(props: PanelProps) {
+  const r = useFork(props);
   const n = Object.values(r.changes).reduce((s, c) => s + Object.keys(c).length, 0);
   return (
-    <section className="tst-card tst-rerun" aria-label={`Change and rerun from step ${seq}`}>
-      <RerunHead seq={seq} onClose={onClose} />
+    <section className="tst-card tst-rerun" aria-label={`Fork from step ${props.seq}`}>
+      <RerunHead seq={props.seq} onClose={props.onClose} />
       <div className="tst-rerun-agents">
-        {branch.team.agents.map((a) => (
-          <AgentEdit key={a.id} agent={a} edit={r.edits[a.id] ?? {}} changed={!!r.changes[a.id]} openAvailable={openAvailable} onEdit={(p) => r.edit(a.id, p)} />
+        {props.agents.map((a) => (
+          <AgentEdit key={a.id} agent={a} edit={r.edits[a.id] ?? {}} changed={!!r.changes[a.id]} openAvailable={props.openAvailable} onEdit={(p) => r.edit(a.id, p)} />
         ))}
       </div>
-      <RestoreChoice mode={r.restore} onMode={r.setRestore} plan={r.plan} />
-      <ErrorNote error={r.error} />
-      <RerunFoot changes={n} busy={r.busy} blocked={r.blocked} onGo={r.go} />
+      <div className="tst-rerun-commit">
+        <RestoreChoice mode={r.restore} onMode={r.setRestore} plan={r.plan} />
+        <ErrorNote error={r.error} />
+        <ForkFoot changes={n} busy={r.busy} blocked={r.blocked} onGo={r.go} />
+      </div>
     </section>
   );
 }

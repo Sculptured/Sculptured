@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api';
 import { Segmented } from '../shell/ui';
-import { arena } from './api';
 import { REPLAY_NOTE, planLine } from './restore';
 import { ErrorNote } from './shared';
-import type { PartPlan, RestoreMode } from './types';
+import type { PartPlan, RestoreMode, RestorePlan } from './types';
 
 /** What the restore plan for the panel's step says: loading, the parts, a refusal (409) or a failure. */
 export type Plan =
@@ -18,31 +17,36 @@ const MODES: { value: RestoreMode; label: string; tip: string }[] = [
   { value: 'approximate', label: 'Approximate', tip: 'From saves that may differ slightly; possible when exact is not' },
 ];
 
-/** The plan for a fork of `branchId` at `seq` restored in `mode`; a refusal keeps the engine's own words. */
-async function loadPlan(branchId: string, seq: number, mode: RestoreMode): Promise<Plan> {
+/** Reads a restore plan for a step and a restore mode (the source's `timeline.plan`). */
+export type PlanLoader = (seq: number, mode: RestoreMode) => Promise<RestorePlan>;
+
+/** The plan for a fork at `seq` restored in `mode`; a refusal keeps the engine's own words. */
+async function loadPlan(load: PlanLoader, seq: number, mode: RestoreMode): Promise<Plan> {
   try {
-    return { state: 'ready', parts: (await arena.restorePlan(branchId, seq, mode)).parts };
+    return { state: 'ready', parts: (await load(seq, mode)).parts };
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) return { state: 'refused', reason: e.raw ?? e.message };
     return { state: 'failed', error: e };
   }
 }
 
-/** The plan for the current mode, reloaded when it changes. */
-export function useRestorePlan(branchId: string, seq: number, mode: RestoreMode): Plan {
+/** The plan for the current step and mode, read again when either changes. */
+export function useRestorePlan(load: PlanLoader, seq: number, mode: RestoreMode): Plan {
   const [plan, setPlan] = useState<Plan>({ state: 'loading' });
+  const latest = useRef(load);
+  useEffect(() => { latest.current = load; });
   useEffect(() => {
     let alive = true;
     setPlan({ state: 'loading' });
-    void loadPlan(branchId, seq, mode).then((p) => { if (alive) setPlan(p); });
+    void loadPlan(latest.current, seq, mode).then((p) => { if (alive) setPlan(p); });
     return () => { alive = false; };
-  }, [branchId, seq, mode]);
+  }, [seq, mode]);
   return plan;
 }
 
 export const WAIT_REASON = 'Wait for this branch to finish first.';
 
-/** Why the rerun can't start: the branch is running, or the restore is refused; null when it can. */
+/** Why the fork can't start: the branch is running, or the restore is refused; null when it can. */
 export function blockedReason(plan: Plan, running: boolean): string | null {
   if (running) return WAIT_REASON;
   return plan.state === 'refused' ? plan.reason : null;

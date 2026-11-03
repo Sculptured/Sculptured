@@ -9,6 +9,7 @@ import { TeamLive } from '../../shell/TeamLive';
 import { FitFloor, ViewportScope } from '../../shell/viewport';
 import { useSelection } from '../../workspace/selection';
 import { useControl } from '../context';
+import { SimOverview } from './SimOverview';
 
 /**
  * The least zoom the board fits to on its own in a pane: card names and states stay readable; a pane
@@ -18,13 +19,19 @@ import { useControl } from '../context';
 const READABLE_K = 0.75;
 
 /**
- * System overview: the team's live board (the Run board), first in the default layout. Focusing a
+ * System overview. For a simulated run: its agents and the world's parts (SimOverview). For a
+ * deployment: the team's live board (the Run board), first in the default layout. Focusing a
  * card selects its agent for every pane that follows the selection; opening it (click, Enter) also
  * brings Agent detail forward. A card's Answer brings Approvals forward. The board fits the pane when
  * it opens and when the pane changes size, until the user pans or zooms it. Its view is its own
  * (`control:` scope): panning here does not move the Run board.
  */
 export function OverviewPane() {
+  const { kind } = useControl();
+  return kind === 'simulated' ? <SimOverview /> : <LiveOverview />;
+}
+
+function LiveOverview() {
   const p = useProject();
   const shell = useShell();
   const { show } = useControl();
