@@ -27,29 +27,23 @@ function trapKeys(box: RefObject<HTMLElement | null>, close: () => void) {
   };
 }
 
-type ConfirmProps = { action: Action; close(): void; onOutcome(o: Outcome | null): void };
+type ConfirmProps = { n: number | null; sending: boolean; stop(): void; close(): void };
 
-/** The confirm step: Stop now and Cancel (focused first). Focus stays inside; Esc cancels. Stop now sends once. */
-function Confirm({ action, close, onOutcome }: ConfirmProps) {
+/** The confirm step: Stop now and Cancel (focused first). Focus stays inside; Esc cancels. */
+function Confirm({ n, sending, stop, close }: ConfirmProps) {
   const box = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const qid = useId();
-  const [sending, setSending] = useState(false);
   useEffect(() => cancel.current?.focus(), []);
-  const n = countIn(action.can.ok ? action.can.note : undefined);
-  const stop = async () => {
-    setSending(true);
-    try { onOutcome(outcomeOf(await action.run())); } catch (e) { onOutcome(failureOf(e)); }
-    close();
-  };
   return (
-    <div ref={box} className="ctl-confirm" role="alertdialog" aria-modal="false" aria-label="Emergency stop" aria-describedby={qid} onKeyDown={trapKeys(box, close)}>
+    <div ref={box} className="ctl-confirm" role="alertdialog" aria-label="Emergency stop" aria-describedby={qid} aria-busy={sending} onKeyDown={trapKeys(box, close)}>
       <p id={qid} className="ctl-confirm-q">{stopQuestion(n)}</p>
       <p className="ctl-note">{n === 1 ? 'It stops at once, with every agent it started.' : 'Each stops at once, with every agent it started.'} Sessions are not kept.</p>
       <div className="ctl-row">
-        <button type="button" className="btn btn-sm btn-danger danger" disabled={sending} onClick={() => void stop()}>{sending ? 'Stopping…' : 'Stop now'}</button>
+        <button type="button" className="btn btn-sm btn-danger danger" disabled={sending} onClick={stop}>{sending ? 'Stopping…' : 'Stop now'}</button>
         <button ref={cancel} type="button" className="btn btn-sm btn-secondary" disabled={sending} onClick={close}>Cancel</button>
       </div>
+      {sending && <p className="ctl-why" role="status">Stopping…</p>}
     </div>
   );
 }
@@ -66,22 +60,34 @@ function useOutsideClose(box: RefObject<HTMLElement | null>, on: boolean, close:
   }, [box, on]);
 }
 
+type Props = { action: Action; onOutcome(o: Outcome | null): void; /** Where focus goes once the stop is sent (its button is then disabled). */ afterStop(): void };
+
 /**
- * Emergency stop: disabled with its reason when nothing runs; otherwise it asks first. The question
- * closes for good once the stop can no longer run (it never reopens by itself), on Cancel, Esc, or a
- * press outside it.
+ * Emergency stop: disabled with its reason when nothing runs; otherwise it asks first, naming how many
+ * agents it stops (counted when it opened). The question closes once the stop can no longer run (it
+ * never reopens by itself), on Cancel, Esc, or a press outside it. While its own stop is being sent it
+ * stays, saying "Stopping…", then closes.
  */
-export function EmergencyStop({ action, onOutcome }: { action: Action; onOutcome(o: Outcome | null): void }) {
-  const [asking, setAsking] = useState(false);
+export function EmergencyStop({ action, onOutcome, afterStop }: Props) {
+  const [asking, setAsking] = useState<{ n: number | null } | null>(null);
+  const [sending, setSending] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
-  if (asking && !action.can.ok) setAsking(false);
-  const close = () => { setAsking(false); box.current?.querySelector('button')?.focus(); };
-  useOutsideClose(box, asking, () => setAsking(false));
+  if (asking && !sending && !action.can.ok) setAsking(null);
+  const button = () => box.current?.querySelector<HTMLButtonElement>('button');
+  const close = () => { if (sending) return; setAsking(null); button()?.focus(); };
+  useOutsideClose(box, !!asking, close);
+  const stop = async () => {
+    setSending(true);
+    try { onOutcome(outcomeOf(await action.run())); } catch (e) { onOutcome(failureOf(e)); }
+    setSending(false);
+    setAsking(null);
+    afterStop();
+  };
+  const open = () => setAsking((a) => (a ? null : { n: countIn(action.can.ok ? action.can.note : undefined) }));
   return (
     <span ref={box} className="ctl-estop">
-      <ActionButton action={action} label="Emergency stop" glyph="■" className="btn-danger danger ctl-estop-btn" onOutcome={onOutcome} onPress={() => setAsking((a) => !a)}
-        expanded={asking} />
-      {asking && <Confirm action={action} close={close} onOutcome={onOutcome} />}
+      <ActionButton action={action} label="Emergency stop" glyph="■" className="btn-danger danger ctl-estop-btn" onOutcome={onOutcome} onPress={open} expanded={!!asking} />
+      {asking && <Confirm n={asking.n} sending={sending} stop={() => void stop()} close={close} />}
     </span>
   );
 }

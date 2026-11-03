@@ -10,6 +10,17 @@ export type Bounds = { x0: number; y0: number; x1: number; y1: number };
 const viewports = new Map<string, Viewport>();
 /** Teams whose viewport the user panned or zoomed: auto-fit leaves those alone. */
 const touched = new Set<string>();
+/**
+ * Boards the user asked to show whole (Fit, `f`): until they pan, zoom or move the view, refits on
+ * resize show everything too, below any FitFloor.
+ */
+const fitAll = new Set<string>();
+
+/** The user moved the view: auto-fit stops, and so does showing the whole board. */
+function touch(key: string) {
+  touched.add(key);
+  fitAll.delete(key);
+}
 
 /** Boards asked to keep their view through the next resize (a panel docking beside them), and when. */
 const held = new Map<string, number>();
@@ -18,6 +29,7 @@ const HOLD_MS = 1000;
 export function forgetViewports() {
   viewports.clear();
   touched.clear();
+  fitAll.clear();
   held.clear();
 }
 
@@ -53,16 +65,22 @@ export const DEFAULT_VIEWPORT: Viewport = { x: MARGIN, y: MARGIN, k: 1 };
 export function fitViewport(b: Bounds, w: number, h: number, maxK = MAX_FIT_K, minK = MIN_K): Viewport {
   const bw = Math.max(1, b.x1 - b.x0);
   const bh = Math.max(1, b.y1 - b.y0);
-  const k = clampK(Math.max(Math.min(minK, maxK), Math.min(w / (bw + FIT_MARGIN * 2), h / (bh + FIT_MARGIN * 2), maxK)));
-  const along = (size: number, room: number, from: number) => ((size + FIT_MARGIN * 2) * k <= room + 0.5 ? (room - size * k) / 2 - from * k : FIT_MARGIN - from * k);
+  const whole = clampK(Math.min(w / (bw + FIT_MARGIN * 2), h / (bh + FIT_MARGIN * 2), maxK));
+  const k = clampK(Math.max(whole, Math.min(minK, maxK)));
+  // Raised by the floor, the drawing no longer fits: it starts at its top-left corner. Otherwise centred.
+  const along = (size: number, room: number, from: number) => (k > whole ? FIT_MARGIN - from * k : (room - size * k) / 2 - from * k);
   return { k, x: along(bw, w, b.x0), y: along(bh, h, b.y0) };
 }
 
 /**
  * The least zoom auto-fit may use under this provider, so card text stays readable where the area is
- * small (a Control pane); the rest of the drawing is then a pan away. Elsewhere fit shows everything.
+ * small (a Control pane); the rest of the drawing is then a pan away. Fit (`f`) still shows the whole
+ * board. Elsewhere auto-fit shows everything.
  */
 export const FitFloor = createContext(MIN_K);
+
+/** A prefix for the remembered view's key, so a board shown elsewhere (a Control pane) keeps its own view. */
+export const ViewportScope = createContext('');
 
 type SetVp = (next: Viewport | ((v: Viewport) => Viewport)) => void;
 type El = RefObject<HTMLDivElement | null>;
@@ -99,17 +117,19 @@ function useAutoFit(key: string, el: El, bounds: Bounds | null, preserveOnGrowth
   const floor = useContext(FitFloor);
   const boundsRef = useRef(bounds);
   boundsRef.current = bounds;
-  const fitNow = useCallback(() => {
+  /** Fits at no less than `minK`; by default the provider's floor, or the whole board after Fit. */
+  const fitNow = useCallback((minK?: number) => {
     const node = el.current;
     const b = boundsRef.current;
     if (!node || !b || !node.clientWidth || !node.clientHeight) return false;
-    setVp(fitViewport(b, node.clientWidth, node.clientHeight, MAX_FIT_K, floor));
+    setVp(fitViewport(b, node.clientWidth, node.clientHeight, MAX_FIT_K, minK ?? (fitAll.has(key) ? MIN_K : floor)));
     return true;
-  }, [el, setVp, floor]);
-  /** `f` / Fit: fits now, and auto-fit applies again until the next pan or zoom. */
+  }, [key, el, setVp, floor]);
+  /** `f` / Fit: shows the whole board now, and auto-fit applies again until the next pan or zoom. */
   const fit = useCallback(() => {
     touched.delete(key);
-    fitNow();
+    fitAll.add(key);
+    fitNow(MIN_K);
   }, [key, fitNow]);
   const boundsKey = bounds ? `${bounds.x0},${bounds.y0},${bounds.x1},${bounds.y1}` : '';
   useLayoutEffect(() => {
@@ -120,7 +140,7 @@ function useAutoFit(key: string, el: El, bounds: Bounds | null, preserveOnGrowth
 }
 
 /** Fits again when the area changes size, unless the user moved the view or a panel beside it asked to hold it. */
-function useResizeFit(key: string, el: El, vpRef: RefObject<Viewport>, boundsRef: RefObject<Bounds | null>, fitNow: () => boolean) {
+function useResizeFit(key: string, el: El, vpRef: RefObject<Viewport>, boundsRef: RefObject<Bounds | null>, fitNow: (minK?: number) => boolean) {
   useEffect(() => {
     const node = el.current;
     if (!node || typeof ResizeObserver === 'undefined') return;
@@ -141,7 +161,7 @@ function useResizeFit(key: string, el: El, vpRef: RefObject<Viewport>, boundsRef
 function useZoom(key: string, el: El, setVp: SetVp) {
   const zoomAt = useCallback(
     (factor: number, cx?: number, cy?: number) => {
-      touched.add(key);
+      touch(key);
       setVp((v) => {
         const node = el.current;
         const px = cx ?? (node?.clientWidth ?? 0) / 2;
@@ -180,7 +200,7 @@ function usePan(key: string, el: El, vpRef: RefObject<Viewport>, setVp: SetVp) {
       panStop.current = trackPointer(
         e,
         (dx, dy) => {
-          touched.add(key);
+          touch(key);
           setVp({ ...start, x: start.x + dx, y: start.y + dy });
         },
         () => {
@@ -208,7 +228,7 @@ function useReveal(key: string, el: El, setVp: SetVp) {
         if (top < 8) y += 8 - top;
         else if (top + b.h * v.k > node.clientHeight - 8) y -= top + b.h * v.k - (node.clientHeight - 8);
         if (x === v.x && y === v.y) return v;
-        touched.add(key);
+        touch(key);
         return { ...v, x, y };
       });
     },
@@ -221,7 +241,8 @@ function useReveal(key: string, el: El, setVp: SetVp) {
  * one view across both. It fits on first view, when the team changes and when the area or the
  * drawing changes size, until the user pans or zooms; after that it never moves on its own.
  */
-export function usePanZoom(key: string, bounds: Bounds | null, preserveOnGrowth = false) {
+export function usePanZoom(given: string, bounds: Bounds | null, preserveOnGrowth = false) {
+  const key = useContext(ViewportScope) + given;
   const el = useRef<HTMLDivElement>(null);
   const { vp, vpRef, setVp } = useViewportState(key);
   const { fit, fitNow, boundsRef } = useAutoFit(key, el, bounds, preserveOnGrowth, setVp);
@@ -236,6 +257,6 @@ export function usePanZoom(key: string, bounds: Bounds | null, preserveOnGrowth 
     return { x: (clientX - (r?.left ?? 0) - v.x) / v.k, y: (clientY - (r?.top ?? 0) - v.y) / v.k };
   }, [vpRef]);
   /** Editing a position or route is deliberate placement, so subsequent bounds must not refit. */
-  const hold = useCallback(() => { touched.add(key); }, [key]);
+  const hold = useCallback(() => touch(key), [key]);
   return { el, vp, vpRef, fit, zoomAt, startPan, reveal, toWorld, hold };
 }

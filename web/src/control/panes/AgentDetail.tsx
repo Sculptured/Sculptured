@@ -15,17 +15,17 @@ import { AgentControlsBar } from './AgentControlsBar';
 
 /**
  * Agent detail: one agent's conversation or activity, with its controls (pause, resume, stop, send a
- * message). Following the selection (the default), it shows the selected agent; with Follow off, the
- * agent it was showing, or the one picked in Settings. Several can be open side by side, each with its
- * own view.
+ * message). Following the selection (the default), it shows the selected agent; with Follow off (the
+ * switch in its head, or picking an agent in Settings), the agent it pins. Several can be open side by
+ * side, each with its own view.
  */
 
 export type AgentSettings = { view?: 'conversation' | 'activity'; activityView?: ActivityView; agent?: string; follow?: boolean };
 
+/** Following (the default): the selected agent. Not following: the pinned one (a setting saved without one follows). */
 function useAgent(s: AgentSettings): string | undefined {
   const { selection } = useSelection();
-  // With Follow off and no agent picked, the selection stays at what this pane last followed.
-  return s.follow === false ? (s.agent ?? selection.agent) : selection.agent;
+  return s.follow === false && s.agent ? s.agent : selection.agent;
 }
 
 /** Which agent: a short list to pick from, before anything is selected. */

@@ -19,7 +19,9 @@ export const CONTROL_PANES: PaneType[] = [
   { type: 'timeline', title: 'Timeline', glyph: '⏱', selection: true, defaultSettings: TIMELINE_DEFAULTS, Settings: TimelineSettingsForm, Body: TimelinePane },
   { type: 'alarms', title: 'Alarms', glyph: '▲', selection: true, Settings: AlarmsSettingsForm, Body: AlarmsPane },
   { type: 'approvals', title: 'Approvals', glyph: '◆', Body: ApprovalsPane },
-  { type: 'agent', title: 'Agent detail', glyph: '◉', multi: true, selection: true, appliesTo: deploymentOnly, defaultSettings: { view: 'conversation' }, Settings: AgentSettingsForm, Body: AgentDetailPane },
+  // Agent detail has its own Follow selection switch in its head (it pins the agent), so it does not take
+  // the shell's generic "Follow selection" setting (`selection: true`), which other panes keep.
+  { type: 'agent', title: 'Agent detail', glyph: '◉', multi: true, appliesTo: deploymentOnly, defaultSettings: { view: 'conversation' }, Settings: AgentSettingsForm, Body: AgentDetailPane },
   { type: 'metrics', title: 'Metrics', glyph: '▥', Body: MetricsPane },
   { type: 'raw', title: 'Raw events', glyph: '{}', selection: true, defaultSettings: { onlySelected: false }, Settings: RawSettingsForm, Body: RawEventsPane },
   { type: 'results', title: 'Results', glyph: '✓', multi: true, appliesTo: deploymentOnly, defaultSettings: { section: 'summary' }, Settings: ResultsSettingsForm, Body: ResultsPane },

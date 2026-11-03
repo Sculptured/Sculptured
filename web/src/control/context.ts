@@ -12,6 +12,8 @@ export type ControlCtx = {
   show(type: string): void;
   /** Ticks every 15 seconds. */
   now: number;
+  /** Where to fix what keeps Start from running (a design's problems), shown beside its reason. */
+  startFix?: { text: string; to: string };
 };
 
 export const useControl = () => usePaneContext<ControlCtx>();

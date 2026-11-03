@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { compactNumber } from '../format';
 import { useMobile } from '../workspace/MobileWorkspace';
 import { ActionButton, OutcomeNote, type Outcome } from './ActionButton';
@@ -65,34 +66,40 @@ function Strip({ ctx }: { ctx: ControlCtx }) {
   );
 }
 
-function TeamControls({ ctx, onOutcome, withStop = true }: { ctx: ControlCtx; onOutcome(o: Outcome | null): void; withStop?: boolean }) {
+type RowProps = { ctx: ControlCtx; onOutcome(o: Outcome | null): void; afterStop(): void };
+
+/**
+ * Start, Pause all, Resume all, Stop team… (the graceful stop: the project bar's confirmation) and
+ * Emergency stop (`withStop`; a phone shows it on its one header line instead).
+ */
+function TeamControls({ ctx, onOutcome, afterStop, withStop = true }: RowProps & { withStop?: boolean }) {
   const t = ctx.source.team;
+  const fix = ctx.startFix && <Link className="ctl-link" to={ctx.startFix.to}>{ctx.startFix.text}</Link>;
   return (
     <div className="ctl-controls" role="group" aria-label="Team controls">
-      <ActionButton action={t.start} label="Start" glyph="▶" className="btn-primary primary" onOutcome={onOutcome} shortWhy={() => (ctx.source.running ? 'Running' : null)} />
+      <ActionButton action={t.start} label="Start" glyph="▶" className="btn-primary primary" onOutcome={onOutcome} shortWhy={() => (ctx.source.running ? 'Running' : null)} fix={fix} />
       <ActionButton action={t.pauseAll} label="Pause all" glyph="‖" onOutcome={onOutcome} />
       <ActionButton action={t.resumeAll} label="Resume all" glyph="▶" onOutcome={onOutcome} />
-      {withStop && <EmergencyStop action={t.emergencyStop} onOutcome={onOutcome} />}
+      <ActionButton action={t.stop} label="Stop team…" glyph="◑" onOutcome={onOutcome} />
+      {withStop && <EmergencyStop action={t.emergencyStop} onOutcome={onOutcome} afterStop={afterStop} />}
     </div>
   );
 }
 
-type RowProps = { ctx: ControlCtx; onOutcome(o: Outcome | null): void };
-
-function Wide({ ctx, onOutcome }: RowProps) {
+function Wide({ ctx, onOutcome, afterStop }: RowProps) {
   return (
     <div className="ctl-head-row">
       <Strip ctx={ctx} />
       <div className="ctl-head-right">
         <Caution ctx={ctx} />
-        <TeamControls ctx={ctx} onOutcome={onOutcome} />
+        <TeamControls ctx={ctx} onOutcome={onOutcome} afterStop={afterStop} />
       </div>
     </div>
   );
 }
 
 /** A phone: one line (the run, the clock, the caution's count, Emergency stop); the rest one step back. */
-function Narrow({ ctx, onOutcome }: RowProps) {
+function Narrow({ ctx, onOutcome, afterStop }: RowProps) {
   const run = runStatus(ctx.source);
   return (
     <>
@@ -100,12 +107,12 @@ function Narrow({ ctx, onOutcome }: RowProps) {
         <span className={`ctl-line-run tone-${run.tone}`}><span aria-hidden="true">{run.glyph}</span> {run.word}</span>
         <Clock startedAt={ctx.source.startedAt} running={ctx.source.running} />
         <Caution ctx={ctx} />
-        <EmergencyStop action={ctx.source.team.emergencyStop} onOutcome={onOutcome} />
+        <EmergencyStop action={ctx.source.team.emergencyStop} onOutcome={onOutcome} afterStop={afterStop} />
       </div>
       <details className="ctl-head-more">
         <summary>Agents, tokens, cost and team controls</summary>
         <Strip ctx={ctx} />
-        <TeamControls ctx={ctx} onOutcome={onOutcome} withStop={false} />
+        <TeamControls ctx={ctx} onOutcome={onOutcome} afterStop={afterStop} withStop={false} />
       </details>
     </>
   );
@@ -115,10 +122,13 @@ export function ControlHeader({ ctx }: { ctx: ControlCtx }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const problems = ctx.source.problems ?? [];
   const Row = useMobile() ? Narrow : Wide;
+  const note = useRef<HTMLDivElement>(null);
+  // After Emergency stop its button is disabled (nothing runs): focus goes to what it did.
+  const afterStop = () => requestAnimationFrame(() => note.current?.focus());
   return (
     <div className="ctl-head">
-      <Row ctx={ctx} onOutcome={setOutcome} />
-      <OutcomeNote o={outcome} dismiss={() => setOutcome(null)} />
+      <Row ctx={ctx} onOutcome={setOutcome} afterStop={afterStop} />
+      <OutcomeNote ref={note} o={outcome} dismiss={() => setOutcome(null)} />
       {problems.length > 0 && (
         <ul className="ctl-problems" role="status" aria-label="Not loaded">
           {problems.map((p) => <li key={p}><span aria-hidden="true">◇ </span>{p}</li>)}

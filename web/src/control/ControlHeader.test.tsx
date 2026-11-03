@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import { stream, twoTeams, where } from '../shell/shellHarness';
 import { seatView, snapshot } from '../test-fixtures';
+import { MemoryRouter } from 'react-router-dom';
+import { WORDS } from '../vocab';
 import { OutcomeNote, outcomeOf } from './ActionButton';
+import type { ControlCtx } from './context';
+import { ControlHeader } from './ControlHeader';
+import type { Action, ControlSource } from './source';
 import { stopQuestion } from './EmergencyStop';
 import { A, control, header, layoutTab, pane, resetControl } from './pageHarness';
 
@@ -94,6 +99,44 @@ describe('Control header', () => {
   });
 });
 
+describe('Control header, round 2', () => {
+  it('stop_team_asks_the_project_bar_for_the_graceful_stop', async () => {
+    await control();
+    await userEvent.setup().click(within(header()).getByRole('button', { name: 'Stop team…' }));
+    expect(screen.getByRole('group', { name: WORDS.confirmStopTeam })).toBeInTheDocument();
+    expect(api.stopTeamNow).not.toHaveBeenCalled();
+    // Nothing running: disabled, with its reason.
+    act(() => stream().emit('snapshot', stopped()));
+    await waitFor(() => expect(within(header()).getByRole('button', { name: 'Stop team…' })).toBeDisabled());
+    expect(within(header()).getByRole('button', { name: 'Stop team…' })).toHaveAccessibleDescription('Nothing is running');
+  });
+
+  it('emergency_confirm_stays_while_its_stop_is_sent_then_focus_goes_to_what_it_did', async () => {
+    let finish: (v: { stopped: number }) => void = () => {};
+    vi.mocked(api.stopTeamNow).mockImplementation(() => new Promise((r) => { finish = r; }));
+    await control();
+    const user = userEvent.setup();
+    await user.click(within(header()).getByRole('button', { name: 'Emergency stop' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Stop now' }));
+    const ask = screen.getByRole('alertdialog');
+    expect(ask).toHaveTextContent('Stop all 2 agents now?');
+    expect(within(ask).getByRole('button', { name: 'Stopping…' })).toBeDisabled();
+    await act(async () => finish({ stopped: 2 }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    await waitFor(() => expect(screen.getByText(/Stopping 2 agents now/).closest('.ctl-outcome')).toHaveFocus());
+  });
+
+  it('a start refused for the design links to where to fix it', () => {
+    const off: Action = { can: { ok: false, why: 'Fix 2 things first' }, run: async () => ({ text: 'Fix 2 things first', skipped: [], refused: true }) };
+    const source = { kind: 'deployment', title: 't', running: false, agents: [], feed: [], approvals: [], metrics: { toolCallsPerMin: [] },
+      team: { start: off, stop: off, pauseAll: off, resumeAll: off, emergencyStop: off } } as unknown as ControlSource;
+    const alarms = { list: [], acked: new Set<string>(), unacked: 0, ack() {}, ackAll() {}, rules: [], setRules() {} };
+    const ctx: ControlCtx = { kind: 'deployment', team: 'r', source, alarms, show() {}, now: 0, startFix: { text: 'Fix 2 things', to: '/p/r/board?mode=design' } };
+    render(<MemoryRouter><ControlHeader ctx={ctx} /></MemoryRouter>);
+    expect(screen.getByRole('link', { name: 'Fix 2 things' })).toHaveAttribute('href', '/p/r/board?mode=design');
+  });
+});
+
 describe('Agent detail', () => {
   it('keeps its own Activity view and follows the selection only while Follow is on', async () => {
     await control();
@@ -114,5 +157,11 @@ describe('Agent detail', () => {
     expect(within(detail()).getByRole('heading', { name: 'a' })).toBeInTheDocument();
     await user.click(within(detail()).getByRole('checkbox', { name: 'Follow selection' }));
     expect(within(detail()).getByRole('heading', { name: 'b' })).toBeInTheDocument();
+    // One follow control: its Settings pick an agent, without a second Follow selection switch.
+    await user.click(within(detail()).getByRole('button', { name: 'Agent detail options' }));
+    await user.click(screen.getByRole('menuitem', { name: /Settings/ }));
+    const form = screen.getByRole('group', { name: 'Agent detail settings' });
+    expect(within(form).queryByRole('checkbox', { name: 'Follow selection' })).toBeNull();
+    expect(within(form).getByRole('combobox', { name: 'Agent' })).toBeInTheDocument();
   });
 });

@@ -76,7 +76,8 @@ export class ActionError extends Error {
   }
 }
 
-export type TeamActions = Record<'start' | 'pauseAll' | 'resumeAll' | 'emergencyStop', Action>;
+/** `stop` is the graceful stop (agents finish their turn, then stop); `emergencyStop` stops them at once. */
+export type TeamActions = Record<'start' | 'stop' | 'pauseAll' | 'resumeAll' | 'emergencyStop', Action>;
 
 /** A simulated run's timeline: its steps and saves, a cursor, the restore plan and fork. */
 export type SimulatedTimeline = {

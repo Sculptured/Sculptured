@@ -92,6 +92,7 @@ describe('useDeploymentSource', () => {
     expect(s.team.pauseAll.can).toEqual({ ok: false, why: 'Nothing is running' });
     expect(s.team.resumeAll.can).toEqual({ ok: false, why: 'Nothing is paused' });
     expect(s.team.start.can).toEqual({ ok: true });
+    expect(s.team.stop.can).toEqual({ ok: false, why: 'Nothing is running' });
     // Without the project bar, Start says where to start (read when pressed).
     await expect(s.team.start.run()).resolves.toEqual({ text: 'Start the team from its project page.', skipped: [], refused: true });
     await expect(s.team.emergencyStop.run()).resolves.toEqual({ text: 'Nothing is running', skipped: [], refused: true });
@@ -106,6 +107,9 @@ describe('useDeploymentSource', () => {
     await act(async () => { reports = await Promise.all([stop.run(), stop.run()]); });
     expect(api.stopTeamNow).toHaveBeenCalledTimes(1);
     expect(reports[0]).toEqual({ text: 'Stopping 2 agents now, with every agent they started.', skipped: [] });
+    // The graceful Stop team… is the project bar's; without one it says where to stop, as a refusal.
+    expect(result.current.team.stop.can).toEqual({ ok: true });
+    await expect(result.current.team.stop.run()).resolves.toEqual({ text: 'Stop the team from its project page.', skipped: [], refused: true });
   });
 
   it('alarm ids stay the same with the event in or out of the list, and across a disconnect', async () => {

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode, type Ref } from 'react';
 import { ActionError, type Action, type ActionReport } from './source';
 
 /** One line under an outcome: an agent and what to know about it. `raw`: the server's own words (evidence). */
@@ -44,10 +44,12 @@ type Props = {
   expanded?: boolean;
   /** A shorter caption for its reason, when the full reason is plain elsewhere (it stays the tooltip). */
   shortWhy?: (why: string) => string | null;
+  /** Beside the reason while it cannot run: where to fix it. */
+  fix?: ReactNode;
 };
 
 /** A control's button with its state in words: while it cannot run, it is disabled and says why in visible text beside it. */
-export function ActionButton({ action, label, glyph, className, onOutcome, doneText, onPress, expanded, shortWhy }: Props) {
+export function ActionButton({ action, label, glyph, className, onOutcome, doneText, onPress, expanded, shortWhy, fix }: Props) {
   const id = useId();
   const { busy, run } = useRunAction(onOutcome, doneText);
   const why = action.can.ok ? null : action.can.why;
@@ -59,6 +61,7 @@ export function ActionButton({ action, label, glyph, className, onOutcome, doneT
         <span aria-hidden="true">{glyph}</span> {label}
       </button>
       {why && <span id={id} className="ctl-why">{caption}{caption !== why && <span className="sr-only">: {why}</span>}</span>}
+      {why && fix}
     </span>
   );
 }
@@ -67,10 +70,11 @@ export function ActionButton({ action, label, glyph, className, onOutcome, doneT
 const MARK = { done: '', refused: '◇ ', bad: '▲ ' } as const;
 const TONE = { done: '', refused: ' tone-warn', bad: ' tone-bad' } as const;
 
-export function OutcomeNote({ o, dismiss }: { o: Outcome | null; dismiss(): void }) {
+/** `ref` (focusable) takes focus after an action whose own button is gone or disabled. */
+export function OutcomeNote({ o, dismiss, ref }: { o: Outcome | null; dismiss(): void; ref?: Ref<HTMLDivElement> }) {
   if (!o) return null;
   return (
-    <div className={`ctl-outcome${TONE[o.tone]}`} role={o.tone === 'bad' ? 'alert' : 'status'}>
+    <div ref={ref} tabIndex={-1} className={`ctl-outcome${TONE[o.tone]}`} role={o.tone === 'bad' ? 'alert' : 'status'}>
       <p>{MARK[o.tone]}{o.text}</p>
       {o.lines.length > 0 && (
         <ul aria-label="Each agent">

@@ -71,6 +71,7 @@ export function useDeploymentSource(team: string): ControlSource {
 
 type Ctx = { team: string; seats: Record<string, SeatView>; modes: Modes; nameOf: (id: string) => string; act: MakeAction };
 const OK: Availability = { ok: true };
+const no = (why: string): Availability => ({ ok: false, why });
 const GONE: Availability = { ok: false, why: 'This agent is not part of the team now.' };
 
 export const ANSWER_IN_NEEDS_YOU = 'Answer this in Needs you';
@@ -109,23 +110,39 @@ function messageAction(c: Ctx, agent: string, text: string): Action {
 }
 
 export const START_ELSEWHERE = 'Start the team from its project page.';
+export const STOP_ELSEWHERE = 'Stop the team from its project page.';
 
 /**
- * Start goes through the project bar (its save, confirmation and refusals): the bar's reason disables
- * it up front, and is read again when pressed; without a bar it says where to start. Pause all, Resume all and Emergency stop
- * use the team routes.
+ * Start and Stop team… go through the project bar (its save, confirmations and refusals): the bar's
+ * reason disables them up front and is read again when pressed; without a bar they say where to go.
+ * Stop team… is the bar's graceful stop (agents finish, then stop), offered while anything may run.
  */
+function barActions(c: Ctx, can: ReturnType<typeof teamCan>, run: RefObject<RunHandle | null>): Pick<TeamActions, 'start' | 'stop'> {
+  const bar = run.current;
+  const startCan: Availability = can.start.ok && bar?.startReason ? no(bar.startReason) : can.start;
+  // Stop is offered whenever Emergency stop is (something may have a process), unless the bar says why not.
+  const stopCan: Availability = !can.emergencyStop.ok ? can.emergencyStop : bar?.stopReason ? no(bar.stopReason) : OK;
+  return {
+    start: c.act('team:start', startCan, 'Starting…', async () => {
+      const now = run.current;
+      if (!now) return { text: START_ELSEWHERE, skipped: [], refused: true };
+      if (now.startReason) return { text: now.startReason, skipped: [], refused: true };
+      now.askStart();
+    }),
+    stop: c.act('team:stop', stopCan, 'Asking…', async () => {
+      const now = run.current;
+      if (!now) return { text: STOP_ELSEWHERE, skipped: [], refused: true };
+      if (now.stopReason) return { text: now.stopReason, skipped: [], refused: true };
+      now.askStop();
+    }),
+  };
+}
+
+/** Pause all, Resume all and Emergency stop use the team routes. */
 function teamActions(c: Ctx, seats: SeatView[], loading: boolean, run: RefObject<RunHandle | null>): TeamActions {
   const can = teamCan(seats, c.modes, loading);
-  // The project bar's own reason (a design to fix, a CLI to set up) disables Start up front.
-  const barWhy = run.current?.startReason;
   return {
-    start: c.act('team:start', can.start.ok && barWhy ? { ok: false, why: barWhy } : can.start, 'Starting…', async () => {
-      const bar = run.current;
-      if (!bar) return { text: START_ELSEWHERE, skipped: [], refused: true };
-      if (bar.startReason) return { text: bar.startReason, skipped: [], refused: true };
-      bar.askStart();
-    }),
+    ...barActions(c, can, run),
     pauseAll: c.act('team:pause', can.pauseAll, 'Pausing…', async (rid) => controlReport('Paused', await api.pauseTeam(c.team, rid), c.nameOf)),
     resumeAll: c.act('team:resume', can.resumeAll, 'Resuming…', async (rid) => controlReport('Resumed', await api.resumeTeam(c.team, rid), c.nameOf)),
     emergencyStop: c.act('team:stop-now', can.emergencyStop, 'Stopping…', async (rid) => {
