@@ -458,6 +458,21 @@ Steps:
   - Arena control Overview;
   - a simulated run's Replay, using a throwaway arenad on a free port with the retail world, if it runs within the disk limit;
   - mobile.
-  - Save them in the ledger folder `captures/`. Report any capture that could not be taken.
-- [ ] Step 4. Write the docs.
-- [ ] Step 5. Commit "Control: end-to-end test and docs".
+  - Save working copies in the ledger folder `captures/`. Report any capture that could not be taken.
+- [ ] Step 4. **Screenshots and usage videos for the docs** (added by the user on 2026-11-02). All are recordings of the real application, never mocked (AGENTS.md).
+  - **Screenshots:** commit optimised PNGs (each ≤ 400 kB, 1440×900 desktop, plus one mobile) to `docs/images/control/`. Cover:
+    - Control Live (Mission look);
+    - Agent focus;
+    - Cost;
+    - Follow app look;
+    - Arena control Overview;
+    - a simulated run's Replay;
+    - mobile.
+  - **Usage videos:** short Playwright `recordVideo` recordings of real flows with Practice agents, driven by a dedicated spec `web/e2e/control-video.spec.ts` that runs only when `RECORD_VIDEOS=1`. Commit them to `docs/videos/` as `.webm`, also converted to `.mp4` with ffmpeg if it is installed. Keep each 20–60 s at 1280×800, with pauses between steps so a viewer can follow, and ≤ 3 MB each. The flows:
+    1. open a project's Control and start the team;
+    2. rearrange panes: drag to split, join as tabs, resize, pop out, add and close a pane, switch layouts;
+    3. handle trouble: an alarm trips, acknowledge it, approve a change, pause all, then resume all, then emergency stop with confirm;
+    4. Arena control: open a run's Replay, step the timeline, and fork from a save showing the restore plan (needs a throwaway arenad; skip with a stated reason if it can't run within the disk limit).
+  - **Guide:** write `docs/guide/control.md`, a user guide with the screenshots inline and the videos linked, and link it from `README.md`.
+- [ ] Step 5. Write the internals docs (`docs/internals/workspace.md`) and the `CHANGELOG.md` entry.
+- [ ] Step 6. Commit "Control: end-to-end test, screenshots, videos and docs".
