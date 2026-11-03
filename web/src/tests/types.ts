@@ -234,6 +234,9 @@ export interface RowDiff {
   b: unknown;
 }
 
+/** Two branches compared, as the pages show them: the comparison, both branches, their run's branch names and the run. */
+export type Comparison = { cmp: CompareResponse; x: BranchDetail; y: BranchDetail; names: Map<string, string>; run: string };
+
 export interface CompareResponse {
   a: CompareSide;
   b: CompareSide;

@@ -84,12 +84,21 @@ function metricsOf(b: BranchDetail | null): ControlSource['metrics'] {
 function arenaOf(run: string, branchId: string, d: ArenaRunData): NonNullable<ControlSource['arena']> {
   const branches = d.branches.length ? d.branches : d.detail ? [d.detail] : [];
   return {
-    run, branchId, branches, names: branchNames(branches), parts: d.parts, openAvailable: !!d.health?.open_available,
+    run, branchId, branches, names: branchNames(branches), parts: d.parts, openAvailable: !!d.health?.open_available, reconnects: d.reconnects,
+    ...(d.reason ? { reason: d.reason } : {}),
     ...(d.detail ? { branch: d.detail } : {}),
     // Why the branch can't be read, or (once it is) that Arena stopped answering since.
     ...(d.error ? { error: d.error } : d.health === null ? { error: d.healthError } : {}),
     // The other branch first: the change column then reads as what this branch changed.
     compare: (other) => loadComparison(other, branchId),
+  };
+}
+
+function worldOf(b: BranchDetail, save: number | null): NonNullable<ControlSource['world']> {
+  return {
+    save,
+    rows: (key?: string) => (save === null ? Promise.resolve({}) : rowsAt(b, save, key)),
+    read: async (seq, keys, part) => (await arena.rows(b.id, seq, keys, part)).rows,
   };
 }
 
@@ -117,6 +126,7 @@ export function useSimulatedSource(run: string, branchId: string): ControlSource
     running: b?.status === 'running',
     ...(b ? { startedAt: Date.parse(b.created_at) } : {}),
     runStatus: b ? outcomeOf(b.status) : info.error ? UNKNOWN : LOADING,
+    ...(b ? {} : { unread: true as const }),
     ...(b?.ended_at ? { endedAt: Date.parse(b.ended_at) } : {}),
     agents: m.agents,
     feed: m.feed,
@@ -127,7 +137,7 @@ export function useSimulatedSource(run: string, branchId: string): ControlSource
     team: TEAM,
     metrics: metricsOf(b),
     ...(b && m.lay ? { timeline: timelineOf(run, b, cursor, m.lay) } : {}),
-    ...(b ? { world: { save, rows: (key?: string) => (save === null ? Promise.resolve({}) : rowsAt(b, save, key)) } } : {}),
+    ...(b ? { world: worldOf(b, save) } : {}),
     arena: info,
   };
 }

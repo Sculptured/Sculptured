@@ -1,11 +1,11 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Dispatch, type ReactNode, type Ref, type RefObject, type SetStateAction } from 'react';
 import { AddPane } from './AddPane';
-import { addLayout, deleteLayout, duplicateLayout, renameLayout, resetLayout } from './layouts';
+import { addLayout, adoptChannel, deleteLayout, duplicateLayout, renameLayout, resetLayout } from './layouts';
 import { LayoutTabs, type LayoutActions } from './LayoutTabs';
 import { MobileWorkspace, useMobile } from './MobileWorkspace';
 import { addPane, freshId, panes, setActive, stacks, type Layout, type Node, type PageLayouts } from './model';
 import type { PaneType, Registry } from './registry';
-import { SelectionProvider, useChannelPost } from './selection';
+import { postClose, SelectionProvider, useChannelPost } from './selection';
 import { shellRegistry, SlotContext } from './slots';
 import { loadLayouts, saveLayouts } from './store';
 import { closeWindowsOf, usePopOut, useSetRoot } from './usePopOut';
@@ -14,6 +14,11 @@ import { Workspace } from './Workspace';
 export type WorkspacePageProps = {
   /** Names the saved layouts and the selection channel: one per page ("control", "arena"). */
   page: string;
+  /**
+   * The selection channel when it is not the page's: many workspaces sharing one page's layouts (each
+   * Arena run) talk only among their own windows. Panes popped out under another channel come back.
+   */
+  channel?: string;
   /** Made once per page (module level): its pane types are wrapped once and kept. */
   registry: Registry;
   ctx: unknown;
@@ -32,8 +37,13 @@ export type WorkspaceHandle = { show(type: string): void };
 type SetValue = Dispatch<SetStateAction<PageLayouts>>;
 type Post = ReturnType<typeof useChannelPost>;
 
-function usePageLayouts(page: string, defaults: () => PageLayouts, registry: Registry) {
-  const [value, setValue] = useState(() => loadLayouts(page, defaults, (t) => !!registry.get(t)));
+function usePageLayouts(page: string, defaults: () => PageLayouts, registry: Registry, channel?: string) {
+  const [init] = useState(() => {
+    const loaded = loadLayouts(page, defaults, (t) => !!registry.get(t));
+    return channel ? adoptChannel(loaded, channel) : { value: loaded, stale: null };
+  });
+  const [value, setValue] = useState(init.value);
+  useEffect(() => { if (init.stale) postClose(init.stale.channel, init.stale.panes); }, [init]);
   useEffect(() => saveLayouts(page, value), [page, value]);
   const layout = value.layouts.find((l) => l.id === value.active) ?? value.layouts[0];
   return { value, setValue, layout };
@@ -116,7 +126,7 @@ function Main({ layout, registry, ctx, current, onCurrent, setRoot, popOut, focu
 /** One page's workspace: header, layout tabs, Add pane and Look, then the docking area. */
 function PageShell(props: WorkspacePageProps) {
   const registry = useMemo(() => shellRegistry(props.registry), [props.registry]);
-  const { value, setValue, layout } = usePageLayouts(props.page, props.defaults, registry);
+  const { value, setValue, layout } = usePageLayouts(props.page, props.defaults, registry, props.channel);
   const box = useRef<HTMLDivElement>(null);
   const focused = useRef<string | undefined>(undefined);
   const setRoot = useSetRoot(layout, setValue, focused);
@@ -145,8 +155,9 @@ function PageShell(props: WorkspacePageProps) {
 
 /**
  * A page's dockable workspace. Its selection channel also decides which window shows a popped-out
- * pane. Remounts when `page` changes, so each page keeps its own layouts and channel.
+ * pane. Remounts when `page` or `channel` changes, so each keeps its own layouts and channel.
  */
 export function WorkspacePage(props: WorkspacePageProps) {
-  return <SelectionProvider key={props.page} page={props.page}><PageShell {...props} /></SelectionProvider>;
+  const channel = props.channel ?? props.page;
+  return <SelectionProvider key={`${props.page}|${channel}`} page={channel}><PageShell {...props} /></SelectionProvider>;
 }

@@ -2,7 +2,8 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { PopOutPane } from './PopOutPane';
-import { FakeChannel, page, registry } from './testkit';
+import { FakeChannel, defaults, page, paneRoute, registry } from './testkit';
+import { WorkspacePage } from './WorkspacePage';
 
 const SLOT = 'Shown in another window.';
 const BACK = 'This pane is back in the main window. You can close this window.';
@@ -137,5 +138,20 @@ describe('pop out', () => {
     expect(within(one).getByText(SLOT)).toBeInTheDocument();
     await user.click(within(one).getByRole('button', { name: 'Bring back' }));
     expect(within(one).getByTestId('body-b1')).toBeInTheDocument();
+  });
+
+  it('a pane popped out under one channel comes back when the page moves to another', async () => {
+    const at = (channel: string) => <WorkspacePage page="control" channel={channel} registry={registry} ctx={{}} defaults={defaults} paneRoute={paneRoute} />;
+    const main = render(at('run.b1'));
+    await popOut('Overview');
+    expect(screen.getByText(SLOT)).toBeInTheDocument();
+    const win = render(<PopOutPane page="control" channel="run.b1" registry={registry} ctx={{}} instance="b1" />);
+    main.unmount();
+    render(at('run.b2'));
+    // Back in its slot in the new channel's workspace, and the old channel's window is told to close.
+    expect(screen.queryByText(SLOT)).toBeNull();
+    expect(screen.getByTestId('body-b1')).toBeInTheDocument();
+    expect(close).toHaveBeenCalled();
+    expect(within(win.container).getByText(BACK)).toBeInTheDocument();
   });
 });

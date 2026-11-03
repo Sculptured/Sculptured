@@ -5,7 +5,8 @@ import { SelectionProvider, useChannelListener, useChannelPost } from './selecti
 import { isSlot, shellRegistry } from './slots';
 import { loadLayouts } from './store';
 
-type Props = { page: string; registry: Registry; ctx: unknown; instance: string };
+/** `channel`: the selection channel when it is not the page's (see WorkspacePage). */
+type Props = { page: string; channel?: string; registry: Registry; ctx: unknown; instance: string };
 
 const NONE = (): PageLayouts => ({ version: 1, active: '', layouts: [] });
 
@@ -78,12 +79,12 @@ function Popped({ pane, type }: { pane: PaneRef; type: PaneType }) {
  * A popped-out pane on its own, at the page's pane route. It shares the workspace's selection, and
  * closing the window puts the pane back in the main window's layout.
  */
-export function PopOutPane({ page, registry, ctx, instance }: Props) {
+export function PopOutPane({ page, channel, registry, ctx, instance }: Props) {
   const shell = useMemo(() => shellRegistry(registry), [registry]);
   const [{ pane, look }] = useState(() => findPane(page, shell, instance));
   const type = pane && shell.get(pane.type);
   return (
-    <SelectionProvider page={page}>
+    <SelectionProvider page={channel ?? page}>
       <PaneContext.Provider value={ctx}>
         <div className="workspace workspace-popout" data-look={look === 'app' ? undefined : 'mission'}>
           {pane && type

@@ -25,6 +25,12 @@ function Reading({ label, value, note, children }: { label: string; value: strin
   );
 }
 
+/** Where the tool-call window ends: now, or (a run that has finished) at the run's end. */
+function rateNote(rate: number[], finished: boolean): string {
+  const total = rate.reduce((n, x) => n + x, 0);
+  return finished ? `in the run's last minute · ${total} in its last ${rate.length} min` : `this minute · ${total} in the last ${rate.length} min`;
+}
+
 function TeamReadings() {
   const { source } = useControl();
   const m = source.metrics;
@@ -39,7 +45,7 @@ function TeamReadings() {
           <Reading label="Tokens out" value={m.tokensOut !== undefined ? compactNumber(m.tokensOut) : UNKNOWN} note="as reported" />
         </>}
       <Reading label="Cost" value={m.costUsd !== undefined ? `$${m.costUsd.toFixed(2)}` : UNKNOWN} note={m.costUsd !== undefined ? 'estimated, latest run' : 'not every report was priced'} />
-      <Reading label="Tool calls / min" value={last !== undefined ? String(last) : UNKNOWN} note={`this minute · ${rate.reduce((n, x) => n + x, 0)} in the last ${rate.length} min`}>
+      <Reading label="Tool calls / min" value={last !== undefined ? String(last) : UNKNOWN} note={rateNote(rate, source.endedAt !== undefined && !source.running)}>
         <Spark values={rate} label={`Tool calls per minute over the last ${rate.length} minutes: ${rate.join(', ')}`} />
       </Reading>
     </div>
@@ -84,14 +90,15 @@ function Machine() {
   );
 }
 
+/** This machine's load is shown for a deployment only: a simulated run's agents run inside Arena, maybe elsewhere. */
 export function MetricsPane() {
+  const { kind } = useControl();
   return (
     <div className="ctl-metrics">
       <h3 className="ctl-sub">Team</h3>
       <TeamReadings />
       <AgentTokens />
-      <h3 className="ctl-sub">This machine</h3>
-      <Machine />
+      {kind === 'deployment' && <><h3 className="ctl-sub">This machine</h3><Machine /></>}
     </div>
   );
 }

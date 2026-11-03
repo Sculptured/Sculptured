@@ -75,6 +75,10 @@ function Toolbar({ tl, step, why, forking, s, set, move, fork }: Bar) {
       <button type="button" className="btn btn-sm btn-secondary" aria-label="Previous step" aria-keyshortcuts="ArrowLeft K" disabled={i <= 0} onClick={() => go(-1)}>◀</button>
       <button type="button" className="btn btn-sm btn-secondary" aria-label="Next step" aria-keyshortcuts="ArrowRight J" disabled={i < 0 || i >= tl.steps.length - 1} onClick={() => go(1)}>▶</button>
       <span className="ctl-replay-at" aria-live="polite">Step <b>{tl.cursor}</b> <span className="ctl-replay-of">{i + 1}/{tl.steps.length}</span>{step && <span className="ctl-replay-label"> {step.label}</span>}</span>
+      <span className="ctl-replay-keys" aria-hidden="true">
+        <span className="is-idle">Click a step, then ← → or j k</span>
+        <span className="is-on"><kbd>←</kbd><kbd>→</kbd> <kbd>j</kbd><kbd>k</kbd> step · <kbd>Home</kbd><kbd>End</kbd></span>
+      </span>
       <span className="ctl-replay-gap" />
       {s.view !== 'list' && <Segmented label="Space the steps" value={s.scale ?? 'step'} onChange={(v: Scale) => set({ ...s, scale: v })}
         options={[{ value: 'step', label: 'By step', tip: 'One slot per step, in order' }, { value: 'time', label: 'By time', tip: 'Where each step was recorded in time' }]} />}
@@ -87,7 +91,7 @@ function Toolbar({ tl, step, why, forking, s, set, move, fork }: Bar) {
   );
 }
 
-const AROUND = 4;
+const AROUND = 3;
 
 /** The steps either side of the cursor as a list: what happened just before and after it. */
 function Around({ tl, b, move }: { tl: SimulatedTimeline; b: BranchDetail; move(seq: number): void }) {
@@ -106,14 +110,15 @@ type Side = { a: SimulatedRun; b: BranchDetail; tl: SimulatedTimeline; step?: St
 
 function SideColumn({ a, b, tl, step, forking, close }: Side) {
   const nav = useNavigate();
+  const rows = useControl().source.world!.read;
   const start = async (changes: Record<string, Change>, mode: RestoreMode) => {
     const r = await tl.fork(tl.cursor, changes, mode);
     nav(runPath(r.run, r.branch), { state: { notice: r.notice } });
   };
-  if (forking && step) {
+  if (forking) {
     return <RerunPanel key={b.id} agents={b.team.agents} seq={tl.cursor} running={b.status === 'running'} openAvailable={a.openAvailable} plan={tl.plan} start={start} onClose={close} />;
   }
-  return <div className="tst-card"><StepInspector branch={b} event={b.events.find((e) => e.seq === tl.cursor) ?? null} step={step ?? null} /></div>;
+  return <div className="tst-card"><StepInspector branch={b} event={b.events.find((e) => e.seq === tl.cursor) ?? null} step={step ?? null} rows={rows} /></div>;
 }
 
 /** The lanes (with the legend and the steps around the cursor), or every step as a list. */
@@ -141,13 +146,16 @@ export function SimTimeline({ settings, setSettings }: PaneProps) {
   const [forking, setForking] = useState(false);
   const step = tl.steps.find((x) => x.seq === tl.cursor);
   const why = forkWhy(b, step);
+  // The fork panel closes once a fork can't start here (the cursor moved to the check, or the branch runs).
+  if (forking && why) setForking(false);
+  const open = forking && !why;
   return (
     <div className="ctl-replay" onKeyDown={stepKeys(tl.steps, tl.cursor, move)}>
-      <Toolbar tl={tl} step={step} why={why} forking={forking} s={s} set={(n) => setSettings(n as Record<string, unknown>)} move={move} fork={() => setForking(true)} />
+      <Toolbar tl={tl} step={step} why={why} forking={open} s={s} set={(n) => setSettings(n as Record<string, unknown>)} move={move} fork={() => setForking(true)} />
       <div className="ctl-replay-body">
         <div className="ctl-replay-main"><Steps s={s} tl={tl} b={b} move={move} /></div>
-        <aside className="ctl-replay-side" aria-label={forking && step ? 'Fork from here' : 'Selected step'}>
-          <SideColumn a={a} b={b} tl={tl} step={step} forking={forking && !why} close={() => setForking(false)} />
+        <aside className="ctl-replay-side" aria-label={open ? 'Fork from here' : 'Selected step'}>
+          <SideColumn a={a} b={b} tl={tl} step={step} forking={open} close={() => setForking(false)} />
         </aside>
       </div>
     </div>

@@ -53,7 +53,7 @@
 }
 
 /* Lanes: fixed rows, the steps on a track that scrolls sideways when they are many. */
-.ctl-steps { --name-w: 150px; display: flex; flex-direction: column; min-width: calc(var(--name-w) + var(--steps, 10) * 16px); font-size: var(--text-xs); }
+.ctl-steps { --name-w: 200px; display: flex; flex-direction: column; min-width: calc(var(--name-w) + var(--steps, 10) * 16px); font-size: var(--text-xs); }
 .ctl-steps .ctl-axis, .ctl-steps .ctl-lane { grid-template-columns: var(--name-w) minmax(0, 1fr); }
 .ctl-steps-axis { height: 18px; }
 .ctl-steps-ticks { position: relative; height: 100%; }
@@ -128,18 +128,33 @@
 
 @media (max-width: 720px) {
   .ctl-sim-world { flex-basis: 100%; text-align: left; }
-  .ctl-steps { --name-w: 104px; }
+  .ctl-steps { --name-w: 96px; }
+  .ctl-steps .ctl-lane-word { display: none; }
+  .ctl-replay-main .tst-steplist td.mono { white-space: nowrap; }
   .ctl-replay-label { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .ctl-step { transition: none; } }
 
-/* Wider lane names, so an agent's name and status both read. */
-.ctl-steps { --name-w: 200px; }
-@media (max-width: 720px) { .ctl-steps { --name-w: 96px; } .ctl-steps .ctl-lane-word { display: none; } }
-
 /* The steps around the cursor, under the lanes. */
-.ctl-around { margin-top: var(--space-2); }
+/* At most a few rows tall, so the lanes and the panes below keep their room; it scrolls past that. */
+.ctl-around { margin-top: var(--space-2); max-height: 228px; overflow: auto; }
+.ctl-around .ctl-sub { position: sticky; top: 0; z-index: 1; margin: 0; padding-bottom: 2px; background: var(--panel); }
 .ctl-around .tst-steplist { width: 100%; }
+.ctl-replay-main .tst-steplist th { padding: 2px 6px; }
+
+/* The keys hint: how to start stepping, then (with focus in the replay) the keys themselves. */
+.ctl-replay-keys { align-self: center; font-size: var(--text-xs); color: var(--muted); white-space: nowrap; }
+.ctl-replay-keys kbd { display: inline-block; min-width: 1.6em; padding: 0 3px; margin-right: 2px; border: 1px solid var(--line-2); border-radius: 3px; font-family: var(--font-mono); font-size: var(--text-xs); text-align: center; color: var(--text); }
+.ctl-replay-keys .is-on { display: none; }
+.ctl-replay:focus-within .ctl-replay-keys .is-on { display: inline; }
+.ctl-replay:focus-within .ctl-replay-keys .is-idle { display: none; }
+@container (max-width: 760px) { .ctl-replay-keys { display: none; } }
+
+/* The branch bar's totals and the task's words. */
+.ctl-sim-facts { font-size: var(--text-xs); color: var(--muted); white-space: nowrap; }
+.ctl-sim-facts b { color: var(--text); font-weight: var(--weight-semibold); }
+.ctl-sim-reason { margin: 0; padding: 0 var(--space-2) 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--muted); }
+.ctl-sim-label { margin-right: 4px; font-size: var(--text-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
 
 /* The fork panel: compact edits, and the restore plan with the Fork button kept in view at its foot. */
 .ctl-replay-side .tst-rerun { gap: var(--space-2); }

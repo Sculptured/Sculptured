@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applySettings, bringBack, cloneLayout, deleteLayout, orphans, popOutPane } from './layouts';
+import { adoptChannel, applySettings, bringBack, cloneLayout, deleteLayout, orphans, popOutPane } from './layouts';
 import { closePane, panes, type Layout } from './model';
 import { slotFor } from './slots';
 
@@ -51,5 +51,16 @@ describe('layout operations', () => {
   it('delete_keeps_the_last_layout', () => {
     const v = { version: 1 as const, active: 'L', layouts: [layout()] };
     expect(deleteLayout(v, 'L')).toBe(v);
+  });
+
+  it('panes popped under another channel come back, and that channel is named', () => {
+    const out = popOutPane(layout(), 'a', counter());
+    const v = { version: 1 as const, active: 'L', layouts: [out], channel: 'arena-run.b1' };
+    expect(adoptChannel(v, 'arena-run.b1')).toEqual({ value: v, stale: null });
+    const moved = adoptChannel(v, 'arena-run.b2');
+    expect(moved.stale).toEqual({ channel: 'arena-run.b1', panes: ['a'] });
+    expect(moved.value.channel).toBe('arena-run.b2');
+    expect(moved.value.layouts[0].popped).toEqual([]);
+    expect(panes(moved.value.layouts[0].root).map((p) => p.id)).toEqual(['a', 'b']);
   });
 });

@@ -13,7 +13,8 @@ import { useCursor } from './cursor';
 
 type Rows = { state: 'loading' } | { state: 'ready'; rows: Record<string, unknown> } | { state: 'failed'; error: unknown };
 
-function useRows(save: number | null, key: string | undefined, branch: string) {
+/** The rows at `save`, read again when the key, the branch or Arena's return (`epoch`) changes. */
+function useRows(save: number | null, key: string | undefined, branch: string, epoch: number) {
   const { source } = useControl();
   const [rows, setRows] = useState<Rows>({ state: 'loading' });
   // The source's reader is new on each render; the rows depend on the save, the key and the branch.
@@ -25,7 +26,7 @@ function useRows(save: number | null, key: string | undefined, branch: string) {
     setRows({ state: 'loading' });
     read.current(key).then((r) => { if (alive) setRows({ state: 'ready', rows: r }); }).catch((error: unknown) => { if (alive) setRows({ state: 'failed', error }); });
     return () => { alive = false; };
-  }, [save, key, branch]);
+  }, [save, key, branch, epoch]);
   return rows;
 }
 
@@ -74,7 +75,7 @@ export function WorldPane() {
   const b = source.arena!.branch!;
   useCursor(tl, b);
   const save = source.world?.save ?? null;
-  const rows = useRows(save, selection.key, b.id);
+  const rows = useRows(save, selection.key, b.id, source.arena!.reconnects);
   const pick = (k: string | undefined) => select({ key: k });
   return (
     <div className="ctl-world">

@@ -87,14 +87,23 @@ function rows(url: string): [number, unknown] {
   return [200, { seq, rows: Object.fromEntries(keys.map((k) => [k, ROWS[seq]?.[k] ?? null])) }];
 }
 
-const COMPARE = {
-  a: { status: 'passed', restore_mode: 'approximate', restored: [{ part: 'plant', how: 'approximate' }], seconds: 20, tokens: 250, cost_usd: null, cost_source: null },
-  b: { status: 'passed', restore_mode: null, restored: [], seconds: 20, tokens: 300, cost_usd: null, cost_source: null },
-  first_divergent_seq: 7, differing_rows: [{ key: 'orders/#W1', a: { status: 'exchanged' }, b: { status: 'exchange requested' } }],
+/** Each branch's side of a comparison, and its final order row. */
+const SIDES: Record<string, { side: unknown; order: unknown }> = {
+  b1: { side: { status: 'passed', restore_mode: null, restored: [], seconds: 20, tokens: 300, cost_usd: null, cost_source: null }, order: { status: 'exchange requested' } },
+  b2: { side: { status: 'passed', restore_mode: 'approximate', restored: [{ part: 'plant', how: 'approximate' }], seconds: 20, tokens: 250, cost_usd: null, cost_source: null }, order: { status: 'exchanged' } },
 };
+
+/** `GET /compare?a=…&b=…`, answered by which branch is which side. */
+function compare(path: string): unknown {
+  const q = new URL(path, 'http://x').searchParams;
+  const [a, b] = [SIDES[q.get('a') ?? ''], SIDES[q.get('b') ?? '']];
+  if (!a || !b) return undefined;
+  return { a: a.side, b: b.side, first_divergent_seq: 7, differing_rows: [{ key: 'orders/#W1', a: a.order, b: b.order }] };
+}
 
 function table(path: string): unknown {
   if (path === '/health') return { claude: true, codex: true, open_available: false };
+  if (path === '/tasks') return [{ id: '27', reason: 'Exchange the hiking boots for a larger size.' }];
   if (path === '/runs') return arenaFake.runs;
   if (path === '/world') {
     return { parts: [
@@ -103,7 +112,7 @@ function table(path: string): unknown {
       { name: 'desk', integration: 'sculptured', version: '0.1', answered: true, restore: { exact: 'save', approximate: false }, uses_clock: false, tools: ['propose_change'] },
     ] };
   }
-  if (path.startsWith('/compare?')) return COMPARE;
+  if (path.startsWith('/compare?')) return compare(path);
   const b = /^\/branches\/(\w+)$/.exec(path);
   return b ? arenaFake.branches[b[1]] : undefined;
 }

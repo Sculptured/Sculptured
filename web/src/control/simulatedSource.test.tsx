@@ -49,6 +49,10 @@ describe('useSimulatedSource', () => {
     expect(tl.cursor).toBe(11);
     expect(s.world?.save).toBe(9);
     expect(s.arena?.parts?.map((p) => p.name)).toEqual(['retail', 'plant', 'desk']);
+    await waitFor(() => expect(result.current.arena?.reason).toBe('Exchange the hiking boots for a larger size.'));
+    // Rows through the source: any step's, in a given part.
+    await expect(result.current.world!.read(7, ['orders/#W1'], 'retail')).resolves.toEqual({ 'orders/#W1': { status: 'exchange requested' } });
+    expect(arenaFake.calls.at(-1)?.url).toBe('/api/arena/branches/b1/rows?seq=7&keys=orders%2F%23W1&part=retail');
   });
 
   it('has no approvals without a Sculptured part in its world', async () => {

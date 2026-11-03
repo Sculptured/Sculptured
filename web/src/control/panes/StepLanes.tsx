@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { CHECK_LANE, inOrder, ticks, type Layout, type Step } from '../../tests/model';
-import { KIND } from '../../tests/Swimlanes';
+import { KIND, kindWord } from '../../tests/Swimlanes';
 import type { AgentLine } from '../source';
 
 /**
@@ -30,8 +30,8 @@ const pct = (v: number, span: number) => `${(100 * v) / span}%`;
 const spot = (s: Step, scale: Scale) => (scale === 'step' ? s.from + 0.5 : s.to);
 
 function stepWords(s: Step, saved: string[] | undefined): string {
-  const k = KIND[s.kind];
-  return `Step ${s.seq}: ${s.label} · ${k.word}${s.failed ? ' · failed' : ''}${s.inherited ? ' · reused from the original' : ''}${saved ? ` · saved ${saved.join(', ')}` : ''}`;
+  const k = kindWord(s);
+  return `Step ${s.seq}: ${s.label}${k ? ` · ${k}` : ''}${s.failed ? ' · failed' : ''}${s.inherited ? ' · reused from the original' : ''}${saved ? ` · saved ${saved.join(', ')}` : ''}`;
 }
 
 function Mark({ s, p, on, saved }: { s: Step; p: LanesProps; on: boolean; saved?: string[] }) {

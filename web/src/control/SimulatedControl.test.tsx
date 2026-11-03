@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -154,7 +154,10 @@ describe('A simulated run in the Control workspace', () => {
     expect(within(banner).getByText('cd core && cargo run -p arenad')).toBeInTheDocument();
     for (const title of ['Timeline', 'World state', 'Compare']) expect(await within(pane(title)).findByText(/Offline: Arena is not running/)).toBeInTheDocument();
     expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(within(screen.getByRole('list', { name: 'Run status' })).getAllByRole('listitem')[0]).toHaveTextContent('Run∅ unknown');
+    // Nothing about the run could be read: every reading says unknown, never "none" or "not started".
+    const tiles = within(screen.getByRole('list', { name: 'Run status' })).getAllByRole('listitem').map((t) => t.textContent);
+    expect(tiles.slice(0, 3)).toEqual(['Run∅ unknown', 'ElapsedT+ --:--:-- unknown', 'Agentsunknown']);
+    expect(screen.getByRole('button', { name: /^Master caution: unknown/ })).toHaveTextContent('—');
     for (const n of within(container).getAllByText(/connection refused/)) expect(n).toHaveAttribute('data-raw-evidence');
     expect(openRigWords(container)).toEqual([]);
   });
@@ -176,6 +179,79 @@ describe('A simulated run in the Control workspace', () => {
     expect(compare.getByRole('combobox', { name: 'Compare with' })).toHaveValue('b1');
     expect(compare.getByText('Final world: 1 row differ')).toBeInTheDocument();
     expect(compare.getByRole('link', { name: 'Open the full comparison' })).toHaveAttribute('href', '/arena/compare/b1/b2');
+    // The parent first, so the change column is what this fork changed: 300 tokens → 250.
+    const tokens = compare.getByText('Tokens').parentElement!;
+    expect([...tokens.children].map((c) => c.textContent)).toEqual(['Tokens', '300', '250', '−17%']);
+    expect(within(tokens).getByText('−17%')).toHaveClass('good');
+    expect(compare.getByText(/^- "status": "exchange requested"/)).toBeInTheDocument();
+    expect(compare.getByText(/^\+ "status": "exchanged"/)).toBeInTheDocument();
+  });
+
+  it('says the task, the branch’s own totals and how to step with the keys', async () => {
+    await loaded();
+    expect(await screen.findByText('Exchange the hiking boots for a larger size.')).toBeInTheDocument();
+    expect(screen.getByLabelText("This branch's totals")).toHaveTextContent('6 steps · 3 rows changed');
+    expect(within(pane('Timeline')).getByText('Click a step, then ← → or j k')).toBeInTheDocument();
+  });
+
+  it('says a step’s kind only beside a tool’s name', async () => {
+    const user = userEvent.setup();
+    await loaded();
+    expect(within(steps('Triage')).getByRole('button', { name: 'Step 4: Hands work on' })).toBeInTheDocument();
+    expect(within(steps('Triage')).getByRole('button', { name: 'Step 2: get_order_details · Reads the world' })).toBeInTheDocument();
+    await user.click(within(pane('Timeline')).getByRole('button', { name: 'List' }));
+    const row = (seq: number) => within(pane('Timeline')).getAllByRole('row').find((r) => r.firstChild?.textContent === String(seq))!;
+    expect(row(4).lastChild).toHaveTextContent(/^⇢ Hands work on$/);
+    expect(row(2).lastChild).toHaveTextContent(/^○ get_order_details Reads the world$/);
+  });
+
+  it('the fork panel closes when the cursor moves where a fork can’t start', async () => {
+    const user = userEvent.setup();
+    await loaded('/arena/runs/r1/b1?step=7');
+    await user.click(within(pane('Timeline')).getByRole('button', { name: /Fork from here/ }));
+    expect(screen.getByRole('complementary', { name: 'Fork from here' })).toBeInTheDocument();
+    await user.click(within(steps('Check')).getByRole('button', { name: /^Step 11/ }));
+    expect(screen.queryByRole('region', { name: /Fork from step/ })).toBeNull();
+    await user.click(within(steps('Resolver')).getByRole('button', { name: /^Step 7/ }));
+    expect(screen.queryByRole('region', { name: /Fork from step/ })).toBeNull();
+    expect(inspector().getByText('exchange_delivered_order_items')).toBeInTheDocument();
+  });
+
+  it('two branches’ workspaces do not move each other’s cursor', async () => {
+    arenaFake.branches.b2 = branchB2();
+    arenaFake.runs = [{ id: 'r1', task_id: '27', created_at: at(0), branches: [arenaFake.branches.b1, branchB2()] }];
+    const user = userEvent.setup();
+    const one = page('/arena/runs/r1/b1');
+    const two = page('/arena/runs/r1/b2');
+    await within(one.container).findByRole('heading', { name: /Original/ });
+    await within(two.container).findByRole('heading', { name: /Rerun 1/ });
+    await user.click(within(within(one.container).getByRole('group', { name: 'Resolver steps' })).getByRole('button', { name: /^Step 7/ }));
+    expect(within(one.container).getByTestId('at')).toHaveTextContent('/arena/runs/r1/b1?step=7');
+    expect(within(two.container).getByTestId('at')).toHaveTextContent(/^\/arena\/runs\/r1\/b2$/);
+    expect(within(within(two.container).getByRole('toolbar', { name: 'Replay controls' })).getByText(/^Step/)).toHaveTextContent(/^Step 11 /);
+  });
+
+  it('World state reads its rows again when Arena answers again', async () => {
+    await loaded('/arena/runs/r1/b1?step=4');
+    await within(pane('World state')).findByRole('button', { name: 'orders/#W1' });
+    const reads = () => arenaFake.calls.filter((c) => c.url.includes('/rows?seq=3')).length;
+    const before = reads();
+    arenaFake.down = true;
+    act(() => { window.dispatchEvent(new Event('sculptured:tests-health')); });
+    await screen.findByRole('alert');
+    arenaFake.down = false;
+    act(() => { window.dispatchEvent(new Event('sculptured:tests-health')); });
+    await waitFor(() => expect(reads()).toBeGreaterThan(before));
+  });
+
+  it('Metrics on a run: tokens as reported, the window at the run’s end, no machine load', async () => {
+    const user = userEvent.setup();
+    await loaded();
+    await user.click(layoutTab('Cost'));
+    const metrics = within(pane('Metrics'));
+    expect(metrics.getByText('300')).toBeInTheDocument();
+    expect(metrics.getByText(/in the run's last minute/)).toBeInTheDocument();
+    expect(metrics.queryByText('This machine')).toBeNull();
   });
 
   it('on Live: the agents, the world parts with their restore words, and approvals from the world', async () => {

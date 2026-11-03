@@ -1,6 +1,5 @@
-import type { Comparison } from '../tests/ComparePage';
 import type { Layout, Step } from '../tests/model';
-import type { Branch, BranchDetail, Change, RestoreMode, RestorePlan, WorldPartInfo } from '../tests/types';
+import type { Branch, BranchDetail, Change, Comparison, RestoreMode, RestorePlan, WorldPartInfo } from '../tests/types';
 
 /**
  * What the Control panes read: one interface over a deployment (a Sculptured team running for real)
@@ -108,7 +107,8 @@ export type SimulatedTimeline = {
  * The Arena run behind a simulated source: the branch (absent until it loads, or when it can't),
  * its run's branches with their short names, what each part of the world says about itself (null
  * until Arena answers), and whether OpenRouter agents can run. `error` is why the branch is not
- * on screen (Arena not answering, or another failure); `compare` reads this branch against another.
+ * on screen (Arena not answering, or another failure); `compare(other)` reads another branch against
+ * this one (so its change column is what this branch changed).
  */
 export type SimulatedRun = {
   run: string;
@@ -119,6 +119,10 @@ export type SimulatedRun = {
   parts: WorldPartInfo[] | null;
   openAvailable: boolean;
   error?: unknown;
+  /** The task's own words for what the run had to do, when Arena has them. */
+  reason?: string;
+  /** Counts Arena answering again after not answering: panes read again when it changes. */
+  reconnects: number;
   compare(other: string): Promise<Comparison>;
 };
 
@@ -131,6 +135,8 @@ export type ControlSource = {
   startedAt?: number;
   /** When a run that has finished ended (a simulated branch); the header then shows how long it ran. */
   endedAt?: number;
+  /** Nothing about the run could be read yet (Arena not answering, or still loading): readings say unknown, not none. */
+  unread?: true;
   /** The run's own status when the source knows it better than its agents say (a simulated branch's outcome). */
   runStatus?: { glyph: string; word: string; tone: Tone };
   agents: AgentLine[];
@@ -151,9 +157,14 @@ export type ControlSource = {
   timeline?: SimulatedTimeline;
   /**
    * Simulated only: the world's rows at the cursor's save, for `key`, or else for every key the run
-   * had touched by then. `save` is that save's step (null before anything was saved).
+   * had touched by then. `save` is that save's step (null before anything was saved). `read` reads
+   * rows `keys` as saved just after any step `seq`, in `part` (else the step's part).
    */
-  world?: { save: number | null; rows(key?: string): Promise<Record<string, unknown>> };
+  world?: {
+    save: number | null;
+    rows(key?: string): Promise<Record<string, unknown>>;
+    read(seq: number, keys: string[], part?: string): Promise<Record<string, unknown>>;
+  };
   /** Simulated only: the Arena run. */
   arena?: SimulatedRun;
 };

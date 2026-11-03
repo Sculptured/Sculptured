@@ -17,6 +17,10 @@ export type ArenaRunData = {
   parts: WorldPartInfo[] | null;
   health: Health | null | undefined;
   healthError: unknown;
+  /** The task's own words for what the run had to do; null until read, or when Arena has none. */
+  reason: string | null;
+  /** How many times Arena has answered again after not answering (what was read before may be stale). */
+  reconnects: number;
 };
 
 type Shown = { id: string; detail: BranchDetail | null; error: unknown };
@@ -74,21 +78,37 @@ function useParts(up: boolean) {
   return parts;
 }
 
-/** Calls `reload` when Arena answers again after not answering. */
+/** The task's reason, read once Arena answers. */
+function useTaskReason(detail: BranchDetail | null, up: boolean) {
+  const task = (detail?.events.find((e) => e.kind === 'run_start')?.payload as { task_id?: string } | undefined)?.task_id;
+  const [reason, setReason] = useState<{ task: string; text: string | null } | null>(null);
+  useEffect(() => {
+    if (!up || !task) return;
+    let alive = true;
+    arena.tasks().then((ts) => { if (alive) setReason({ task, text: ts.find((t) => t.id === task)?.reason ?? null }); }).catch(() => {});
+    return () => { alive = false; };
+  }, [task, up]);
+  return reason && reason.task === task ? reason.text : null;
+}
+
+/** Calls `reload` when Arena answers again after not answering; counts those returns. */
 function useBackOnline(health: Health | null | undefined, reload: () => void) {
   const wasDown = useRef(false);
+  const [returns, setReturns] = useState(0);
   useEffect(() => {
     if (health === null) wasDown.current = true;
-    else if (health && wasDown.current) { wasDown.current = false; reload(); }
+    else if (health && wasDown.current) { wasDown.current = false; setReturns((n) => n + 1); reload(); }
   }, [health, reload]);
+  return returns;
 }
 
 export function useArenaRun(run: string, branchId: string): ArenaRunData {
   const { health, error: healthError } = useArenaHealth();
   const { detail, error, load, setState } = useBranchDetail(branchId);
   useFollow(detail, setState, load);
-  useBackOnline(health, load);
+  const reconnects = useBackOnline(health, load);
   const branches = useRunBranches(run, `${detail?.status}:${detail?.id}:${health ? 'up' : 'down'}`);
   const parts = useParts(!!health);
-  return { detail, error, branches, parts, health, healthError };
+  const reason = useTaskReason(detail, !!health);
+  return { detail, error, branches, parts, health, healthError, reason, reconnects };
 }

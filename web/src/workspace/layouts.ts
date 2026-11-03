@@ -113,3 +113,15 @@ export function eachLayout(v: PageLayouts, fn: (l: Layout) => Layout): PageLayou
   const layouts = v.layouts.map(fn);
   return layouts.every((l, i) => l === v.layouts[i]) ? v : { ...v, layouts };
 }
+
+/**
+ * The layouts as `channel`'s, on a page whose layouts are shared by many channels (every Arena run):
+ * panes popped out under another channel come back into their slots, and `stale` names that
+ * channel's windows, which should be told to close.
+ */
+export function adoptChannel(v: PageLayouts, channel: string): { value: PageLayouts; stale: { channel: string; panes: string[] } | null } {
+  if (v.channel === channel) return { value: v, stale: null };
+  const ids = v.layouts.flatMap((l) => l.popped.map((p) => p.id));
+  const value = { ...eachLayout(v, (l) => l.popped.reduce((x, p) => bringBack(x, p.id), l)), channel };
+  return { value, stale: v.channel && ids.length ? { channel: v.channel, panes: ids } : null };
+}

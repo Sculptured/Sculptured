@@ -36,20 +36,22 @@ type Props = {
   source: ControlSource;
   paneRoute(instance: string): string;
   startFix?: ControlCtx['startFix'];
-  /** The workspace's layouts and selection channel; the team's own (`control.<team>`) unless given. */
+  /** The workspace's layouts; the team's own (`control.<team>`) unless given. */
   page?: string;
+  /** The selection channel, when it is not the page's (each Arena run talks only among its own windows). */
+  channel?: string;
   /** Above the header's status strip: what the run is (a simulated run's branch bar). */
   lead?: ReactNode;
 };
 
 /** The Control workspace over any source (a deployment here; a simulated run in Arena). */
-export function ControlWorkspace({ team, source, paneRoute, startFix, page, lead }: Props) {
+export function ControlWorkspace({ team, source, paneRoute, startFix, page, channel, lead }: Props) {
   const handle = useRef<WorkspaceHandle>(null);
   const show = useCallback((type: string) => handle.current?.show(type), []);
   const ctx = useControlCtx(team, source, show, startFix);
   const defaults = useMemo(() => () => controlDefaults(source.kind), [source.kind]);
   return (
-    <WorkspacePage page={page ?? controlPage(team)} registry={controlRegistry} ctx={ctx} defaults={defaults} paneRoute={paneRoute} handle={handle}
+    <WorkspacePage page={page ?? controlPage(team)} channel={channel} registry={controlRegistry} ctx={ctx} defaults={defaults} paneRoute={paneRoute} handle={handle}
       header={<>{lead}<ControlHeader ctx={ctx} /></>} />
   );
 }

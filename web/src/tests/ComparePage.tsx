@@ -6,7 +6,7 @@ import { ARENA_PATH, runPath } from './paths';
 import { APPROXIMATE_NOTE, isApproximate, notComparedLine } from './restore';
 import { ApproximateMark, ErrorNote, StatusPill, pretty } from './shared';
 import { KIND } from './Swimlanes';
-import type { BranchDetail, CompareResponse, CompareSide, Event, RowDiff } from './types';
+import type { BranchDetail, CompareResponse, CompareSide, Comparison, Event, RowDiff } from './types';
 
 /** "−62%" / "+8%" from a to b, or nothing when either side is missing. */
 function delta(a: number | null, b: number | null): { text: string; better: boolean } | null {
@@ -80,8 +80,6 @@ function RowDiffView({ r, nameA, nameB }: { r: RowDiff; nameA: string; nameB: st
   );
 }
 
-/** Two branches compared: the comparison, both branches, their run's branch names and the run. */
-export type Comparison = { cmp: CompareResponse; x: BranchDetail; y: BranchDetail; names: Map<string, string>; run: string };
 type Loaded = Comparison;
 
 /** Reads the comparison of `a` with `b`, both branches and their run's branch names. */

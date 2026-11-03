@@ -27,7 +27,7 @@ function cost(kind: ControlSource['kind']): Node {
 }
 
 /** Replay (a simulated run): the Timeline large, over World state beside Compare. */
-const replay = (): Node => split('replay', 'col', [stack(['replay-timeline', 'timeline']), split('replay-bottom', 'row', [stack(['replay-world', 'world']), stack(['replay-compare', 'compare'])], [1, 1])], [2.2, 1]);
+const replay = (): Node => split('replay', 'col', [stack(['replay-timeline', 'timeline']), split('replay-bottom', 'row', [stack(['replay-world', 'world']), stack(['replay-compare', 'compare'])], [1, 1])], [1.7, 1]);
 
 /**
  * A simulated run's first-open layouts: Replay first, then Live and Cost (Agent focus and Results

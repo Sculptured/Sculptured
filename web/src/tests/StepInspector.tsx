@@ -1,10 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ArenaProblem } from '../arena/gate';
 import { Btn } from '../shell/ui';
-import { arena } from './api';
 import { costSource, diffHunks, dollars, jsonDiff, rowKeys, stepBefore, type Step } from './model';
 import { notComparedLine, savedLine } from './restore';
-import { ErrorNote, pretty } from './shared';
-import { KIND } from './Swimlanes';
+import { pretty } from './shared';
+import { KIND, kindWord } from './Swimlanes';
 import type { BranchDetail, Event } from './types';
 
 const keysOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : []);
@@ -20,10 +20,18 @@ function Section({ title, children, open = true }: { title: string; children: Re
 
 const Json = ({ value }: { value: unknown }) => <pre className="tst-json">{pretty(value)}</pre>;
 
+/** Reads rows `keys` as saved just after step `seq`, in `part` (else the step's part): the source's reader. */
+export type RowsLoader = (seq: number, keys: string[], part?: string) => Promise<Record<string, unknown>>;
+
+const RowsContext = createContext<RowsLoader>(async () => ({}));
+
 type BeforeAfter = { before: Record<string, unknown>; after: Record<string, unknown> };
 
-/** The rows `keys` just before step `seq` and just after it. */
-function useBeforeAfter(branch: BranchDetail, seq: number, keys: string[]) {
+/** The rows `keys` just before step `seq` (as of step `prev`) and just after it. */
+function useBeforeAfter(seq: number, prev: number | null, keys: string[], part?: string) {
+  const reader = useContext(RowsContext);
+  const load = useRef(reader);
+  useEffect(() => { load.current = reader; });
   const [rows, setRows] = useState<BeforeAfter | null>(null);
   const [error, setError] = useState<unknown>(null);
   const joined = keys.join(',');
@@ -31,12 +39,11 @@ function useBeforeAfter(branch: BranchDetail, seq: number, keys: string[]) {
     let alive = true;
     const list = joined.split(',');
     setRows(null); setError(null);
-    const prev = stepBefore(branch.events, seq);
-    Promise.all([prev == null ? Promise.resolve({ rows: {} }) : arena.rows(branch.id, prev, list), arena.rows(branch.id, seq, list)])
-      .then(([b, a]) => { if (alive) setRows({ before: b.rows, after: a.rows }); })
+    Promise.all([prev == null ? Promise.resolve({}) : load.current(prev, list, part), load.current(seq, list, part)])
+      .then(([before, after]) => { if (alive) setRows({ before, after }); })
       .catch((e) => { if (alive) setError(e); });
     return () => { alive = false; };
-  }, [branch.id, branch.events, seq, joined]);
+  }, [seq, prev, joined, part]);
   return { rows, error };
 }
 
@@ -53,9 +60,9 @@ function DiffLines({ a, b }: { a: unknown; b: unknown }) {
 }
 
 /** Each row this write changed, as it was before the step and just after. */
-function RowChanges({ branch, seq, keys }: { branch: BranchDetail; seq: number; keys: string[] }) {
-  const { rows, error } = useBeforeAfter(branch, seq, keys);
-  if (error) return <ErrorNote error={error} />;
+function RowChanges({ branch, seq, keys, part }: { branch: BranchDetail; seq: number; keys: string[]; part?: string }) {
+  const { rows, error } = useBeforeAfter(seq, stepBefore(branch.events, seq), keys, part);
+  if (error) return <ArenaProblem error={error} />;
   if (!rows) return <p className="muted tst-small">Reading the rows before and after this step…</p>;
   return (
     <>
@@ -70,7 +77,8 @@ function RowChanges({ branch, seq, keys }: { branch: BranchDetail; seq: number; 
 }
 
 /** Rows a step read, as they were just after it, on request (each read restores a copy of the save). */
-function RowsRead({ branch, seq, keys, more }: { branch: BranchDetail; seq: number; keys: string[]; more: number }) {
+function RowsRead({ branch, seq, keys, more, part }: { branch: BranchDetail; seq: number; keys: string[]; more: number; part?: string }) {
+  const load = useContext(RowsContext);
   const [rows, setRows] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -81,9 +89,9 @@ function RowsRead({ branch, seq, keys, more }: { branch: BranchDetail; seq: numb
       <div className="tst-keys">{keys.map((k) => <span key={k} className="chip mono">{k}</span>)}{more > 0 && <span className="muted tst-small">+{more} more</span>}</div>
       {!rows && <Btn size="sm" onClick={() => {
         setBusy(true);
-        arena.rows(branch.id, seq, keys).then((r) => setRows(r.rows)).catch(setError).finally(() => setBusy(false));
+        load(seq, keys, part).then(setRows).catch(setError).finally(() => setBusy(false));
       }} disabled={busy}>{busy ? 'Reading…' : 'Show these rows'}</Btn>}
-      <ErrorNote error={error} />
+      <ArenaProblem error={error} />
       {rows && Object.entries(rows).map(([k, doc]) => (
         <div key={k} className="tst-rowdiff">
           <div className="mono tst-small">{k}{doc === null && <span className="muted"> (absent)</span>}</div>
@@ -101,7 +109,7 @@ function messageText(m: unknown): string {
 
 /** What the inspector reads from a step's payload (each kind has some of these). */
 type P = {
-  error?: unknown; snapshot_error?: unknown; writes?: unknown; reads?: unknown; args?: unknown; result?: unknown;
+  part?: string; error?: unknown; snapshot_error?: unknown; writes?: unknown; reads?: unknown; args?: unknown; result?: unknown;
   saves?: Record<string, string>; snapshot?: string | null;
   request?: { messages?: unknown }; response?: { choices?: { message?: unknown }[] };
   cost_usd?: number | null; cost_source?: string | null; note?: unknown;
@@ -124,13 +132,13 @@ function ToolCall({ branch, event, p }: { branch: BranchDetail; event: Event; p:
       {p.error != null && <div className="tst-note tst-note-error"><span>The tool refused this call.</span><span className="tst-evidence mono" data-raw-evidence>{String(p.error)}</span></div>}
       {writes.length > 0 && (
         <Section title={`Rows changed (${writes.length})`}>
-          <RowChanges branch={branch} seq={event.seq} keys={writes.slice(0, 50)} />
+          <RowChanges branch={branch} seq={event.seq} keys={writes.slice(0, 50)} part={p.part} />
           <SavedNote p={p} />
         </Section>
       )}
       <Section title="Arguments"><Json value={p.args} /></Section>
       {p.error == null && <Section title="Result" open={writes.length === 0}><Json value={p.result} /></Section>}
-      <Section title={`Rows read (${keys.length + more})`} open={false}><RowsRead branch={branch} seq={event.seq} keys={keys} more={more} /></Section>
+      <Section title={`Rows read (${keys.length + more})`} open={false}><RowsRead branch={branch} seq={event.seq} keys={keys} more={more} part={p.part} /></Section>
     </>
   );
 }
@@ -193,8 +201,8 @@ function Body({ branch, event }: { branch: BranchDetail; event: Event }) {
   }
 }
 
-/** The selected step in full: what it did, the rows it changed and read. */
-export function StepInspector({ branch, event, step }: { branch: BranchDetail; event: Event | null; step: Step | null }) {
+/** The selected step in full: what it did, the rows it changed and read (through `rows`, the source's reader). */
+export function StepInspector({ branch, event, step, rows }: { branch: BranchDetail; event: Event | null; step: Step | null; rows: RowsLoader }) {
   if (!event || !step) {
     return (
       <div className="tst-inspector tst-inspector-empty">
@@ -212,10 +220,10 @@ export function StepInspector({ branch, event, step }: { branch: BranchDetail; e
         <div>
           <div className="tst-label">Step {event.seq} · {agent?.name ?? 'Check'}</div>
           <div className="tst-insp-title">{event.kind === 'tool_call' ? <span className="mono">{step.label}</span> : step.label}</div>
-          <div className="muted tst-small">{k.word !== step.label ? `${k.word} · ` : ''}at {(step.to / 1000).toFixed(1)} s{step.to > step.from ? ` · took ${((step.to - step.from) / 1000).toFixed(1)} s` : ''}{step.inherited ? ' · reused from the original' : ''}</div>
+          <div className="muted tst-small">{kindWord(step) ? `${kindWord(step)} · ` : ''}at {(step.to / 1000).toFixed(1)} s{step.to > step.from ? ` · took ${((step.to - step.from) / 1000).toFixed(1)} s` : ''}{step.inherited ? ' · reused from the original' : ''}</div>
         </div>
       </header>
-      <div className="tst-insp-body"><Body branch={branch} event={event} /></div>
+      <div className="tst-insp-body"><RowsContext.Provider value={rows}><Body branch={branch} event={event} /></RowsContext.Provider></div>
     </div>
   );
 }

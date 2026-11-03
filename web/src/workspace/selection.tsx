@@ -58,6 +58,14 @@ function useChannel(page: string, onMessage: (m: ChannelMessage) => void) {
   return useCallback((m: ChannelMessage) => { if (early.current) early.current.push(m); else channel.current?.postMessage(m); }, []);
 }
 
+/** Tells the windows on another channel to close these panes (their main window moved on to another channel). */
+export function postClose(page: string, instances: string[]): void {
+  const c = openChannel(page);
+  if (!c) return;
+  instances.forEach((instance) => c.postMessage({ kind: 'close', instance } satisfies ChannelMessage));
+  c.close();
+}
+
 type ProviderProps = { page: string; children: ReactNode };
 
 /**
