@@ -38,6 +38,7 @@ function useShownHere(instance: string): boolean {
   const left = useRef(false);
   useEffect(() => post({ kind: 'out', instance }), [post, instance]);
   useChannelListener((m) => {
+    if (m.kind === 'where' && m.instance === instance && !left.current) post({ kind: 'out', instance });
     if (m.kind !== 'close' || m.instance !== instance) return;
     left.current = true;
     setGone(true);

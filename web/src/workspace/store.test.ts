@@ -34,10 +34,22 @@ describe('workspace store', () => {
     const { active: _active, ...noActive } = saved();
     localStorage.setItem(key, JSON.stringify(noActive));
     expect(loadLayouts('control', defaults, known)).toEqual(defaults());
-    localStorage.setItem(key, JSON.stringify({ ...saved(), active: 'nope' }));
-    expect(loadLayouts('control', defaults, known)).toEqual(defaults());
     localStorage.setItem(key, JSON.stringify({ ...saved(), layouts: [{ id: 'mine', name: 'x', root: { kind: 'bogus' }, popped: [] }] }));
     expect(loadLayouts('control', defaults, known)).toEqual(defaults());
+  });
+
+  it('drops_a_malformed_layout_or_pane_by_itself_and_keeps_the_rest', () => {
+    const key = 'sculptured.workspace.v1.control';
+    const good = saved().layouts[0];
+    const bad = { id: 'bad', name: 'x', root: { kind: 'bogus' }, popped: [] };
+    const badPane = { ...good, id: 'two', name: 'Two', root: { kind: 'stack', id: 't', panes: [{ id: 'z', type: 'chat' }, { id: 7 }], active: 1 }, popped: [{ nope: 1 }] };
+    localStorage.setItem(key, JSON.stringify({ ...saved(), active: 'bad', layouts: [bad, good, badPane] }));
+    const out = loadLayouts('control', defaults, known);
+    expect(out.layouts.map((l) => l.id)).toEqual(['mine', 'two']);
+    // The active layout was the dropped one: the first one left is active.
+    expect(out.active).toBe('mine');
+    expect(out.layouts[1].root).toMatchObject({ panes: [{ id: 'z', type: 'chat' }], active: 0 });
+    expect(out.layouts[1].popped).toEqual([]);
   });
 
   it('save_then_load_roundtrip_per_page', () => {

@@ -7,10 +7,8 @@ export type Zone = 'left' | 'right' | 'top' | 'bottom' | 'center';
 export type Layout = { id: string; name: string; root: Node; popped: PaneRef[] };
 /**
  * `look`: the workspace's own look. Absent means Mission; 'app' follows the app-wide look.
- * `channel`: on a page whose windows talk over a channel of their own (each Arena run), the channel
- * whose windows hold the popped panes.
  */
-export type PageLayouts = { version: 1; active: string; layouts: Layout[]; look?: 'mission' | 'app'; channel?: string };
+export type PageLayouts = { version: 1; active: string; layouts: Layout[]; look?: 'mission' | 'app' };
 /** Makes ids for new stacks and splits; tests pass a counter. */
 export type IdGen = () => string;
 

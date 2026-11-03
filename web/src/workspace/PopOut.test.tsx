@@ -2,6 +2,8 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { PopOutPane } from './PopOutPane';
+import { channelName } from './selection';
+import { ANSWER_MS } from './slots';
 import { FakeChannel, defaults, page, paneRoute, registry } from './testkit';
 import { WorkspacePage } from './WorkspacePage';
 
@@ -46,7 +48,7 @@ describe('pop out', () => {
     expect(screen.getByTestId('body-b1')).toBeInTheDocument();
 
     await popOut('Overview');
-    expect(open).toHaveBeenLastCalledWith(route('b1'), 'sculptured-pane-b1', expect.any(String));
+    expect(open).toHaveBeenLastCalledWith(route('b1'), 'sculptured-pane-control-b1', expect.any(String));
     expect(screen.queryByTestId('body-b1')).toBeNull();
     expect(screen.getByText(SLOT)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Overview options' })).toHaveFocus();
@@ -93,7 +95,7 @@ describe('pop out', () => {
     const replace = vi.fn();
     open.mockReturnValue({ closed: false, focus: vi.fn(), location: { href: route('b1'), replace } } as unknown as Window);
     await user.click(screen.getByRole('button', { name: 'Show that window' }));
-    expect(open).toHaveBeenLastCalledWith('', 'sculptured-pane-b1', expect.any(String));
+    expect(open).toHaveBeenLastCalledWith('', 'sculptured-pane-control-b1', expect.any(String));
     expect(replace).not.toHaveBeenCalled();
   });
 
@@ -140,18 +142,56 @@ describe('pop out', () => {
     expect(within(one).getByTestId('body-b1')).toBeInTheDocument();
   });
 
-  it('a pane popped out under one channel comes back when the page moves to another', async () => {
+  it('two pages on different channels never take back or close each other\'s pop-outs', async () => {
     const at = (channel: string) => <WorkspacePage page="control" channel={channel} registry={registry} ctx={{}} defaults={defaults} paneRoute={paneRoute} />;
-    const main = render(at('run.b1'));
-    await popOut('Overview');
-    expect(screen.getByText(SLOT)).toBeInTheDocument();
+    const first = render(at('run.b1'));
+    await popOut('Overview', first.container);
+    expect(open).toHaveBeenLastCalledWith(route('b1'), 'sculptured-pane-run.b1-b1', expect.any(String));
     const win = render(<PopOutPane page="control" channel="run.b1" registry={registry} ctx={{}} instance="b1" />);
-    main.unmount();
-    render(at('run.b2'));
-    // Back in its slot in the new channel's workspace, and the old channel's window is told to close.
-    expect(screen.queryByText(SLOT)).toBeNull();
+    // A second tab on another branch: the layouts are shared, the first tab's pop-out is not its own.
+    const second = render(at('run.b2'));
+    expect(within(second.container).getByTestId('body-b1')).toBeInTheDocument();
+    expect(within(first.container).getByText(SLOT)).toBeInTheDocument();
+    expect(close).not.toHaveBeenCalled();
+    expect(within(win.container).queryByText(BACK)).toBeNull();
+    // The first tab, reloaded, still has its pane popped out; the second's view of it is unchanged.
+    first.unmount();
+    const again = render(at('run.b1'));
+    expect(within(again.container).getByText(SLOT)).toBeInTheDocument();
+    expect(within(second.container).getByTestId('body-b1')).toBeInTheDocument();
+  });
+
+  it('hears only well-formed messages from other windows', () => {
+    render(page());
+    const other = new FakeChannel(channelName('control'));
+    act(() => {
+      other.postMessage({ kind: 'select', selection: { agent: 5 } });
+      other.postMessage({ kind: 'select', selection: 'A' });
+      other.postMessage({ kind: 'settings', instance: 'b1', settings: 'x' });
+      other.postMessage({ kind: 'out', instance: 7 });
+    });
+    expect(screen.getByTestId('sel-a1')).toHaveTextContent('none');
     expect(screen.getByTestId('body-b1')).toBeInTheDocument();
-    expect(close).toHaveBeenCalled();
-    expect(within(win.container).getByText(BACK)).toBeInTheDocument();
+    act(() => other.postMessage({ kind: 'select', selection: { agent: 'B' } }));
+    expect(screen.getByTestId('sel-a1')).toHaveTextContent('B');
+    other.close();
+  });
+
+  it('a placeholder whose window does not answer says it may be elsewhere', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      localStorage.clear();
+      render(page());
+      await popOut('Overview');
+      expect(screen.getByText(SLOT)).toBeInTheDocument();
+      act(() => void vi.advanceTimersByTime(ANSWER_MS + 10));
+      expect(screen.getByText('May be shown in another window.')).toBeInTheDocument();
+      // A window that shows it answers when asked, and the placeholder says so again.
+      const win = popWindow('b1');
+      expect(screen.getByText(SLOT)).toBeInTheDocument();
+      win.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

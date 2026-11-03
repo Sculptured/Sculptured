@@ -1,7 +1,7 @@
 import { useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { applySettings, bringBack, eachLayout, orphans, popOutPane } from './layouts';
 import { panes, type Layout, type Node, type PageLayouts } from './model';
-import { useChannelListener, useChannelPost } from './selection';
+import { useChannelListener, useChannelName, useChannelPost } from './selection';
 import { slotFor, type SlotActions } from './slots';
 
 /*
@@ -14,10 +14,13 @@ type SetValue = Dispatch<SetStateAction<PageLayouts>>;
 
 const BLOCKED = 'The browser blocked the new window. Allow pop-ups for this page, then choose Pop out again.';
 const FEATURES = 'popup,width=760,height=560';
-const windowName = (instance: string) => `sculptured-pane-${instance}`;
+/** One window per pane of each page and channel (two runs' panes of the same id never share one). */
+const windowName = (channel: string, instance: string) => `sculptured-pane-${channel}-${instance}`;
 
 /** Opens a pane's window, or shows the one already open without reloading it. */
 function useWindows(paneRoute: (instance: string) => string) {
+  const channel = useChannelName();
+  const name = (instance: string) => windowName(channel, instance);
   const [notice, setNotice] = useState<string | null>(null);
   const handles = useRef(new Map<string, Window>());
   const done = (instance: string, win: Window | null) => {
@@ -25,12 +28,12 @@ function useWindows(paneRoute: (instance: string) => string) {
     setNotice(win ? null : BLOCKED);
     return !!win;
   };
-  const open = (instance: string) => done(instance, window.open(paneRoute(instance), windowName(instance), FEATURES));
+  const open = (instance: string) => done(instance, window.open(paneRoute(instance), name(instance), FEATURES));
   const show = (instance: string) => {
     const known = handles.current.get(instance);
     if (known && !known.closed) { known.focus(); return true; }
     // No handle (this page was reloaded): naming the window without a URL shows an open one as it is.
-    const win = window.open('', windowName(instance), FEATURES);
+    const win = window.open('', name(instance), FEATURES);
     try { if (win?.location.href === 'about:blank') win.location.replace(paneRoute(instance)); } catch { /* Unreadable: it is already the pane's page. */ }
     return done(instance, win);
   };

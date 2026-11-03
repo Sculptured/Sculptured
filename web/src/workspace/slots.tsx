@@ -1,7 +1,7 @@
-import { createContext, useContext, type FC } from 'react';
+import { createContext, useContext, useEffect, useState, type FC } from 'react';
 import type { PaneRef } from './model';
 import type { PaneProps, PaneType, Registry } from './registry';
-import { FollowContext } from './selection';
+import { FollowContext, useChannelListener, useChannelPost } from './selection';
 
 /**
  * A popped-out pane leaves a placeholder in its slot: a pane of type `popped:<its type>` whose
@@ -16,12 +16,29 @@ export const slotRef = (id: string, pane: PaneRef): PaneRef => ({ id, type: SLOT
 export type SlotActions = { bringBack(instance: string): void; reopen(instance: string): void };
 export const SlotContext = createContext<SlotActions | null>(null);
 
+/** How long a pane's window has to answer before the placeholder stops claiming it is there. */
+export const ANSWER_MS = 1500;
+
+/** Whether a window says it shows `instance`: asked on mount; unanswered after ANSWER_MS, unsure. */
+function useWindowAnswers(instance: string): boolean {
+  const post = useChannelPost();
+  const [state, setState] = useState<'asking' | 'there' | 'unsure'>('asking');
+  useChannelListener((m) => { if (m.kind === 'out' && m.instance === instance) setState('there'); });
+  useEffect(() => {
+    post({ kind: 'where', instance });
+    const t = setTimeout(() => setState((s) => (s === 'asking' ? 'unsure' : s)), ANSWER_MS);
+    return () => clearTimeout(t);
+  }, [post, instance]);
+  return state !== 'unsure';
+}
+
 function PoppedSlot({ settings }: PaneProps) {
   const act = useContext(SlotContext);
   const instance = String(settings.instance ?? '');
+  const there = useWindowAnswers(instance);
   return (
     <div className="ws-popped">
-      <p><span aria-hidden="true">⧉ </span>Shown in another window.</p>
+      <p><span aria-hidden="true">⧉ </span>{there ? 'Shown in another window.' : 'May be shown in another window.'}</p>
       <div className="ws-popped-actions">
         <button type="button" className="btn btn-sm" onClick={() => act?.bringBack(instance)}>Bring back</button>
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => act?.reopen(instance)}>Show that window</button>

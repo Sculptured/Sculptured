@@ -114,14 +114,19 @@ export function eachLayout(v: PageLayouts, fn: (l: Layout) => Layout): PageLayou
   return layouts.every((l, i) => l === v.layouts[i]) ? v : { ...v, layouts };
 }
 
-/**
- * The layouts as `channel`'s, on a page whose layouts are shared by many channels (every Arena run):
- * panes popped out under another channel come back into their slots, and `stale` names that
- * channel's windows, which should be told to close.
- */
-export function adoptChannel(v: PageLayouts, channel: string): { value: PageLayouts; stale: { channel: string; panes: string[] } | null } {
-  if (v.channel === channel) return { value: v, stale: null };
-  const ids = v.layouts.flatMap((l) => l.popped.map((p) => p.id));
-  const value = { ...eachLayout(v, (l) => l.popped.reduce((x, p) => bringBack(x, p.id), l)), channel };
-  return { value, stale: v.channel && ids.length ? { channel: v.channel, panes: ids } : null };
+/** Which panes each layout has popped out (by layout id): one channel's part of a shared page. */
+export type Popped = Record<string, string[]>;
+
+/** The layouts with every popped pane back in its slot: what a page shared by many channels saves for all. */
+export function withNothingPopped(v: PageLayouts): PageLayouts {
+  return eachLayout(v, (l) => l.popped.reduce((x, p) => bringBack(x, p.id), l));
+}
+
+export function poppedOf(v: PageLayouts): Popped {
+  return Object.fromEntries(v.layouts.filter((l) => l.popped.length > 0).map((l) => [l.id, l.popped.map((p) => p.id)]));
+}
+
+/** One channel's popped panes popped out again, where they are still in the (shared) layouts. */
+export function withPopped(v: PageLayouts, popped: Popped, newId: IdGen = freshId): PageLayouts {
+  return eachLayout(v, (l) => (popped[l.id] ?? []).reduce((x, id) => popOutPane(x, id, newId), l));
 }

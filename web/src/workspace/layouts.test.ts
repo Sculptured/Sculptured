@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adoptChannel, applySettings, bringBack, cloneLayout, deleteLayout, orphans, popOutPane } from './layouts';
+import { applySettings, bringBack, cloneLayout, deleteLayout, orphans, poppedOf, popOutPane, withNothingPopped, withPopped } from './layouts';
 import { closePane, panes, type Layout } from './model';
 import { slotFor } from './slots';
 
@@ -53,14 +53,17 @@ describe('layout operations', () => {
     expect(deleteLayout(v, 'L')).toBe(v);
   });
 
-  it('panes popped under another channel come back, and that channel is named', () => {
+  it('a shared page saves nothing popped, and each channel pops its own panes out again', () => {
     const out = popOutPane(layout(), 'a', counter());
-    const v = { version: 1 as const, active: 'L', layouts: [out], channel: 'arena-run.b1' };
-    expect(adoptChannel(v, 'arena-run.b1')).toEqual({ value: v, stale: null });
-    const moved = adoptChannel(v, 'arena-run.b2');
-    expect(moved.stale).toEqual({ channel: 'arena-run.b1', panes: ['a'] });
-    expect(moved.value.channel).toBe('arena-run.b2');
-    expect(moved.value.layouts[0].popped).toEqual([]);
-    expect(panes(moved.value.layouts[0].root).map((p) => p.id)).toEqual(['a', 'b']);
+    const v = { version: 1 as const, active: 'L', layouts: [out] };
+    const shared = withNothingPopped(v);
+    expect(shared.layouts[0].popped).toEqual([]);
+    expect(panes(shared.layouts[0].root).map((p) => p.id)).toEqual(['a', 'b']);
+    expect(poppedOf(v)).toEqual({ L: ['a'] });
+    expect(poppedOf(shared)).toEqual({});
+    const again = withPopped(shared, poppedOf(v), counter());
+    expect(again.layouts[0].popped.map((p) => p.id)).toEqual(['a']);
+    // A pane no longer in the layouts is left alone.
+    expect(withPopped(shared, { L: ['gone'], X: ['a'] })).toBe(shared);
   });
 });

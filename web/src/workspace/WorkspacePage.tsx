@@ -1,13 +1,13 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Dispatch, type ReactNode, type Ref, type RefObject, type SetStateAction } from 'react';
 import { AddPane } from './AddPane';
-import { addLayout, adoptChannel, deleteLayout, duplicateLayout, renameLayout, resetLayout } from './layouts';
+import { addLayout, deleteLayout, duplicateLayout, poppedOf, renameLayout, resetLayout, withNothingPopped, withPopped } from './layouts';
 import { LayoutTabs, type LayoutActions } from './LayoutTabs';
 import { MobileWorkspace, useMobile } from './MobileWorkspace';
 import { addPane, freshId, panes, setActive, stacks, type Layout, type Node, type PageLayouts } from './model';
 import type { PaneType, Registry } from './registry';
-import { postClose, SelectionProvider, useChannelPost } from './selection';
+import { SelectionProvider, useChannelPost } from './selection';
 import { shellRegistry, SlotContext } from './slots';
-import { loadLayouts, saveLayouts } from './store';
+import { loadLayouts, loadPopped, saveLayouts, savePopped } from './store';
 import { closeWindowsOf, usePopOut, useSetRoot } from './usePopOut';
 import { Workspace } from './Workspace';
 
@@ -16,7 +16,8 @@ export type WorkspacePageProps = {
   page: string;
   /**
    * The selection channel when it is not the page's: many workspaces sharing one page's layouts (each
-   * Arena run) talk only among their own windows. Panes popped out under another channel come back.
+   * Arena run) talk only among their own windows. The layouts are shared; which panes are popped out
+   * is each channel's own (another tab on another channel never takes them back or closes them).
    */
   channel?: string;
   /** Made once per page (module level): its pane types are wrapped once and kept. */
@@ -37,14 +38,18 @@ export type WorkspaceHandle = { show(type: string): void };
 type SetValue = Dispatch<SetStateAction<PageLayouts>>;
 type Post = ReturnType<typeof useChannelPost>;
 
+/** The page's layouts. Shared by many channels, they are saved with nothing popped out, and each channel's popped panes apart. */
 function usePageLayouts(page: string, defaults: () => PageLayouts, registry: Registry, channel?: string) {
-  const [init] = useState(() => {
+  const shared = channel !== undefined && channel !== page ? channel : null;
+  const [value, setValue] = useState(() => {
     const loaded = loadLayouts(page, defaults, (t) => !!registry.get(t));
-    return channel ? adoptChannel(loaded, channel) : { value: loaded, stale: null };
+    return shared ? withPopped(withNothingPopped(loaded), loadPopped(page, shared)) : loaded;
   });
-  const [value, setValue] = useState(init.value);
-  useEffect(() => { if (init.stale) postClose(init.stale.channel, init.stale.panes); }, [init]);
-  useEffect(() => saveLayouts(page, value), [page, value]);
+  useEffect(() => {
+    if (!shared) return saveLayouts(page, value);
+    saveLayouts(page, withNothingPopped(value));
+    savePopped(page, shared, poppedOf(value));
+  }, [page, shared, value]);
   const layout = value.layouts.find((l) => l.id === value.active) ?? value.layouts[0];
   return { value, setValue, layout };
 }

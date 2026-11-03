@@ -10,15 +10,17 @@ export type ChannelMessage =
   | { kind: 'ask' }
   /** A popped-out window is closing: its pane goes back into the layout. */
   | { kind: 'back'; instance: string }
-  /** A popped-out window is showing this pane (it opened, reloaded or navigated): it belongs in `popped`. */
+  /** A popped-out window is showing this pane (it opened, reloaded or navigated, or was asked): it belongs in `popped`. */
   | { kind: 'out'; instance: string }
+  /** Is a window showing this pane? Its window answers "out". */
+  | { kind: 'where'; instance: string }
   /** The main window took this pane back (or dropped it): its window should close. */
   | { kind: 'close'; instance: string }
   /** A popped-out pane's settings changed in its own window. */
   | { kind: 'settings'; instance: string; settings: Record<string, unknown> };
 
 type Listener = (m: ChannelMessage) => void;
-type Bus = { selection: Selection; select(s: Partial<Selection>): void; post(m: ChannelMessage): void; listen(fn: Listener): () => void };
+type Bus = { channel: string; selection: Selection; select(s: Partial<Selection>): void; post(m: ChannelMessage): void; listen(fn: Listener): () => void };
 
 const BusContext = createContext<Bus | null>(null);
 /** False inside a pane whose "Follow selection" setting is off. */
@@ -26,8 +28,19 @@ export const FollowContext = createContext(true);
 
 const EMPTY: Selection = {};
 const noop = () => {};
-const KINDS = new Set(['select', 'ask', 'back', 'out', 'close', 'settings']);
-const isMessage = (v: unknown): v is ChannelMessage => !!v && typeof v === 'object' && KINDS.has((v as { kind?: unknown }).kind as string);
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const optional = (v: unknown, type: 'string' | 'number') => v === undefined || (typeof v === type && (type === 'string' || Number.isFinite(v)));
+const isSelection = (v: unknown): v is Selection => isObj(v) && optional(v.agent, 'string') && optional(v.time, 'number') && optional(v.key, 'string');
+const ABOUT_A_PANE = new Set(['back', 'out', 'close', 'where']);
+
+/** Only well-formed messages are heard: another window (or another version of this app) may send anything. */
+function isMessage(v: unknown): v is ChannelMessage {
+  if (!isObj(v)) return false;
+  if (v.kind === 'ask') return true;
+  if (v.kind === 'select') return isSelection(v.selection);
+  if (typeof v.instance !== 'string') return false;
+  return ABOUT_A_PANE.has(v.kind as string) || (v.kind === 'settings' && isObj(v.settings));
+}
 const isEmpty = (s: Selection) => s.agent === undefined && s.time === undefined && s.key === undefined;
 
 export const channelName = (page: string) => `sculptured.workspace.${page}`;
@@ -58,14 +71,6 @@ function useChannel(page: string, onMessage: (m: ChannelMessage) => void) {
   return useCallback((m: ChannelMessage) => { if (early.current) early.current.push(m); else channel.current?.postMessage(m); }, []);
 }
 
-/** Tells the windows on another channel to close these panes (their main window moved on to another channel). */
-export function postClose(page: string, instances: string[]): void {
-  const c = openChannel(page);
-  if (!c) return;
-  instances.forEach((instance) => c.postMessage({ kind: 'close', instance } satisfies ChannelMessage));
-  c.close();
-}
-
 type ProviderProps = { page: string; children: ReactNode };
 
 /**
@@ -90,7 +95,7 @@ export function SelectionProvider({ page, children }: ProviderProps) {
     setSelection(next);
     post({ kind: 'select', selection: next });
   }, [post]);
-  const bus = useMemo(() => ({ selection, select, post, listen }), [selection, select, post, listen]);
+  const bus = useMemo(() => ({ channel: page, selection, select, post, listen }), [page, selection, select, post, listen]);
   return <BusContext.Provider value={bus}>{children}</BusContext.Provider>;
 }
 
@@ -113,6 +118,11 @@ export function useChannelListener(fn: Listener): void {
   const latest = useRef(fn);
   useEffect(() => { latest.current = fn; });
   useEffect(() => listen?.((m) => latest.current(m)), [listen]);
+}
+
+/** The workspace's channel name (the page's, or its own on a shared page); '' outside one. */
+export function useChannelName(): string {
+  return useContext(BusContext)?.channel ?? '';
 }
 
 /** Posts on the workspace's channel (a popped-out window saying it is closing). */
