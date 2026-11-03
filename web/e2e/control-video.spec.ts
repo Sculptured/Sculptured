@@ -1,6 +1,6 @@
-import { expect, test, type APIRequestContext, type Browser, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { AGENTS, centre, drag, ORDER, practiceTeam, say, stackOf, startFromControl } from './fixtures/control-team';
-import { beat, caption, glide, keepVideo, press, recorder, shot, SHOTS } from './fixtures/recording';
+import { beat, caption, glide, keepVideo, press, recorder, shot, SHOTS, stills } from './fixtures/recording';
 
 /**
  * The screenshots and usage videos of docs/guide/control.md, recorded from the real app with Practice
@@ -10,7 +10,9 @@ import { beat, caption, glide, keepVideo, press, recorder, shot, SHOTS } from '.
  *
  * Screenshots go to docs/images/control/, videos to docs/videos/ (WebM and, with ffmpeg, MP4). The
  * Arena captures need a running arenad that serve reaches (SCULPTURED_ARENA_URL) with the retail
- * example; without one they are skipped and say so.
+ * example and a scripted OpenAI-compatible stand-in as a local model server (ARENA_LOCAL_MODELS), like
+ * the fake upstream of arena's own tests, so no real model is called; without them they are skipped
+ * and say so. The screenshots expect at least one finished run of task 27.
  */
 
 test.skip(!process.env.RECORD_VIDEOS, 'set RECORD_VIDEOS=1 to record the guide screenshots and videos');
@@ -193,6 +195,38 @@ test('video 3: an alarm, an approval, pause, resume and emergency stop', async (
   await keepVideo(context, page, info, 'control-3-trouble');
 });
 
+test('screenshots: alarms, an approval waiting and the emergency-stop question', async ({ browser, request, baseURL }, info) => {
+  desktopOnly(info.project.name);
+  const { context, page } = await stills(browser, baseURL!);
+  const id = await practiceTeam(request, 'Press line 4 upkeep');
+  await page.goto(`/p/${id}/control`);
+  await startFromControl(page);
+  await stackOf(page, 'live-overview').getByRole('button', { name: 'Fit' }).click();
+  await page.waitForTimeout(2500);
+  await caption(page, 'An agent reaches a usage limit: the master caution lights; press it to open Alarms');
+  await say(request, id, 'inspector', 'limit');
+  const caution = page.getByRole('button', { name: /^Master caution: \d+ not acknowledged/ });
+  await expect(caution).toBeVisible({ timeout: 30_000 });
+  await caution.click();
+  await expect(page.getByRole('button', { name: 'Acknowledge', exact: true }).first()).toBeVisible();
+  await beat(page, 1500);
+  await guideShot(page, 'alarms-caution');
+  await caption(page, 'The Buyer proposes an order over the team’s $5,000 rule: it waits in Approvals');
+  await say(request, id, 'buyer', ORDER);
+  await page.locator('[data-tab="live-approvals"]').click();
+  await expect(page.getByRole('list', { name: 'Waiting for you' })).toBeVisible({ timeout: 30_000 });
+  await beat(page, 800);
+  await guideShot(page, 'approval-waiting');
+  await caption(page, 'Emergency stop asks first, naming how many agents it stops');
+  await page.getByRole('group', { name: 'Team controls' }).getByRole('button', { name: 'Emergency stop' }).click();
+  await expect(page.getByRole('alertdialog', { name: 'Emergency stop' })).toBeVisible();
+  await beat(page, 800);
+  await guideShot(page, 'emergency-stop-confirm');
+  await page.getByRole('alertdialog', { name: 'Emergency stop' }).getByRole('button', { name: 'Cancel' }).click();
+  await stop(request, id);
+  await context.close();
+});
+
 test('screenshots: Control Live, Agent focus, Cost and the Follow app look', async ({ browser, request, baseURL }, info) => {
   desktopOnly(info.project.name);
   const context = await browser.newContext({ baseURL, viewport: DESKTOP });
@@ -221,18 +255,32 @@ test('screenshots: Control Live, Agent focus, Cost and the Follow app look', asy
   await context.close();
 });
 
-test('screenshot: Control on a phone', async ({ page, request }, info) => {
+test('screenshots: Control on a phone', async ({ page, request }, info) => {
   test.skip(info.project.name !== 'mobile', 'the phone layout');
   const id = await practiceTeam(request, 'Press line 4 upkeep (phone)');
   await page.goto(`/p/${id}/control`);
-  await page.getByText('Agents, tokens, cost and team controls').click();
+  const more = page.getByText('Agents, tokens, cost and team controls');
+  await more.click();
   await page.getByRole('group', { name: 'Team controls' }).getByRole('button', { name: 'Start' }).click();
   await expect(page.getByRole('button', { name: /^Planner — / })).toBeVisible({ timeout: 30_000 });
-  await page.getByText('Agents, tokens, cost and team controls').click();
+  await more.click();
   await page.getByRole('button', { name: 'Fit' }).click();
   await beat(page, 3000);
   await dismissToasts(page);
-  await page.screenshot({ path: `${SHOTS}mobile.png` });
+  // The one-line header over the Live layout's first pane.
+  await page.screenshot({ path: `${SHOTS}phone-live.png` });
+  // "Agents, tokens, cost and team controls" opens the rest of the header.
+  await more.click();
+  await beat(page, 800);
+  await dismissToasts(page);
+  await page.screenshot({ path: `${SHOTS}phone-more.png` });
+  await more.click();
+  // The pane switcher: one pane at a time.
+  await page.getByRole('combobox', { name: 'Pane', exact: true }).selectOption({ label: 'Status' });
+  await page.getByRole('combobox', { name: 'Pane', exact: true }).focus();
+  await beat(page, 1200);
+  await dismissToasts(page);
+  await page.screenshot({ path: `${SHOTS}phone-panes.png` });
   await stop(request, id);
 });
 
@@ -242,10 +290,25 @@ async function arenaUp(request: APIRequestContext) {
   return !!r?.ok();
 }
 
+/**
+ * Keeps Arena's suggested team in this browser (as Edit team would), each agent in API mode on the
+ * first local model server arenad offers. The guide's arenad has a scripted stand-in there
+ * (ARENA_LOCAL_MODELS), so no real model is called; without one, the Arena captures are skipped.
+ */
+async function scriptedArenaTeam(context: BrowserContext, request: APIRequestContext) {
+  const providers: { id: string; kind: string; available: boolean; models?: string[] }[] = await (await request.get('/api/arena/providers')).json();
+  const local = providers.find((p) => p.kind === 'local' && p.available && p.models?.length);
+  test.skip(!local, 'arenad offers no local model server (ARENA_LOCAL_MODELS) for a scripted stand-in');
+  const team = await (await request.get('/api/arena/team/default')).json();
+  for (const a of team.agents) Object.assign(a, { kind: 'open', provider: local!.id, model: local!.models![0] });
+  await context.addInitScript((t) => localStorage.setItem('sculptured.tests.team.v1', t), JSON.stringify(team));
+}
+
 test('video 4: Arena control, a run’s Replay and a fork', async ({ browser, request, baseURL }, info) => {
   desktopOnly(info.project.name);
   test.skip(!(await arenaUp(request)), 'no arenad answers (start one and set SCULPTURED_ARENA_URL)');
   const { context, page } = await recorder(browser, info, baseURL!);
+  await scriptedArenaTeam(context, request);
   await page.goto('/arena');
   await caption(page, 'Arena control: the runs, the world and the engine at a glance');
   await expect(page.getByRole('table', { name: 'Runs' })).toBeVisible();
@@ -280,23 +343,35 @@ test('video 4: Arena control, a run’s Replay and a fork', async ({ browser, re
   await expect(page.getByText('Passed the check').first()).toBeVisible({ timeout: 90_000 });
   await caption(page, 'The fork runs on its own branch; Compare shows how it differs');
   await beat(page, 4000);
-  await keepVideo(context, page, info, 'control-4-arena');
+  await keepVideo(context, page, info, 'control-4-arena', 44);
 });
 
-test('screenshots: Arena control and a simulated run’s Replay', async ({ browser, request, baseURL }, info) => {
+test('screenshots: Arena control, Storage, a simulated run’s Replay and a fork', async ({ browser, request, baseURL }, info) => {
   desktopOnly(info.project.name);
   test.skip(!(await arenaUp(request)), 'no arenad answers (start one and set SCULPTURED_ARENA_URL)');
-  const context = await browser.newContext({ baseURL, viewport: DESKTOP });
-  const page = await context.newPage();
+  const { context, page } = await stills(browser, baseURL!);
+  await scriptedArenaTeam(context, request);
   await page.goto('/arena');
+  await caption(page, 'Arena control: the runs, the world and the engine at a glance');
   await expect(page.getByRole('row', { name: 'Run of task 27' }).first()).toBeVisible();
   await beat(page, 2000);
   await guideShot(page, 'arena-control');
+  await caption(page, 'Storage: saves against the limit, and each run’s fork tree');
+  await page.getByRole('tab', { name: 'Storage' }).click();
+  await beat(page, 2000);
+  await guideShot(page, 'arena-storage');
+  await page.getByRole('tab', { name: 'Overview' }).click();
   await page.getByRole('row', { name: 'Run of task 27' }).first().getByRole('link').first().click();
   await expect(page.getByText('Passed the check').first()).toBeVisible({ timeout: 30_000 });
+  await caption(page, 'A simulated run on Replay: step through it with ◀ ▶ or the arrow keys');
   await page.getByRole('button', { name: 'Previous step' }).click();
   await page.getByRole('button', { name: 'Previous step' }).click();
   await beat(page, 1500);
   await guideShot(page, 'arena-replay');
+  await caption(page, 'Fork from here: the plan says how each part of the world is restored');
+  await page.getByRole('button', { name: /Fork from here/ }).first().click();
+  await expect(page.getByRole('region', { name: /^Fork from step/ })).toBeVisible();
+  await beat(page, 1500);
+  await guideShot(page, 'arena-fork');
   await context.close();
 });

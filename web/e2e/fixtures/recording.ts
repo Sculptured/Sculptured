@@ -13,6 +13,8 @@ export const DOCS = fileURLToPath(new URL('../../../docs/', import.meta.url));
 export const SHOTS = `${DOCS}images/control/`;
 export const VIDEOS = `${DOCS}videos/`;
 export const VIDEO_SIZE = { width: 1280, height: 800 };
+/** The size of the desktop guide screenshots. */
+export const SHOT_SIZE = { width: 1440, height: 900 };
 
 /** Draws the pointer where the mouse is (bigger while pressed) and a caption box at the bottom. */
 function overlay() {
@@ -43,6 +45,14 @@ function overlay() {
 /** A browser context that records a video of its first page at VIDEO_SIZE. */
 export async function recorder(browser: Browser, info: TestInfo, baseURL: string) {
   const context = await browser.newContext({ baseURL, viewport: VIDEO_SIZE, recordVideo: { dir: info.outputPath('raw'), size: VIDEO_SIZE } });
+  await context.addInitScript(overlay);
+  const page = await context.newPage();
+  return { context, page };
+}
+
+/** A desktop context for guide screenshots at SHOT_SIZE, with the caption box (no video). */
+export async function stills(browser: Browser, baseURL: string) {
+  const context = await browser.newContext({ baseURL, viewport: SHOT_SIZE });
   await context.addInitScript(overlay);
   const page = await context.newPage();
   return { context, page };
@@ -80,23 +90,30 @@ const hasFfmpeg = () => {
 
 /**
  * Closes the context and keeps its video as `docs/videos/<name>.webm` (VP9) and `<name>.mp4` (H.264)
- * when ffmpeg is installed, else the browser's own WebM.
+ * when ffmpeg is installed, else the browser's own WebM. `maxSeconds` cuts the end off (the browser can
+ * keep recording a still page while the context closes).
  */
-export async function keepVideo(context: BrowserContext, page: Page, info: TestInfo, name: string) {
+export async function keepVideo(context: BrowserContext, page: Page, info: TestInfo, name: string, maxSeconds?: number) {
   const raw = info.outputPath(`${name}-raw.webm`);
   const saved = page.video()!.saveAs(raw);
   await context.close();
   await saved;
   mkdirSync(VIDEOS, { recursive: true });
   if (!hasFfmpeg()) { copyFileSync(raw, `${VIDEOS}${name}.webm`); return; }
-  const quiet = ['-y', '-loglevel', 'error', '-i', raw, '-an'];
+  const quiet = ['-y', '-loglevel', 'error', '-i', raw, '-an', ...(maxSeconds ? ['-t', String(maxSeconds)] : [])];
   execFileSync('ffmpeg', [...quiet, '-c:v', 'libvpx-vp9', '-crf', '40', '-b:v', '0', '-row-mt', '1', `${VIDEOS}${name}.webm`]);
   execFileSync('ffmpeg', [...quiet, '-c:v', 'libx264', '-crf', '30', '-preset', 'slow', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', `${VIDEOS}${name}.mp4`]);
 }
 
-/** A screenshot for the guide, without the recording overlay (none is added to these pages). */
+/** A screenshot for the guide: the caption stays, the pointer is hidden. */
 export async function shot(page: Page, name: string) {
   mkdirSync(SHOTS, { recursive: true });
   await page.mouse.move(0, 0);
+  const pointer = (hidden: boolean) => page.evaluate((h) => {
+    const el = document.getElementById('rec-pointer');
+    if (el) el.style.visibility = h ? 'hidden' : '';
+  }, hidden);
+  await pointer(true);
   await page.screenshot({ path: `${SHOTS}${name}.png` });
+  await pointer(false);
 }

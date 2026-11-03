@@ -2,16 +2,16 @@
 
 Control is a project's mission-control page. It shows the live board, what every agent is doing, what waits for you and what went wrong, and it holds the controls for the whole team: Start, Pause all, Resume all, Stop team… and Emergency stop. You arrange it yourself: panes dock beside each other or as tabs, and each layout is kept in this browser.
 
-Every picture and video on this page comes from a recording of the real app. The teams in them are small practice teams whose agents follow fixed scripts instead of calling a model, so their replies read "stub received: …". The screenshots are still frames from those recordings and include their step captions.
+Every picture and video on this page comes from a recording of the real app. The teams in them are small practice teams whose agents follow fixed scripts instead of calling a model, so their replies read "stub received: …". The Arena runs use a scripted stand-in in place of a model, which plays the same steps every time. The desktop screenshots are taken during the same recorded steps and include their step captions; the phone screenshots have none.
 
 **Videos** (each under a minute):
 
 1. [Open a project on Control and start the team](../videos/control-1-open-and-start.mp4)
 2. [Rearrange panes and switch layouts](../videos/control-2-rearrange.mp4)
+3. [An alarm, an approval, pause, resume and emergency stop](../videos/control-3-trouble.mp4)
+4. [Arena control: a run's Replay and a fork](../videos/control-4-arena.mp4)
 
 The same videos are also in `docs/videos/` as WebM.
-
-The alarm/approval video, phone screenshots and Arena captures are pending. On November 2, 2026, the recording environment denied local socket creation and Docker access, so the real test server and throwaway Arena could not start. No substitute screens are included. The recording spec contains the remaining capture flows for an environment with those permissions.
 
 ## 1. Open Control
 
@@ -48,6 +48,8 @@ The header reads left to right.
 | ■ Emergency stop | Stops every agent at once, with every agent it started. Sessions are not kept. |
 
 **Emergency stop asks first.** The question names how many agents it stops ("Stop all 3 agents now?"). Cancel has the focus, so pressing Enter by mistake does nothing. Press **Stop now** to stop them; Esc or a click outside cancels. With nothing running it is disabled and says "Nothing is running".
+
+![Emergency stop asking "Stop all 3 agents now?", with Stop now and Cancel](../images/control/emergency-stop-confirm.png)
 
 After each action a note under the header says what it did, and names any agent it left alone and why ("Paused 3 agents."). A refusal is never shown as a success. Dismiss the note when you have read it.
 
@@ -119,6 +121,7 @@ Layouts and the Look setting are kept per project in this browser. A layout save
 
 ## 5. Alarms and approvals
 
+[Video 3](../videos/control-3-trouble.mp4) shows an alarm, an approval, Pause all, Resume all and Emergency stop.
 
 **Alarms** are raised by rules. Each rule can be turned on or off in the Alarms pane's settings (⋯ → Settings):
 
@@ -132,6 +135,8 @@ Layouts and the Look setting are kept per project in this browser. A layout save
 
 Each alarm is listed newest first, with when it happened and which agent it is about. Press **Acknowledge** on one, or **Acknowledge all**. An acknowledged alarm stays listed, marked ✓. Acknowledgements are kept per project. Click an alarm to select its agent and time in the other panes.
 
+![The master caution lit with 1 not acknowledged, and the Alarms pane listing a usage limit with Acknowledge](../images/control/alarms-caution.png)
+
 **Approvals** lists what agents wait on you for:
 
 - **Changes:** a change an agent proposes to a business system, when the team's rules say a person must decide. An example is a purchase order over the team's limit.
@@ -139,9 +144,19 @@ Each alarm is listed newest first, with when it happened and which agent it is a
 
 Press **Approve**, or **Reject…** and give a reason; the agent is told the reason. The title and "Details" are the agent's own words. A question that needs a written answer links to **Answer in Needs you**.
 
+![A change from the Buyer waiting in Approvals, with Approve and Reject…; the Buyer's card on the board says "needs you"](../images/control/approval-waiting.png)
+
 ## 6. On a phone
 
 Below tablet width, Control shows one pane at a time. Pick it from the **Pane** list; the layouts and panes are the same. The header keeps the run, the clock, the master caution and Emergency stop on one line. **Agents, tokens, cost and team controls** opens the rest. Panes are not dragged on a phone.
+
+<p>
+<img src="../images/control/phone-live.png" width="250" alt="Control on a phone: one header line with the run, the clock, the master caution and Emergency stop, over the live board">
+<img src="../images/control/phone-more.png" width="250" alt="The same page with Agents, tokens, cost and team controls opened">
+<img src="../images/control/phone-panes.png" width="250" alt="The Pane list set to Status, showing the Status pane">
+</p>
+
+Left to right: the one-line header, the rest of the header opened, and the **Pane** list showing Status.
 
 
 ## 7. Simulated runs (Arena)
@@ -157,6 +172,8 @@ An Arena run is a team working in a simulated world. Arena saves the world after
 - The panel beside the lanes shows the step's arguments, its result and the rows it read or changed.
 - **World state** shows the world as saved at or before the selected step.
 
+![A finished run on Replay: the Timeline with a lane per agent, the step list, World state and Compare](../images/control/arena-replay.png)
+
 **Fork from a step:**
 
 1. Pick a step an agent took and press **Fork from here**. It is disabled, saying why, while the branch still runs or on the final check.
@@ -168,7 +185,11 @@ An Arena run is a team working in a simulated world. Arena saves the world after
    The plan under the choice says how each part of the world would be restored.
 4. Press **Fork unchanged** or **Fork with N changes**.
 
+![The fork panel for step 19, with Exact chosen and the restore plan "retail: from its save"](../images/control/arena-fork.png)
+
 The fork runs on its own branch. It may start at an earlier step than the one you picked, and its bar says so: an agent's session restarts from that agent's start. **Compare** shows the two branches side by side: outcome, time, tokens, cost and how the world differs.
+
+[Video 4](../videos/control-4-arena.mp4) starts a run, steps through it, forks it with changed instructions and compares the two branches.
 
 **Header.** A simulated run's header reads the same way. Arena runs cannot be paused or stopped from Control yet, and the header says so. Start a new run from Arena control.
 
@@ -183,10 +204,14 @@ The fork runs on its own branch. It may start at an earlier step than the one yo
 - **World:** each part of the world, its integration, how it restores (exact from a save, by replay, or approximate), whether it uses Arena's clock, and its tools.
 - **Engine:** Arena's health, which kinds of agent it can run, its benchmark and its tasks.
 
+![Arena control in the Overview layout: Runs with a new-run bar, World and Engine](../images/control/arena-control.png)
+
 **Storage** layout:
 
 - **Saves and disk:** the space used against the limit, the space each part holds, and **Clean up**, which removes saves no run uses.
 - **Fork tree:** each run's branches, parent to child.
+
+![The Storage layout: saves against the 5 GB limit by integration, and the fork tree of two runs](../images/control/arena-storage.png)
 
 If Arena is not running, every Arena pane says "Arena is not running" and how to start it, and checks again every 15 seconds.
 
