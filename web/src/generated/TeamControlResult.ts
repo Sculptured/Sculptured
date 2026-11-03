@@ -2,6 +2,6 @@
 import type { SkippedSeat } from "./SkippedSeat";
 
 /**
- * What a team-wide pause or resume did: the agents it acted on, and every other agent with why not.
+ * What a pause or resume did: the agents it acted on, and every other agent with why not.
  */
 export type TeamControlResult = { affected: Array<string>, skipped: Array<SkippedSeat>, };

@@ -6,7 +6,7 @@ use super::{
 pub fn routes() -> Router<AppState> {
     Router::new()
         .merge(history::routes())
-        .merge(super::pausing::routes())
+        .merge(super::team_pausing::routes())
         .route(
             "/api/teams/{id}/budget",
             crate::collaboration::get(budget_status).post(set_budget),
@@ -49,32 +49,38 @@ pub(super) async fn archive(
     let fp = crate::collaboration::fingerprint(&format!("archive:{id}"), &req);
     let st2 = st.clone();
     crate::collaboration::idempotent(&st, &req.request_id, fp, move || async move {
-        crate::teams::load(&st2, &id)?;
-        let _claim = st2.try_begin_boot(&id).ok_or_else(|| {
-            ApiError::conflict("team_starting", "Wait for project changes to finish")
-        })?;
-        let started = st2
-            .store
-            .lock()
-            .expect("store mutex must not be poisoned")
-            .rig_snapshot(&id)?
-            .is_some();
-        if req.archived && started {
-            let failed = crate::reconciler::stop_rig(st2.clone(), id.clone()).await?;
-            if !failed.is_empty() {
-                return Err(ApiError::conflict(
-                    "stop_failed",
-                    "Some agents could not stop. Project was not archived.",
-                ));
-            }
-        }
-        st2.store
-            .lock()
-            .expect("store mutex must not be poisoned")
-            .set_archived(&id, req.archived)?;
+        set_archived(&st2, &id, req.archived).await?;
         Ok(json!({"archived":req.archived,"id":id}))
     })
     .await
+}
+
+/// Archives (stopping it first) or restores team `id`.
+async fn set_archived(st: &AppState, id: &str, archived: bool) -> Result<(), ApiError> {
+    crate::teams::load(st, id)?;
+    let _claim = st
+        .try_begin_boot(id)
+        .ok_or_else(|| ApiError::conflict("team_starting", "Wait for project changes to finish"))?;
+    let started = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .rig_snapshot(id)?
+        .is_some();
+    if archived && started {
+        let failed = crate::reconciler::stop_rig(st.clone(), id.to_string()).await?;
+        if !failed.is_empty() {
+            return Err(ApiError::conflict(
+                "stop_failed",
+                "Some agents could not stop. Project was not archived.",
+            ));
+        }
+    }
+    st.store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .set_archived(id, archived)?;
+    Ok(())
 }
 #[derive(Deserialize)]
 pub(super) struct CommunicationsQuery {
@@ -121,8 +127,14 @@ pub(super) async fn control(
     let fp = crate::collaboration::fingerprint(&format!("control:{id}"), &req);
     let st2 = st.clone();
     crate::collaboration::idempotent(&st, &req.request_id, fp, move || async move {
-        crate::collaboration::control_agent(&st2, &id, Control::parse(&req.mode)?).await?;
-        Ok(json!({"mode":req.mode}))
+        let done = controls::control_seat(&st2, &id, Control::parse(&req.mode)?).await?;
+        let mut body = json!({"mode":req.mode});
+        // A pause, or the resume of a paused agent: which agents it covered, and which it left.
+        if let Some(done) = done {
+            body["affected"] = json!(done.affected);
+            body["skipped"] = json!(done.skipped);
+        }
+        Ok(body)
     })
     .await
 }
@@ -177,31 +189,10 @@ pub(super) async fn stop_team_now(
     let fp = crate::collaboration::fingerprint(&format!("stop-now:{id}"), &req);
     let st2 = st.clone();
     crate::collaboration::idempotent(&st, &req.request_id, fp, move || async move {
-        let roots: Vec<String> = {
-            let store = st2.store.lock().expect("store mutex must not be poisoned");
-            let Some(snap) = store.rig_snapshot(&id)? else {
-                return Err(ApiError::conflict(
-                    "team_not_started",
-                    "This team has not been started yet.",
-                ));
-            };
-            let live: Vec<String> = snap
-                .seats
-                .into_iter()
-                .filter(|s| crate::reconciler::stoppable(s.lifecycle))
-                .map(|s| s.id)
-                .collect();
-            live.iter()
-                .filter(|s| {
-                    store
-                        .parent(s)
-                        .ok()
-                        .flatten()
-                        .is_none_or(|p| !live.contains(&p))
-                })
-                .cloned()
-                .collect()
-        };
+        let roots = live_roots(
+            &st2.store.lock().expect("store mutex must not be poisoned"),
+            &id,
+        )?;
         if !roots.is_empty() {
             controls::stop_now(&st2, &id, &roots).await?;
         }
@@ -209,6 +200,33 @@ pub(super) async fn stop_team_now(
         Ok(json!({ "stopped": roots.len() }))
     })
     .await
+}
+
+/// The team's agents that may have a process and were not started by one that may.
+fn live_roots(store: &crate::store::Store, id: &str) -> Result<Vec<String>, ApiError> {
+    let Some(snap) = store.rig_snapshot(id)? else {
+        return Err(ApiError::conflict(
+            "team_not_started",
+            "This team has not been started yet.",
+        ));
+    };
+    let live: Vec<String> = snap
+        .seats
+        .into_iter()
+        .filter(|s| crate::reconciler::stoppable(s.lifecycle))
+        .map(|s| s.id)
+        .collect();
+    Ok(live
+        .iter()
+        .filter(|s| {
+            store
+                .parent(s)
+                .ok()
+                .flatten()
+                .is_none_or(|p| !live.contains(&p))
+        })
+        .cloned()
+        .collect())
 }
 
 pub(super) async fn budget_status(State(st): State<AppState>, Path(id): Path<String>) -> Response {
@@ -241,23 +259,33 @@ pub(super) async fn set_budget(
                 "Stop the project before changing its budget",
             ));
         }
-        if let Some(limit) = req.output_limit {
-            if !(1..=1_000_000).contains(&limit) {
-                return Err(ApiError::bad_request(
-                    "invalid_budget",
-                    "Choose 1–1,000,000 output tokens per agent",
-                ));
-            }
-            store.connection().execute(
-                "INSERT OR REPLACE INTO team_output_budgets VALUES (?1,?2)",
-                rusqlite::params![id, limit],
-            )?;
-        } else {
-            store
-                .connection()
-                .execute("DELETE FROM team_output_budgets WHERE rig=?1", [id])?;
-        }
+        write_output_budget(&store, &id, req.output_limit)?;
         Ok(json!({"output_limit":req.output_limit}))
     })
     .await
+}
+
+/// Saves (or, with None, removes) the team's output budget per agent.
+fn write_output_budget(
+    store: &crate::store::Store,
+    id: &str,
+    limit: Option<u32>,
+) -> Result<(), ApiError> {
+    let Some(limit) = limit else {
+        store
+            .connection()
+            .execute("DELETE FROM team_output_budgets WHERE rig=?1", [id])?;
+        return Ok(());
+    };
+    if !(1..=1_000_000).contains(&limit) {
+        return Err(ApiError::bad_request(
+            "invalid_budget",
+            "Choose 1–1,000,000 output tokens per agent",
+        ));
+    }
+    store.connection().execute(
+        "INSERT OR REPLACE INTO team_output_budgets VALUES (?1,?2)",
+        rusqlite::params![id, limit],
+    )?;
+    Ok(())
 }

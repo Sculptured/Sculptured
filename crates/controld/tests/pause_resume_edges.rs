@@ -1,0 +1,149 @@
+//! Pause and resume at the edges: calling a pause off, an agent still settling, an agent that is not
+//! running or already stopping, and agents started by another agent (Practice agents, no model).
+mod common;
+use common::lifecycle;
+use common::m2::{Served, connect_stub, rid, seat, start_team};
+use common::pausing::*;
+use controld::store::ControlMode;
+use model::{EventBody, SeatLifecycle};
+use serde_json::{Value, json};
+
+/// A running Practice team of agents a and b.
+async fn running(s: &Served, name: &str) -> (String, String, String) {
+    let id = team(s, name, &["a", "b"]).await;
+    start_team(s, &id).await;
+    let (a, b) = (seat(&id, "a"), seat(&id, "b"));
+    (id, a, b)
+}
+
+/// Records a control for `seat` directly, as a wrap-up still under way (no message to wait on).
+fn record(s: &Served, seat: &str, mode: ControlMode) {
+    let store = s.st.store.lock().unwrap();
+    store.record_control(seat, mode, 0).unwrap();
+}
+
+#[tokio::test]
+async fn resume_while_pausing_calls_the_pause_off() {
+    let s = common::m2::serve().await;
+    let _runner = connect_stub(&s).await;
+    let (_, a, _) = running(&s, "call-off").await;
+    record(&s, &a, ControlMode::Pausing);
+
+    let body = ok(control(&s, &a, "resume").await);
+    assert_eq!(affected(&body), vec![a.clone()]);
+    assert_eq!(mode(&s, &a).await, Value::Null);
+    assert!(
+        queued(&s, &a)
+            .iter()
+            .any(|t| t.contains("Pause called off"))
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    assert_eq!(
+        lifecycle(&s.st, &a),
+        Some(SeatLifecycle::Running),
+        "the watcher does not stop an agent whose pause was called off"
+    );
+}
+
+#[tokio::test]
+async fn resume_while_still_stopping_is_refused_and_stays_paused() {
+    let s = common::m2::serve().await;
+    let _runner = connect_stub(&s).await;
+    let (_, a, _) = running(&s, "settling").await;
+    ok(control(&s, &a, "pause").await);
+    wait_paused(&s, &[&a]).await;
+    s.st.local_event(
+        model::Actor::System("test".into()),
+        model::Subject::Seat(a.clone()),
+        model::Provenance::ProtocolObserved,
+        EventBody::SeatLifecycleChanged {
+            lifecycle: SeatLifecycle::Stopping,
+            reason: Some("test".into()),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(refused(control(&s, &a, "resume").await), "agent_settling");
+    assert_eq!(mode(&s, &a).await, json!("paused"));
+}
+
+#[tokio::test]
+async fn pause_needs_a_running_agent_without_another_stop() {
+    let s = common::m2::serve().await;
+    let _runner = connect_stub(&s).await;
+    let (id, a, b) = running(&s, "refusals").await;
+    ok(control(&s, &a, "hard").await);
+    wait_lifecycle(&s, &[&a], SeatLifecycle::Stopped).await;
+    assert_eq!(refused(control(&s, &a, "pause").await), "agent_not_running");
+    assert_eq!(mode(&s, &a).await, json!("hard"));
+
+    record(&s, &b, ControlMode::Soft);
+    assert_eq!(refused(control(&s, &b, "pause").await), "agent_stopping");
+    let body = ok(team_action(&s, &id, "pause", &rid()).await);
+    assert!(affected(&body).is_empty(), "{body}");
+    let skipped = skipped(&body);
+    assert!(
+        skipped.contains(&(
+            b.clone(),
+            "already_stopping".into(),
+            "It is already stopping".into()
+        )),
+        "{skipped:?}"
+    );
+    assert_eq!(mode(&s, &b).await, json!("soft"), "the soft stop is kept");
+}
+
+/// A running solo team whose agent started a child; returns (team, parent, child).
+async fn parent_and_child(s: &Served) -> (String, String, String) {
+    let id = common::m2::practice_team(s, "solo").await;
+    let parent = seat(&id, "claude");
+    let args = json!({"request_id": "child1", "name": "Helper", "task": "Check the endpoints"});
+    let (ok, result, error) = common::seat_tools::direct(s, &parent, "spawn_agent", args).await;
+    assert!(ok, "{error:?}");
+    let child = result["child"].as_str().unwrap().to_string();
+    wait_lifecycle(s, &[&child], SeatLifecycle::Running).await;
+    (id, parent, child)
+}
+
+#[tokio::test]
+async fn a_paused_agent_pauses_and_resumes_the_agents_it_started() {
+    let (s, _runner, _dir) = common::seat_tools::with_tools().await;
+    let (_, parent, child) = parent_and_child(&s).await;
+
+    let body = ok(control(&s, &parent, "pause").await);
+    assert_eq!(affected(&body), vec![parent.clone()]);
+    assert_eq!(skipped(&body)[0].0, child);
+    assert_eq!(skipped(&body)[0].1, "started_by_agent");
+    wait_paused(&s, &[&parent, &child]).await;
+    let kept = (session(&s, &parent), session(&s, &child));
+
+    let body = ok(control(&s, &parent, "resume").await);
+    assert_eq!(affected(&body), {
+        let mut both = vec![parent.clone(), child.clone()];
+        both.sort();
+        both
+    });
+    wait_lifecycle(&s, &[&parent, &child], SeatLifecycle::Running).await;
+    assert_resumed(&s, &parent, kept.0);
+    assert_resumed(&s, &child, kept.1);
+}
+
+#[tokio::test]
+async fn pause_all_and_resume_all_cover_the_agents_an_agent_started() {
+    let (s, _runner, _dir) = common::seat_tools::with_tools().await;
+    let (id, parent, child) = parent_and_child(&s).await;
+
+    let body = ok(team_action(&s, &id, "pause", &rid()).await);
+    assert_eq!(affected(&body), vec![parent.clone()]);
+    let skipped = skipped(&body);
+    assert_eq!(
+        (&skipped[0].0, skipped[0].1.as_str()),
+        (&child, "started_by_agent")
+    );
+    wait_paused(&s, &[&parent, &child]).await;
+
+    let body = ok(team_action(&s, &id, "resume", &rid()).await);
+    assert_eq!(affected(&body).len(), 2, "{body}");
+    assert!(common::pausing::skipped(&body).is_empty(), "{body}");
+    wait_lifecycle(&s, &[&parent, &child], SeatLifecycle::Running).await;
+}

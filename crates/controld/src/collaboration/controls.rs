@@ -1,7 +1,9 @@
+use super::TeamControlResult;
 use crate::error::ApiError;
 use crate::reconciler;
-use crate::state::AppState;
+use crate::state::{AppState, BootGuard};
 use crate::store::ControlMode;
+use crate::views::SeatView;
 use model::{EventBody, MessageIntent, SeatLifecycle};
 
 /// What the operator (or a limit) asks of a running agent.
@@ -35,106 +37,139 @@ impl Control {
 }
 
 pub async fn control_agent(st: &AppState, seat: &str, control: Control) -> Result<(), ApiError> {
+    control_seat(st, seat, control).await.map(|_| ())
+}
+
+/// `control_agent`, with what a pause or the resume of a paused agent did (None for the others).
+pub async fn control_seat(
+    st: &AppState,
+    seat: &str,
+    control: Control,
+) -> Result<Option<TeamControlResult>, ApiError> {
     let view = st
         .store
         .lock()
         .expect("store mutex must not be poisoned")
         .seat(seat)?
         .ok_or_else(|| ApiError::not_found("Unknown agent"))?;
+    if let Some(done) = super::pausing::pause_or_resume(st, &view, control).await? {
+        return Ok(Some(done));
+    }
     if control == Control::Resume {
-        if super::pausing::is_paused(st, seat)? {
-            return super::pausing::resume_one(st, &view).await;
-        }
-        if st
-            .store
-            .lock()
-            .expect("store mutex must not be poisoned")
-            .budget_exhausted(seat)?
-        {
-            return Err(ApiError::conflict(
-                "budget_exhausted",
-                "This agent reached its output budget. Start a new project run to reset it.",
-            ));
-        }
-        st.store
-            .lock()
-            .expect("store mutex must not be poisoned")
-            .clear_control(seat)?;
-        if view.lifecycle != SeatLifecycle::Running {
-            reconciler::restart_seat(st, seat).await?;
-        }
-        return Ok(());
+        return undo_stop(st, &view).await.map(|()| None);
     }
-    let _claim = st.try_begin_boot(&view.rig).ok_or_else(|| {
-        ApiError::conflict(
-            "team_starting",
-            "Project is changing. Retry the stop after that operation finishes.",
-        )
-    })?;
-    if control == Control::Pause {
-        return super::pausing::pause_one(st, &view).await;
-    }
-    let children = {
-        let store = st.store.lock().expect("store mutex must not be poisoned");
-        let mut all = store.children(seat)?;
-        let mut i = 0;
-        while i < all.len() {
-            let next = store.children(&all[i])?;
-            for child in next {
-                if !all.contains(&child) {
-                    all.push(child)
-                }
-            }
-            i += 1;
-        }
-        all
-    };
-    // Descendants must not continue after a hard stop of their parent.
+    let _claim = claim_for_stop(st, &view.rig)?;
     if control == Control::Hard {
-        let mut failures = Vec::new();
-        let matching_children = children
-            .iter()
-            .rev()
-            .map(String::as_str)
-            .chain(std::iter::once(seat));
-        for id in matching_children {
-            record(st, id, ControlMode::Hard)?;
-        }
-        // All at once: each stop interrupts at once and forces after 2 s, whatever the others do.
-        let ids: Vec<&str> = children
-            .iter()
-            .rev()
-            .map(String::as_str)
-            .chain(std::iter::once(seat))
-            .collect();
-        let stops = ids.iter().map(|id| reconciler::stop_seat_now(st, id));
-        let paired_ids = ids.iter().zip(futures::future::join_all(stops).await);
-        for (id, r) in paired_ids {
-            if let Err(e) = r {
-                failures.push(format!("{id}: {}", e.message));
-            }
-        }
-        if !failures.is_empty() {
-            return Err(ApiError::conflict("stop_failed", failures.join("; ")));
-        }
-        return Ok(());
+        return hard_stop(st, seat).await.map(|()| None);
     }
     record(st, seat, ControlMode::Soft)?;
     if view.lifecycle != SeatLifecycle::Running {
-        return Ok(());
+        return Ok(None);
     }
     let text = if control == Control::Checkpoint {
         checkpoint_text(seat)
     } else {
         SOFT_TEXT.to_string()
     };
-    send_wrap_up(st, &view, text).await
+    send_wrap_up(st, &view, text).await.map(|()| None)
+}
+
+/// Undoes a stop that is not a pause: the agent starts again, fresh.
+async fn undo_stop(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
+    refuse_if_budget_exhausted(st, &view.id)?;
+    st.store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .clear_control(&view.id)?;
+    if view.lifecycle != SeatLifecycle::Running {
+        reconciler::restart_seat(st, &view.id).await?;
+    }
+    Ok(())
+}
+
+fn claim_for_stop(st: &AppState, rig: &str) -> Result<BootGuard, ApiError> {
+    st.try_begin_boot(rig).ok_or_else(|| {
+        ApiError::conflict(
+            "team_starting",
+            "Project is changing. Retry the stop after that operation finishes.",
+        )
+    })
+}
+
+/// Refuses to start an agent again once its output budget ran out.
+pub(super) fn refuse_if_budget_exhausted(st: &AppState, seat: &str) -> Result<(), ApiError> {
+    let exhausted = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .budget_exhausted(seat)?;
+    if exhausted {
+        return Err(ApiError::conflict(
+            "budget_exhausted",
+            "This agent reached its output budget. Start a new project run to reset it.",
+        ));
+    }
+    Ok(())
+}
+
+/// Stops `seat` now with every agent it started (descendants must not continue after a hard stop of
+/// their parent). The caller holds the team's claim.
+async fn hard_stop(st: &AppState, seat: &str) -> Result<(), ApiError> {
+    // The agents it started first (the latest first), then the agent itself.
+    let mut ids = super::token_limits::with_descendants(
+        &st.store.lock().expect("store mutex must not be poisoned"),
+        seat,
+    )?;
+    ids.reverse();
+    stop_all_now(st, &ids).await
+}
+
+/// Records a hard stop of each of `ids`, then stops them all at once: each stop interrupts at once and
+/// forces after 2 s, whatever the others do.
+async fn stop_all_now(st: &AppState, ids: &[String]) -> Result<(), ApiError> {
+    for id in ids {
+        record(st, id, ControlMode::Hard)?;
+    }
+    let stops = ids.iter().map(|id| reconciler::stop_seat_now(st, id));
+    let failures: Vec<String> = ids
+        .iter()
+        .zip(futures::future::join_all(stops).await)
+        .filter_map(|(id, r)| r.err().map(|e| format!("{id}: {}", e.message)))
+        .collect();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(ApiError::conflict("stop_failed", failures.join("; ")))
+    }
+}
+
+/// The end of a soft stop's wrap-up: stopped now, unless it was undone (Resume) meanwhile. A team
+/// that is changing is left for the next tick.
+async fn finish_soft_stop(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
+    let Some(_claim) = st.try_begin_boot(&view.rig) else {
+        return Ok(());
+    };
+    let store_mode = || {
+        st.store
+            .lock()
+            .expect("store mutex must not be poisoned")
+            .control(&view.id)
+    };
+    if store_mode()? != Some(ControlMode::Soft) {
+        return Ok(());
+    }
+    hard_stop(st, &view.id).await?;
+    st.store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .set_control_mode(&view.id, ControlMode::Finished)?;
+    Ok(())
 }
 
 /// Sends a running agent its wrap-up instruction, remembered so the stop follows its wrap-up turn.
 pub(super) async fn send_wrap_up(
     st: &AppState,
-    view: &crate::views::SeatView,
+    view: &SeatView,
     text: String,
 ) -> Result<(), ApiError> {
     // Interrupting first makes the wrap-up instruction available even to CLIs that queue input.
@@ -170,12 +205,7 @@ const SOFT_TEXT: &str = "Soft stop requested by You. Wrap up the CURRENT assignm
 /// Stops `seats` (all of team `rig`) and every agent they started, now and all at once, like Ctrl+C,
 /// under one claim on the team (separate `control_agent` calls would refuse each other).
 pub async fn stop_now(st: &AppState, rig: &str, seats: &[String]) -> Result<(), ApiError> {
-    let _claim = st.try_begin_boot(rig).ok_or_else(|| {
-        ApiError::conflict(
-            "team_starting",
-            "Project is changing. Retry the stop after that operation finishes.",
-        )
-    })?;
+    let _claim = claim_for_stop(st, rig)?;
     let mut all: Vec<String> = Vec::new();
     {
         let store = st.store.lock().expect("store mutex must not be poisoned");
@@ -188,21 +218,7 @@ pub async fn stop_now(st: &AppState, rig: &str, seats: &[String]) -> Result<(), 
             );
         }
     }
-    for id in &all {
-        record(st, id, ControlMode::Hard)?;
-    }
-    let results =
-        futures::future::join_all(all.iter().map(|id| reconciler::stop_seat_now(st, id))).await;
-    let failures: Vec<String> = all
-        .iter()
-        .zip(results)
-        .filter_map(|(id, r)| r.err().map(|e| format!("{id}: {}", e.message)))
-        .collect();
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(ApiError::conflict("stop_failed", failures.join("; ")))
-    }
+    stop_all_now(st, &all).await
 }
 
 pub(super) fn record(st: &AppState, seat: &str, mode: ControlMode) -> Result<(), ApiError> {
@@ -230,51 +246,46 @@ async fn check(st: &AppState) -> Result<(), ApiError> {
         .lock()
         .expect("store mutex must not be poisoned")
         .soft_stops()?;
-    for crate::store::SoftStop {
-        seat,
-        baseline: base,
-        requested_ms: at,
-        message_id: msg,
-        pausing,
-    } in controls
-    {
-        let stop = {
+    for stop in controls {
+        let view = {
             let store = st.store.lock().expect("store mutex must not be poisoned");
-            let Some(view) = store.seat(&seat)? else {
-                continue;
-            };
-            let events = store.latest_events_for_seat(&seat, 2000)?;
-            let turn = msg.as_ref().and_then(|id| {
-                events.iter().find_map(|e| match &e.body {
-                    EventBody::MessageConsumed {
-                        message_id,
-                        turn_id,
-                    } if message_id == id => Some(turn_id),
-                    _ => None,
-                })
-            });
-            let ended = turn.is_some_and(|t| {
-                events
-                    .iter()
-                    .any(|e| matches!(&e.body,EventBody::TurnEnded{turn_id,..}if turn_id==t))
-            });
-            ended
-                || view.tokens_out.unwrap_or(0).saturating_sub(base) >= 5000
-                || model::now_ms() - at >= 300000
+            match store.seat(&stop.seat)? {
+                Some(view) if wrap_up_over(&store, &view, &stop)? => view,
+                _ => continue,
+            }
         };
-        if stop {
-            control_agent(st, &seat, Control::Hard).await?;
-            // A pause keeps the session for Resume; a soft stop is over.
-            let ended = if pausing {
-                ControlMode::Paused
-            } else {
-                ControlMode::Finished
-            };
-            st.store
-                .lock()
-                .expect("store mutex must not be poisoned")
-                .set_control_mode(&seat, ended)?;
+        // A pause keeps the session for Resume; a soft stop is over.
+        if stop.pausing {
+            super::pausing::finish_pause(st, &view).await?;
+        } else {
+            finish_soft_stop(st, &view).await?;
         }
     }
     Ok(())
+}
+
+/// A wrap-up is over after its turn, about 5,000 more output tokens, or 5 minutes.
+fn wrap_up_over(
+    store: &crate::store::Store,
+    view: &SeatView,
+    stop: &crate::store::SoftStop,
+) -> Result<bool, ApiError> {
+    let events = store.latest_events_for_seat(&stop.seat, 2000)?;
+    let turn = stop.message_id.as_ref().and_then(|id| {
+        events.iter().find_map(|e| match &e.body {
+            EventBody::MessageConsumed {
+                message_id,
+                turn_id,
+            } if message_id == id => Some(turn_id),
+            _ => None,
+        })
+    });
+    let ended = turn.is_some_and(|t| {
+        events
+            .iter()
+            .any(|e| matches!(&e.body,EventBody::TurnEnded{turn_id,..}if turn_id==t))
+    });
+    Ok(ended
+        || view.tokens_out.unwrap_or(0).saturating_sub(stop.baseline) >= 5000
+        || model::now_ms() - stop.requested_ms >= 300000)
 }

@@ -36,7 +36,7 @@ describe('api', () => {
   });
 
   it('pauses and resumes a whole team with request ids', async () => {
-    const result = { affected: ['team.a@t'], skipped: [{ seat: 'team.b@t', reason: 'It is not running (stopped)' }] };
+    const result = { affected: ['team.a@t'], skipped: [{ seat: 'team.b@t', code: 'not_running', reason: 'It is not running (stopped)' }] };
     const fetch = mockFetch(200, result);
     expect(await api.pauseTeam('t 1', 'req-p')).toEqual(result);
     await api.resumeTeam('t 1', 'req-r');
@@ -46,13 +46,18 @@ describe('api', () => {
   });
 
   it('pauses one agent through its control', async () => {
-    const fetch = mockFetch(200, { mode: 'pause' });
-    expect(await api.controlSeat('dev.a@r', 'pause', 'req-c')).toEqual({ mode: 'pause' });
+    const answer = { mode: 'pause', affected: ['dev.a@r'], skipped: [] };
+    const fetch = mockFetch(200, answer);
+    expect(await api.controlAgent('dev.a@r', 'pause', 'req-c')).toEqual(answer);
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe('/api/seats/dev.a%40r/control');
     expect(JSON.parse(init.body)).toEqual({ request_id: 'req-c', mode: 'pause' });
+  });
+
+  it('labels a team resume with a new request id when none is given', async () => {
+    const fetch = mockFetch(200, { affected: [], skipped: [] });
     await api.resumeTeam('t');
-    expect(JSON.parse(fetch.mock.calls[1][1].body).request_id).toMatch(/.{8,}/);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).request_id).toMatch(/.{8,}/);
   });
 
   it('generates a request id when none is given', async () => {

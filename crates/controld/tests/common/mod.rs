@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 pub mod community;
 pub mod m2;
+pub mod pausing;
 pub mod seat_tools;
 use controld::AppState;
 use model::SeatLifecycle;

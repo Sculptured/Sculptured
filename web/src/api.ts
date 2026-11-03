@@ -200,9 +200,9 @@ export const api = {
   /** The same, with the latest run's model-usage reports (tokens, and cost where a source prices it). */
   runUsage: (id: string) => get<EventRecord[]>(`${teamUrl(id)}/communications?run=latest&brief=true&usage=true`),
   agentControl: (id: string) => get<{mode: string | null}>(`${seatUrl(id)}/control`),
-  controlAgent: (id: string, mode: "soft" | "hard" | "resume", requestId: string) => post(`${seatUrl(id)}/control`, requestId, {mode}),
-  /** Pause (stop at the next safe point, keeping the session), resume, or stop one agent. */
-  controlSeat: (seat: string, mode: SeatControlMode, requestId = newRequestId()) => post<{ mode: SeatControlMode }>(`${seatUrl(seat)}/control`, requestId, { mode }),
+  /** Pause (stop at the next safe point, keeping the session), resume, or stop one agent. A pause, or
+   * the resume of a paused agent, answers `{mode}` plus a `TeamControlResult` (the agents it covered). */
+  controlAgent: (id: string, mode: SeatControlMode, requestId: string) => post(`${seatUrl(id)}/control`, requestId, {mode}),
   workflow: (id: string) => get<{ config: Workflow | null; run: WorkflowRun | null; active: boolean; usage?: Record<string, import('./generated/TurnTokens').TurnTokens>; dispatch?: import('./generated/DispatchRecord').DispatchRecord | null; dispatching?: boolean; start_seq?: number | null }>(`${teamUrl(id)}/workflow`),
   retryDispatch: (id: string, start_seq: number) => request<{ retried: boolean }>('POST', `${teamUrl(id)}/workflow/dispatch/retry`, { start_seq }),
   retryWorkflow: (id: string, task: string, start_seq: number) => request('POST', `${teamUrl(id)}/workflow/retry`, { task, start_seq }),
