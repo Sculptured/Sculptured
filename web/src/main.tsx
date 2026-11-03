@@ -14,6 +14,7 @@ import './power.css';
 import './distill.css';
 import './standard.css';
 import './pages.css';
+import './workspace/workspace.css';
 import './shell/logos.css';
 import { applyAppearance, readAppearance } from './appearance';
 
