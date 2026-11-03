@@ -31,12 +31,6 @@ export const RULE_WORDS: Record<string, string> = {
   'part-error': 'A part of the world reported an error (simulated runs)',
 };
 
-/** Agent status words that raise an alarm by themselves (see `LIFECYCLE` in status.ts). */
-const STATUS_RULES: [word: string, rule: string][] = [
-  ['failed', 'failed'],
-  ['needs attention', 'attention'],
-];
-
 const validThreshold = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
 /** Saved rules (any shape) over the defaults: unknown rules are dropped, new ones added, bad values ignored. */
@@ -53,32 +47,31 @@ export function withDefaults(saved: unknown): AlarmRule[] {
 
 /**
  * The alarms `feed` raises under `rules` at `now`, in feed order. A rule with a threshold fires once
- * its entry has waited that many seconds. An agent whose status now says failed or needs attention
- * raises an alarm too when no entry in the list already does (its event is older than the list).
+ * its entry has waited that many seconds. An alarm's id is its rule and the condition's key, so it is
+ * the same whichever entry or status reports it. An agent whose status raises an alarm now (`alarm`)
+ * adds one unless the list already has it (its event is older than the list).
  */
 export function alarmsFrom(feed: FeedItem[], agents: AgentLine[], rules: AlarmRule[], now: number): Alarm[] {
   const on = new Map(rules.filter((r) => r.on).map((r) => [r.id, r]));
-  const out: Alarm[] = [];
+  const out = new Map<string, Alarm>();
   for (const item of feed) {
     const rule = item.alarm ? on.get(item.alarm) : undefined;
     if (!rule) continue;
     const waited = now - item.at;
     if (rule.threshold !== undefined && waited < rule.threshold * 1000) continue;
+    const id = `${rule.id}:${item.alarmKey ?? item.id}`;
     const text = rule.threshold !== undefined ? `${item.text} (waiting ${Math.floor(waited / 60_000)} min)` : item.text;
-    out.push({ id: `${rule.id}:${item.id}`, rule: rule.id, at: item.at, ...(item.agent ? { agent: item.agent } : {}), text });
+    if (!out.has(id)) out.set(id, { id, rule: rule.id, at: item.at, ...(item.agent ? { agent: item.agent } : {}), text });
   }
-  return [...out, ...fromStatus(feed, agents, on, now)];
+  for (const a of fromStatus(feed, agents, on, now)) if (!out.has(a.id)) out.set(a.id, a);
+  return [...out.values()];
 }
 
 function fromStatus(feed: FeedItem[], agents: AgentLine[], on: Map<string, AlarmRule>, now: number): Alarm[] {
-  const out: Alarm[] = [];
-  for (const a of agents) {
-    const rule = STATUS_RULES.find(([word]) => word === a.status.word)?.[1];
-    if (!rule || !on.has(rule)) continue;
-    if (feed.some((i) => i.agent === a.id && i.alarm === rule)) continue;
+  return agents.flatMap((a) => {
+    if (!a.alarm || !on.has(a.alarm.rule)) return [];
     // When is unknown: the time of its latest entry in the list, else now.
     const at = feed.filter((i) => i.agent === a.id).at(-1)?.at ?? now;
-    out.push({ id: `${rule}:now:${a.id}`, rule, at, agent: a.id, text: `${a.name}: ${a.status.word} (its status now)` });
-  }
-  return out;
+    return [{ id: `${a.alarm.rule}:${a.alarm.key}`, rule: a.alarm.rule, at, agent: a.id, text: `${a.name}: ${a.status.word} (its status now)` }];
+  });
 }

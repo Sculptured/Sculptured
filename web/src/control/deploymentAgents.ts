@@ -5,11 +5,12 @@ import type { TeamControlResult } from '../generated/TeamControlResult';
 import { describeActivity } from '../progress/activity';
 import { hasProcess, LIFECYCLE } from '../status';
 import { WORDS } from '../vocab';
+import { sessionKey } from './deploymentFeed';
 import type { ActionReport, AgentLine, Availability, Tone } from './source';
 
 /** A deployment's agents, and whether each control can run now, in plain words. */
 
-/** Each agent's control mode from `GET /api/seats/:id/control` (null: none); undefined while unknown. */
+/** Each agent's control mode from `GET /api/teams/:id/controls` (null: none); undefined while unknown. */
 export type Modes = Record<string, string | null | undefined>;
 type Status = AgentLine['status'];
 
@@ -31,27 +32,38 @@ export function statusOf(seat: SeatView, mode: string | null | undefined, connec
   const base: Status = !problem && mode === 'paused'
     ? { glyph: '‖', word: 'paused', tone: 'idle' }
     : !problem && mode === 'pausing'
-      ? { glyph: '◑', word: 'pausing', tone: 'idle' }
+      ? { glyph: '⧗', word: 'pausing', tone: 'idle' }
       : { glyph: LIFECYCLE[seat.lifecycle].glyph, word: LIFECYCLE[seat.lifecycle].label, tone: TONE[seat.lifecycle] };
   return connected ? base : { ...base, word: `${base.word} (last known)`, tone: 'unknown' };
+}
+
+/** The alarm the agent's lifecycle raises now, keyed by its session (as its event is, in the feed). */
+function agentAlarm(seat: SeatView): AgentLine['alarm'] {
+  if (seat.lifecycle !== 'failed' && seat.lifecycle !== 'attention') return undefined;
+  return { rule: seat.lifecycle, key: sessionKey(seat.id, seat.tenure) };
 }
 
 export function agentLine(seat: SeatView, name: string, mode: string | null | undefined, connected: boolean, now: number): AgentLine {
   const known = seat.tokens_in !== null && seat.tokens_out !== null;
   const activity = describeActivity(seat, now);
+  const alarm = agentAlarm(seat);
   return {
     id: seat.id,
     name,
     status: statusOf(seat, mode, connected),
     ...(activity !== 'unknown' ? { activity } : {}),
     ...(known ? { tokens: { in: seat.tokens_in ?? 0, out: seat.tokens_out ?? 0 } } : {}),
+    ...(alarm ? { alarm } : {}),
   };
 }
 
+export const ALREADY_STOPPING = 'Already stopping.';
+
+/** Any other control mode (a soft or hard stop, a budget's) means it is already being stopped. */
 export function pauseCan(seat: SeatView, mode: string | null | undefined): Availability {
   if (mode === 'paused') return no(SKIP_WORDS.already_paused);
   if (mode === 'pausing') return no('Already pausing.');
-  if (seat.lifecycle === 'stopping' || mode === 'soft' || mode === 'hard') return no(SKIP_WORDS.already_stopping);
+  if (mode || seat.lifecycle === 'stopping') return no(ALREADY_STOPPING);
   return seat.lifecycle === 'running' ? OK : no(SKIP_WORDS.not_running);
 }
 
@@ -70,19 +82,29 @@ export function messageCan(seat: SeatView, text: string): Availability {
   return text.trim() ? OK : no('Type a message to send.');
 }
 
-/** Pause all, Resume all and Emergency stop, from the agents and their control modes. */
-export function teamCan(seats: SeatView[], modes: Modes, loading: boolean): Record<'pauseAll' | 'resumeAll' | 'emergencyStop', Availability> {
-  if (loading) return { pauseAll: no(CONNECTING), resumeAll: no(CONNECTING), emergencyStop: no(CONNECTING) };
+export const ALREADY_RUNNING = 'The team is already running.';
+type TeamCan = Record<'start' | 'pauseAll' | 'resumeAll' | 'emergencyStop', Availability>;
+
+/** Start, Pause all, Resume all and Emergency stop, from the agents and their control modes. */
+export function teamCan(seats: SeatView[], modes: Modes, loading: boolean): TeamCan {
+  if (loading) return { start: no(CONNECTING), pauseAll: no(CONNECTING), resumeAll: no(CONNECTING), emergencyStop: no(CONNECTING) };
   const live = seats.filter(mayHaveProcess);
-  const running = seats.filter((s) => s.lifecycle === 'running' && !isPaused(modes[s.id]));
   const paused = seats.filter((s) => isPaused(modes[s.id]));
   return {
-    pauseAll: running.length > 0
-      ? { ok: true, note: `Pauses ${plural(running.length, 'agent')}` }
-      : no(paused.length > 0 ? SKIP_WORDS.already_paused : NOTHING_RUNNING),
+    start: live.length > 0 ? no(ALREADY_RUNNING) : OK,
+    pauseAll: pauseAllCan(seats, modes, paused.length > 0),
     resumeAll: paused.length > 0 ? { ok: true, note: `Resumes ${plural(paused.length, 'agent')}` } : no('Nothing is paused'),
     emergencyStop: live.length > 0 ? { ok: true, note: `Stops ${plural(live.length, 'agent')}` } : no(NOTHING_RUNNING),
   };
+}
+
+/** Pause all acts on running agents without a control mode; the note counts only those. */
+function pauseAllCan(seats: SeatView[], modes: Modes, anyPaused: boolean): Availability {
+  const running = seats.filter((s) => s.lifecycle === 'running');
+  const free = running.filter((s) => !modes[s.id]);
+  if (free.length > 0) return { ok: true, note: `Pauses ${plural(free.length, 'agent')}` };
+  if (anyPaused) return no(SKIP_WORDS.already_paused);
+  return no(running.length > 0 ? ALREADY_STOPPING : NOTHING_RUNNING);
 }
 
 /** A pause or resume's answer. `notes` (plain words about agents it acted on) is absent from older servers. */

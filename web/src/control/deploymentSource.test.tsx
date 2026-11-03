@@ -1,61 +1,18 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { act, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import type { EventRecord } from '../generated/EventRecord';
-import type { QuestionView } from '../generated/QuestionView';
-import type { RigSnapshot } from '../generated/RigSnapshot';
-import { ShellContext, type RunHandle, type Shell } from '../shell/ShellContext';
-import { ev, FakeEventSource, openFake, seatView, snapshot } from '../test-fixtures';
-import { ALL_TEAMS_STREAM, useTeams } from '../useTeams';
-import { useDeploymentSource } from './deploymentSource';
+import { ev, seatView, snapshot } from '../test-fixtures';
+import { alarmsFrom, DEFAULT_RULES } from './alarms';
+import { A, B, open, question, resetFakes, stream } from './testHarness';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
-  const fns = ['listRigs', 'latestSeatEvents', 'teamQuestions', 'answer', 'teamUsage', 'teamBudget', 'runUsage', 'agentControl', 'controlAgent', 'pauseTeam', 'resumeTeam', 'stopTeamNow', 'send'] as const;
+  const fns = ['listRigs', 'latestSeatEvents', 'teamQuestions', 'answer', 'teamUsage', 'teamBudget', 'runUsage', 'teamControls', 'controlAgent', 'pauseTeam', 'resumeTeam', 'stopTeamNow', 'send'];
   return { ...m, api: { ...m.api, ...Object.fromEntries(fns.map((f) => [f, vi.fn()])) } };
 });
 
-const NOW = 60_000;
-const A = 'dev.a@r';
-const B = 'dev.b@r';
-const run: { current: RunHandle | null } = { current: null };
-
-function Wrapper({ children }: { children: ReactNode }) {
-  const { teams } = useTeams('r', openFake);
-  const shell = { teams, names: { r: { [A]: 'Builder' } }, titles: { r: 'My team' }, now: NOW, refs: { run } } as unknown as Shell;
-  return <ShellContext.Provider value={shell}>{children}</ShellContext.Provider>;
-}
-
-const stream = () => FakeEventSource.instances.filter((i) => i.url === ALL_TEAMS_STREAM).at(-1)!;
-async function open(snap: RigSnapshot, history: Record<string, EventRecord[]> = {}) {
-  vi.mocked(api.latestSeatEvents).mockImplementation(async (id: string) => history[id] ?? []);
-  const hook = renderHook(() => useDeploymentSource('r'), { wrapper: Wrapper });
-  act(() => stream().emit('snapshot', snap));
-  act(() => stream().emit('ready', {}));
-  await act(async () => {});
-  return hook;
-}
-
-function question(id: string, over: Partial<QuestionView> = {}): QuestionView {
-  return {
-    id, seat: A, rig: 'r', source: 'approval', state: 'open', opened_at_ms: 5, deadline_ms: null, answer: null, answered_at_ms: null, late_answer: null,
-    decision: null, withdrawn_reason: null, acknowledged: false, consequence: [], expired_seq: null, unconfirmed: null,
-    prompt: { header: null, text: `Prompt ${id}`, options: [], allow_other: false, tool: null, tool_input: null }, ...over,
-  };
-}
-
-beforeEach(() => {
-  FakeEventSource.reset();
-  vi.clearAllMocks();
-  run.current = null;
-  vi.mocked(api.listRigs).mockResolvedValue([]);
-  vi.mocked(api.teamQuestions).mockResolvedValue([]);
-  vi.mocked(api.teamUsage).mockResolvedValue({ agents: [{ seat: A, points: [{ at_ms: 1, input: 100, output: 50, cache_read: 0 }], reports: 1, context: null }] });
-  vi.mocked(api.teamBudget).mockResolvedValue({ output_limit: null, agents: [], waiting: [] });
-  vi.mocked(api.runUsage).mockResolvedValue([ev(9, { type: 'usage-reported', turn_id: null, input_tokens: 1, output_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0, cost: { usd: 0.5, source: 'claude-code' } })]);
-  vi.mocked(api.agentControl).mockResolvedValue({ mode: null });
-});
+beforeEach(resetFakes);
 
 describe('useDeploymentSource', () => {
   it('deployment_source_maps_agents_and_feed', async () => {
@@ -71,7 +28,7 @@ describe('useDeploymentSource', () => {
     expect([s.kind, s.title, s.running]).toEqual(['deployment', 'My team', true]);
     expect(s.agents).toEqual([
       { id: A, name: 'Builder', status: { glyph: '●', word: 'running', tone: 'ok' }, activity: 'running a shell command', tokens: { in: 10, out: 20 } },
-      { id: B, name: 'b', status: { glyph: '✕', word: 'failed', tone: 'bad' }, activity: 'failed' },
+      { id: B, name: 'b', status: { glyph: '✕', word: 'failed', tone: 'bad' }, activity: 'failed', alarm: { rule: 'failed', key: `${B}:1` } },
     ]);
     expect(s.feed.map((f) => [f.id, f.agent, f.kind, f.text, f.alarm])).toEqual([
       ['1', A, 'tool-called', 'Builder ran a shell command: ls', undefined],
@@ -93,18 +50,37 @@ describe('useDeploymentSource', () => {
     ]);
     vi.mocked(api.answer).mockResolvedValue(question('q1', { state: 'answered' }));
     const { result } = await open(snapshot());
-    await waitFor(() => expect(result.current.approvals).toHaveLength(2));
+    await waitFor(() => expect(result.current.approvals).toHaveLength(3));
     expect(result.current.approvals).toEqual([
       { id: 'q1', agent: A, title: 'Raise the price', detail: 'Raise the price\nby 5%', kind: 'change' },
-      { id: 'q2', agent: B, title: 'Prompt q2', kind: 'question' },
+      { id: 'q2', agent: B, title: 'Use Bash: Prompt q2', detail: 'Prompt q2', kind: 'question' },
+      { id: 'q3', agent: A, title: 'Prompt q3', kind: 'answer' },
     ]);
     // Every open question waits in the feed, so the question-waiting rule can time it.
-    expect(result.current.feed.filter((f) => f.alarm === 'question-waiting').map((f) => f.text)).toEqual([
-      'Builder asks you to approve a change', 'b asks to use Bash', 'Builder asked you a question',
+    expect(result.current.feed.filter((f) => f.alarm === 'question-waiting').map((f) => [f.text, f.alarmKey])).toEqual([
+      ['Builder asks you to approve a change', 'q1'], ['b asks to use Bash', 'q2'], ['Builder asked you a question', 'q3'],
     ]);
     await act(() => result.current.decide('q1', { allow: true }));
     await act(() => result.current.decide('q2', { allow: false, reason: 'too risky' }));
     expect(vi.mocked(api.answer).mock.calls.map((c) => c.slice(0, 2))).toEqual([['q1', { kind: 'allow' }], ['q2', { kind: 'deny', reason: 'too risky' }]]);
+    // A question that needs a written answer is answered in Needs you, never here.
+    await expect(result.current.decide('q3', { allow: true })).rejects.toThrow('Answer this in Needs you');
+    expect(api.answer).toHaveBeenCalledTimes(2);
+  });
+
+  it('the same decision pressed twice is sent once; another decision is a new request', async () => {
+    vi.mocked(api.teamQuestions).mockResolvedValue([question('q1')]);
+    const releases: (() => void)[] = [];
+    vi.mocked(api.answer).mockImplementation(() => new Promise((r) => { releases.push(() => r(question('q1', { state: 'answered' }))); }));
+    const { result } = await open(snapshot());
+    await waitFor(() => expect(result.current.approvals).toHaveLength(1));
+    let both: Promise<unknown> = Promise.resolve();
+    act(() => { both = Promise.all([result.current.decide('q1', { allow: true }), result.current.decide('q1', { allow: true })]); });
+    expect(api.answer).toHaveBeenCalledTimes(1);
+    let deny: Promise<unknown> = Promise.resolve();
+    act(() => { deny = result.current.decide('q1', { allow: false, reason: 'no' }); });
+    expect(api.answer).toHaveBeenCalledTimes(2);
+    await act(async () => { releases.forEach((r) => r()); await Promise.all([both, deny]); });
   });
 
   it('emergency_stop_unavailable_when_nothing_running', async () => {
@@ -115,7 +91,9 @@ describe('useDeploymentSource', () => {
     expect(s.team.emergencyStop.can).toEqual({ ok: false, why: 'Nothing is running' });
     expect(s.team.pauseAll.can).toEqual({ ok: false, why: 'Nothing is running' });
     expect(s.team.resumeAll.can).toEqual({ ok: false, why: 'Nothing is paused' });
-    expect(s.team.start.can).toEqual({ ok: false, why: 'Start the team from its project page.' });
+    expect(s.team.start.can).toEqual({ ok: true });
+    // Without the project bar, Start says where to start (read when pressed).
+    await expect(s.team.start.run()).resolves.toEqual({ text: 'Start the team from its project page.', skipped: [] });
     await expect(s.team.emergencyStop.run()).resolves.toEqual({ text: 'Nothing is running', skipped: [] });
     expect(api.stopTeamNow).not.toHaveBeenCalled();
 
@@ -130,29 +108,28 @@ describe('useDeploymentSource', () => {
     expect(reports[0]).toEqual({ text: 'Stopping 2 agents now, with every agent they started.', skipped: [] });
   });
 
-  it('pause and resume say why they cannot run, and name the agents a pause left alone', async () => {
-    vi.mocked(api.agentControl).mockImplementation(async (id: string) => ({ mode: id === B ? 'paused' : null }));
-    const { result } = await open(snapshot());
-    await waitFor(() => expect(result.current.agentControl(B, 'pause').can).toEqual({ ok: false, why: 'Already paused.' }));
-    expect(result.current.agents[1].status).toEqual({ glyph: '‖', word: 'paused', tone: 'idle' });
-    expect(result.current.agentControl(B, 'resume').can).toEqual({ ok: true });
-    expect(result.current.agentControl(A, 'resume').can).toEqual({ ok: false, why: 'Not paused, so there is nothing to resume.' });
-    expect(result.current.agentControl(A, 'stop').can).toEqual({ ok: true });
-    expect(result.current.message(A, '  ').can).toEqual({ ok: false, why: 'Type a message to send.' });
-    const answer = { affected: [A], skipped: [{ seat: B, code: 'already_paused' as const, reason: 'server words' }], notes: [{ seat: A, reason: 'A note' }] };
-    vi.mocked(api.pauseTeam).mockResolvedValue(answer as Awaited<ReturnType<typeof api.pauseTeam>>);
-    let report: unknown;
-    await act(async () => { report = await result.current.team.pauseAll.run(); });
-    expect(report).toEqual({
-      text: 'Paused 1 agent; 1 agent left as they were.',
-      skipped: [{ agent: B, name: 'b', reason: 'Already paused.' }],
-      notes: [{ agent: A, name: 'Builder', text: 'A note' }],
-    });
-    vi.mocked(api.send).mockResolvedValue({ message_id: 'm1' });
-    await act(async () => { await result.current.message(A, 'Check the tests').run(); });
-    expect(vi.mocked(api.send).mock.calls[0].slice(0, 2)).toEqual([A, { text: 'Check the tests', intent: 'instruct', interrupt: false }]);
-    vi.mocked(api.controlAgent).mockResolvedValue({ mode: 'hard' });
-    await act(async () => { await result.current.agentControl(A, 'stop').run(); });
-    expect(vi.mocked(api.controlAgent).mock.calls[0].slice(0, 2)).toEqual([A, 'hard']);
+  it('alarm ids stay the same with the event in or out of the list, and across a disconnect', async () => {
+    const failedB = snapshot({ seats: [seatView('a'), seatView('b', { lifecycle: 'failed', lifecycle_reason: 'crashed', tenure: 3 })] });
+    vi.mocked(api.teamQuestions).mockResolvedValue([question('q3', { source: 'request-input' })]);
+    const LATER = 10 * 60_000;
+    const ids = (r: { current: { feed: Parameters<typeof alarmsFrom>[0]; agents: Parameters<typeof alarmsFrom>[1] } }) =>
+      alarmsFrom(r.current.feed, r.current.agents, DEFAULT_RULES, LATER).map((a) => a.id).sort();
+    const want = [`failed:${B}:3`, 'question-waiting:q3'];
+    const withEvents: Record<string, EventRecord[]> = {
+      [A]: [ev(1, { type: 'question-raised', question_id: 'q3', source: 'request-input', prompt: question('q3').prompt, turn_id: null })],
+      [B]: [ev(2, { type: 'tenure-started', tenure: 3, cause: 'fresh', driver: 'stub', native_session_id: null, caps: seatView('b').caps! }, B),
+        ev(3, { type: 'seat-lifecycle-changed', lifecycle: 'failed', reason: 'crashed' }, B)],
+    };
+    const first = await open(failedB, withEvents);
+    await waitFor(() => expect(first.result.current.feed.filter((f) => f.alarm)).toHaveLength(2));
+    expect(ids(first.result)).toEqual(want);
+    first.unmount();
+
+    const second = await open(failedB, {});
+    await waitFor(() => expect(second.result.current.feed.some((f) => f.alarmKey === 'q3')).toBe(true));
+    expect(ids(second.result)).toEqual(want);
+    act(() => stream().fail());
+    await waitFor(() => expect(second.result.current.agents[1].status.word).toBe('failed (last known)'));
+    expect(ids(second.result)).toEqual(want);
   });
 });

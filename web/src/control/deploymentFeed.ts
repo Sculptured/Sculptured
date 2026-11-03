@@ -5,12 +5,15 @@ import type { SeatView } from '../generated/SeatView';
 import type { TeamBudget } from '../generated/TeamBudget';
 import { activityLines } from '../progress/sentences';
 import { ACTIVITY, hasProcess } from '../status';
+import { eventWords } from './eventWords';
 import type { FeedItem } from './source';
 
 /** A deployment's events as the Control feed: plain words, the record as evidence, and alarm tags. */
 
-type Body<T extends EventBody['type']> = Extract<EventBody, { type: T }>;
 type NameOf = (seatId: string) => string;
+
+/** What the feed needs besides the events: names, the team's title, the agents now, questions and budget. */
+export type FeedContext = { nameOf: NameOf; title: string; seats: Record<string, SeatView>; questions: QuestionView[]; budget: TeamBudget | null };
 
 /** How many minutes `toolCallsPerMin` covers. */
 export const RATE_MINUTES = 15;
@@ -18,45 +21,74 @@ export const RATE_MINUTES = 15;
 /**
  * The merged list, oldest first: every event (with the progress log's sentence where it has one),
  * an entry for each open question whose event is older than the list, and the run budget's stop or
- * pause. Open questions are tagged `question-waiting`; the alarms module applies the wait threshold.
+ * pause. Open questions are tagged `question-waiting` (keyed by question); the alarms module applies
+ * the wait threshold. A failure or attention is keyed by its agent and session (see `sessionKeys`).
  */
-export function feedFrom(events: EventRecord[], nameOf: NameOf, questions: QuestionView[], budget: TeamBudget | null): FeedItem[] {
-  const said = new Map(activityLines(events, nameOf).map((l) => [l.seq, l.text]));
-  const open = new Set(questions.filter((q) => q.state === 'open').map((q) => q.id));
-  const items = events.map((e) => eventItem(e, said.get(e.seq), nameOf, open));
+export function feedFrom(events: EventRecord[], c: FeedContext): FeedItem[] {
+  const said = new Map(activityLines(events, c.nameOf).map((l) => [l.seq, l.text]));
+  const open = new Set(c.questions.filter((q) => q.state === 'open').map((q) => q.id));
+  const sessions = sessionKeys(events, c.seats);
+  const items = events.map((e) => eventItem(e, said.get(e.seq) ?? null, c, (b) => alarmOf(b, open, sessions.get(e.seq))));
   const raised = new Set(events.flatMap((e) => (e.body.type === 'question-raised' ? [e.body.question_id] : [])));
-  const older = questions.filter((q) => open.has(q.id) && !raised.has(q.id)).map((q) => questionItem(q, nameOf));
-  const run = budgetItem(budget);
+  const older = c.questions.filter((q) => open.has(q.id) && !raised.has(q.id)).map((q) => questionItem(q, c.nameOf));
+  const run = budgetItem(c.budget);
   return [...items, ...older, ...(run ? [run] : [])].sort((a, b) => a.at - b.at);
 }
 
-function eventItem(e: EventRecord, sentence: string | undefined, nameOf: NameOf, open: Set<string>): FeedItem {
+type Tag = { alarm: string; alarmKey?: string } | null;
+
+function eventItem(e: EventRecord, sentence: string | null, c: FeedContext, tag: (b: EventBody) => Tag): FeedItem {
   const seat = e.subject.kind === 'seat' ? e.subject.id : undefined;
-  const who = seat ? nameOf(seat) : 'An agent';
-  const text = sentence ?? moreWords(who, e.body) ?? fallbackWords(who, e.body.type);
-  const alarm = alarmOf(e.body, open);
-  return { id: `${e.seq}`, at: e.at_ms, ...(seat ? { agent: seat } : {}), kind: e.body.type, text, raw: e, ...(alarm ? { alarm } : {}) };
+  // Events about the whole team speak of it by its title.
+  const who = seat ? c.nameOf(seat) : e.subject.kind === 'rig' ? c.title : 'An agent';
+  const text = sentence ?? moreWords(who, e.body) ?? `${who} ${eventWords(e.body.type)}`;
+  return { id: `${e.seq}`, at: e.at_ms, ...(seat ? { agent: seat } : {}), kind: e.body.type, text, raw: e, ...tag(e.body) };
 }
 
-/** The alarm rule an event raises (see alarms.ts), if any. */
-function alarmOf(b: EventBody, open: Set<string>): string | undefined {
+/** The alarm rule an event raises (see alarms.ts), with the key of what it reports; null for none. */
+function alarmOf(b: EventBody, open: Set<string>, session: string | undefined): Tag {
   switch (b.type) {
     case 'seat-lifecycle-changed':
-      return b.lifecycle === 'failed' ? 'failed' : b.lifecycle === 'attention' ? 'attention' : undefined;
+      if (b.lifecycle !== 'failed' && b.lifecycle !== 'attention') return null;
+      return { alarm: b.lifecycle, ...(session ? { alarmKey: session } : {}) };
     case 'stall-suspected':
-      return 'stall';
+      return { alarm: 'stall' };
     case 'context-ceiling-reached':
-      return 'context-ceiling';
+      return { alarm: 'context-ceiling' };
     case 'limit-reached':
-      return 'limit';
+      return { alarm: 'limit' };
     case 'question-raised':
-      return open.has(b.question_id) ? 'question-waiting' : undefined;
+      return open.has(b.question_id) ? { alarm: 'question-waiting', alarmKey: b.question_id } : null;
     default:
-      return undefined;
+      return null;
   }
 }
 
-/** Words for events the progress log leaves out (it has nothing to say about them there). */
+/** The key of an agent's session: the same for its failure event and its status (`agentAlarm`). */
+export const sessionKey = (seat: string, tenure: number | string) => `${seat}:${tenure}`;
+
+/**
+ * For each failure or attention event, its agent's session then: the latest session start before it
+ * in the list; else, before the list's first start for that agent, the session before that one; else
+ * (no start in the list since) the agent's session now. The list runs up to now, so this holds.
+ */
+function sessionKeys(events: EventRecord[], seats: Record<string, SeatView>): Map<number, string> {
+  const first = new Map<string, number>();
+  for (const e of events) if (e.body.type === 'tenure-started' && e.subject.kind === 'seat' && !first.has(e.subject.id)) first.set(e.subject.id, e.body.tenure);
+  const last = new Map<string, number>();
+  const out = new Map<number, string>();
+  for (const e of events) {
+    if (e.subject.kind !== 'seat') continue;
+    const seat = e.subject.id;
+    if (e.body.type === 'tenure-started') last.set(seat, e.body.tenure);
+    if (e.body.type !== 'seat-lifecycle-changed') continue;
+    const tenure = last.get(seat) ?? (first.has(seat) ? first.get(seat)! - 1 : seats[seat]?.tenure);
+    out.set(e.seq, sessionKey(seat, tenure ?? 'unknown'));
+  }
+  return out;
+}
+
+/** Sentences with the event's own details, for events the progress log has none for. */
 function moreWords(who: string, b: EventBody): string | null {
   switch (b.type) {
     case 'question-raised':
@@ -71,31 +103,8 @@ function moreWords(who: string, b: EventBody): string | null {
       return `${who} proposed a change: ${b.summary}`;
     case 'change-decided':
       return `${who}'s change was ${b.approved ? 'approved' : 'rejected'}`;
-    default:
-      return routineWords(who, b);
-  }
-}
-
-function askedWords(who: string, b: Body<'question-raised'> | Pick<QuestionView, 'source' | 'prompt'>): string {
-  if (b.source === 'approval') return `${who} asks you to approve a change`;
-  if (b.source === 'native-permission') return `${who} asks to use ${b.prompt.tool ?? 'a tool'}`;
-  return `${who} asked you a question`;
-}
-
-function routineWords(who: string, b: EventBody): string | null {
-  switch (b.type) {
-    case 'question-answered':
-      return `${who}'s question was answered`;
-    case 'question-expired':
-      return `${who}'s question expired`;
-    case 'question-withdrawn':
-      return `${who} withdrew its question`;
-    case 'usage-reported':
-      return `${who} reported its token use`;
-    case 'turn-started':
-      return `${who} started a turn`;
-    case 'tenure-started':
-      return `${who} started a session`;
+    case 'rig-desired-changed':
+      return `${who} was set to ${b.desired === 'running' ? 'run' : 'stop'}`;
     case 'seat-activity-changed':
       return `${who} is ${ACTIVITY[b.activity].label}`;
     default:
@@ -103,15 +112,18 @@ function routineWords(who: string, b: EventBody): string | null {
   }
 }
 
-/** Anything else: the record's type in words (the record itself is the evidence). */
-function fallbackWords(who: string, type: string): string {
-  const words = type.replace(/-/g, ' ').replace(/\bseat\b/g, 'agent').replace(/\brig\b/g, 'team');
-  return `${who}: ${words}`;
+function askedWords(who: string, b: Pick<QuestionView, 'source' | 'prompt'>): string {
+  if (b.source === 'approval') return `${who} asks you to approve a change`;
+  if (b.source === 'native-permission') return `${who} asks to use ${b.prompt.tool ?? 'a tool'}`;
+  return `${who} asked you a question`;
 }
 
 /** An open question asked before the oldest event in the list. */
 function questionItem(q: QuestionView, nameOf: NameOf): FeedItem {
-  return { id: `question:${q.id}`, at: q.opened_at_ms, agent: q.seat, kind: 'question-raised', text: askedWords(nameOf(q.seat), q), raw: q, alarm: 'question-waiting' };
+  return {
+    id: `question:${q.id}`, at: q.opened_at_ms, agent: q.seat, kind: 'question-raised', text: askedWords(nameOf(q.seat), q), raw: q,
+    alarm: 'question-waiting', alarmKey: q.id,
+  };
 }
 
 const BUDGET_WORDS = {

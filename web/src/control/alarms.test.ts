@@ -5,7 +5,9 @@ import type { AgentLine, FeedItem } from './source';
 const item = (id: string, alarm: string | undefined, at = 1_000, agent = 'a'): FeedItem => ({
   id, at, agent, kind: 'k', text: `text ${id}`, raw: {}, alarm,
 });
-const line = (id: string, word: string): AgentLine => ({ id, name: id.toUpperCase(), status: { glyph: '•', word, tone: 'idle' } });
+const line = (id: string, word: string, alarm?: AgentLine['alarm']): AgentLine => ({
+  id, name: id.toUpperCase(), status: { glyph: '•', word, tone: 'idle' }, ...(alarm ? { alarm } : {}),
+});
 const RULE_IDS = ['failed', 'attention', 'stall', 'context-ceiling', 'limit', 'question-waiting', 'part-error'];
 const LATER = 10 * 60_000;
 
@@ -36,14 +38,18 @@ describe('alarm rules', () => {
   });
 
   it('an agent failed or needing attention now raises an alarm when its event is not in the list', () => {
-    const agents = [line('a', 'failed'), line('b', 'needs attention'), line('c', 'running')];
+    const agents = [line('a', 'failed', { rule: 'failed', key: 'a:1' }), line('b', 'needs attention', { rule: 'attention', key: 'b:2' }), line('c', 'running')];
     const fromState = alarmsFrom([item('x', undefined, 5, 'b')], agents, DEFAULT_RULES, 9);
     expect(fromState).toEqual([
-      { id: 'failed:now:a', rule: 'failed', at: 9, agent: 'a', text: 'A: failed (its status now)' },
-      { id: 'attention:now:b', rule: 'attention', at: 5, agent: 'b', text: 'B: needs attention (its status now)' },
+      { id: 'failed:a:1', rule: 'failed', at: 9, agent: 'a', text: 'A: failed (its status now)' },
+      { id: 'attention:b:2', rule: 'attention', at: 5, agent: 'b', text: 'B: needs attention (its status now)' },
     ]);
-    // The event's own alarm is enough: no second one from the status.
-    expect(alarmsFrom([item('f', 'failed', 3, 'a')], [line('a', 'failed')], DEFAULT_RULES, 9).map((a) => a.id)).toEqual(['failed:f']);
+    // The event's own alarm has the same id: one alarm, from the event.
+    const withEvent = alarmsFrom([{ ...item('f', 'failed', 3, 'a'), alarmKey: 'a:1' }], agents.slice(0, 1), DEFAULT_RULES, 9);
+    expect(withEvent).toEqual([{ id: 'failed:a:1', rule: 'failed', at: 3, agent: 'a', text: 'text f' }]);
+    // The status word does not matter (disconnected: "last known").
+    const lastKnown = alarmsFrom([], [line('a', 'failed (last known)', { rule: 'failed', key: 'a:1' })], DEFAULT_RULES, 9);
+    expect(lastKnown.map((a) => a.id)).toEqual(['failed:a:1']);
   });
 
   it('saved rules keep the user choices, gain new rules and drop unknown ones', () => {

@@ -1,0 +1,71 @@
+import type { EventBody } from '../generated/EventBody';
+
+/**
+ * Every recorded event's type as plain words, for feed entries the progress log has no sentence for:
+ * "<who> <words>". Exhaustive, so a new event type has to be given words here. No OpenRig words.
+ */
+export const EVENT_WORDS: Record<EventBody['type'], string> = {
+  'team-topology-changed': 'started another agent',
+  'rig-booted': 'started',
+  'rig-desired-changed': 'was set to run or to stop',
+  'seat-lifecycle-changed': 'changed status',
+  'seat-activity-changed': 'changed what it is doing',
+  'tenure-started': 'started a session',
+  'tenure-ended': 'ended a session',
+  'turn-started': 'started a turn',
+  'agent-text': 'replied',
+  'tool-called': 'used a tool',
+  'tool-resulted': 'got a tool result',
+  'usage-reported': 'reported its token use',
+  'turn-ended': 'finished a turn',
+  'message-queued': 'received a message',
+  'message-delivered': 'had a message delivered',
+  'message-consumed': 'read a message',
+  'message-failed': 'had a message that could not be delivered',
+  'message-held': 'had a message held back',
+  'protection-applied': 'was kept from an action by a protection',
+  'stall-suspected': 'may be stuck (suspected)',
+  'context-ceiling-reached': 'reached its context limit',
+  'events-lost': 'lost some events from its log',
+  unrecognized: 'sent something not recognised',
+  'handoff-waiting': 'is waiting for work from other agents',
+  'handed-over': 'was given work by another agent',
+  'handover-requested': 'was asked to pass its work on again',
+  'question-raised': 'asked a question',
+  'question-answered': 'had its question answered',
+  'question-expired': 'had its question expire',
+  'question-decided': 'had its question decided',
+  'question-withdrawn': 'withdrew its question',
+  'question-acknowledged': 'had its question acknowledged',
+  'findings-reported': 'reported findings',
+  'status-page-written': 'wrote the status page',
+  'change-proposed': 'proposed a change',
+  'change-checked': "had its change checked against the team's rules",
+  'change-decided': 'had its change decided',
+  'result-checked': 'had its result checked',
+  'trigger-received': 'received an outside event',
+  'trigger-handled': 'handled an outside event',
+  'report-rejected': 'sent a report that was not accepted',
+  'action-interpreted': 'had an action read for risks',
+  'new-session-requested': 'was asked to start a new session',
+  'restore-needed': 'waits for a decision about bringing it back',
+  'restore-decided': 'had the decision about bringing it back made',
+  'limit-reached': 'hit a usage limit',
+  'features-dropped': 'runs without some features',
+  'question-answer-failed': 'could not be given an answer',
+  'question-resolved': 'had its question resolved',
+  'question-answer-unconfirmed': 'may not have received an answer',
+  'question-answer-confirmed': 'received an answer',
+  'model-observed': 'said which model it uses',
+  'thinking-recorded': 'thought',
+  'context-reported': 'reported how full its context is',
+  'plan-usage-reported': 'reported plan usage',
+  'budget-state-changed': 'had its budget standing change',
+  'check-started': 'started a check',
+  'check-ran': 'ran a check',
+};
+
+/** The words for an event type, or a plain fallback for one this page does not know yet. */
+export function eventWords(type: string): string {
+  return (EVENT_WORDS as Record<string, string>)[type] ?? 'recorded something (see the raw record)';
+}

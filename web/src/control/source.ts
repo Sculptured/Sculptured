@@ -23,20 +23,30 @@ export type AgentLine = {
   activity?: string;
   /** Running totals as its CLI reported them; absent when unknown (never 0 for unknown). */
   tokens?: { in: number; out: number };
+  /**
+   * The alarm rule its status raises now (failed, attention), with a key that names the condition
+   * stably (the same key its event uses), so the alarm keeps its id whether it comes from here or
+   * from the feed, and while the stream is disconnected.
+   */
+  alarm?: { rule: string; key: string };
 };
 
 /**
  * One entry of the merged event list, oldest first. `kind` is the record's own type (for filters),
  * `text` plain words, `raw` the record itself (evidence). `alarm` names the alarm rule this entry
- * raises (see alarms.ts), when it raises one.
+ * raises (see alarms.ts), when it raises one; `alarmKey` names the condition it reports (a question,
+ * an agent's session) so its alarm id stays the same however the condition is seen. Without one the
+ * entry's id is the key.
  */
-export type FeedItem = { id: string; at: number; agent?: string; kind: string; text: string; raw: unknown; alarm?: string };
+export type FeedItem = { id: string; at: number; agent?: string; kind: string; text: string; raw: unknown; alarm?: string; alarmKey?: string };
 
 /**
- * A waiting decision that takes approve or reject: a proposed change (`change`) or a request to use
- * a tool (`question`). `title` and `detail` are the agent's own words (agent-reported evidence).
+ * Something an agent waits on the operator for: a proposed change (`change`) or a request to use a
+ * tool (`question`), both decided by approve or reject, or a question that needs a written answer
+ * (`answer`), which `decide` refuses: it is answered in Needs you. `title` and `detail` are the agent's
+ * own words (agent-reported evidence).
  */
-export type Approval = { id: string; agent?: string; title: string; detail?: string; kind: 'change' | 'question' };
+export type Approval = { id: string; agent?: string; title: string; detail?: string; kind: 'change' | 'question' | 'answer' };
 
 /**
  * What an action did, in plain words, with every agent it left alone and why, and (`notes`) anything

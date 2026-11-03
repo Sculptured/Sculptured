@@ -203,6 +203,8 @@ export const api = {
   /** Pause (stop at the next safe point, keeping the session), resume, or stop one agent. A pause, or
    * the resume of a paused agent, answers `{mode}` plus a `TeamControlResult` (the agents it covered). */
   controlAgent: (id: string, mode: SeatControlMode, requestId: string) => post(`${seatUrl(id)}/control`, requestId, {mode}),
+  /** Each agent of the team with a control mode (soft, hard, finished, budget, pausing, paused); others are absent. */
+  teamControls: (id: string) => get<import('./generated/TeamControls').TeamControls>(`${teamUrl(id)}/controls`),
   workflow: (id: string) => get<{ config: Workflow | null; run: WorkflowRun | null; active: boolean; usage?: Record<string, import('./generated/TurnTokens').TurnTokens>; dispatch?: import('./generated/DispatchRecord').DispatchRecord | null; dispatching?: boolean; start_seq?: number | null }>(`${teamUrl(id)}/workflow`),
   retryDispatch: (id: string, start_seq: number) => request<{ retried: boolean }>('POST', `${teamUrl(id)}/workflow/dispatch/retry`, { start_seq }),
   retryWorkflow: (id: string, task: string, start_seq: number) => request('POST', `${teamUrl(id)}/workflow/retry`, { task, start_seq }),
