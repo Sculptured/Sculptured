@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Dispatch, type ReactNode, type Ref, type RefObject, type SetStateAction } from 'react';
 import { AddPane } from './AddPane';
 import { addLayout, deleteLayout, duplicateLayout, renameLayout, resetLayout } from './layouts';
 import { LayoutTabs, type LayoutActions } from './LayoutTabs';
@@ -22,7 +22,12 @@ export type WorkspacePageProps = {
   header?: ReactNode;
   /** The route a popped-out pane opens at, such as `/p/team/control/pane/<instance>`. */
   paneRoute(instance: string): string;
+  /** For the page's own controls (the header's master caution): bring a pane type forward. */
+  handle?: Ref<WorkspaceHandle>;
 };
+
+/** `show(type)`: focuses a pane of that type (any copy), shows its window if popped out, or adds one. */
+export type WorkspaceHandle = { show(type: string): void };
 
 type SetValue = Dispatch<SetStateAction<PageLayouts>>;
 type Post = ReturnType<typeof useChannelPost>;
@@ -120,13 +125,15 @@ function PageShell(props: WorkspacePageProps) {
   const focusTab = useFocusTab(box);
   const pop = usePopOut(props.paneRoute, layout, setValue, focused);
   const show = (id: string) => { setCurrent(id); focusTab(id); };
+  const choose = chooser(layout, setRoot, focused, show, pop.slots.reopen);
+  useImperativeHandle(props.handle, () => ({ show: (type) => { const t = registry.get(type); if (t) choose({ ...t, multi: false }); } }));
   return (
     <SlotContext.Provider value={pop.slots}>
       <div ref={box} className="workspace" data-look={value.look === 'app' ? undefined : 'mission'}>
         {props.header && <div className="workspace-header">{props.header}</div>}
         <div className="workspace-bar">
           <LayoutTabs value={value} act={layoutActions(value, setValue, props.defaults, post)} />
-          <AddPane registry={registry} ctx={props.ctx} layout={layout} onChoose={chooser(layout, setRoot, focused, show, pop.slots.reopen)} />
+          <AddPane registry={registry} ctx={props.ctx} layout={layout} onChoose={choose} />
           <LookSetting value={value} setValue={setValue} />
         </div>
         <Notice text={pop.notice} dismiss={pop.dismiss} />

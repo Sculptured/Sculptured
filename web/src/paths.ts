@@ -1,6 +1,7 @@
 /**
  * Every page's address. A project (team) lives under `/p/:team`, one page per job:
- * Board, Agents, an Agent (Conversation, Setup, Activity, Questions), Questions, Results and Settings.
+ * Control (its landing page), Board, Agents, an Agent (Conversation, Setup, Activity, Questions),
+ * Questions, Results and Settings.
  */
 
 const enc = encodeURIComponent;
@@ -23,6 +24,10 @@ export const RESULTS_SECTIONS: { id: ResultsSection; label: string }[] = [
   { id: 'history', label: 'History' },
 ];
 
+/** The project's landing page: its Control workspace, whose default layout shows the live board first. */
+export const controlPath = (team: string) => `/p/${enc(team)}/control`;
+/** Where a popped-out Control pane opens: that pane alone, without the app's bars. */
+export const controlPanePath = (team: string, instance: string) => `${controlPath(team)}/pane/${enc(instance)}`;
 export const boardPath = (team: string, mode?: BoardMode) => `/p/${enc(team)}/board${mode ? `?mode=${mode}` : ''}`;
 export const agentsPath = (team: string) => `/p/${enc(team)}/agents`;
 export const settingsPath = (team: string) => `/p/${enc(team)}/settings`;

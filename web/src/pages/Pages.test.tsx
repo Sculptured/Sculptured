@@ -28,6 +28,16 @@ beforeEach(() => {
   vi.mocked(api.seatQuestions).mockReset().mockResolvedValue([]);
 });
 
+describe('Project landing page', () => {
+  it('project_index_opens_control', async () => {
+    await twoTeams('/p/r');
+    expect(where()).toBe('/p/r/control');
+    expect(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('link', { name: 'Control' })).toHaveAttribute('aria-current', 'page');
+    // The board stays first: Control's default layout opens on the live board.
+    expect(await screen.findByRole('region', { name: 'Run board' })).toBeInTheDocument();
+  });
+});
+
 describe('Agents list', () => {
   it('a row opens its agent; ticked rows are messaged together, and Message all ticks every running one', async () => {
     await twoTeams('/p/r/agents');

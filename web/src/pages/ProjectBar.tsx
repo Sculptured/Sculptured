@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useMatch, useNavigate } from 'react-router-dom';
 import type { DraftIssue } from '../generated/DraftIssue';
-import { agentsPath, boardPath, questionsPath, resultsPath, settingsPath } from '../paths';
+import { agentsPath, boardPath, controlPath, questionsPath, resultsPath, settingsPath } from '../paths';
 import { DismissibleError } from '../shell/DismissibleError';
 import { CliReadiness, cliNeeds } from '../shell/CliReadiness';
 import { StartRefused } from '../shell/StartRefused';
@@ -24,6 +24,7 @@ function Tabs({ team }: { team: string }) {
   );
   return (
     <nav className="pb-tabs" aria-label="Project">
+      {tab(controlPath(team), 'Control', false, 'control')}
       {tab(boardPath(team), 'Board', onWorkflow)}
       {tab(agentsPath(team), 'Agents')}
       {tab(questionsPath(team), 'Questions', false, 'questions')}
@@ -39,15 +40,11 @@ function Tabs({ team }: { team: string }) {
  */
 export function ProjectBar() {
   const p = useProject();
-  const shell = useShell();
-  const navigate = useNavigate();
   const ids = useId();
-  const start = useStart(p, () => navigate(boardPath(p.team, 'run')));
+  const start = useStart(p, useAfterStart(p.team));
   const stop = useStop(p);
   usePendingAction(p, start.ask, stop.ask, start.reason, stop.live);
-  // The palette's handle on Start and Stop, current at every render.
-  shell.refs.run.current = { live: stop.live, startReason: start.reason, stopReason: stop.reason, askStart: start.ask, askStop: stop.ask };
-  useEffect(() => () => { shell.refs.run.current = null; }, [shell.refs.run]);
+  useRunHandle(start, stop);
   const status = !p.started && p.builtHere ? draftStatus(p.draft ? blockingCount(p) : null) : teamStatus(p.row);
   const fix = !p.started && blockingCount(p) > 0;
   return (
@@ -69,6 +66,21 @@ export function ProjectBar() {
       {start.dialog}
     </div>
   );
+}
+
+/** Once started, the Run board shows the team live; on Control, whose System overview shows it, the page stays. */
+function useAfterStart(team: string) {
+  const navigate = useNavigate();
+  const onControl = useRef(false);
+  onControl.current = !!useMatch('/p/:team/control/*');
+  return () => { if (!onControl.current) navigate(boardPath(team, 'run')); };
+}
+
+/** The palette's (and Control's) handle on Start and Stop, current at every render. */
+function useRunHandle(start: StartApi, stop: StopApi) {
+  const shell = useShell();
+  shell.refs.run.current = { live: stop.live, startReason: start.reason, stopReason: stop.reason, askStart: start.ask, askStop: stop.ask };
+  useEffect(() => () => { shell.refs.run.current = null; }, [shell.refs.run]);
 }
 
 type StartApi = ReturnType<typeof useStart>;

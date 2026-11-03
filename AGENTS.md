@@ -34,7 +34,9 @@ ongoing collaboration. Routing and workflow automation support that experience.
   Do not suppress warnings or raise thresholds just to make a refactor pass.
 
 ## Visualizations are the primary interface
-- The team board is the entry point. Clicking, tapping or pressing Enter on an agent opens it.
+- The team board is the entry point: a project opens on Control (`/p/:team/control`), whose default
+  layout shows the live board first as its System overview pane. Clicking, tapping or pressing Enter on
+  an agent opens it.
   Keep raw events available as evidence next to the visual summaries.
 - The default UI speaks plain words: Team, Group, Agent, "hands work to", Job, Folder.
   OpenRig words (rig, pod, seat, member, edge, runtime, RigSpec, YAML) appear only inside an Advanced

@@ -44,7 +44,7 @@ describe('old addresses go to the page that does their job', () => {
     ['/rig/t/agent/team.builder@t/visual', '/p/t/agents/team.builder/activity'],
     ['/rig/t/agent/team.builder@t/events', '/p/t/agents/team.builder/activity?view=events'],
     ['/rig/t/seat/team.builder@t', '/p/t/agents/team.builder'],
-    ['/p/t', '/p/t/board'],
+    ['/p/t', '/p/t/control'],
     ['/library', '/library/groups'],
     ['/no/such/page', '/'],
   ])('%s → %s', async (from, to) => {
@@ -83,10 +83,10 @@ describe('the frame: one top bar, then a project tab row, then the page', () => 
     expect(within(bar).getAllByRole('link', { name: /Docs/ })).toHaveLength(2);
   });
 
-  it('every project page has Board · Agents · Questions · Results · Settings, a status in shape and words, and one primary action', async () => {
+  it('every project page has Control · Board · Agents · Questions · Results · Settings, a status in shape and words, and one primary action', async () => {
     await twoTeams('/rig/r');
     const tabs = screen.getByRole('navigation', { name: 'Project' });
-    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Board', 'Agents', 'Questions', 'Results', 'Settings']);
+    expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Control', 'Board', 'Agents', 'Questions', 'Results', 'Settings']);
     expect(within(tabs).getByRole('link', { name: 'Board' })).toHaveAttribute('aria-current', 'page');
     const status = document.querySelector('.project-bar .pstatus')!;
     expect(status).toHaveTextContent('Running · none working');

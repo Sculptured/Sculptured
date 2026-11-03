@@ -30,6 +30,7 @@ import { SetupGate } from './setup/SetupGate';
 import { SetupPage } from './setup/SetupPage';
 import { ArenaPanePage } from './arena/ArenaControlPage';
 import { ArenaSection, TestsRedirect } from './arena/routes';
+import { ControlPage, ControlPanePage } from './control/ControlPage';
 
 /** Hosted beta admin page; anyone else goes home. */
 function AdminGuard() {
@@ -59,7 +60,9 @@ function Legacy({ to }: { to: 'board' | 'design' | 'results' | 'agent' | 'git' }
 function ProjectRoutes() {
   return (
     <Route path="/p/:team" element={<ProjectLayout />}>
-      <Route index element={<Navigate replace to="board" />} />
+      <Route index element={<Navigate replace to="control" />} />
+      <Route path="control" element={<ControlPage />} />
+      <Route path="control/pane/:instance" element={<ControlPanePage />} />
       <Route path="board" element={<BoardPage />} />
       <Route path="agents" element={<AgentsPage />} />
       <Route path="agents/:agent/:tab?" element={<AgentPage />} />
