@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { panes, type PageLayouts, type PaneRef } from './model';
 import { PaneContext, type PaneType, type Registry } from './registry';
-import { SelectionProvider, useChannelPost } from './selection';
+import { SelectionProvider, useChannelListener, useChannelPost } from './selection';
 import { isSlot, shellRegistry } from './slots';
 import { loadLayouts } from './store';
 
@@ -26,20 +26,39 @@ function useSettings(pane: PaneRef, type: PaneType) {
   return { settings, setSettings };
 }
 
-/** Tells the main window this pane is coming back when the window closes. */
-function useBackOnClose(instance: string) {
+/**
+ * This window's part in who shows the pane. On mount it says "out", so the main window moves the
+ * pane to `popped` even after a reload. When the page goes it says "back". When the main window
+ * says "close" (it took the pane back), it closes, or says so if the browser keeps it open.
+ */
+function useShownHere(instance: string): boolean {
   const post = useChannelPost();
+  const [gone, setGone] = useState(false);
+  const left = useRef(false);
+  useEffect(() => post({ kind: 'out', instance }), [post, instance]);
+  useChannelListener((m) => {
+    if (m.kind !== 'close' || m.instance !== instance) return;
+    left.current = true;
+    setGone(true);
+    window.close();
+  });
   useEffect(() => {
-    const back = () => post({ kind: 'back', instance });
+    const back = () => { if (!left.current) post({ kind: 'back', instance }); };
     window.addEventListener('pagehide', back);
     return () => window.removeEventListener('pagehide', back);
   }, [post, instance]);
+  return gone;
+}
+
+function ShownHere({ pane, type }: { pane: PaneRef; type: PaneType }) {
+  const gone = useShownHere(pane.id);
+  if (gone) return <p className="ws-empty">This pane is back in the main window. You can close this window.</p>;
+  return <Popped pane={pane} type={type} />;
 }
 
 function Popped({ pane, type }: { pane: PaneRef; type: PaneType }) {
   const { settings, setSettings } = useSettings(pane, type);
   const [editing, setEditing] = useState(false);
-  useBackOnClose(pane.id);
   useEffect(() => { document.title = `${type.title} · Sculptured`; }, [type.title]);
   const Form = type.Settings;
   return (
@@ -68,7 +87,7 @@ export function PopOutPane({ page, registry, ctx, instance }: Props) {
       <PaneContext.Provider value={ctx}>
         <div className="workspace workspace-popout" data-look={look === 'app' ? undefined : 'mission'}>
           {pane && type
-            ? <Popped pane={pane} type={type} />
+            ? <ShownHere pane={pane} type={type} />
             : <p className="ws-empty">This pane is no longer in the workspace. Close this window and use Add pane in the main window.</p>}
         </div>
       </PaneContext.Provider>

@@ -6,8 +6,9 @@
  *
  * Adding another look: add ONE block at the end of this file,
  *   :root[data-look="<name>"] { color-scheme: …; --bg: …; --panel: …; … }
- * (Mission's block also applies on an element, so it sets every token, derived ones included.)
  * overriding tokens only, and set `document.documentElement.dataset.look = '<name>'`.
+ * (Mission's block also applies on an element, the workspace root, so it sets every token,
+ * derived ones included.)
  * Component CSS must never need to change for a new look. Override the canonical tokens; the
  * derived ones (soft tints, status, aliases) follow automatically because they are defined
  * with var()/color-mix() on the canonical ones.

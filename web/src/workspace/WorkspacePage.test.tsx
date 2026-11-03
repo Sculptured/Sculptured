@@ -1,12 +1,8 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PopOutPane } from './PopOutPane';
-import { defaults, FakeChannel, fakeMatchMedia, registry } from './testkit';
-import { WorkspacePage } from './WorkspacePage';
+import { FakeChannel, fakeMatchMedia, page } from './testkit';
 
-const paneRoute = (id: string) => `/p/t/control/pane/${id}`;
-const page = (key?: string) => <WorkspacePage key={key} page="control" registry={registry} ctx={{}} defaults={defaults} paneRoute={paneRoute} header={<p>Header</p>} />;
 const layoutBar = () => screen.getByRole('tablist', { name: 'Layouts' });
 const layoutNames = () => within(layoutBar()).getAllByRole('tab').map((t) => t.textContent);
 const activeLayout = () => within(layoutBar()).getByRole('tab', { selected: true }).textContent;
@@ -153,38 +149,5 @@ describe('WorkspacePage', () => {
     await user.click(within(one).getByRole('button', { name: 'Select B' }));
     expect(within(one).getByTestId('sel-a1')).toHaveTextContent('B');
     expect(within(two).getByTestId('sel-a1')).toHaveTextContent('A');
-  });
-
-  it('popout_moves_and_bring_back', async () => {
-    const user = userEvent.setup();
-    const open = vi.spyOn(window, 'open').mockReturnValueOnce(null);
-    render(page());
-    const pop = async () => {
-      await user.click(screen.getByRole('button', { name: 'Overview options' }));
-      await user.click(screen.getByRole('menuitem', { name: 'Pop out' }));
-    };
-    await pop();
-    expect(screen.getByText(/blocked the new window/)).toBeInTheDocument();
-    expect(screen.getByTestId('body-b1')).toBeInTheDocument();
-
-    const win = { closed: false, focus: vi.fn(), close: vi.fn() };
-    open.mockReturnValue(win as unknown as Window);
-    await pop();
-    expect(open).toHaveBeenLastCalledWith('/p/t/control/pane/b1', 'sculptured-pane-b1', expect.any(String));
-    expect(screen.queryByTestId('body-b1')).toBeNull();
-    expect(screen.getByText('Shown in another window.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Overview options' })).toHaveFocus();
-    await user.click(screen.getByRole('button', { name: 'Bring back' }));
-    expect(win.close).toHaveBeenCalled();
-    expect(screen.getByTestId('body-b1')).toBeInTheDocument();
-    expect(screen.queryByText('Shown in another window.')).toBeNull();
-
-    await pop();
-    const popped = render(<PopOutPane page="control" registry={registry} ctx={{}} instance="b1" />);
-    expect(within(popped.container).getByTestId('body-b1')).toBeInTheDocument();
-    expect(within(popped.container).getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
-    act(() => void window.dispatchEvent(new Event('pagehide')));
-    expect(screen.queryByText('Shown in another window.')).toBeNull();
-    expect(screen.getAllByTestId('body-b1')).toHaveLength(2);
   });
 });

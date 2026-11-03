@@ -1,5 +1,5 @@
 /** Pure operations on a page's layouts (the layout tabs) and on popped-out panes. */
-import { addPane, dropPanes, freshId, panes, type IdGen, type Layout, type Node, type PageLayouts, type PaneRef } from './model';
+import { addPane, dropPanes, freshId, panes, setPaneSettings, type IdGen, type Layout, type Node, type PageLayouts, type PaneRef } from './model';
 import { isSlot, slotFor, slotRef } from './slots';
 
 const findPopped = (l: Layout, instance: string | undefined) => l.popped.find((p) => p.id === instance);
@@ -96,9 +96,16 @@ export function bringBack(l: Layout, instance: string, stackId?: string): Layout
   return { ...l, root, popped };
 }
 
-export function setPoppedSettings(l: Layout, instance: string, settings: Record<string, unknown>): Layout {
-  if (!findPopped(l, instance)) return l;
-  return { ...l, popped: l.popped.map((p) => (p.id === instance ? { ...p, settings } : p)) };
+/** A pop-out's settings edit, applied wherever the pane is now: popped, or already back in the tree. */
+export function applySettings(l: Layout, instance: string, settings: Record<string, unknown>): Layout {
+  if (findPopped(l, instance)) return { ...l, popped: l.popped.map((p) => (p.id === instance ? { ...p, settings } : p)) };
+  return panes(l.root).some((p) => p.id === instance && !isSlot(p)) ? { ...l, root: setPaneSettings(l.root, instance, settings) } : l;
+}
+
+/** Popped panes whose slot is no longer in the tree (its placeholder tab was closed). */
+export function orphans(l: Layout): string[] {
+  const slots = new Set(panes(l.root).map(slotFor));
+  return l.popped.filter((p) => !slots.has(p.id)).map((p) => p.id);
 }
 
 /** Runs `fn` on every layout, keeping the value unchanged when no layout changed. */

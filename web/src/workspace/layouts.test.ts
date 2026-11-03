@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bringBack, cloneLayout, deleteLayout, popOutPane } from './layouts';
+import { applySettings, bringBack, cloneLayout, deleteLayout, orphans, popOutPane } from './layouts';
 import { closePane, panes, type Layout } from './model';
 import { slotFor } from './slots';
 
@@ -31,6 +31,21 @@ describe('layout operations', () => {
     expect(panes(back.root).map((p) => p.id)).toEqual(['b', 'a']);
     expect(back.popped).toEqual([]);
     expect(bringBack(back, 'a')).toBe(back);
+  });
+
+  it('settings_from_a_pop_out_apply_wherever_the_pane_is', () => {
+    const out = popOutPane(layout(), 'a', counter());
+    expect(applySettings(out, 'a', { lines: 9 }).popped[0].settings).toEqual({ lines: 9 });
+    // Already back in the tree (its "back" arrived first): the edit still lands.
+    const back = bringBack(out, 'a');
+    expect(panes(applySettings(back, 'a', { lines: 9 }).root)[0].settings).toEqual({ lines: 9 });
+    expect(applySettings(back, 'gone', { lines: 9 })).toBe(back);
+  });
+
+  it('orphans_are_popped_panes_without_a_slot', () => {
+    const out = popOutPane(layout(), 'a', counter());
+    expect(orphans(out)).toEqual([]);
+    expect(orphans({ ...out, root: closePane(out.root, 'n1') })).toEqual(['a']);
   });
 
   it('delete_keeps_the_last_layout', () => {

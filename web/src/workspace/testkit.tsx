@@ -2,6 +2,7 @@
 import type { PageLayouts } from './model';
 import { createRegistry, type PaneProps } from './registry';
 import { useSelection } from './selection';
+import { WorkspacePage } from './WorkspacePage';
 
 function Plain({ instance }: PaneProps) {
   return <div data-testid={`body-${instance}`}>Body of {instance}</div>;
@@ -57,4 +58,11 @@ export class FakeChannel {
 /** jsdom has no matchMedia: answer `matches` for every query. */
 export function fakeMatchMedia(matches: boolean) {
   return (query: string) => ({ matches, media: query, addEventListener: () => {}, removeEventListener: () => {} }) as unknown as MediaQueryList;
+}
+
+export const paneRoute = (id: string) => `/p/t/control/pane/${id}`;
+
+/** The Control page's workspace as the tests mount it. */
+export function page(key?: string) {
+  return <WorkspacePage key={key} page="control" registry={registry} ctx={{}} defaults={defaults} paneRoute={paneRoute} header={<p>Header</p>} />;
 }

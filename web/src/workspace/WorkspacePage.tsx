@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from 'react';
 import { AddPane } from './AddPane';
-import { addLayout, bringBack, deleteLayout, duplicateLayout, eachLayout, popOutPane, renameLayout, resetLayout, setPoppedSettings } from './layouts';
+import { addLayout, deleteLayout, duplicateLayout, renameLayout, resetLayout } from './layouts';
 import { LayoutTabs, type LayoutActions } from './LayoutTabs';
 import { MobileWorkspace, useMobile } from './MobileWorkspace';
 import { addPane, freshId, panes, setActive, stacks, type Layout, type Node, type PageLayouts } from './model';
 import type { PaneType, Registry } from './registry';
-import { SelectionProvider, type ChannelMessage } from './selection';
-import { shellRegistry, slotFor, SlotContext, type SlotActions } from './slots';
+import { SelectionProvider, useChannelPost } from './selection';
+import { shellRegistry, SlotContext } from './slots';
 import { loadLayouts, saveLayouts } from './store';
+import { closeWindowsOf, usePopOut, useSetRoot } from './usePopOut';
 import { Workspace } from './Workspace';
 
 export type WorkspacePageProps = {
@@ -24,55 +25,26 @@ export type WorkspacePageProps = {
 };
 
 type SetValue = Dispatch<SetStateAction<PageLayouts>>;
-
-const BLOCKED = 'The browser blocked the new window. Allow pop-ups for this page, then choose Pop out again.';
+type Post = ReturnType<typeof useChannelPost>;
 
 function usePageLayouts(page: string, defaults: () => PageLayouts, registry: Registry) {
   const [value, setValue] = useState(() => loadLayouts(page, defaults, (t) => !!registry.get(t)));
   useEffect(() => saveLayouts(page, value), [page, value]);
   const layout = value.layouts.find((l) => l.id === value.active) ?? value.layouts[0];
-  const setRoot = (root: Node) => setValue((v) => eachLayout(v, (l) => (l.id === layout.id ? { ...l, root } : l)));
-  return { value, setValue, layout, setRoot };
+  return { value, setValue, layout };
 }
 
-function layoutActions(setValue: SetValue, defaults: () => PageLayouts): LayoutActions {
+/** Reset and Delete drop a layout's popped panes, so their windows are told to close. */
+function layoutActions(value: PageLayouts, setValue: SetValue, defaults: () => PageLayouts, post: Post): LayoutActions {
+  const discard = (id: string) => closeWindowsOf(post, value.layouts.find((l) => l.id === id));
   return {
     activate: (id) => setValue((v) => (v.layouts.some((l) => l.id === id) ? { ...v, active: id } : v)),
     add: () => setValue((v) => addLayout(v, defaults())),
     rename: (id, name) => setValue((v) => renameLayout(v, id, name)),
     duplicate: (id) => setValue((v) => duplicateLayout(v, id)),
-    remove: (id) => setValue((v) => deleteLayout(v, id)),
-    reset: (id) => setValue((v) => resetLayout(v, id, defaults())),
+    remove: (id) => { if (value.layouts.length > 1) discard(id); setValue((v) => deleteLayout(v, id)); },
+    reset: (id) => { discard(id); setValue((v) => resetLayout(v, id, defaults())); },
   };
-}
-
-/** Pop out into a named window, bring back by button or when that window closes, and keep its settings. */
-function usePopOut(paneRoute: (instance: string) => string, layout: Layout, setValue: SetValue, focused: RefObject<string | undefined>) {
-  const [notice, setNotice] = useState<string | null>(null);
-  const windows = useRef(new Map<string, Window>());
-  const open = (instance: string) => {
-    const known = windows.current.get(instance);
-    if (known && !known.closed) { known.focus(); return true; }
-    const win = window.open(paneRoute(instance), `sculptured-pane-${instance}`, 'popup,width=760,height=560');
-    if (win) windows.current.set(instance, win);
-    setNotice(win ? null : BLOCKED);
-    return !!win;
-  };
-  const update = (fn: (l: Layout) => Layout) => setValue((v) => eachLayout(v, fn));
-  const back = (id: string) => update((l) => bringBack(l, id, focused.current));
-  // "Bring back" also closes the window, when this page opened it, so the pane is not shown twice.
-  const slots: SlotActions = { bringBack: (id) => { windows.current.get(id)?.close?.(); windows.current.delete(id); back(id); }, reopen: (id) => void open(id) };
-  const popOut = (paneId: string) => {
-    const pane = panes(layout.root).find((p) => p.id === paneId);
-    const slot = pane && slotFor(pane);
-    if (!pane || slot !== undefined) return void (slot && open(slot));
-    if (open(paneId)) update((l) => (l.id === layout.id ? popOutPane(l, paneId) : l));
-  };
-  const onMessage = (m: ChannelMessage) => {
-    if (m.kind === 'back') back(m.instance);
-    if (m.kind === 'settings') update((l) => setPoppedSettings(l, m.instance, m.settings));
-  };
-  return { popOut, slots, onMessage, notice, dismiss: () => setNotice(null) };
 }
 
 /** Focuses a pane's tab once it is on screen (after Add pane). */
@@ -139,32 +111,35 @@ function Main({ layout, registry, ctx, current, onCurrent, setRoot, popOut, focu
 /** One page's workspace: header, layout tabs, Add pane and Look, then the docking area. */
 function PageShell(props: WorkspacePageProps) {
   const registry = useMemo(() => shellRegistry(props.registry), [props.registry]);
-  const { value, setValue, layout, setRoot } = usePageLayouts(props.page, props.defaults, registry);
+  const { value, setValue, layout } = usePageLayouts(props.page, props.defaults, registry);
   const box = useRef<HTMLDivElement>(null);
   const focused = useRef<string | undefined>(undefined);
+  const setRoot = useSetRoot(layout, setValue, focused);
+  const post = useChannelPost();
   const [current, setCurrent] = useState<string | null>(null);
   const focusTab = useFocusTab(box);
   const pop = usePopOut(props.paneRoute, layout, setValue, focused);
   const show = (id: string) => { setCurrent(id); focusTab(id); };
   return (
-    <SelectionProvider page={props.page} onMessage={pop.onMessage}>
-      <SlotContext.Provider value={pop.slots}>
-        <div ref={box} className="workspace" data-look={value.look === 'app' ? undefined : 'mission'}>
-          {props.header && <div className="workspace-header">{props.header}</div>}
-          <div className="workspace-bar">
-            <LayoutTabs value={value} act={layoutActions(setValue, props.defaults)} />
-            <AddPane registry={registry} ctx={props.ctx} layout={layout} onChoose={chooser(layout, setRoot, focused, show, pop.slots.reopen)} />
-            <LookSetting value={value} setValue={setValue} />
-          </div>
-          <Notice text={pop.notice} dismiss={pop.dismiss} />
-          <Main layout={layout} registry={registry} ctx={props.ctx} current={current} onCurrent={setCurrent} setRoot={setRoot} popOut={pop.popOut} focused={focused} />
+    <SlotContext.Provider value={pop.slots}>
+      <div ref={box} className="workspace" data-look={value.look === 'app' ? undefined : 'mission'}>
+        {props.header && <div className="workspace-header">{props.header}</div>}
+        <div className="workspace-bar">
+          <LayoutTabs value={value} act={layoutActions(value, setValue, props.defaults, post)} />
+          <AddPane registry={registry} ctx={props.ctx} layout={layout} onChoose={chooser(layout, setRoot, focused, show, pop.slots.reopen)} />
+          <LookSetting value={value} setValue={setValue} />
         </div>
-      </SlotContext.Provider>
-    </SelectionProvider>
+        <Notice text={pop.notice} dismiss={pop.dismiss} />
+        <Main layout={layout} registry={registry} ctx={props.ctx} current={current} onCurrent={setCurrent} setRoot={setRoot} popOut={pop.popOut} focused={focused} />
+      </div>
+    </SlotContext.Provider>
   );
 }
 
-/** A page's dockable workspace. Remounts when `page` changes, so each page keeps its own layouts. */
+/**
+ * A page's dockable workspace. Its selection channel also decides which window shows a popped-out
+ * pane. Remounts when `page` changes, so each page keeps its own layouts and channel.
+ */
 export function WorkspacePage(props: WorkspacePageProps) {
-  return <PageShell key={props.page} {...props} />;
+  return <SelectionProvider key={props.page} page={props.page}><PageShell {...props} /></SelectionProvider>;
 }
