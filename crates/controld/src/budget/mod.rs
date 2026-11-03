@@ -1,6 +1,7 @@
 //! Run budgets: what one run of a team may use (plan share, tokens, time), each with a soft value
 //! (no new work; every agent wraps up) and a hard value (every agent is stopped at once). Checked
 //! every second and after every usage or plan report. See docs/internals/limits-and-usage.md.
+mod continuing;
 pub mod gate;
 pub mod measure;
 pub mod pause;

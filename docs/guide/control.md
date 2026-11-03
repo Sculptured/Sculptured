@@ -51,6 +51,8 @@ The header reads left to right.
 
 After each action a note under the header says what it did, and names any agent it left alone and why ("Paused 3 agents."). A refusal is never shown as a success. Dismiss the note when you have read it.
 
+An operator pause stays in force when a budget is raised or its plan window resets. Use **Resume all** or the agent's **Resume** to end that pause.
+
 ## 3. Panes and layouts
 
 [Video 2](../videos/control-2-rearrange.mp4) shows each of these.

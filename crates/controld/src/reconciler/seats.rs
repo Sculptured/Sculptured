@@ -11,6 +11,23 @@ use model::{Actor, Desired, EventBody, MessageIntent, Provenance, SeatLifecycle,
 /// inside a team that is still set to run, without touching the others. Once it runs it
 /// gets what it is owed (`handoffs::deliver_owed`).
 pub async fn restart_seat(st: &AppState, seat_id: &str) -> Result<(), ApiError> {
+    let rig = crate::seat_ids::rig_of(seat_id)
+        .ok_or_else(|| ApiError::not_found(format!("no agent {seat_id:?}")))?;
+    let claim = st.try_begin_boot(rig).ok_or_else(|| {
+        ApiError::conflict(
+            "team_starting",
+            "This team is still starting. Restart the agent once it has finished starting.",
+        )
+    })?;
+    restart_seat_claimed(st, seat_id, claim).await
+}
+
+/// Restarts an agent under an existing team claim. State is read only after the claim is held.
+pub(crate) async fn restart_seat_claimed(
+    st: &AppState,
+    seat_id: &str,
+    _claim: crate::state::BootGuard,
+) -> Result<(), ApiError> {
     let view = st
         .store
         .lock()
@@ -49,12 +66,6 @@ pub async fn restart_seat(st: &AppState, seat_id: &str) -> Result<(), ApiError> 
         .find(|s| s.id == seat_id)
         .cloned()
         .ok_or_else(|| ApiError::not_found(format!("no agent {seat_id:?}")))?;
-    let Some(_claim) = st.try_begin_boot(&view.rig) else {
-        return Err(ApiError::conflict(
-            "team_starting",
-            "This team is still starting. Restart the agent once it has finished starting.",
-        ));
-    };
     st.store
         .lock()
         .expect("store mutex must not be poisoned")

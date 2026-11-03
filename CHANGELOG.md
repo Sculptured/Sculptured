@@ -5,6 +5,8 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Fixed
+- Raising a budget or resetting its plan window no longer resumes an agent paused by the operator, or restarts a team set to stop. Budget continuations coordinate with team controls and recheck them before continuing; use Resume to end an operator pause.
+- Resume now acquires the team's control lock before clearing a stop and rechecks whether a pause arrived meanwhile. A concurrent pause uses session Resume, and a busy team keeps its stop recorded for retry.
 - Control: a project that has never started can be started from Control's own **Start**. It said "Connecting…" forever, waiting for a live stream such a project doesn't have, and Control hides the project bar's Start.
 - Adding a group with a workflow to a project (from Community or your saved groups) now maps every reference to its new agent and stage ids: a stage's reviewers, its escalation agent and round-limit route, stages run by a person or a check (no agent), and the group's schedules, which were dropped. Coding hospital added to a project no longer shows broken Treatment and Code review stages.
 - Community item pages on the hosted service no longer fail with error 500.

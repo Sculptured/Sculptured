@@ -3,7 +3,7 @@
 mod jobs;
 mod seats;
 
-pub(crate) use seats::{stop_on_host, stoppable};
+pub(crate) use seats::{restart_seat_claimed, stop_on_host, stoppable};
 
 use crate::error::ApiError;
 use crate::hosts::controld;

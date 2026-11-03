@@ -6,6 +6,10 @@ use crate::store::ControlMode;
 use crate::views::SeatView;
 use model::{EventBody, MessageIntent, SeatLifecycle};
 
+#[cfg(test)]
+#[path = "controls_tests.rs"]
+mod tests;
+
 /// What the operator (or a limit) asks of a running agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Control {
@@ -56,7 +60,7 @@ pub async fn control_seat(
         return Ok(Some(done));
     }
     if control == Control::Resume {
-        return undo_stop(st, &view).await.map(|()| None);
+        return undo_stop(st, &view).await;
     }
     let _claim = claim_for_stop(st, &view.rig)?;
     if control == Control::Hard {
@@ -74,17 +78,30 @@ pub async fn control_seat(
     send_wrap_up(st, &view, text).await.map(|()| None)
 }
 
-/// Undoes a stop that is not a pause: the agent starts again, fresh.
-async fn undo_stop(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
+/// Undoes a stop under the team's claim. A pause that arrived since the caller's read resumes its
+/// session instead; only other stopped agents start fresh.
+async fn undo_stop(st: &AppState, seen: &SeatView) -> Result<Option<TeamControlResult>, ApiError> {
+    let claim = super::pausing::claim(st, &seen.rig)?;
+    let view = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .seat(&seen.id)?
+        .ok_or_else(|| ApiError::not_found("Unknown agent"))?;
+    if super::pausing::is_paused(st, &view.id)? {
+        return super::resuming::resume_seat(st, &view).await.map(Some);
+    }
     refuse_if_budget_exhausted(st, &view.id)?;
+    if view.lifecycle != SeatLifecycle::Running {
+        return reconciler::restart_seat_claimed(st, &view.id, claim)
+            .await
+            .map(|()| None);
+    }
     st.store
         .lock()
         .expect("store mutex must not be poisoned")
         .clear_control(&view.id)?;
-    if view.lifecycle != SeatLifecycle::Running {
-        reconciler::restart_seat(st, &view.id).await?;
-    }
-    Ok(())
+    Ok(None)
 }
 
 fn claim_for_stop(st: &AppState, rig: &str) -> Result<BootGuard, ApiError> {

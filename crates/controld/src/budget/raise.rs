@@ -1,5 +1,6 @@
 //! Raising a limit of a running team, for this run only: the saved budget stays what was planned. A
 //! run that wrapped up or stopped at that limit continues; the agents it stopped carry on.
+use super::continuing::carry_on;
 use super::{BudgetState, Record};
 use crate::error::ApiError;
 use crate::extract::{Json, Path};
@@ -7,7 +8,7 @@ use crate::state::AppState;
 use axum::Router;
 use axum::extract::State;
 use axum::response::Response;
-use model::{ContinueMode, EventBody, Provenance, SeatLifecycle, Subject};
+use model::{EventBody, Provenance, Subject};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -292,54 +293,4 @@ async fn raise(st: &AppState, rig: &str, req: &RaiseRequest) -> Result<String, A
         });
     }
     Ok(said)
-}
-
-/// An agent still finishing its wrap-up goes on working; one the budget stopped (or is stopping) starts
-/// again where it was, once its stop has finished.
-async fn carry_on(st: &AppState, seat: &str) -> Result<(), ApiError> {
-    let text =
-        "The run's limit was raised, so you can carry on: continue your job where you left off."
-            .to_string();
-    let stopping = st
-        .store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .control(seat)?
-        == Some(crate::store::ControlMode::Hard);
-    if !stopping && is_live(st, seat)? {
-        st.store
-            .lock()
-            .expect("store mutex must not be poisoned")
-            .clear_control(seat)?;
-        return crate::reconciler::send_message_as(
-            st,
-            seat,
-            text,
-            model::MessageIntent::Instruct,
-            false,
-            model::Actor::System("budget".into()),
-        )
-        .await
-        .map(|_| ());
-    }
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
-    while is_live(st, seat)? && tokio::time::Instant::now() < deadline {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-    let by = model::Actor::System("budget".into());
-    super::pause::restart(st, seat, ContinueMode::Resume, text, by).await
-}
-
-fn is_live(st: &AppState, seat: &str) -> Result<bool, ApiError> {
-    Ok(st
-        .store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .seat(seat)?
-        .is_some_and(|v| {
-            matches!(
-                v.lifecycle,
-                SeatLifecycle::Running | SeatLifecycle::Launching
-            )
-        }))
 }

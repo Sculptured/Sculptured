@@ -11,7 +11,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::response::Response;
 use host_proto::LaunchMode;
-use model::{Actor, ContinueMode, EventBody, MessageIntent, Provenance, Subject, TenureCause};
+use model::{Actor, ContinueMode, EventBody, Provenance, Subject, TenureCause};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -202,8 +202,12 @@ pub async fn continue_run(
     )?;
     let text = |seat: &str| continuation(seat, mode, r.windows + 1, max_windows);
     let by = || Actor::System("budget".into());
-    let results =
-        futures::future::join_all(seats.iter().map(|s| restart(st, s, mode, text(s), by()))).await;
+    let results = futures::future::join_all(
+        seats
+            .iter()
+            .map(|s| super::continuing::restart(st, s, mode, text(s), by())),
+    )
+    .await;
     if !seats.is_empty() && results.iter().all(Result::is_err) {
         // Nothing came back (the computer is offline): stay paused, and try again in a minute.
         let mut retry = paused;
@@ -231,20 +235,6 @@ fn continuation(seat: &str, mode: ContinueMode, window: u32, max: u32) -> String
         ),
         ContinueMode::Resume => format!("{head} Continue your job where you stopped."),
     }
-}
-
-/// Starts `seat` again (fresh, or resuming its conversation), then sends it `text` from `by`.
-pub(crate) async fn restart(
-    st: &AppState,
-    seat: &str,
-    mode: ContinueMode,
-    text: String,
-    by: Actor,
-) -> Result<(), ApiError> {
-    relaunch(st, seat, mode).await?;
-    crate::reconciler::send_message_as(st, seat, text, MessageIntent::Instruct, false, by)
-        .await
-        .map(|_| ())
 }
 
 /// Clears `seat`'s stop and starts it again: resuming its conversation (`mode` Resume, when it has
