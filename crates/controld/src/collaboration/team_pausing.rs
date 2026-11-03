@@ -1,9 +1,10 @@
 //! Pause all and Resume all: the operator's pause and resume for every agent of a team at once, under
 //! one claim on the team (modelled on stop-now).
 use super::pausing::{
-    PAUSES_WITH_PARENT, SkipCode, TeamControlResult, begin_pause, claim, control_of,
-    failure_reason, is_paused, pause_refusal, paused_descendants, resume_seat,
+    PAUSES_WITH_PARENT, STOPS_WITH_PARENT, SkipCode, TeamControlResult, begin_pause, claim,
+    control_of, failure_reason, is_paused, pause_refusal,
 };
+use super::resuming::{paused_descendants, resume_seat};
 use crate::error::ApiError;
 use crate::extract::{Json, Path};
 use crate::state::AppState;
@@ -13,6 +14,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
@@ -84,11 +86,31 @@ impl<'a> PausePlan<'a> {
         }
         match self.skip(p) {
             None | Some((SkipCode::StartedByAgent, _)) => Some(with_parent),
-            Some((SkipCode::AlreadyStopping, _)) => Some((
-                SkipCode::AlreadyStopping,
-                "It stops with the agent that started it".into(),
-            )),
+            Some((SkipCode::AlreadyStopping, _)) => {
+                Some((SkipCode::AlreadyStopping, STOPS_WITH_PARENT.into()))
+            }
             Some(_) => None,
+        }
+    }
+
+    fn parent(&self, i: usize) -> Option<usize> {
+        let parent = self.seats[i].parent.as_deref()?;
+        self.seats.iter().position(|s| s.view.id == parent)
+    }
+
+    /// The agent whose pause this one pauses with: the nearest one above it that Pause all asks to
+    /// pause now (None when that pause was already under way).
+    fn pausing_ancestor(&self, i: usize) -> Option<usize> {
+        let mut p = self.parent(i)?;
+        loop {
+            if self.pausing[p] {
+                return None;
+            }
+            match self.skip(p) {
+                None => return Some(p),
+                Some((SkipCode::StartedByAgent, _)) => p = self.parent(p)?,
+                Some(_) => return None,
+            }
         }
     }
 }
@@ -101,18 +123,47 @@ async fn pause_all(st: &AppState, rig: &str) -> Result<TeamControlResult, ApiErr
     };
     let _claim = claim(st, rig)?;
     let plan = PausePlan::new(st, &seats)?;
-    for (i, seat) in seats.iter().enumerate() {
-        let id = &seat.view.id;
-        if let Some((code, why)) = plan.skip(i) {
-            out.skip(id, code, why);
-            continue;
-        }
+    let skips: Vec<Option<Skip>> = (0..seats.len()).map(|i| plan.skip(i)).collect();
+    let mut failed = HashSet::new();
+    for (i, seat) in seats
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| skips[*i].is_none())
+    {
         match begin_pause(st, &seat.view).await {
-            Ok(()) => out.affected.push(id.clone()),
-            Err(e) => out.skip(id, SkipCode::Failed, failure_reason(&e)),
+            Ok(()) => out.affected.push(seat.view.id.clone()),
+            Err(e) => {
+                out.skip(&seat.view.id, SkipCode::Failed, failure_reason(&e));
+                failed.insert(i);
+            }
         }
     }
+    report_skips(&plan, skips, &failed, &mut out);
     Ok(out)
+}
+
+/// Notes each agent Pause all did not ask to pause. One that was to pause with an agent whose pause
+/// could not begin keeps running, and says so.
+fn report_skips(
+    plan: &PausePlan,
+    skips: Vec<Option<Skip>>,
+    failed: &HashSet<usize>,
+    out: &mut TeamControlResult,
+) {
+    for (i, skip) in skips.into_iter().enumerate() {
+        let Some((code, why)) = skip else { continue };
+        let id = &plan.seats[i].view.id;
+        if code == SkipCode::StartedByAgent
+            && plan
+                .pausing_ancestor(i)
+                .is_some_and(|p| failed.contains(&p))
+        {
+            let why = "The agent that started it could not be paused, so it keeps running";
+            out.skip(id, SkipCode::Failed, why);
+        } else {
+            out.skip(id, code, why);
+        }
+    }
 }
 
 /// The paused agents of a team that Resume all asks to resume, decided before any resumes; the others
@@ -145,22 +196,41 @@ async fn resume_all(st: &AppState, rig: &str) -> Result<TeamControlResult, ApiEr
         return Ok(out);
     };
     let _claim = claim(st, rig)?;
+    let mut covered: HashSet<String> = HashSet::new();
     for view in resume_roots(st, &seats, &mut out)? {
+        // Never twice: a root already resumed with the agent that started it.
+        if !covered.insert(view.id.clone()) {
+            continue;
+        }
         match resume_seat(st, view).await {
             Ok(done) => {
+                covered.extend(done.affected.iter().cloned());
+                covered.extend(done.skipped.iter().map(|s| s.seat.clone()));
                 out.affected.extend(done.affected);
                 out.skipped.extend(done.skipped);
+                out.notes.extend(done.notes);
             }
-            Err(e) => {
-                out.skip(&view.id, SkipCode::Failed, failure_reason(&e));
-                for child in paused_descendants(st, &view.id)? {
-                    let why = "It resumes with the agent that started it";
-                    out.skip(&child.id, SkipCode::StartedByAgent, why);
-                }
-            }
+            Err(e) => resume_failed(st, view, &e, &mut out, &mut covered)?,
         }
     }
     Ok(out)
+}
+
+/// A paused agent that could not resume, and the agents that resume with it.
+fn resume_failed(
+    st: &AppState,
+    view: &SeatView,
+    e: &ApiError,
+    out: &mut TeamControlResult,
+    covered: &mut HashSet<String>,
+) -> Result<(), ApiError> {
+    out.skip(&view.id, SkipCode::Failed, failure_reason(e));
+    for child in paused_descendants(st, &view.id)? {
+        covered.insert(child.id.clone());
+        let why = "It resumes with the agent that started it";
+        out.skip(&child.id, SkipCode::StartedByAgent, why);
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]

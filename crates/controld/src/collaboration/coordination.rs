@@ -133,6 +133,7 @@ pub(super) async fn control(
         if let Some(done) = done {
             body["affected"] = json!(done.affected);
             body["skipped"] = json!(done.skipped);
+            body["notes"] = json!(done.notes);
         }
         Ok(body)
     })

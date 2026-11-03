@@ -1,12 +1,13 @@
 //! The operator's pause and resume of one agent. A pause asks the agent to stop at its next safe point
 //! (a checkpoint note, as a pausing budget asks), then stops it, and every agent it started, keeping
 //! their sessions; Resume continues those same sessions, or starts fresh from the note without one.
-use super::controls::{Control, note_path, record, refuse_if_budget_exhausted, send_wrap_up};
+use super::controls::{Control, note_path, record, send_wrap_up};
+use super::resuming::resume_seat;
 use crate::error::ApiError;
 use crate::state::{AppState, BootGuard};
 use crate::store::ControlMode;
 use crate::views::SeatView;
-use model::{Actor, ContinueMode, Desired, MessageIntent, SeatLifecycle};
+use model::SeatLifecycle;
 use serde::{Deserialize, Serialize};
 
 /// What a pause or resume did: the agents it acted on, and every other agent with why not.
@@ -15,6 +16,16 @@ use serde::{Deserialize, Serialize};
 pub struct TeamControlResult {
     pub affected: Vec<String>,
     pub skipped: Vec<SkippedSeat>,
+    /// Something to know about an agent it did act on (plain words).
+    pub notes: Vec<SeatNote>,
+}
+
+/// Something to know about an agent a pause or resume acted on, in plain words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
+#[ts(export)]
+pub struct SeatNote {
+    pub seat: String,
+    pub reason: String,
 }
 
 /// An agent a pause or resume left alone: why, as a stable code and in plain words.
@@ -50,6 +61,8 @@ impl TeamControlResult {
         });
     }
 }
+
+pub(super) const STOPS_WITH_PARENT: &str = "It stops with the agent that started it";
 
 pub(super) const PAUSES_WITH_PARENT: &str =
     "It pauses with the agent that started it, and resumes with it";
@@ -121,25 +134,37 @@ pub(super) fn claim(st: &AppState, rig: &str) -> Result<BootGuard, ApiError> {
     })
 }
 
-/// A pause, or the resume of a paused agent, under the team's claim; None for any other control.
+/// A pause, or the resume of a paused agent, under the team's claim; None for any other control. The
+/// agent is read again once the claim is held.
 pub(super) async fn pause_or_resume(
     st: &AppState,
-    view: &SeatView,
+    seen: &SeatView,
     control: Control,
 ) -> Result<Option<TeamControlResult>, ApiError> {
     let pause = control == Control::Pause;
-    if !pause && !(control == Control::Resume && is_paused(st, &view.id)?) {
+    if !pause && !(control == Control::Resume && is_paused(st, &seen.id)?) {
         return Ok(None);
     }
-    let _claim = claim(st, &view.rig)?;
+    let _claim = claim(st, &seen.rig)?;
+    let view = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .seat(&seen.id)?
+        .ok_or_else(|| ApiError::not_found("Unknown agent"))?;
     if pause {
-        pause_seat(st, view).await.map(Some)
-    } else {
-        resume_seat(st, view).await.map(Some)
+        return pause_seat(st, &view).await.map(Some);
     }
+    if !is_paused(st, &view.id)? {
+        // Resumed by someone else meanwhile.
+        let mut out = TeamControlResult::default();
+        out.skip(&view.id, SkipCode::NotPaused, "It is not paused");
+        return Ok(Some(out));
+    }
+    resume_seat(st, &view).await.map(Some)
 }
 
-/// Pauses one agent; the agents it started are listed as pausing with it.
+/// Pauses one agent; the agents it started are listed with what its pause does to them.
 async fn pause_seat(st: &AppState, view: &SeatView) -> Result<TeamControlResult, ApiError> {
     let mut out = TeamControlResult::default();
     match pause_refusal(st, view)? {
@@ -159,8 +184,11 @@ async fn pause_seat(st: &AppState, view: &SeatView) -> Result<TeamControlResult,
         None => {
             begin_pause(st, view).await?;
             out.affected.push(view.id.clone());
-            for child in live_descendants(st, &view.id)? {
-                out.skip(&child, SkipCode::StartedByAgent, PAUSES_WITH_PARENT);
+            for d in descendants_of_pause(st, &view.id)? {
+                if d.live {
+                    let (code, why) = d.skip();
+                    out.skip(&d.id, code, why);
+                }
             }
         }
     }
@@ -181,27 +209,62 @@ pub(super) async fn begin_pause(st: &AppState, view: &SeatView) -> Result<(), Ap
     sent
 }
 
-/// The agents `seat` started (recursively) that may still have a process, parents first.
-fn live_descendants(st: &AppState, seat: &str) -> Result<Vec<String>, ApiError> {
-    let store = st.store.lock().expect("store mutex must not be poisoned");
-    let mut out = Vec::new();
-    for id in super::token_limits::with_descendants(&store, seat)?
-        .into_iter()
-        .skip(1)
-    {
-        let live = store
-            .seat(&id)?
-            .is_some_and(|v| crate::reconciler::stoppable(v.lifecycle));
-        if live {
-            out.push(id);
+/// An agent started (recursively) by an agent that pauses.
+struct Descendant {
+    id: String,
+    /// It may still have a process.
+    live: bool,
+    /// Its own control row, if any.
+    own: Option<ControlMode>,
+    /// It pauses with the agent: neither it nor an agent between them has another stop under way.
+    pauses: bool,
+}
+
+impl Descendant {
+    /// What the pause does to it, as a team pause would say.
+    fn skip(&self) -> (SkipCode, &'static str) {
+        match self.own {
+            Some(ControlMode::Pausing | ControlMode::Paused) => {
+                (SkipCode::AlreadyPaused, "Already paused")
+            }
+            Some(_) => (SkipCode::AlreadyStopping, "It is already stopping"),
+            None if self.pauses => (SkipCode::StartedByAgent, PAUSES_WITH_PARENT),
+            None => (SkipCode::AlreadyStopping, STOPS_WITH_PARENT),
         }
+    }
+}
+
+/// The agents `seat` started (recursively), parents first, with what its pause does to each.
+fn descendants_of_pause(st: &AppState, seat: &str) -> Result<Vec<Descendant>, ApiError> {
+    let store = st.store.lock().expect("store mutex must not be poisoned");
+    let mut out: Vec<Descendant> = Vec::new();
+    let mut parents = vec![(seat.to_string(), true)];
+    let mut i = 0;
+    while i < parents.len() {
+        let (parent, parent_pauses) = parents[i].clone();
+        for id in store.children(&parent)? {
+            let live = store
+                .seat(&id)?
+                .is_some_and(|v| crate::reconciler::stoppable(v.lifecycle));
+            let own = store.control(&id)?;
+            let pauses = parent_pauses && own.is_none();
+            parents.push((id.clone(), pauses));
+            out.push(Descendant {
+                id,
+                live,
+                own,
+                pauses,
+            });
+        }
+        i += 1;
     }
     Ok(out)
 }
 
-/// The end of a pause's wrap-up (the watcher's turn): the agent stops with every agent it started,
-/// and each one that had no other stop under way is paused with its session kept. Called off
-/// meanwhile, nothing happens; a team that is changing, or a stop that failed, is retried next tick.
+/// The end of a pause's wrap-up (the watcher's turn): the agent stops with every agent it started.
+/// Each one with no other stop under way is paused with its session kept, or, below an agent stopping
+/// another way, stopped as that stop would. Called off meanwhile, nothing happens; a team that is
+/// changing, or a stop that failed, is retried next tick.
 pub(super) async fn finish_pause(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
     let Some(_claim) = st.try_begin_boot(&view.rig) else {
         return Ok(());
@@ -209,22 +272,19 @@ pub(super) async fn finish_pause(st: &AppState, view: &SeatView) -> Result<(), A
     if control_of(st, &view.id)? != Some(ControlMode::Pausing) {
         return Ok(());
     }
-    let children = live_descendants(st, &view.id)?;
-    let mut pausing = Vec::new();
-    for child in &children {
-        if control_of(st, child)?.is_none() {
-            record(st, child, ControlMode::Paused)?;
-            pausing.push(child.as_str());
-        }
-    }
+    let live: Vec<Descendant> = descendants_of_pause(st, &view.id)?
+        .into_iter()
+        .filter(|d| d.live)
+        .collect();
+    let recorded = record_descendants(st, &live)?;
     // The agents it started first (the latest first), then the agent itself.
-    let ids: Vec<&str> = children
+    let ids: Vec<&str> = live
         .iter()
         .rev()
-        .map(String::as_str)
+        .map(|d| d.id.as_str())
         .chain(std::iter::once(view.id.as_str()))
         .collect();
-    if stop_for_pause(st, &ids, &pausing).await? {
+    if stop_for_pause(st, &ids, &recorded).await? {
         st.store
             .lock()
             .expect("store mutex must not be poisoned")
@@ -233,9 +293,25 @@ pub(super) async fn finish_pause(st: &AppState, view: &SeatView) -> Result<(), A
     Ok(())
 }
 
-/// Stops `ids` at once; true when none is left running. A child (in `pausing`) that could not be
-/// stopped is not recorded as paused.
-async fn stop_for_pause(st: &AppState, ids: &[&str], pausing: &[&str]) -> Result<bool, ApiError> {
+/// Records what a pause does to each live descendant without a stop of its own: paused with it, or
+/// (below an agent stopping another way) stopped as that stop would. Returns the ones recorded.
+fn record_descendants<'a>(st: &AppState, live: &'a [Descendant]) -> Result<Vec<&'a str>, ApiError> {
+    let mut recorded = Vec::new();
+    for d in live.iter().filter(|d| d.own.is_none()) {
+        let mode = if d.pauses {
+            ControlMode::Paused
+        } else {
+            ControlMode::Hard
+        };
+        record(st, &d.id, mode)?;
+        recorded.push(d.id.as_str());
+    }
+    Ok(recorded)
+}
+
+/// Stops `ids` at once; true when none is left running. One whose row this pause `recorded` and that
+/// could not be stopped has that row removed (the next tick tries again).
+async fn stop_for_pause(st: &AppState, ids: &[&str], recorded: &[&str]) -> Result<bool, ApiError> {
     let stops = ids
         .iter()
         .map(|id| crate::reconciler::stop_seat_now(st, id));
@@ -247,7 +323,7 @@ async fn stop_for_pause(st: &AppState, ids: &[&str], pausing: &[&str]) -> Result
         }
         tracing::warn!(seat = %id, error = %e.message, "a pause could not stop an agent yet");
         stopped_all = false;
-        if pausing.contains(id) {
+        if recorded.contains(id) {
             st.store
                 .lock()
                 .expect("store mutex must not be poisoned")
@@ -264,113 +340,9 @@ fn still_live(st: &AppState, seat: &str) -> Result<bool, ApiError> {
         .is_some_and(|v| crate::reconciler::stoppable(v.lifecycle)))
 }
 
-/// Resumes one paused agent, then the agents it started that paused with it (parents first).
-pub(super) async fn resume_seat(
-    st: &AppState,
-    view: &SeatView,
-) -> Result<TeamControlResult, ApiError> {
-    continue_seat(st, view).await?;
-    let mut out = TeamControlResult {
-        affected: vec![view.id.clone()],
-        ..Default::default()
-    };
-    for child in paused_descendants(st, &view.id)? {
-        match continue_seat(st, &child).await {
-            Ok(()) => out.affected.push(child.id),
-            Err(e) => out.skip(&child.id, SkipCode::Failed, failure_reason(&e)),
-        }
-    }
-    Ok(out)
-}
-
-/// The agents `seat` started (recursively) that are paused, parents first.
-pub(super) fn paused_descendants(st: &AppState, seat: &str) -> Result<Vec<SeatView>, ApiError> {
-    let store = st.store.lock().expect("store mutex must not be poisoned");
-    let mut out = Vec::new();
-    for id in super::token_limits::with_descendants(&store, seat)?
-        .into_iter()
-        .skip(1)
-    {
-        if store.control(&id)? == Some(ControlMode::Paused)
-            && let Some(v) = store.seat(&id)?
-        {
-            out.push(v);
-        }
-    }
-    Ok(out)
-}
-
-/// Continues a paused agent: a pause still wrapping up is called off, and a stopped agent starts again
-/// in its own session.
-async fn continue_seat(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
-    refuse_if_budget_exhausted(st, &view.id)?;
-    match view.lifecycle {
-        SeatLifecycle::Running => call_off_pause(st, &view.id).await,
-        SeatLifecycle::Stopped | SeatLifecycle::Attention | SeatLifecycle::Failed => {
-            restart_paused(st, view).await
-        }
-        _ => Err(ApiError::conflict(
-            "agent_settling",
-            "This agent is still stopping or starting. Resume it once it has settled.",
-        )),
-    }
-}
-
-/// A pause still wrapping up: the agent is not stopped, and goes on with its job.
-async fn call_off_pause(st: &AppState, seat: &str) -> Result<(), ApiError> {
-    st.store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .clear_control(seat)?;
-    let text = format!("Pause called off by You. {CONTINUE}");
-    crate::reconciler::send_message_as(st, seat, text, MessageIntent::Instruct, false, operator())
-        .await
-        .map(|_| ())
-}
-
-/// A paused agent that stopped starts again, resuming its session (fresh from its note without one).
-/// If it cannot start, it stays paused.
-async fn restart_paused(st: &AppState, view: &SeatView) -> Result<(), ApiError> {
-    let desired = st
-        .store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .rig_snapshot(&view.rig)?
-        .map(|s| s.desired);
-    if desired != Some(Desired::Running) {
-        return Err(ApiError::conflict(
-            "team_not_running",
-            "This team is stopped. Start the team to run its agents.",
-        ));
-    }
-    let text = format!(
-        "Resumed by You. {CONTINUE} If you no longer have that context, read your note {} in your folder first.",
-        note_path(&view.id)
-    );
-    // The restart clears the pause first: what the agent is owed is held back while a stop is recorded.
-    let restarted =
-        crate::budget::pause::restart(st, &view.id, ContinueMode::Resume, text, operator()).await;
-    let running = st
-        .store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .seat(&view.id)?
-        .is_some_and(|v| crate::store::is_live(v.lifecycle));
-    if restarted.is_err() && !running {
-        record(st, &view.id, ControlMode::Paused)?;
-    }
-    restarted
-}
-
-const CONTINUE: &str = "Continue your job where you stopped.";
-
 fn pause_text(seat: &str) -> String {
     format!(
         "Paused by You. Stop at a safe checkpoint within approximately 5,000 additional output tokens. Do not begin new research, broad refactors, new tasks or child agents. Save your work, then write {} in your folder: what is done (exact artifact paths and revisions), checks actually run, what is next, and anything you would need to know to continue with nothing else in context. Keep it short. End your turn. The runner then stops this session and keeps it; when You resume, you continue in this same conversation.",
         note_path(seat)
     )
-}
-
-fn operator() -> Actor {
-    Actor::Human("local".into())
 }

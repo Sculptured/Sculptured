@@ -97,12 +97,18 @@ async fn pause_needs_a_running_agent_without_another_stop() {
 async fn parent_and_child(s: &Served) -> (String, String, String) {
     let id = common::m2::practice_team(s, "solo").await;
     let parent = seat(&id, "claude");
-    let args = json!({"request_id": "child1", "name": "Helper", "task": "Check the endpoints"});
-    let (ok, result, error) = common::seat_tools::direct(s, &parent, "spawn_agent", args).await;
+    let child = spawn(s, &parent, "child1").await;
+    (id, parent, child)
+}
+
+/// `parent` starts a child agent; returns it once it runs.
+async fn spawn(s: &Served, parent: &str, request_id: &str) -> String {
+    let args = json!({"request_id": request_id, "name": "Helper", "task": "Check the endpoints"});
+    let (ok, result, error) = common::seat_tools::direct(s, parent, "spawn_agent", args).await;
     assert!(ok, "{error:?}");
     let child = result["child"].as_str().unwrap().to_string();
     wait_lifecycle(s, &[&child], SeatLifecycle::Running).await;
-    (id, parent, child)
+    child
 }
 
 #[tokio::test]
@@ -146,4 +152,50 @@ async fn pause_all_and_resume_all_cover_the_agents_an_agent_started() {
     assert_eq!(affected(&body).len(), 2, "{body}");
     assert!(common::pausing::skipped(&body).is_empty(), "{body}");
     wait_lifecycle(&s, &[&parent, &child], SeatLifecycle::Running).await;
+}
+
+/// P started C, C started G; G is paused on its own and C is wrapping up a soft stop.
+async fn paused_below_a_soft_stop(s: &Served) -> (String, String, String, String) {
+    let (id, p, c) = parent_and_child(s).await;
+    let g = spawn(s, &c, "grandchild1").await;
+    ok(control(s, &g, "pause").await);
+    wait_paused(s, &[&g]).await;
+    record(s, &c, ControlMode::Soft);
+    (id, p, c, g)
+}
+
+#[tokio::test]
+async fn a_pause_says_what_it_does_to_agents_stopping_another_way() {
+    let (s, _runner, _dir) = common::seat_tools::with_tools().await;
+    let (_, p, c, _) = paused_below_a_soft_stop(&s).await;
+    let body = ok(control(&s, &p, "pause").await);
+    assert_eq!(affected(&body), vec![p.clone()]);
+    assert_eq!(
+        skipped(&body),
+        vec![(
+            c.clone(),
+            "already_stopping".into(),
+            "It is already stopping".into()
+        )],
+        "the paused grandchild is not running, and the soft stop is not called a pause"
+    );
+    wait_paused(&s, &[&p]).await;
+    assert_eq!(mode(&s, &c).await, json!("soft"), "its own stop is kept");
+}
+
+#[tokio::test]
+async fn resume_all_resumes_an_agent_below_a_soft_stop_once() {
+    let (s, _runner, _dir) = common::seat_tools::with_tools().await;
+    let (id, p, c, g) = paused_below_a_soft_stop(&s).await;
+    ok(control(&s, &p, "pause").await);
+    wait_paused(&s, &[&p]).await;
+
+    let body = ok(team_action(&s, &id, "resume", &rid()).await);
+    let mut want = vec![p.clone(), g.clone()];
+    want.sort();
+    assert_eq!(affected(&body), want, "each once: {body}");
+    let skipped = skipped(&body);
+    assert_eq!(skipped.len(), 1, "{skipped:?}");
+    assert_eq!((&skipped[0].0, skipped[0].1.as_str()), (&c, "not_paused"));
+    wait_lifecycle(&s, &[&p, &g], SeatLifecycle::Running).await;
 }

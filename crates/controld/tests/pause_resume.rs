@@ -96,7 +96,11 @@ async fn pause_when_nothing_running_is_empty_result_not_error() {
     let never = team(&s, "never-started", &["a"]).await;
     for action in ["pause", "resume"] {
         let body = ok(team_action(&s, &never, action, &rid()).await);
-        assert_eq!(body, json!({ "affected": [], "skipped": [] }), "{action}");
+        assert_eq!(
+            body,
+            json!({ "affected": [], "skipped": [], "notes": [] }),
+            "{action}"
+        );
     }
 
     let id = team(&s, "all-stopped", &["a", "b"]).await;

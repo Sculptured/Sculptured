@@ -241,16 +241,24 @@ pub(crate) async fn restart(
     text: String,
     by: Actor,
 ) -> Result<(), ApiError> {
-    st.store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .clear_control(seat)?;
-    let session = st
-        .store
-        .lock()
-        .expect("store mutex must not be poisoned")
-        .seat(seat)?
-        .and_then(|v| v.native_session_id);
+    relaunch(st, seat, mode).await?;
+    crate::reconciler::send_message_as(st, seat, text, MessageIntent::Instruct, false, by)
+        .await
+        .map(|_| ())
+}
+
+/// Clears `seat`'s stop and starts it again: resuming its conversation (`mode` Resume, when it has
+/// one), or fresh. Ok once it runs.
+pub(crate) async fn relaunch(
+    st: &AppState,
+    seat: &str,
+    mode: ContinueMode,
+) -> Result<(), ApiError> {
+    let session = {
+        let store = st.store.lock().expect("store mutex must not be poisoned");
+        store.clear_control(seat)?;
+        store.seat(seat)?.and_then(|v| v.native_session_id)
+    };
     match (mode, session) {
         (ContinueMode::Resume, Some(id)) => {
             let baseline = Some(crate::restore::usage_baseline(st, seat)?);
@@ -263,16 +271,13 @@ pub(crate) async fn restart(
                 TenureCause::Resume,
                 baseline,
             )
-            .await?;
+            .await
         }
         _ => {
             crate::restore::relaunch_and_send(st, seat, LaunchMode::Fresh, TenureCause::Fresh, None)
-                .await?
+                .await
         }
     }
-    crate::reconciler::send_message_as(st, seat, text, MessageIntent::Instruct, false, by)
-        .await
-        .map(|_| ())
 }
 
 pub fn routes() -> Router<AppState> {
