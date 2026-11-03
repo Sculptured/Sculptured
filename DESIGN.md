@@ -441,6 +441,25 @@ Simple to start, deep when needed. Nothing is removed, and every closed disclosu
 ### Message all
 "Message all agents…" and "Message selected agents…" are palette commands, and Run's selection bar also has "Message…". Both open one dialog (`.panel.broadcast`, up to 560px wide). It has a recipient list in a `--well` box with "All running" and "None" quick picks, where agents that cannot receive show why ("stopped; only running agents get messages"), a message box, an intent choice, a preview, and a confirm step. Results come back per agent as a glyph and a word: `◌ sending…`, `✓ sent` or `▲ not sent: <reason>`, with "Send again to N agents" for failures. When the command is unavailable, its row says why ("Start the team first." or "Select agents first: Shift+click their cards.").
 
+### Control workspace: header and panes
+Control, a simulated Arena run and Arena control share one workspace (`web/src/workspace/`, `web/src/control/ControlHeader.tsx`). The user guide is `docs/guide/control.md`.
+
+- **Header, left to right.**
+  - A status strip of tiles (`.ctl-tile`). Each has a small upper-case label over a monospace value: Run, Elapsed (`T+hh:mm:ss`, tabular, ticking only while running), Agents (a count per state, each a glyph plus a word), Tokens in / out, and Cost. A value not known says "unknown".
+  - The master caution (`.ctl-caution`). Lit means a red border and a soft red fill, with a slowly blinking `▲` and the count of alarms not acknowledged (the blink stops with reduced motion); otherwise `✓` with "N acknowledged", or `○` "no alarms". It opens the Alarms pane.
+  - The team controls, in a fixed order: Start (the one primary button), Pause all, Resume all, Stop team…, then Emergency stop (`btn-danger`, always last).
+- **Disabled controls.** A control that cannot run is disabled with its reason in visible text under it (`.ctl-why`). A reason several controls share is said once, after them.
+- **Emergency stop.** It asks first in an inline `alertdialog` naming the count ("Stop all 3 agents now?"). Cancel takes the focus, Tab stays inside, and Esc or a click outside cancels.
+- **Outcome note.** After an action, one note (`.ctl-outcome`) says what it did and lists each agent it left alone. A refusal is marked `◇` and amber, a failure `▲` and red; neither is ever shown as a success.
+- **Bar.** Under the header, one bar holds the layout tabs (+ and ⋯), then **Add pane** and the **Look** select (Mission, or Follow app look).
+- **Panes.** Each stack has a tab strip: glyph and upper-case title, a ✕ per tab, and one ⋯ per stack (Move to…, Duplicate, Settings, Pop out, Close).
+  - The active tab sits on the panel colour with a 2px accent line along its top.
+  - While dragging, the drop zone is shaded over the target stack: an edge quarter, or the centre for tabs.
+  - Gaps between panes are 5px splitters that show a line on hover and focus.
+  - Pane bodies are dense: 30px rows, tabular numbers, and raw records in monospace marked as evidence.
+- **Empty and offline panes** say what will appear and when ("The timeline fills in once the team does something."), or "Arena is not running" with how to start it. A pane is never blank.
+- **Phone.** One pane at a time, chosen from a **Pane** select. The header is one line (run, clock, caution count, Emergency stop) with the rest under a disclosure.
+
 ## Do's and Don'ts
 
 ### Do:

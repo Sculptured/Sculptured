@@ -1,10 +1,14 @@
-import { act, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../api';
 import { ERROR_WORDS } from '../errors';
+import { ShellContext, type Shell } from '../shell/ShellContext';
 import { ev, seatView, snapshot } from '../test-fixtures';
+import { CONNECTING } from './deploymentAgents';
+import { useDeploymentSource } from './deploymentSource';
 import { ActionError } from './source';
-import { A, B, open, resetFakes, run, stream } from './testHarness';
+import { A, B, NOW, open, resetFakes, run, stream } from './testHarness';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
@@ -104,5 +108,16 @@ describe('deployment source controls', () => {
     expect(result.current.team.start.can).toEqual({ ok: false, why: 'The team is already running.' });
     await act(async () => { await result.current.message(A, 'Check the tests').run(); });
     expect(vi.mocked(api.send).mock.calls[0].slice(0, 2)).toEqual([A, { text: 'Check the tests', intent: 'instruct', interrupt: false }]);
+  });
+
+  it('a design that never started can Start at once: it has no live stream to wait for', () => {
+    const inShell = (started: boolean) => {
+      const shell = { teams: {}, names: {}, titles: {}, now: NOW, summaries: [{ id: 'r', started }], refs: { run } } as unknown as Shell;
+      return ({ children }: { children: ReactNode }) => <ShellContext.Provider value={shell}>{children}</ShellContext.Provider>;
+    };
+    const design = renderHook(() => useDeploymentSource('r'), { wrapper: inShell(false) });
+    expect(design.result.current.team.start.can).toEqual({ ok: true });
+    const started = renderHook(() => useDeploymentSource('r'), { wrapper: inShell(true) });
+    expect(started.result.current.team.start.can).toEqual({ ok: false, why: CONNECTING });
   });
 });

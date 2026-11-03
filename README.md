@@ -61,6 +61,7 @@ flowchart LR
 ## Documentation
 
 - **Using Sculptured:** [docs site](https://docs.usesculptured.com) (sources in [`docs-site/`](docs-site/)): designing teams, the board, controlling live agents, Git, workflows.
+- **Control, the mission-control page of a project:** [`docs/guide/control.md`](docs/guide/control.md), with screenshots and short videos: the header and team controls, panes and layouts, alarms and approvals, simulated runs and Arena control.
 - **How it is built:** [`docs/internals/`](docs/internals/README.md), starting with the [overview](docs/internals/overview.md): architecture, the event journal, drivers, workflows, protections, knowledge, the host protocol, testing.
 - **Example teams:** [`examples/teams/`](examples/teams/) and [`docs/showcase/`](docs/showcase/).
 

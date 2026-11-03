@@ -32,7 +32,9 @@ function useTeamView(team: string) {
   const ids = useMemo(() => seatIdsOf(state.snapshot, state.seats), [state.snapshot, state.seats]);
   const seats = useMemo(() => (ids.length ? ids.map((id) => state.seats[id]).filter(Boolean) : NO_SEATS), [ids, state.seats]);
   const nameOf = useCallback((id: string) => (state.seats[id] ? displayName(state.seats[id], names) : nameForId(id, names)), [state.seats, names]);
-  return { shell, state, connected, ids, seats, nameOf, title: shell.titles[team] ?? team };
+  // A design that has never started has no live stream to wait for: it is not loading, just not started.
+  const designOnly = !!shell.summaries?.some((s) => s.id === team && !s.started);
+  return { shell, state, connected, designOnly, ids, seats, nameOf, title: shell.titles[team] ?? team };
 }
 
 /**
@@ -40,7 +42,7 @@ function useTeamView(team: string) {
  * the run budget, and the agent and team control routes.
  */
 export function useDeploymentSource(team: string): ControlSource {
-  const { shell, state, connected, ids, seats, nameOf, title } = useTeamView(team);
+  const { shell, state, connected, designOnly, ids, seats, nameOf, title } = useTeamView(team);
   const { events, error } = useTeamEvents(ids, state.feed, state.epoch, TAIL);
   const data = useDeploymentData(team, ids, events);
   const feed = useMemo(
@@ -63,7 +65,7 @@ export function useDeploymentSource(team: string): ControlSource {
     decide: (id, d) => decide(act, approvals, id, d),
     agentControl: (agent, action) => agentAction(ctx, agent, action),
     message: (agent, text) => messageAction(ctx, agent, text),
-    team: teamActions(ctx, seats, !state.snapshot && !connected, shell.refs.run),
+    team: teamActions(ctx, seats, !state.snapshot && !connected && !designOnly, shell.refs.run),
     metrics: metricsOf(data.usage, data.costEvents, rate),
     problems,
   };
