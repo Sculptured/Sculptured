@@ -248,13 +248,12 @@ pub(crate) async fn relaunch(
 ) -> Result<(), ApiError> {
     // A safety stop since the team action began leaves it stopped (`collaboration::preempt`).
     crate::collaboration::preempt::clear_unless_stopped(st, seat)?;
-    let session = st
+    let view = st
         .store
         .lock()
         .expect("store mutex must not be poisoned")
-        .seat(seat)?
-        .and_then(|v| v.native_session_id);
-    let started = match (mode, session) {
+        .seat(seat)?;
+    let started = match (mode, view.and_then(|v| v.native_session_id)) {
         (ContinueMode::Resume, Some(id)) => {
             let baseline = Some(crate::restore::usage_baseline(st, seat)?);
             crate::restore::relaunch_owed(

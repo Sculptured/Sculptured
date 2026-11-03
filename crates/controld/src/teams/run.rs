@@ -269,6 +269,17 @@ pub(super) struct StopReq {
     request_id: String,
 }
 
+/// Why Stop team… cannot run now: another team action holds the team, or it is still starting.
+fn stop_refused(st: &AppState, id: &str) -> ApiError {
+    if st.team_action_running(id) {
+        return crate::collaboration::preempt::busy(st, id);
+    }
+    ApiError::conflict(
+        "team_starting",
+        "This team is still starting. Stop it once it has finished starting.",
+    )
+}
+
 pub(super) async fn stop_team(
     State(st): State<AppState>,
     Path(id): Path<String>,
@@ -294,13 +305,7 @@ pub(super) async fn stop_team(
         // run: it is refused while a start holds the claim, and a start that comes while
         // the stop runs is refused as `team_running`.
         let Some(_stopping) = st2.try_begin_boot(&id) else {
-            if st2.team_action_running(&id) {
-                return Err(crate::collaboration::preempt::busy(&st2, &id));
-            }
-            return Err(ApiError::conflict(
-                "team_starting",
-                "This team is still starting. Stop it once it has finished starting.",
-            ));
+            return Err(stop_refused(&st2, &id));
         };
         // Same body as `POST /api/rigs/{name}/stop`: the agents that could not be stopped, with the host's reason.
         let analytics = st2.clone();
