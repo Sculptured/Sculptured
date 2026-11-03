@@ -47,7 +47,9 @@
 .arena-table tbody tr:hover td { background: var(--hover); }
 .arena-table th.arena-num { text-align: right; }
 .arena-subrow td { padding-top: 0; color: var(--muted); }
-.arena-task { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-task { width: 100%; max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-table td { white-space: nowrap; }
+.arena-table .arena-subrow td { white-space: normal; }
 .arena-actions { text-align: right; white-space: nowrap; }
 .arena-counts { display: inline-flex; gap: 0 4px; white-space: nowrap; }
 .arena-count { color: var(--c); font-variant-numeric: tabular-nums; }
@@ -99,7 +101,8 @@
   .arena-table td { display: block; padding: 0; border: 0; }
   .arena-table td.arena-num { text-align: left; }
   .arena-table td[data-label]::before { content: attr(data-label) ' '; color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
-  .arena-task { max-width: none; flex-basis: 100%; white-space: normal; }
+  .arena-task { width: auto; max-width: none; flex-basis: 100%; white-space: normal; }
+  .arena-table td { white-space: normal; }
   .arena-actions { margin-left: auto; }
   .arena-subrow td { white-space: normal; }
 }

@@ -15,8 +15,10 @@ import { NewRun } from './NewRun';
 const isRunning = (run: RunSummary) => run.branches.some((b) => b.status === 'running');
 const original = (run: RunSummary) => branchTree(run.branches)[0]?.branch;
 
-/** Delete with a confirm step; not while a branch of the run is running. After a delete the row goes. */
-function DeleteRun({ run, onDone, onError }: { run: RunSummary; onDone(): void; onError(e: unknown): void }) {
+type Act = { onChanged(): void; onError(e: unknown): void };
+
+/** Delete with a confirm step. After a successful delete the row stays "Deleting…" until the run list drops it. */
+function useDelete(run: RunSummary, { onChanged, onError }: Act) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const remove = async () => {
@@ -25,44 +27,64 @@ function DeleteRun({ run, onDone, onError }: { run: RunSummary; onDone(): void; 
     try {
       await arena.deleteRun(run.id);
       window.dispatchEvent(new Event(HEALTH_CHANGED));
-      onDone();
+      onChanged();
     } catch (e) {
       onError(e);
       setBusy(false);
       setConfirming(false);
     }
   };
-  if (isRunning(run)) return <span className="muted tst-small">Can't delete while running</span>;
-  if (!confirming) return <Btn size="sm" variant="ghost" icon="trash" onClick={() => setConfirming(true)}>Delete</Btn>;
+  return { confirming, busy, remove, ask: () => setConfirming(true), cancel: () => setConfirming(false) };
+}
+
+type Deleting = ReturnType<typeof useDelete>;
+
+/** The confirm step, on its own line under the run so the table keeps its width. */
+function ConfirmRow({ del, span }: { del: Deleting; span: number }) {
   return (
-    <span className="tst-confirm" role="group" aria-label="Confirm delete">
-      <span className="tst-small">Delete this run, its branches and their saves?</span>
-      <Btn size="sm" danger onClick={remove} disabled={busy}>{busy ? 'Deleting…' : 'Delete run'}</Btn>
-      <Btn size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Btn>
-    </span>
+    <tr className="arena-subrow">
+      <td colSpan={span}>
+        <span className="tst-confirm" role="group" aria-label="Confirm delete">
+          <span className="tst-small">Delete this run, its branches and their saves?</span>
+          <Btn size="sm" danger onClick={del.remove} disabled={del.busy}>{del.busy ? 'Deleting…' : 'Delete run'}</Btn>
+          <Btn size="sm" variant="ghost" onClick={del.cancel} disabled={del.busy}>Cancel</Btn>
+        </span>
+      </td>
+    </tr>
   );
 }
 
-type RowProps = { run: RunSummary; reason?: string; took: boolean; now: number; onChanged(): void; onError(e: unknown): void };
-
-function RunRow({ run, reason, took, now, onChanged, onError }: RowProps) {
-  const first = original(run);
-  const seconds = first ? branchSeconds(first) : null;
+function Actions({ run, del }: { run: RunSummary; del: Deleting }) {
   const finished = run.branches.filter((b) => b.status !== 'running');
   return (
-    <tr aria-label={`Run of task ${run.task_id}`}>
-      <td className="arena-task">
-        {first ? <Link to={runPath(run.id, first.id)}>Task {run.task_id}</Link> : <strong>Task {run.task_id}</strong>}
-        {reason && <span className="muted" title={reason}> {reason}</span>}
-      </td>
-      <td><StatusCounts branches={run.branches} /></td>
-      {took && <td className="arena-num" data-label="Took">{seconds != null ? durationWords(seconds) : first?.status === 'running' ? 'running' : '—'}</td>}
-      <td className="arena-num" data-label="Started" title={formatWhen(run.created_at)}>{agoWords(run.created_at, now)}</td>
-      <td className="arena-actions">
-        {finished.length >= 2 && <Link className="btn btn-sm btn-ghost" to={comparePath(finished[0].id, finished[finished.length - 1].id)}>Compare</Link>}
-        <DeleteRun run={run} onDone={onChanged} onError={onError} />
-      </td>
-    </tr>
+    <td className="arena-actions">
+      {finished.length >= 2 && <Link className="btn btn-sm btn-ghost" to={comparePath(finished[0].id, finished[finished.length - 1].id)}>Compare</Link>}
+      {isRunning(run) ? <span className="muted tst-small">Can't delete while running</span>
+        : !del.confirming && <Btn size="sm" variant="ghost" icon="trash" onClick={del.ask}>Delete</Btn>}
+    </td>
+  );
+}
+
+type RowProps = Act & { run: RunSummary; reason?: string; took: boolean; now: number };
+
+function RunRow({ run, reason, took, now, ...act }: RowProps) {
+  const first = original(run);
+  const seconds = first ? branchSeconds(first) : null;
+  const del = useDelete(run, act);
+  return (
+    <>
+      <tr aria-label={`Run of task ${run.task_id}`}>
+        <td className="arena-task">
+          {first ? <Link to={runPath(run.id, first.id)}>Task {run.task_id}</Link> : <strong>Task {run.task_id}</strong>}
+          {reason && <span className="muted" title={reason}> {reason}</span>}
+        </td>
+        <td><StatusCounts branches={run.branches} /></td>
+        {took && <td className="arena-num" data-label="Took">{seconds != null ? durationWords(seconds) : first?.status === 'running' ? 'running' : '—'}</td>}
+        <td className="arena-num" data-label="Started" title={formatWhen(run.created_at)}>{agoWords(run.created_at, now)}</td>
+        <Actions run={run} del={del} />
+      </tr>
+      {del.confirming && <ConfirmRow del={del} span={took ? 5 : 4} />}
+    </>
   );
 }
 
