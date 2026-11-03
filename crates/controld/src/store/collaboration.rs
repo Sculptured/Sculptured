@@ -13,6 +13,10 @@ pub enum ControlMode {
     Finished,
     /// Stopped because its output budget ran out.
     Budget,
+    /// Asked to stop at a checkpoint and keep its session; stopped like a soft stop.
+    Pausing,
+    /// A pause that has finished: stopped, with its session kept for Resume.
+    Paused,
 }
 
 impl ControlMode {
@@ -23,13 +27,22 @@ impl ControlMode {
             Self::Hard => "hard",
             Self::Finished => "finished",
             Self::Budget => "budget",
+            Self::Pausing => "pausing",
+            Self::Paused => "paused",
         }
     }
     #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
-        [Self::Soft, Self::Hard, Self::Finished, Self::Budget]
-            .into_iter()
-            .find(|m| m.as_str() == s)
+        [
+            Self::Soft,
+            Self::Hard,
+            Self::Finished,
+            Self::Budget,
+            Self::Pausing,
+            Self::Paused,
+        ]
+        .into_iter()
+        .find(|m| m.as_str() == s)
     }
 }
 
@@ -38,6 +51,8 @@ pub struct SoftStop {
     pub baseline: u64,
     pub requested_ms: i64,
     pub message_id: Option<String>,
+    /// A pause (it ends `Paused`, keeping the session) rather than a soft stop (it ends `Finished`).
+    pub pausing: bool,
 }
 
 impl Store {
@@ -145,10 +160,10 @@ impl Store {
             )
             .map(|_| ())
     }
-    /// Soft stops in progress.
+    /// Soft stops and pauses in progress.
     pub fn soft_stops(&self) -> rusqlite::Result<Vec<SoftStop>> {
-        self.conn.prepare("SELECT seat,baseline,requested_ms,message_id FROM agent_controls WHERE mode='soft'")?
-            .query_map([], |r| Ok(SoftStop { seat: r.get(0)?, baseline: r.get::<_, i64>(1)? as u64, requested_ms: r.get(2)?, message_id: r.get(3)? }))?
+        self.conn.prepare("SELECT seat,baseline,requested_ms,message_id,mode FROM agent_controls WHERE mode IN ('soft','pausing')")?
+            .query_map([], |r| Ok(SoftStop { seat: r.get(0)?, baseline: r.get::<_, i64>(1)? as u64, requested_ms: r.get(2)?, message_id: r.get(3)?, pausing: r.get::<_, String>(4)? == "pausing" }))?
             .collect()
     }
     /// The saved answer to an agent's tool request (its arguments, then its result), if it ran before.

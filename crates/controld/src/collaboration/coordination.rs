@@ -6,6 +6,7 @@ use super::{
 pub fn routes() -> Router<AppState> {
     Router::new()
         .merge(history::routes())
+        .merge(super::pausing::routes())
         .route(
             "/api/teams/{id}/budget",
             crate::collaboration::get(budget_status).post(set_budget),

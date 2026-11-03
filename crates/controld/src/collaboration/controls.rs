@@ -11,6 +11,8 @@ pub enum Control {
     Soft,
     /// Wrap up at a checkpoint the agent can continue from: the run pauses until its plan window resets.
     Checkpoint,
+    /// The operator's pause: wrap up at a checkpoint, then stop and keep the session for Resume.
+    Pause,
     /// Stop now, with every agent it spawned.
     Hard,
     /// Undo a stop.
@@ -23,9 +25,10 @@ impl Control {
             "soft" => Ok(Self::Soft),
             "hard" => Ok(Self::Hard),
             "resume" => Ok(Self::Resume),
+            "pause" => Ok(Self::Pause),
             _ => Err(ApiError::bad_request(
                 "invalid_control",
-                "Choose soft, hard or resume",
+                "Choose soft, hard, pause or resume",
             )),
         }
     }
@@ -39,6 +42,9 @@ pub async fn control_agent(st: &AppState, seat: &str, control: Control) -> Resul
         .seat(seat)?
         .ok_or_else(|| ApiError::not_found("Unknown agent"))?;
     if control == Control::Resume {
+        if super::pausing::is_paused(st, seat)? {
+            return super::pausing::resume_one(st, &view).await;
+        }
         if st
             .store
             .lock()
@@ -65,6 +71,9 @@ pub async fn control_agent(st: &AppState, seat: &str, control: Control) -> Resul
             "Project is changing. Retry the stop after that operation finishes.",
         )
     })?;
+    if control == Control::Pause {
+        return super::pausing::pause_one(st, &view).await;
+    }
     let children = {
         let store = st.store.lock().expect("store mutex must not be poisoned");
         let mut all = store.children(seat)?;
@@ -119,10 +128,19 @@ pub async fn control_agent(st: &AppState, seat: &str, control: Control) -> Resul
     } else {
         SOFT_TEXT.to_string()
     };
+    send_wrap_up(st, &view, text).await
+}
+
+/// Sends a running agent its wrap-up instruction, remembered so the stop follows its wrap-up turn.
+pub(super) async fn send_wrap_up(
+    st: &AppState,
+    view: &crate::views::SeatView,
+    text: String,
+) -> Result<(), ApiError> {
     // Interrupting first makes the wrap-up instruction available even to CLIs that queue input.
     let id = reconciler::send_message(
         st,
-        seat,
+        &view.id,
         text,
         MessageIntent::Instruct,
         view.current_turn.is_some(),
@@ -131,7 +149,7 @@ pub async fn control_agent(st: &AppState, seat: &str, control: Control) -> Resul
     st.store
         .lock()
         .expect("store mutex must not be poisoned")
-        .set_control_message(seat, &id)?;
+        .set_control_message(&view.id, &id)?;
     Ok(())
 }
 
@@ -187,7 +205,7 @@ pub async fn stop_now(st: &AppState, rig: &str, seats: &[String]) -> Result<(), 
     }
 }
 
-fn record(st: &AppState, seat: &str, mode: ControlMode) -> Result<(), ApiError> {
+pub(super) fn record(st: &AppState, seat: &str, mode: ControlMode) -> Result<(), ApiError> {
     let store = st.store.lock().expect("store mutex must not be poisoned");
     let baseline = store.seat(seat)?.and_then(|s| s.tokens_out).unwrap_or(0);
     store.record_control(seat, mode, baseline)?;
@@ -217,6 +235,7 @@ async fn check(st: &AppState) -> Result<(), ApiError> {
         baseline: base,
         requested_ms: at,
         message_id: msg,
+        pausing,
     } in controls
     {
         let stop = {
@@ -245,10 +264,16 @@ async fn check(st: &AppState) -> Result<(), ApiError> {
         };
         if stop {
             control_agent(st, &seat, Control::Hard).await?;
+            // A pause keeps the session for Resume; a soft stop is over.
+            let ended = if pausing {
+                ControlMode::Paused
+            } else {
+                ControlMode::Finished
+            };
             st.store
                 .lock()
                 .expect("store mutex must not be poisoned")
-                .set_control_mode(&seat, ControlMode::Finished)?;
+                .set_control_mode(&seat, ended)?;
         }
     }
     Ok(())

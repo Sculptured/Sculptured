@@ -151,6 +151,7 @@ async fn message(st: &AppState, seat: &str, args: &Value, key: &str) -> Result<V
                 crate::store::ControlMode::Hard
                     | crate::store::ControlMode::Finished
                     | crate::store::ControlMode::Budget
+                    | crate::store::ControlMode::Paused
             )
         ) {
             return Err("Sender is stopped".into());

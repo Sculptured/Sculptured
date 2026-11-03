@@ -113,6 +113,7 @@ export const ERROR_WORDS: Record<string, string> = {
   reason_required: 'Say why. A reason is required and is kept with the agent’s history.',
   fork_unsupported: 'This agent cannot copy its session. Start a fresh session instead.',
   agent_not_running: 'The agent is not running, so that cannot be done now.',
+  agent_settling: 'The agent is still stopping or starting. Try again once it has settled.',
   team_not_running: 'This team is not running. Start the team first.',
   no_restore_needed: 'No agent here waits for a decision about bringing it back any more. Reload the page.',
   restore_failed: 'The agent could not be brought back. Its reason is shown on the agent.',

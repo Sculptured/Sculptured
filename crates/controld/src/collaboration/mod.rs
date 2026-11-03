@@ -2,6 +2,7 @@ pub mod budgets;
 pub mod context_ceiling;
 mod controls;
 pub(crate) mod history;
+mod pausing;
 pub mod silence;
 pub mod token_limits;
 pub mod tools;
@@ -20,3 +21,4 @@ pub use token_limits::check as check_agent_limits;
 
 mod coordination;
 pub use coordination::{ManagedChild, routes};
+pub use pausing::{SkippedSeat, TeamControlResult};

@@ -35,6 +35,26 @@ describe('api', () => {
     expect(err.diagnostics[0].path).toBe('pods[0].members[0].runtime');
   });
 
+  it('pauses and resumes a whole team with request ids', async () => {
+    const result = { affected: ['team.a@t'], skipped: [{ seat: 'team.b@t', reason: 'It is not running (stopped)' }] };
+    const fetch = mockFetch(200, result);
+    expect(await api.pauseTeam('t 1', 'req-p')).toEqual(result);
+    await api.resumeTeam('t 1', 'req-r');
+    const [[pauseUrl, pause], [resumeUrl, resume]] = fetch.mock.calls;
+    expect([pauseUrl, pause.method, JSON.parse(pause.body)]).toEqual(['/api/teams/t%201/pause', 'POST', { request_id: 'req-p' }]);
+    expect([resumeUrl, resume.method, JSON.parse(resume.body)]).toEqual(['/api/teams/t%201/resume', 'POST', { request_id: 'req-r' }]);
+  });
+
+  it('pauses one agent through its control', async () => {
+    const fetch = mockFetch(200, { mode: 'pause' });
+    expect(await api.controlSeat('dev.a@r', 'pause', 'req-c')).toEqual({ mode: 'pause' });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('/api/seats/dev.a%40r/control');
+    expect(JSON.parse(init.body)).toEqual({ request_id: 'req-c', mode: 'pause' });
+    await api.resumeTeam('t');
+    expect(JSON.parse(fetch.mock.calls[1][1].body).request_id).toMatch(/.{8,}/);
+  });
+
   it('generates a request id when none is given', async () => {
     const fetch = mockFetch(200, {});
     await api.interrupt('dev.a@r');

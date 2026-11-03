@@ -21,6 +21,7 @@ import type { QuestionView } from './generated/QuestionView';
 import type { Settings } from './generated/Settings';
 import type { TeamSettings } from './generated/TeamSettings';
 import type { RestoreDecision } from './generated/RestoreDecision';
+import type { TeamControlResult } from './generated/TeamControlResult';
 
 export class ApiError extends Error {
   constructor(
@@ -157,6 +158,8 @@ export type SetupProgress = { done: string[]; skipped: string[] };
 
 export type StartResult = { rig: string; warnings: DraftIssue[] };
 
+/** What the operator asks of one agent: pause and resume, or a soft or hard stop. */
+export type SeatControlMode = 'pause' | 'resume' | 'soft' | 'hard';
 export type SendBody = { text: string; intent: MessageIntent; interrupt: boolean };
 type Empty = Record<string, never>;
 
@@ -198,6 +201,8 @@ export const api = {
   runUsage: (id: string) => get<EventRecord[]>(`${teamUrl(id)}/communications?run=latest&brief=true&usage=true`),
   agentControl: (id: string) => get<{mode: string | null}>(`${seatUrl(id)}/control`),
   controlAgent: (id: string, mode: "soft" | "hard" | "resume", requestId: string) => post(`${seatUrl(id)}/control`, requestId, {mode}),
+  /** Pause (stop at the next safe point, keeping the session), resume, or stop one agent. */
+  controlSeat: (seat: string, mode: SeatControlMode, requestId = newRequestId()) => post<{ mode: SeatControlMode }>(`${seatUrl(seat)}/control`, requestId, { mode }),
   workflow: (id: string) => get<{ config: Workflow | null; run: WorkflowRun | null; active: boolean; usage?: Record<string, import('./generated/TurnTokens').TurnTokens>; dispatch?: import('./generated/DispatchRecord').DispatchRecord | null; dispatching?: boolean; start_seq?: number | null }>(`${teamUrl(id)}/workflow`),
   retryDispatch: (id: string, start_seq: number) => request<{ retried: boolean }>('POST', `${teamUrl(id)}/workflow/dispatch/retry`, { start_seq }),
   retryWorkflow: (id: string, task: string, start_seq: number) => request('POST', `${teamUrl(id)}/workflow/retry`, { task, start_seq }),
@@ -272,6 +277,12 @@ export const api = {
   /** Stops every agent now, like Ctrl+C: interrupted at once, forced after 2 seconds. */
   stopTeamNow: (id: string, requestId = newRequestId()) =>
     post<{ stopped: number }>(`${teamUrl(id)}/stop-now`, requestId),
+  /** Pause all: every running agent stops at its next safe point and keeps its session. */
+  pauseTeam: (id: string, requestId = newRequestId()) =>
+    post<TeamControlResult>(`${teamUrl(id)}/pause`, requestId),
+  /** Resume all: every paused agent continues its session. */
+  resumeTeam: (id: string, requestId = newRequestId()) =>
+    post<TeamControlResult>(`${teamUrl(id)}/resume`, requestId),
   importTeam: (yaml: string, requestId = newRequestId()) =>
     post<TeamImport>('/api/teams/import', requestId, { yaml }),
   /** The team as a MADL (Multi-Agent Descriptor Language) file; `folders` keeps this computer's folder paths. */

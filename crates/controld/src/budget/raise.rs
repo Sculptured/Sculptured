@@ -326,7 +326,8 @@ async fn carry_on(st: &AppState, seat: &str) -> Result<(), ApiError> {
     while is_live(st, seat)? && tokio::time::Instant::now() < deadline {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    super::pause::restart(st, seat, ContinueMode::Resume, text).await
+    let by = model::Actor::System("budget".into());
+    super::pause::restart(st, seat, ContinueMode::Resume, text, by).await
 }
 
 fn is_live(st: &AppState, seat: &str) -> Result<bool, ApiError> {
