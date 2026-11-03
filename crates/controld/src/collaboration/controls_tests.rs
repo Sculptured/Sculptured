@@ -80,5 +80,8 @@ async fn a_pause_that_arrived_after_the_initial_read_uses_the_pause_resume_path(
     // No runner: a failed session resume must restore Paused so the next Resume can retry.
     assert!(undo_stop(&st, &seen).await.is_err());
     assert_eq!(mode(&st), Some(ControlMode::Paused));
+    // Resume stays its one way back: no restore offer beside it.
+    let seat = st.store.lock().unwrap().seat(SEAT).unwrap().unwrap();
+    assert_eq!(seat.restore_offer, None);
     assert!(st.try_begin_boot("control-race").is_some());
 }

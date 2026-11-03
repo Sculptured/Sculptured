@@ -93,7 +93,7 @@ The ✕ on a tab also closes it.
 
 **Pop out** opens the pane in its own window, which you can put on another screen. Its place in the layout says "Shown in another window", with **Bring back** and **Show that window**. Closing that window brings the pane back too. The window follows the same selection as the main page.
 
-**Look.** Control uses the dark Mission look unless you pick **Follow app look** in the Look setting; then it looks like the rest of the app.
+**Look.** Control uses the dark Mission look unless you pick **Follow app look** in the Look setting; then it looks like the rest of the app. With the app in its light look, the dark Mission panes sit inside the light top bar and project bar, so the page has a visible seam between the two; choose **Follow app look** if you prefer one look throughout.
 
 ![The Live layout in the Follow app look](../images/control/follow-app-look.png)
 
@@ -108,7 +108,7 @@ Layouts and the Look setting are kept per project in this browser. A layout save
 | Timeline | One lane per agent, plus a lane for alarms. Click a mark to select that time and agent. |
 | Alarms | The master caution list (see below). |
 | Approvals | Changes and tool requests waiting for you (see below). |
-| Agent detail | One agent's conversation or activity, with its own Pause, Resume, Stop and a message box. |
+| Agent detail | One agent's conversation or activity, with its own Pause, Resume, Stop (it asks first, like Emergency stop) and a message box. |
 | Metrics | Tokens in and out, cost, tool calls per minute, each agent's totals, and this computer's load. |
 | Raw events | The event journal, verbatim: the evidence behind the plain words. |
 | Results | The project's Results sections (summary, changes, checks), chosen in its settings. |

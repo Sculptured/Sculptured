@@ -184,6 +184,20 @@ pub(crate) async fn relaunch_and_send(
     cause: TenureCause,
     baseline: Option<[u64; 4]>,
 ) -> Result<(), ApiError> {
+    relaunch_owed(st, seat, mode, cause, baseline, true).await
+}
+
+/// `relaunch_and_send`; with `offer` false, one that does not come up leaves no restore offer: the
+/// caller keeps its own way back (a paused agent stays paused, and Resume retries), so the agent never
+/// shows two.
+pub(crate) async fn relaunch_owed(
+    st: &AppState,
+    seat: &str,
+    mode: LaunchMode,
+    cause: TenureCause,
+    baseline: Option<[u64; 4]>,
+    offer: bool,
+) -> Result<(), ApiError> {
     let owed = if cause == TenureCause::Resume {
         OwedMode::Resumed
     } else {
@@ -210,16 +224,18 @@ pub(crate) async fn relaunch_and_send(
             .unwrap_or_else(|| "unknown".into()),
         Err(e) => e.message,
     };
-    let body = EventBody::RestoreNeeded {
-        reason: format!("Restoring did not work: {reason}"),
-        can_resume: false,
-    };
-    st.local_event(
-        crate::hosts::controld(),
-        Subject::Seat(seat.to_string()),
-        Provenance::ProtocolObserved,
-        body,
-    )?;
+    if offer {
+        let body = EventBody::RestoreNeeded {
+            reason: format!("Restoring did not work: {reason}"),
+            can_resume: false,
+        };
+        st.local_event(
+            crate::hosts::controld(),
+            Subject::Seat(seat.to_string()),
+            Provenance::ProtocolObserved,
+            body,
+        )?;
+    }
     Err(ApiError::bad_gateway("restore_failed", reason))
 }
 

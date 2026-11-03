@@ -107,7 +107,7 @@ async fn restart_claimed(
     if operator_blocks(st, seat)? {
         return Ok(());
     }
-    super::pause::relaunch(st, seat, mode).await?;
+    super::pause::relaunch(st, seat, mode, true).await?;
     send_instruction(st, seat, text, by).await
 }
 

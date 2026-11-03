@@ -57,7 +57,7 @@ function NotLive() {
   if (p.started) return <ConnectingPanel key={p.team} rig={p.team} />;
   return (
     <div className="ctl-empty ctl-not-started">
-      <p><span aria-hidden="true">○ </span><strong>Not started yet.</strong> The live board shows here once the team runs. Start it with Start team above.</p>
+      <p><span aria-hidden="true">○ </span><strong>Not started yet.</strong> The live board shows here once the team runs. Start it with Start above.</p>
       {p.builtHere && <p><Link className="btn btn-secondary btn-sm" to={boardPath(p.team, 'design')}>Open the Design board</Link></p>}
     </div>
   );

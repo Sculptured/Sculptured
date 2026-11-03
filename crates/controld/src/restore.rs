@@ -1,7 +1,7 @@
 //! After a restart: reattach agents that kept running, and offer the rest to the operator's one
 //! "Resume N agents?" answer per team (`decide`). Nothing is relaunched without that answer.
 mod decide;
-pub(crate) use decide::{relaunch_and_send, usage_baseline};
+pub(crate) use decide::{relaunch_and_send, relaunch_owed, usage_baseline};
 
 use crate::hosts::{LOCAL_HOST, controld, record_lifecycle};
 use crate::state::AppState;

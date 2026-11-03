@@ -238,11 +238,13 @@ fn continuation(seat: &str, mode: ContinueMode, window: u32, max: u32) -> String
 }
 
 /// Clears `seat`'s stop and starts it again: resuming its conversation (`mode` Resume, when it has
-/// one), or fresh. Ok once it runs.
+/// one), or fresh. Ok once it runs. `offer`: one that does not come up leaves a restore offer (false
+/// for an operator's Resume of a paused agent, which stays paused instead).
 pub(crate) async fn relaunch(
     st: &AppState,
     seat: &str,
     mode: ContinueMode,
+    offer: bool,
 ) -> Result<(), ApiError> {
     // A safety stop since the team action began leaves it stopped (`collaboration::preempt`).
     crate::collaboration::preempt::clear_unless_stopped(st, seat)?;
@@ -255,7 +257,7 @@ pub(crate) async fn relaunch(
     let started = match (mode, session) {
         (ContinueMode::Resume, Some(id)) => {
             let baseline = Some(crate::restore::usage_baseline(st, seat)?);
-            crate::restore::relaunch_and_send(
+            crate::restore::relaunch_owed(
                 st,
                 seat,
                 LaunchMode::Resume {
@@ -263,12 +265,13 @@ pub(crate) async fn relaunch(
                 },
                 TenureCause::Resume,
                 baseline,
+                offer,
             )
             .await
         }
         _ => {
-            crate::restore::relaunch_and_send(st, seat, LaunchMode::Fresh, TenureCause::Fresh, None)
-                .await
+            let fresh = (LaunchMode::Fresh, TenureCause::Fresh);
+            crate::restore::relaunch_owed(st, seat, fresh.0, fresh.1, None, offer).await
         }
     };
     started?;

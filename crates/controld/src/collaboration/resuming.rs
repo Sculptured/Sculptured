@@ -86,7 +86,8 @@ async fn call_off_pause(st: &AppState, seat: &str) -> Result<bool, ApiError> {
 ///
 /// The relaunch clears the pause first (what the agent is owed is held back while a stop is
 /// recorded). If it does not come up, the agent is left paused, whatever its state now: the next
-/// Resume retries, and if it comes up after all, that Resume calls the pause off.
+/// Resume retries, and if it comes up after all, that Resume calls the pause off. It leaves no
+/// restore offer: Resume is its one way back.
 async fn restart_paused(st: &AppState, view: &SeatView) -> Result<bool, ApiError> {
     let desired = st
         .store
@@ -100,7 +101,8 @@ async fn restart_paused(st: &AppState, view: &SeatView) -> Result<bool, ApiError
             "This team is stopped. Start the team to run its agents.",
         ));
     }
-    if let Err(e) = crate::budget::pause::relaunch(st, &view.id, ContinueMode::Resume).await {
+    if let Err(e) = crate::budget::pause::relaunch(st, &view.id, ContinueMode::Resume, false).await
+    {
         // A safety stop that came meanwhile keeps its own record.
         if e.code != "stopped_meanwhile" {
             record(st, &view.id, ControlMode::Paused)?;
