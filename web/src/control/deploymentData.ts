@@ -87,7 +87,7 @@ export function approvalsOf(questions: QuestionView[]): Approval[] {
  * Tokens from each agent's latest usage total; cost from the latest run's final usage reports, only
  * when every one of them was priced (otherwise unknown). Tool calls per minute come from the caller.
  */
-export function metricsOf(usage: TeamUsage | null, costEvents: EventRecord[] | null, toolCallsPerMin: number[]): ControlSource['metrics'] {
+export function metricsOf(usage: TeamUsage | null, costEvents: EventRecord[] | null, toolCallsPerMin: (number | null)[]): ControlSource['metrics'] {
   const last = (usage?.agents ?? []).flatMap((a) => (a.points.length > 0 ? [a.points[a.points.length - 1]] : []));
   const tokens = last.length > 0 ? { tokensIn: sum(last.map((p) => p.input)), tokensOut: sum(last.map((p) => p.output)) } : {};
   const finals = (costEvents ?? []).flatMap((e) => (e.body.type === 'usage-reported' && !e.body.in_turn ? [e.body.cost] : []));

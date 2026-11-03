@@ -6,6 +6,7 @@ import type { TeamBudget } from '../generated/TeamBudget';
 import { activityLines } from '../progress/sentences';
 import { ACTIVITY, hasProcess } from '../status';
 import { eventWords } from './eventWords';
+import { perMinute } from './rate';
 import type { FeedItem } from './source';
 
 /** A deployment's events as the Control feed: plain words, the record as evidence, and alarm tags. */
@@ -14,9 +15,6 @@ type NameOf = (seatId: string) => string;
 
 /** What the feed needs besides the events: names, the team's title, the agents now, questions and budget. */
 export type FeedContext = { nameOf: NameOf; title: string; seats: Record<string, SeatView>; questions: QuestionView[]; budget: TeamBudget | null };
-
-/** How many minutes `toolCallsPerMin` covers. */
-export const RATE_MINUTES = 15;
 
 /**
  * The merged list, oldest first: every event (with the progress log's sentence where it has one),
@@ -139,15 +137,9 @@ function budgetItem(budget: TeamBudget | null): FeedItem | null {
   return { id: `budget:${s.state}:${s.at_ms}`, at: s.at_ms, kind: 'budget', text: BUDGET_WORDS[s.state], raw: budget?.run, alarm: 'limit' };
 }
 
-/** Tool calls in each of the last RATE_MINUTES minutes before `now`, oldest first. */
-export function toolCallsPerMin(events: EventRecord[], now: number): number[] {
-  const out = new Array<number>(RATE_MINUTES).fill(0);
-  for (const e of events) {
-    if (e.body.type !== 'tool-called') continue;
-    const minute = Math.floor(Math.max(0, now - e.at_ms) / 60_000);
-    if (minute < RATE_MINUTES) out[RATE_MINUTES - 1 - minute] += 1;
-  }
-  return out;
+/** Tool calls in each of the last RATE_MINUTES minutes before `now`, oldest first; unknown before `since` (see perMinute). */
+export function toolCallsPerMin(events: EventRecord[], now: number, since?: number): (number | null)[] {
+  return perMinute(events.filter((e) => e.body.type === 'tool-called').map((e) => e.at_ms), now, since);
 }
 
 /**

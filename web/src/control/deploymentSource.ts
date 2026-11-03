@@ -43,13 +43,13 @@ function useTeamView(team: string) {
  */
 export function useDeploymentSource(team: string): ControlSource {
   const { shell, state, connected, designOnly, ids, seats, nameOf, title } = useTeamView(team);
-  const { events, error } = useTeamEvents(ids, state.feed, state.epoch, TAIL);
+  const { events, error, since } = useTeamEvents(ids, state.feed, state.epoch, TAIL);
   const data = useDeploymentData(team, ids, events);
   const feed = useMemo(
     () => feedFrom(events, { nameOf, title, seats: state.seats, questions: data.questions, budget: data.budget }),
     [events, nameOf, title, state.seats, data.questions, data.budget],
   );
-  const rate = useMemo(() => toolCallsPerMin(events, shell.now), [events, shell.now]);
+  const rate = useMemo(() => toolCallsPerMin(events, shell.now, since), [events, shell.now, since]);
   const act = useActionRunner(data.reload);
   const ctx: Ctx = { team, seats: state.seats, modes: data.modes, nameOf, act };
   const approvals = approvalsOf(data.questions);
@@ -59,6 +59,7 @@ export function useDeploymentSource(team: string): ControlSource {
     title,
     running: seats.some((s) => hasProcess(s.lifecycle) || s.lifecycle === 'attention'),
     startedAt: startedAt(events, seats),
+    ...(since !== undefined ? { historySince: since } : {}),
     agents: seats.map((s) => agentLine(s, nameOf(s.id), data.modes[s.id], connected, shell.now)),
     feed,
     approvals,

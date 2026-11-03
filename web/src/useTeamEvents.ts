@@ -6,7 +6,9 @@ import { isShortened } from './liveText';
 
 /**
  * Recent history for each of a team's agents (`tail` events each), merged with the live
- * feed and de-duplicated by seq, oldest first. Re-fetches on every snapshot (epoch).
+ * feed and de-duplicated by seq, oldest first. Re-fetches on every snapshot (epoch). `since`: when
+ * an agent's history was cut at `tail`, the time from which every agent's events are loaded
+ * (earlier ones may be missing); absent when nothing was cut.
  * Where history and feed hold the same seq, the feed's copy wins.
  *
  * `feed` must be reference-stable (for example `useRigStream`'s `state.feed`): a new object
@@ -36,5 +38,9 @@ export function useTeamEvents(seatIds: string[], feed: Record<string, EventRecor
     for (const list of Object.values(feed)) for (const e of list) if (!(isShortened(e) && bySeq.has(e.seq))) bySeq.set(e.seq, e);
     return [...bySeq.values()].sort((a, b) => a.seq - b.seq);
   }, [history, feed]);
-  return { events, error };
+  const since = useMemo(() => {
+    const cut = Object.values(history).filter((list) => list.length >= tail && list.length > 0);
+    return cut.length ? Math.max(...cut.map((list) => Math.min(...list.map((e) => e.at_ms)))) : undefined;
+  }, [history, tail]);
+  return { events, error, since };
 }

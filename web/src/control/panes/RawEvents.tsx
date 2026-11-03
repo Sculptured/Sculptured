@@ -30,6 +30,12 @@ function Row({ item }: { item: FeedItem }) {
   );
 }
 
+/** What the table holds: the whole journal, or (cut here, or when loading) only its latest events. */
+export function rawNote(count: number, cut: boolean): string {
+  if (count > SHOWN || cut) return `Latest ${Math.min(count, SHOWN)} recorded events, verbatim, newest first; older ones are not shown here.`;
+  return 'The event journal: what was recorded, verbatim, newest first.';
+}
+
 export function RawEventsPane({ settings }: PaneProps) {
   const s = settings as RawSettings;
   const { source } = useControl();
@@ -37,7 +43,7 @@ export function RawEventsPane({ settings }: PaneProps) {
   const rows = source.feed.filter((i) => !s.onlySelected || !selection.agent || i.agent === selection.agent).slice(-SHOWN).reverse();
   return (
     <div className="ctl-raw">
-      <p className="ctl-note">The event journal: what was recorded, verbatim, newest first{source.feed.length > SHOWN ? ` (the latest ${SHOWN})` : ''}.</p>
+      <p className="ctl-note">{rawNote(source.feed.length, source.historySince !== undefined)}</p>
       <table className="ctl-table ctl-raw-table" data-raw-evidence aria-label="Raw events">
         <thead><tr><th scope="col" className="ctl-num">#</th><th scope="col">Time</th><th scope="col">Agent</th><th scope="col">Type</th><th scope="col">Evidence</th><th scope="col">Record</th></tr></thead>
         <tbody>{rows.map((i) => <Row key={i.id} item={i} />)}</tbody>

@@ -25,17 +25,22 @@ function Reading({ label, value, note, children }: { label: string; value: strin
   );
 }
 
-/** Where the tool-call window ends: now, or (a run that has finished) at the run's end. */
-function rateNote(rate: number[], finished: boolean): string {
-  const total = rate.reduce((n, x) => n + x, 0);
-  return finished ? `in the run's last minute · ${total} in its last ${rate.length} min` : `this minute · ${total} in the last ${rate.length} min`;
+/**
+ * Where the tool-call window ends: now, or (a run that has finished) at the run's end. Minutes before
+ * the loaded events are unknown, and the total covers only the known ones.
+ */
+function rateNote(rate: (number | null)[], finished: boolean): string {
+  const known = rate.filter((x): x is number => x !== null);
+  const total = known.reduce((n, x) => n + x, 0);
+  const over = known.length === rate.length ? `${rate.length} min` : `${known.length} min (earlier minutes unknown: only recent events are loaded)`;
+  return finished ? `in the run's last minute · ${total} in its last ${over}` : `this minute · ${total} in the last ${over}`;
 }
 
 function TeamReadings() {
   const { source } = useControl();
   const m = source.metrics;
   const rate = m.toolCallsPerMin;
-  const last = rate.at(-1);
+  const last = rate.at(-1) ?? undefined;
   return (
     <div className="ctl-readings" role="group" aria-label="Team">
       {m.tokensIn === undefined && m.tokens !== undefined
@@ -46,7 +51,7 @@ function TeamReadings() {
         </>}
       <Reading label="Cost" value={m.costUsd !== undefined ? `$${m.costUsd.toFixed(2)}` : UNKNOWN} note={m.costUsd !== undefined ? 'estimated, latest run' : 'not every report was priced'} />
       <Reading label="Tool calls / min" value={last !== undefined ? String(last) : UNKNOWN} note={rateNote(rate, source.endedAt !== undefined && !source.running)}>
-        <Spark values={rate} label={`Tool calls per minute over the last ${rate.length} minutes: ${rate.join(', ')}`} />
+        <Spark values={rate} label={`Tool calls per minute over the last ${rate.length} minutes: ${rate.map((x) => x ?? 'unknown').join(', ')}`} />
       </Reading>
     </div>
   );

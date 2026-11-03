@@ -1,6 +1,7 @@
 import { plural } from '../format';
 import { savedParts } from '../tests/restore';
 import type { BranchDetail, BranchStatus, Event, RunStartPayload } from '../tests/types';
+import { perMinute } from './rate';
 import type { AgentLine, Approval, Availability, FeedItem, Tone } from './source';
 
 /**
@@ -154,13 +155,7 @@ export function approvalsOf(b: BranchDetail): Approval[] {
   return [...latest.values()].filter((c) => c.doc.decision == null).map((c) => approvalOf(c.doc, c.agent));
 }
 
-/** Tool calls per minute over the 15 minutes up to `end` (the run's end, or now while it runs), oldest first. */
-export function toolCallsPerMin(b: BranchDetail, end: number): number[] {
-  const out = new Array<number>(15).fill(0);
-  for (const e of b.events) {
-    if (e.kind !== 'tool_call') continue;
-    const ago = Math.floor((end - atOf(e)) / 60_000);
-    if (ago >= 0 && ago < 15) out[14 - ago] += 1;
-  }
-  return out;
+/** Tool calls per minute over the last RATE_MINUTES up to `end` (the run's end, or now while it runs), oldest first. */
+export function toolCallsPerMin(b: BranchDetail, end: number): (number | null)[] {
+  return perMinute(b.events.filter((e) => e.kind === 'tool_call').map(atOf), end);
 }

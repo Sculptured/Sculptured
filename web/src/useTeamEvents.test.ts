@@ -32,6 +32,20 @@ describe('useTeamEvents', () => {
     ]);
   });
 
+  it('says from when history is loaded once an agent\'s history was cut at the tail', async () => {
+    const at = (e: EventRecord, ms: number) => ({ ...e, at_ms: ms });
+    vi.mocked(api.latestSeatEvents).mockImplementation(async (id: string) =>
+      id === 'team.a@t' ? [at(turn(1, id), 1000), at(turn(4, id), 4000)] : [at(turn(2, id), 2000)],
+    );
+    const { result } = renderHook(() => useTeamEvents(['team.a@t', 'team.b@t'], noFeed, 0, 2));
+    await waitFor(() => expect(result.current.events).toHaveLength(3));
+    // a's history filled the tail of 2: older events of a may be missing before 1000.
+    expect(result.current.since).toBe(1000);
+    const whole = renderHook(() => useTeamEvents(['team.a@t', 'team.b@t'], noFeed, 0, 25));
+    await waitFor(() => expect(whole.result.current.events).toHaveLength(3));
+    expect(whole.result.current.since).toBeUndefined();
+  });
+
   it('re-fetches on a new snapshot epoch, and fetches nothing for no agents', async () => {
     vi.mocked(api.latestSeatEvents).mockResolvedValue([]);
     const { rerender } = renderHook(({ ids, epoch }) => useTeamEvents(ids, noFeed, epoch), {

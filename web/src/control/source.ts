@@ -144,6 +144,8 @@ export type ControlSource = {
   endedAt?: number;
   /** Nothing about the run could be read yet (Arena not answering, or still loading): readings say unknown, not none. */
   unread?: true;
+  /** Only the latest events are loaded: what happened before this time may be missing (absent: all of it is). */
+  historySince?: number;
   /** The run's own status when the source knows it better than its agents say (a simulated branch's outcome). */
   runStatus?: { glyph: string; word: string; tone: Tone };
   agents: AgentLine[];
@@ -157,7 +159,7 @@ export type ControlSource = {
    * Tokens and cost are absent when unknown. `tokens` is the total where only that was reported (an
    * Arena run's agents). `toolCallsPerMin`: the last 15 minutes, oldest first.
    */
-  metrics: { tokensIn?: number; tokensOut?: number; tokens?: number; costUsd?: number; toolCallsPerMin: number[] };
+  metrics: { tokensIn?: number; tokensOut?: number; tokens?: number; costUsd?: number; toolCallsPerMin: (number | null)[] };
   /** What could not be loaded, in plain words (the rest of the source is then incomplete). */
   problems?: string[];
   /** Simulated only. */

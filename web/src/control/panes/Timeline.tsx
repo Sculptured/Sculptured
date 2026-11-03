@@ -76,6 +76,12 @@ export function TimelinePane(props: PaneProps) {
   return source.kind === 'simulated' ? <SimTimeline {...props} /> : <LiveTimeline {...props} />;
 }
 
+/** "Whole run" while only the latest events are loaded: it starts at the oldest one, and says so. */
+function CutNote({ window, since }: { window: Window; since?: number }) {
+  if (window !== 'all' || since === undefined) return null;
+  return <p className="ctl-note">From the oldest loaded event ({clockAt(since)}); earlier events are not loaded.</p>;
+}
+
 function LiveTimeline({ settings }: PaneProps) {
   const s = settings as TimelineSettings;
   const { source, alarms, now } = useControl();
@@ -90,6 +96,7 @@ function LiveTimeline({ settings }: PaneProps) {
   });
   return (
     <div className="ctl-timeline">
+      <CutNote window={s.window ?? 'all'} since={source.historySince} />
       <Axis range={range} cursor={selection.time} />
       <ul className="ctl-lanes" aria-label="Timeline lanes">
         {lanes.map(({ a, bars, marks }) => (
