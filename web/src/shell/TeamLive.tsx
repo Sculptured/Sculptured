@@ -37,6 +37,8 @@ type Props = {
   now: number;
   /** A team with a workflow: Work evidence opens its run view. */
   workflow?: boolean;
+  /** Every live agent is paused: the empty board says so instead of "No live agents". */
+  paused?: boolean;
   /** A workflow part on the graph was opened: its own page. */
   onWorkflow?: (t: WorkflowTarget) => void;
   /** Agents picked with Shift, Ctrl or Command+click (or Shift+Space), to message together. */
@@ -87,6 +89,13 @@ function NotRunning({ state, rig }: { state: RigState; rig: string }) {
  * its agent; Shift+click picks agents to message together. Status, Start and Stop are in the project
  * bar; what the run produced is on Results.
  */
+/** The board with no live agent to draw: why, and where to go. */
+function NoLiveAgents({ rig, subtree, paused }: { rig: string; subtree: boolean; paused?: boolean }) {
+  if (subtree) return <div className="release-empty"><h2>No live agents in this subtree</h2><p>This branch is stopped or no longer part of the current run. Choose Whole tree to return.</p></div>;
+  if (paused) return <div className="release-empty"><h2><span aria-hidden="true">‖ </span>Agents paused</h2><p>Their sessions are kept. Resume all continues them.</p></div>;
+  return <div className="release-empty"><h2>No live agents</h2><p>The board shows running agents. <Link to={agentsPath(rig)}>Agents</Link> lists every agent and what it did.</p></div>;
+}
+
 export function TeamLive(p: Props) {
   const { rig, state, agents, names, now } = p;
   const pulses = useHandoffPulses(state.feed);
@@ -129,10 +138,7 @@ export function TeamLive(p: Props) {
       {(projection.unknown > 0 || observedError) && <div className="live-evidence-note">{projection.unknown > 0 && `${projection.unknown} disconnected agents have unknown status.`} {observedError}</div>}
       <div className="team-body" onClickCapture={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) pickFrom(e); }} onKeyDownCapture={(e) => { if (e.key === ' ' && e.shiftKey) pickFrom(e); }}>
         {projection.compiled.seats.length === 0 ? (
-          <div className="release-empty">
-            <h2>{subtree ? 'No live agents in this subtree' : 'No live agents'}</h2>
-            <p>{subtree ? 'This branch is stopped or no longer part of the current run. Choose Whole tree to return.' : <>The board shows running agents. <Link to={agentsPath(rig)}>Agents</Link> lists every agent and what it did.</>}</p>
-          </div>
+          <NoLiveAgents rig={rig} subtree={!!subtree} paused={p.paused} />
         ) : (
           <LiveGraph viewportKey={viewportKey} liveOnly observedLabels={projection.labels} onWorkflow={p.onWorkflow} ref={setGraph} rig={rig} compiled={projection.compiled} agents={agents} layout={projection.layout} names={names}
             selected={p.selected} picked={picked} onOpen={p.onOpen} onAnswer={p.onAnswer} onSelect={p.onSelect} now={now} pulses={pulses} />

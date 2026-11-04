@@ -34,7 +34,7 @@ export function OverviewPane() {
 function LiveOverview() {
   const p = useProject();
   const shell = useShell();
-  const { show } = useControl();
+  const { show, source } = useControl();
   const { selection, select } = useSelection();
   if (!p.live) return <NotLive />;
   const agents: Record<string, AgentRow> = {};
@@ -45,7 +45,7 @@ function LiveOverview() {
       <ViewportScope.Provider value="control:"><FitFloor.Provider value={READABLE_K}>
       <TeamLive rig={p.team} state={p.live} agents={agents} names={p.row?.names ?? {}} layout={shell.layouts[p.team]} selected={selection.agent}
         onOpen={(id) => { pick(id); show('agent'); }} onAnswer={(id) => { pick(id); show('approvals'); }} onSelect={pick}
-        now={shell.now} workflow={!!p.draft?.workflow} leadTools={<BoardStyleSwitch />} />
+        now={shell.now} paused={source.agents.some((a) => a.status.pause === 'paused')} workflow={!!p.draft?.workflow} leadTools={<BoardStyleSwitch />} />
       </FitFloor.Provider></ViewportScope.Provider>
     </div>
   );

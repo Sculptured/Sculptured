@@ -29,7 +29,7 @@ function Restore({ part }: { part: WorldPartInfo }) {
 
 function Tools({ tools }: { tools?: string[] }) {
   if (!tools) return <span className="muted">Tools unknown</span>;
-  if (!tools.length) return <span className="muted">0 tools</span>;
+  if (!tools.length) return <span className="muted">No tools of its own</span>;
   return (
     <details className="arena-tools">
       <summary className="arena-num">{plural(tools.length, 'tool')}</summary>

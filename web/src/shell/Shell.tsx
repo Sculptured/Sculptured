@@ -107,7 +107,7 @@ export function Shell({ openStream, layouts: givenLayouts = NO_LAYOUTS, names: g
   const lastBoard = useRef<Record<string, string>>({});
   const refs = useShellRefs();
   const { picked, pick, setPicked } = usePicks(team, data.byId);
-  const toasts = useToasts(data.rows, openAgent, page === 'board' ? team : undefined);
+  const toasts = useToasts(data.rows, openAgent, page === 'board' || page === 'control' ? team : undefined);
   const view = viewOf(location.pathname, page, openAgent, boardView);
 
   useEffect(() => { if (openAgent) setSelected(openAgent); }, [openAgent]);

@@ -13,5 +13,7 @@ describe('runStatus', () => {
     expect(runStatus({ agents: [lookalike, line({ glyph: '●', word: 'running', tone: 'ok' })], running: true }).word).toBe('running');
     const pausing = line({ glyph: '⧗', word: 'pausing', tone: 'idle', pause: 'pausing' });
     expect(runStatus({ agents: [paused, pausing], running: true }).word).toBe('running');
+    // Paused agents have no process: a fully paused team reads paused, not stopped.
+    expect(runStatus({ agents: [paused, line({ glyph: '■', word: 'stopped', tone: 'idle' })], running: false }).word).toBe('paused');
   });
 });

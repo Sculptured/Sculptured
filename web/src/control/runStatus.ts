@@ -11,9 +11,10 @@ export type Reading = { glyph: string; word: string; tone: Tone };
 export function runStatus(s: Pick<ControlSource, 'agents' | 'running' | 'runStatus'>): Reading {
   if (s.runStatus) return s.runStatus;
   if (s.agents.length > 0 && s.agents.every((a) => a.status.tone === 'unknown')) return { glyph: '∅', word: 'unknown (not connected)', tone: 'unknown' };
-  if (!s.running) return s.agents.length === 0 ? { glyph: '○', word: 'not started', tone: 'idle' } : { glyph: '■', word: 'stopped', tone: 'idle' };
+  // Before the running check: a paused agent has no process, so a fully paused team is not "running".
   const live = s.agents.filter((a) => a.status.tone === 'ok' || a.status.pause);
   if (live.length > 0 && live.every((a) => a.status.pause === 'paused')) return { glyph: '‖', word: 'paused', tone: 'idle' };
+  if (!s.running) return s.agents.length === 0 ? { glyph: '○', word: 'not started', tone: 'idle' } : { glyph: '■', word: 'stopped', tone: 'idle' };
   return { glyph: '●', word: 'running', tone: 'ok' };
 }
 
