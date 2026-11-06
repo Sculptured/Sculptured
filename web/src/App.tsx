@@ -29,6 +29,7 @@ import { WorkflowPage } from './pages/WorkflowPage';
 import { SetupGate } from './setup/SetupGate';
 import { SetupPage } from './setup/SetupPage';
 import { ArenaPanePage } from './arena/ArenaControlPage';
+import { OrgControlPage, OrgPanePage } from './control/org/OrgControlPage';
 import { ArenaSection, TestsRedirect } from './arena/routes';
 import { SimulatedPanePage } from './control/SimulatedControlPage';
 import { ControlPage, ControlPanePage } from './control/ControlPage';
@@ -109,6 +110,7 @@ export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
       <Route path="/ops" element={<OpsPage />} />
       <Route path="/what-we-record" element={<WhatWeRecord />} />
       <Route path="/arena/pane/:instance" element={<ArenaPanePage />} />
+      <Route path="/control/pane/:instance" element={<OrgPanePage />} />
       <Route path="/arena/runs/:run/:branch/pane/:instance" element={<SimulatedPanePage />} />
       <Route element={<CommunityHost openStream={openStream} />}><Route path="/community/*" element={<CommunitySection />} /></Route>
       <Route element={<Shell openStream={openStream} />}>
@@ -117,6 +119,7 @@ export function AppRoutes({ openStream }: { openStream?: OpenStream }) {
         <Route path="/account" element={<AccountPage />} />
         <Route path="/library/:collection" element={<LibraryRoute />} />
         <Route path="/arena/*" element={<ArenaSection />} />
+        <Route path="/control" element={<OrgControlPage />} />
         {ProjectRoutes()}
       </Route>
       {LegacyRoutes()}

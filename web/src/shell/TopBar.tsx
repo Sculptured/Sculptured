@@ -1,5 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { ARENA_PATH } from '../arena/paths';
+import { ORG_CONTROL_PATH } from '../control/org/paths';
 import { useHosted } from '../hosted/HostedGate';
 import { teamStatus } from '../pages/status';
 import { StatusBadge } from '../pages/StatusBadge';
@@ -30,6 +31,7 @@ export function TopBar({ team, rows, onCommand, onHelp }: Props) {
       </Link>
       <ProjectSwitcher team={team} rows={rows} />
       <nav className="tb-nav" aria-label="Go to">
+        <NavLink to={ORG_CONTROL_PATH} end className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`} data-tip="Every deployment and Arena run on one screen">Control room</NavLink>
         <NavLink to={ARENA_PATH} className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Arena</NavLink>
         <NavLink to="/library/groups" className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Library</NavLink>
         <NavLink to="/community" className={({ isActive }) => `tb-link${isActive ? ' on' : ''}`}>Community</NavLink>
@@ -97,6 +99,7 @@ function AppMenu({ onHelp }: { onHelp: () => void }) {
     <details className="top-menu tb-app">
       <summary aria-label="App menu" data-tip="App menu"><Icon name="more" size={16} /></summary>
       <div className="top-menu-body tb-app-items" onClick={closeMenu}>
+        <Link to={ORG_CONTROL_PATH} className="tb-narrow-only">Control room</Link>
         <Link to={ARENA_PATH} className="tb-narrow-only">Arena</Link>
         <Link to="/library/groups" className="tb-narrow-only">Library</Link>
         <Link to="/account" className="tb-narrow-only">Account</Link>

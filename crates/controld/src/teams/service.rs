@@ -136,7 +136,7 @@ pub(super) fn structure(d: &TeamDraft) -> Value {
     })
 }
 
-pub(super) fn summaries(st: &AppState) -> Result<Vec<TeamSummary>, ApiError> {
+pub(crate) fn summaries(st: &AppState) -> Result<Vec<TeamSummary>, ApiError> {
     let store = st.store.lock().expect("store mutex must not be poisoned");
     let rigs = store.list_rigs()?;
     let mut out = Vec::new();

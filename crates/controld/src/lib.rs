@@ -11,6 +11,7 @@ pub mod claims;
 pub mod clis;
 pub mod collaboration;
 pub mod community;
+pub mod control_overview;
 pub mod copies;
 pub mod decisions;
 pub mod device_pairing;

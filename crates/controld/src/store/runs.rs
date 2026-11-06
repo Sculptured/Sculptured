@@ -6,7 +6,7 @@ use crate::portable::session::TokenTotals;
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// The rows of one team's run: its rig events and its seats' events (`?3` = `rig:<team>`, `?4` = `@<team>`).
-const IN_RUN: &str = "seq >= ?1 AND seq < ?2 AND (subject = ?3 OR (substr(subject, 1, 5) = 'seat:' AND substr(subject, -length(?4)) = ?4))";
+pub(super) const IN_RUN: &str = "seq >= ?1 AND seq < ?2 AND (subject = ?3 OR (substr(subject, 1, 5) = 'seat:' AND substr(subject, -length(?4)) = ?4))";
 
 /// Keeps the team as it is when a run starts (with folders), in the event's own transaction. A rig
 /// without a team design (a spec file), or a draft this build can't read, keeps nothing.

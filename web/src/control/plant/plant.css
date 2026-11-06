@@ -94,3 +94,10 @@
 .pl-trace-io pre { max-height: 200px; margin: 2px 0 0; padding: 4px 6px; overflow: auto; background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .pl-trends tr.is-abnormal td:first-child { box-shadow: inset 3px 0 0 var(--status-failed); }
+
+/* ── Organisation overview (level 1) ── */
+.org-title { margin: 0; align-self: center; font-size: var(--text-md); font-weight: var(--weight-semibold); white-space: nowrap; }
+.org-units tr.is-abnormal td:first-child { box-shadow: inset 3px 0 0 var(--status-failed); }
+.org-unit-name { color: var(--text); font-weight: var(--weight-medium); }
+.org-rate { display: flex; align-items: flex-end; gap: 6px; min-width: 120px; }
+.org-rate .ctl-spark { flex: 1; min-width: 60px; }

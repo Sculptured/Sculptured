@@ -24,4 +24,4 @@ use serde_json::{Value, json};
 
 mod service;
 pub use service::routes;
-pub(crate) use service::{is_error, issues_for, load, new_team_id, record};
+pub(crate) use service::{is_error, issues_for, load, new_team_id, record, summaries};

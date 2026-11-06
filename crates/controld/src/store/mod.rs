@@ -1,6 +1,7 @@
 //! SQLite event store. Each event and its projection commit in one transaction.
 mod handoffs;
 mod origins;
+pub mod overview;
 mod project;
 mod rigs;
 mod rows;
