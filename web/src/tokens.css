@@ -550,3 +550,146 @@
   :root[data-look='mission'],
   .workspace[data-look='mission'] { --muted: #a9bccb; --line: #34495a; --line-2: #4f6577; --line-3: #7590a4; }
 }
+
+/*
+ * ── Look: Plant ─────────────────────────────────────────────────────────────────────────────
+ * The control-plane look of the Control workspaces, modelled on a high-performance HMI (ISA-101):
+ * neutral greys, a pale steel accent for focus and selection only, and colour kept for abnormal
+ * states (red: failed, refused, high-priority alarm; amber: waiting, medium alarm; violet: unknown),
+ * always with a glyph and a word. A working agent is normal, so it is not coloured. Dark and flat.
+ * The default look of every Control workspace (`.workspace[data-look='plant']`); Mission and the
+ * app's own look stay one choice away in the workspace's Look setting. Every token is set, as for
+ * Mission. Text contrast is at least 4.5:1 on every surface.
+ */
+.workspace[data-look='plant'] {
+  color-scheme: dark;
+
+  --bg: #1c1e21;
+  --panel: #232528;
+  --raised: #2a2d31;
+  --raised-2: #313439;
+  --hover: #363a3f;
+  --well: #18191b;
+  --scrim: rgb(8 9 10 / 70%);
+  --glass: var(--panel);
+  --glass-solid: var(--panel);
+  --glass-border: var(--line);
+  --app-tint: var(--bg);
+
+  --line: #34373c;
+  --line-2: #45494f;
+  --line-3: #6e737a;
+
+  --text: #dfe1e4;
+  --muted: #a3a8ae;
+  --faint: var(--muted);
+  --text-disabled: #72777e;
+
+  --accent: #c3ccd6;
+  --accent-strong: #dde3ea;
+  --accent-ink: #15181b;
+  --accent-deep: #4a5561;
+  --on-hue: #15181b;
+
+  --red: #ff8080;
+  --green: #6fd08c;
+  --amber: #f4b740;
+  --violet: #b9a3ff;
+  --blue: #8fb4e0;
+
+  --claude: #d9a58c;
+  --codex: #9db6d9;
+  --opencode: #a9c99a;
+  --practice: #8fcfc6;
+  --other: #b3b8be;
+
+  --k-read: var(--blue);
+  --k-edit: #d8c08a;
+  --k-bash: var(--violet);
+  --k-search: var(--practice);
+  --k-web: #d6a3c3;
+  --k-task: var(--claude);
+  --k-other: #9ba1a8;
+  --series-1: #b8acd9;
+  --series-2: #94b4d6;
+  --series-3: #8fc4b6;
+  --series-4: #d4bd86;
+  --series-5: #d3a48e;
+  --series-6: #a9c48c;
+
+  --light: #fff;
+  --shade: #000;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --shadow-control: 0 0 0 0 transparent;
+  --shadow-card: 0 0 0 0 transparent;
+  --shadow-pop: 0 0 0 1px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 50%);
+  --shadow-overlay: 0 12px 32px rgb(0 0 0 / 55%), 0 32px 80px -16px rgb(0 0 0 / 65%);
+
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 45%, transparent);
+  --red-soft: color-mix(in srgb, var(--red) 14%, transparent);
+  --red-line: color-mix(in srgb, var(--red) 45%, transparent);
+  --green-soft: color-mix(in srgb, var(--green) 12%, transparent);
+  --green-line: color-mix(in srgb, var(--green) 40%, transparent);
+  --amber-soft: color-mix(in srgb, var(--amber) 13%, transparent);
+  --amber-line: color-mix(in srgb, var(--amber) 45%, transparent);
+  --violet-soft: color-mix(in srgb, var(--violet) 12%, transparent);
+  --focus-ring: var(--accent);
+  --selection: var(--accent-deep);
+  --scrollbar: var(--line-2);
+  --scrollbar-hover: var(--line-3);
+
+  --status-working: var(--text);
+  --status-needs-you: var(--red);
+  --status-blocked: var(--red);
+  --status-failed: var(--red);
+  --status-waiting: var(--amber);
+  --status-done: var(--muted);
+  --status-verified: var(--green);
+  --status-unknown: var(--violet);
+  --status-idle: var(--muted);
+
+  --glass-blur: none;
+  --overlay-blur: none;
+  --overlay-blur-sm: none;
+  --app-bg: var(--bg);
+  --sidebar-bg: var(--panel);
+  --sidebar-line: var(--line);
+  --nav-current-bg: var(--accent-soft);
+  --nav-current-ring: inset 0 0 0 1px var(--accent-line);
+  --sidebar-shadow: none;
+  --panel-shadow: none;
+  --canvas-bg: var(--bg);
+  --canvas-dot: color-mix(in srgb, var(--line-3) 30%, transparent);
+  --canvas-dot-size: 24px;
+  --group-bg: color-mix(in srgb, var(--text) 4%, transparent);
+  --group-line: transparent;
+  --group-label: var(--muted);
+  --card-bg: var(--panel);
+  --card-bg-needs-you: color-mix(in srgb, var(--red) 9%, var(--panel));
+  --card-bg-idle: var(--panel);
+  --accent-fill: var(--accent);
+  --accent-fill-strong: var(--accent-strong);
+  --btn-primary-shadow: none;
+  --brand-mark-bg: var(--accent);
+  --brand-mark-shadow: none;
+  --emblem-bg: var(--light);
+  --mask-solid: #000;
+  --wash: 0;
+  --avatar-bg: var(--accent-deep);
+  --avatar-ink: var(--light);
+
+  --r-sm: var(--radius-sm);
+  --r: var(--radius-md);
+  --r-lg: var(--radius-lg);
+  --surface: var(--panel);
+  --border: var(--line);
+}
+/* The OS asking for more contrast: stronger secondary text and lines in Plant too. */
+@media (prefers-contrast: more) {
+  .workspace[data-look='plant'] { --muted: #c0c4c9; --line: #4a4e54; --line-2: #62666d; --line-3: #8c9198; }
+}

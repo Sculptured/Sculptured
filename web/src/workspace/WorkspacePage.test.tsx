@@ -107,6 +107,8 @@ describe('WorkspacePage', () => {
     const user = userEvent.setup();
     const first = render(page());
     const root = () => document.querySelector<HTMLElement>('.workspace')!;
+    expect(root()).toHaveAttribute('data-look', 'plant');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Look' }), 'Mission');
     expect(root()).toHaveAttribute('data-look', 'mission');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Look' }), 'Follow app look');
     expect(root()).not.toHaveAttribute('data-look');

@@ -1,5 +1,5 @@
 import type { Popped } from './layouts';
-import { dropPanes, panes, type IdGen, type Layout, type Node, type PageLayouts, type PaneRef } from './model';
+import { dropPanes, panes, WORKSPACE_LOOKS, type WorkspaceLook, type IdGen, type Layout, type Node, type PageLayouts, type PaneRef } from './model';
 
 const KEY_PREFIX = 'sculptured.workspace.v1.';
 const MAX_DEPTH = 32;
@@ -43,7 +43,7 @@ function readPage(v: unknown): PageLayouts | null {
   const layouts = v.layouts.filter(validLayout).map((l) => ({ ...l, root: onlyValidPanes(l.root), popped: l.popped.filter(validPane) }));
   if (layouts.length === 0) return null;
   const active = layouts.some((l) => l.id === v.active) ? v.active : layouts[0].id;
-  return { version: 1, active, layouts, ...(v.look === 'app' || v.look === 'mission' ? { look: v.look } : {}) };
+  return { version: 1, active, layouts, ...(WORKSPACE_LOOKS.includes(v.look as WorkspaceLook) ? { look: v.look as WorkspaceLook } : {}) };
 }
 
 /** Keeps the first occurrence of each pane id (tree first, then popped) and drops unknown pane types. */

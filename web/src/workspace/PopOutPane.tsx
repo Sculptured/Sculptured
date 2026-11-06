@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { panes, type PageLayouts, type PaneRef } from './model';
+import { lookAttr, panes, type PageLayouts, type PaneRef } from './model';
 import { PaneContext, type PaneType, type Registry } from './registry';
 import { SelectionProvider, useChannelListener, useChannelPost } from './selection';
 import { isSlot, shellRegistry } from './slots';
@@ -87,7 +87,7 @@ export function PopOutPane({ page, channel, registry, ctx, instance }: Props) {
   return (
     <SelectionProvider page={channel ?? page}>
       <PaneContext.Provider value={ctx}>
-        <div className="workspace workspace-popout" data-look={look === 'app' ? undefined : 'mission'}>
+        <div className="workspace workspace-popout" data-look={lookAttr(look)}>
           {pane && type
             ? <ShownHere pane={pane} type={type} />
             : <p className="ws-empty">This pane is no longer in the workspace. Close this window and use Add pane in the main window.</p>}

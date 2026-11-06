@@ -3,7 +3,7 @@ import { AddPane } from './AddPane';
 import { addLayout, deleteLayout, duplicateLayout, poppedOf, renameLayout, resetLayout, withNothingPopped, withPopped } from './layouts';
 import { LayoutTabs, type LayoutActions } from './LayoutTabs';
 import { MobileWorkspace, useMobile } from './MobileWorkspace';
-import { addPane, freshId, panes, setActive, stacks, type Layout, type Node, type PageLayouts } from './model';
+import { addPane, freshId, lookAttr, panes, setActive, stacks, type Layout, type Node, type PageLayouts, type WorkspaceLook } from './model';
 import type { PaneType, Registry } from './registry';
 import { SelectionProvider, useChannelPost } from './selection';
 import { shellRegistry, SlotContext } from './slots';
@@ -96,7 +96,8 @@ function LookSetting({ value, setValue }: { value: PageLayouts; setValue: SetVal
   return (
     <label className="workspace-look">
       Look
-      <select value={value.look === 'app' ? 'app' : 'mission'} onChange={(e) => setValue((v) => ({ ...v, look: e.target.value === 'app' ? 'app' : 'mission' }))}>
+      <select value={value.look ?? 'plant'} onChange={(e) => setValue((v) => ({ ...v, look: e.target.value as WorkspaceLook }))}>
+        <option value="plant">Plant</option>
         <option value="mission">Mission</option>
         <option value="app">Follow app look</option>
       </select>
@@ -144,7 +145,7 @@ function PageShell(props: WorkspacePageProps) {
   useImperativeHandle(props.handle, () => ({ show: (type) => { const t = registry.get(type); if (t) choose({ ...t, multi: false }); } }));
   return (
     <SlotContext.Provider value={pop.slots}>
-      <div ref={box} className="workspace" data-look={value.look === 'app' ? undefined : 'mission'}>
+      <div ref={box} className="workspace" data-look={lookAttr(value.look)}>
         {props.header && <div className="workspace-header">{props.header}</div>}
         <div className="workspace-bar">
           <LayoutTabs value={value} act={layoutActions(value, setValue, props.defaults, post)} />

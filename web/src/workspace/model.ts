@@ -8,7 +8,12 @@ export type Layout = { id: string; name: string; root: Node; popped: PaneRef[] }
 /**
  * `look`: the workspace's own look. Absent means Mission; 'app' follows the app-wide look.
  */
-export type PageLayouts = { version: 1; active: string; layouts: Layout[]; look?: 'mission' | 'app' };
+/** A workspace's look: Plant (the default, an industrial HMI), Mission, or the app's own look. */
+export type WorkspaceLook = 'plant' | 'mission' | 'app';
+export const WORKSPACE_LOOKS: WorkspaceLook[] = ['plant', 'mission', 'app'];
+export type PageLayouts = { version: 1; active: string; layouts: Layout[]; look?: WorkspaceLook };
+/** The workspace root's `data-look`: none when it follows the app, else its look (Plant unless set). */
+export const lookAttr = (look: WorkspaceLook | undefined) => (look === 'app' ? undefined : look ?? 'plant');
 /** Makes ids for new stacks and splits; tests pass a counter. */
 export type IdGen = () => string;
 
