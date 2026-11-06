@@ -8,15 +8,6 @@ import { arenaFake, branchB1, ev, resetArena } from '../simHarness';
 /** b1 with the run's world declaring what each part is and what its tools do, and one refused write. */
 function declaredRun() {
   const b = branchB1();
-  b.events[0]!.payload = {
-    task_id: '27',
-    world: [
-      { part: 'retail', integration: 'mongo', system: { kind: 'erp', product: 'ERPNext', stands_in_for: 'SAP S/4HANA', simulated: false },
-        tools: [{ name: 'get_order_details', effect: 'read' }, { name: 'exchange_delivered_order_items', effect: 'write' }] },
-      { part: 'plant', integration: 'counter', system: { kind: 'plant', product: 'Isaac Sim', simulated: true } },
-      { part: 'desk', integration: 'sculptured' },
-    ],
-  };
   b.events.splice(10, 0, ev(20, 17, 'resolver', 'tool_call', { name: 'exchange_delivered_order_items', args: { order_id: '#W1' }, result: null, error: 'refused: needs an approved change', part: 'retail', reads: [], writes: [] }));
   return b;
 }
@@ -41,7 +32,7 @@ describe('the control plane on an Arena run', () => {
     expect(equipment.getByText('ERPNext')).toBeInTheDocument();
     expect(equipment.getByText('stands in for SAP S/4HANA · real')).toBeInTheDocument();
     expect(equipment.getByText('Isaac Sim')).toBeInTheDocument();
-    expect(equipment.getByText('simulated')).toBeInTheDocument();
+    expect(equipment.getAllByText('simulated')).toHaveLength(2);
     expect(equipment.getByText(/interlock · 1 permit waiting/)).toBeInTheDocument();
     expect(pane('Process view').getByText(/permit granted by person/)).toBeInTheDocument();
   });
@@ -64,12 +55,23 @@ describe('the control plane on an Arena run', () => {
     expect(within(actions.getByRole('table', { name: 'Actions, newest first' })).getAllByRole('row')).toHaveLength(2);
   });
 
-  it('trends count actions per system, and say Arena does not record latency', async () => {
+  it('trends count actions per system, and show missing latency honestly', async () => {
     await openProcess();
     await userEvent.click(screen.getByRole('tab', { name: /Trends/ }));
     const table = within(pane('Trends').getByRole('table', { name: 'Actions per minute by system' }));
     const erp = table.getByText('ERPNext').closest('tr')!;
     expect(within(erp).getAllByRole('cell').map((c) => c.textContent).slice(-3)).toEqual(['1', '2', '1']);
-    expect(pane('Trends').getByText('Arena does not record how long a call took')).toBeInTheDocument();
+    expect(pane('Trends').getByText('No call duration was recorded in this run')).toBeInTheDocument();
+  });
+
+  it('shows recorded latency in the action trace and trend, ignoring calls without it', async () => {
+    arenaFake.branches.b1.events.push(ev(21, 18, 'resolver', 'tool_call', { name: 'get_order_details', duration_ms: 420 }));
+    await openProcess();
+    const actions = pane('Action timeline');
+    await userEvent.click(actions.getAllByRole('button', { name: /get_order_details on ERPNext/ }).at(-1)!);
+    expect(within(actions.getByRole('region', { name: 'Action trace' })).getByText('420 ms')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: /Trends/ }));
+    expect(pane('Trends').getByText('420 ms')).toBeInTheDocument();
+    expect(pane('Trends').getByText('median · 90% under 420 ms (1 calls)')).toBeInTheDocument();
   });
 });

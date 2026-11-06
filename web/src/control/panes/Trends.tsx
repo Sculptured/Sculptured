@@ -59,7 +59,7 @@ function Usage() {
         values={ctx.values} spark={`Context per call, last ${ctx.values.length} calls`} />
       <Reading label="Tokens" value={t.tokens !== undefined ? compactNumber(t.tokens) : 'not reported'} note="summed from usage reports" />
       <Reading label="Cost" value={t.costUsd !== undefined ? `$${t.costUsd.toFixed(2)}` : 'not reported'} note={t.costUsd !== undefined && !t.priced ? 'at least: some reports had no price' : 'estimated'} />
-      <Reading label="Latency" value={lat.median !== undefined ? duration(lat.median) : 'not recorded'} note={lat.p90 !== undefined ? `median · 90% under ${duration(lat.p90)} (${lat.count} calls)` : source.kind === 'simulated' ? 'Arena does not record how long a call took' : undefined}
+      <Reading label="Latency" value={lat.median !== undefined ? duration(lat.median) : 'not recorded'} note={lat.p90 !== undefined ? `median · 90% under ${duration(lat.p90)} (${lat.count} calls)` : source.kind === 'simulated' ? 'No call duration was recorded in this run' : undefined}
         values={lat.recent} spark="Latency of the latest calls" />
     </div>
   );

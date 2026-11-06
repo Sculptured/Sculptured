@@ -51,6 +51,8 @@ export interface RunStartPayload {
   team?: Team;
   benchmark?: string;
   world?: WorldPart[];
+  systems?: Record<string, { kind: string; product: string; stands_in_for?: string; simulated: boolean }>;
+  tools?: Record<string, { effect: 'read' | 'write'; part?: string }>;
   seed?: number;
   base_seed?: number;
   /** Each part's integration fingerprint at the run's start. */
@@ -105,6 +107,7 @@ export interface ToolCallPayload {
   /** The world clock when the call ran. */
   clock_ms?: number;
   paused_ms?: number;
+  duration_ms?: number;
 }
 
 export interface ModelCallPayload {
@@ -129,6 +132,7 @@ export interface HandoffPayload {
 }
 
 export interface CheckPayload {
+  checks?: { name: string; passed: boolean; safety?: boolean }[];
   passed: boolean;
   gold_db: string | null;
   differing_rows: string[] | null;

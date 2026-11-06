@@ -1,14 +1,8 @@
 import { REFUSAL_WORDS } from '../alarms';
-import type { BranchDetail, Event, RunStartPayload, WorldPartInfo } from '../../tests/types';
-import type { Basis, Effect, Outcome, Permit, Plant, PlantAction, Rights, SystemUnit, UsagePoint } from './model';
+import type { BranchDetail, Event, RunStartPayload } from '../../tests/types';
+import type { Outcome, Permit, Plant, PlantAction, Rights, SystemUnit, UsagePoint } from './model';
 
-/**
- * An Arena run branch as a plant. Which system an action touched comes from Arena only: the part a
- * tool ran on, the part's `describe.system` ({kind, product, stands_in_for?, simulated}) and each
- * tool's `effect` as Arena keeps them with the branch's world (or, for the benchmark Arena runs now,
- * `GET /api/world`, used only for a part whose integration is the same). Without them the kind and
- * the effect are unknown; rows a call wrote are shown as an observed write. Pure.
- */
+/** A recorded Arena branch, using only its run_start declarations and event evidence. */
 
 type Doc = Record<string, unknown>;
 const doc = (v: unknown): Doc => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Doc) : {});
@@ -18,58 +12,18 @@ const atOf = (e: Event) => { const t = Date.parse(e.at); return Number.isNaN(t) 
 /** The talk tools' system: Arena's own messages between agents. */
 export const TEAM_MESSAGES = 'arena:messages';
 const MESSAGES: SystemUnit = { id: TEAM_MESSAGES, kind: 'messaging', name: 'Team messages', product: 'Arena talk tools', basis: 'declared' };
-const TALK_TOOLS = new Set(['handoff', 'message', 'inbox']);
+type Declarations = Pick<RunStartPayload, 'systems' | 'tools'>;
 
-/** One part as some source declares it: the run's world, the branch's world info, or `/api/world`. */
-type PartDecl = { part: string; integration?: string; system?: Doc; tools: unknown[] };
-
-function declsOf(b: BranchDetail, parts: WorldPartInfo[] | null): { run: PartDecl[]; now: PartDecl[] } {
-  const start = b.events.find((e) => e.kind === 'run_start')?.payload as RunStartPayload | undefined;
-  const fromList = (list: unknown, key: 'part' | 'name'): PartDecl[] => (Array.isArray(list) ? list : []).flatMap((w) => {
-    const d = doc(w);
-    const part = str(d[key]) ?? str(d.part) ?? str(d.name);
-    return part ? [{ part, integration: str(d.integration), system: d.system ? doc(d.system) : undefined, tools: Array.isArray(d.tools) ? d.tools : [] }] : [];
-  });
-  const own = doc(b as unknown).world;
-  return { run: [...fromList(start?.world, 'part'), ...fromList(own, 'part')], now: fromList(parts, 'name') };
+function worldOf(b: BranchDetail): Declarations {
+  return (b.events.find((e) => e.kind === 'run_start')?.payload ?? {}) as RunStartPayload;
 }
 
-function systemOf(part: string, integration: string | undefined, decl: Doc | undefined): SystemUnit {
-  if (decl && str(decl.kind)) {
-    const product = str(decl.product);
-    return {
-      id: part, kind: str(decl.kind)!, name: product ?? part, part, ...(product ? { product } : {}),
-      ...(str(decl.stands_in_for) ? { standsInFor: str(decl.stands_in_for) } : {}),
-      ...(typeof decl.simulated === 'boolean' ? { simulated: decl.simulated } : {}),
-      basis: 'declared',
-    };
-  }
-  // Sculptured's own approvals integration: Sculptured knows what it is.
-  if (integration === 'sculptured') return { id: part, kind: 'approvals', name: 'Sculptured approvals', part, basis: 'sculptured' };
-  return { id: part, kind: 'unknown', name: part, part, basis: 'unknown' };
+function systemOf(part: string, decl: NonNullable<RunStartPayload['systems']>[string]): SystemUnit {
+  return {
+    id: part, kind: decl.kind, name: decl.product, product: decl.product, part,
+    standsInFor: decl.stands_in_for, simulated: decl.simulated, basis: 'declared',
+  };
 }
-
-/** The run's parts as systems, each with the declaration that applies to it; then the tools' effects. */
-function worldOf(b: BranchDetail, parts: WorldPartInfo[] | null) {
-  const { run, now } = declsOf(b, parts);
-  const byPart = new Map<string, PartDecl>();
-  for (const d of run) byPart.set(d.part, { ...byPart.get(d.part), ...d, system: d.system ?? byPart.get(d.part)?.system, tools: d.tools.length ? d.tools : byPart.get(d.part)?.tools ?? [] });
-  // Today's world describes the run's part only when it runs the same integration.
-  for (const d of now) {
-    const mine = byPart.get(d.part);
-    if (mine && mine.integration && d.integration && mine.integration !== d.integration) continue;
-    byPart.set(d.part, { part: d.part, integration: mine?.integration ?? d.integration, system: mine?.system ?? d.system, tools: mine?.tools.length ? mine.tools : d.tools });
-  }
-  const effects = new Map<string, Effect>();
-  for (const d of byPart.values()) for (const t of d.tools) {
-    const td = doc(t);
-    if (str(td.name) && (td.effect === 'read' || td.effect === 'write')) effects.set(td.name as string, td.effect);
-  }
-  const systems = [...byPart.values()].map((d) => systemOf(d.part, d.integration, d.system));
-  return { systems, effects, byPart };
-}
-
-const keysOf = (v: unknown) => (Array.isArray(v) ? v.length : 0);
 
 function outcomeOf(error: unknown): { outcome: Outcome; reason?: string } {
   if (error == null) return { outcome: 'ok' };
@@ -77,21 +31,20 @@ function outcomeOf(error: unknown): { outcome: Outcome; reason?: string } {
   return { outcome: REFUSAL_WORDS.test(reason) ? 'refused' : 'error', reason };
 }
 
-function effectOf(tool: string, p: Doc, effects: Map<string, Effect>): { effect: Effect; effectBasis: Basis } {
-  const declared = effects.get(tool);
-  if (declared) return { effect: declared, effectBasis: 'declared' };
-  if (keysOf(p.writes) > 0) return { effect: 'write', effectBasis: 'observed' };
-  return { effect: 'unknown', effectBasis: 'unknown' };
-}
-
-function toolAction(e: Event, effects: Map<string, Effect>): PlantAction {
+function toolAction(e: Event, declarations: Declarations): PlantAction {
   const p = doc(e.payload);
   const tool = str(p.name) ?? 'a tool';
+  const declared = declarations.tools?.[tool];
   const part = str(p.part);
-  const system = part ?? (TALK_TOOLS.has(tool) ? TEAM_MESSAGES : 'unknown');
-  const talkRead = system === TEAM_MESSAGES && tool === 'inbox';
-  const fx = talkRead ? { effect: 'read' as const, effectBasis: 'declared' as const } : effectOf(tool, p, effects);
-  return { id: `s${e.seq}`, at: atOf(e), agent: e.agent ?? 'unknown', system, tool, ...fx, ...outcomeOf(p.error), request: p.args, result: p.error != null ? p.error : p.result };
+  const system = part && declarations.systems?.[part] ? part
+    : declared?.part && declarations.systems?.[declared.part] ? declared.part : 'unknown';
+  const effect = declared?.effect ?? 'unknown';
+  const ms = typeof p.duration_ms === 'number' ? p.duration_ms : undefined;
+  return {
+    id: 's' + e.seq, at: atOf(e), agent: e.agent ?? 'unknown', system, tool, effect,
+    effectBasis: effect === 'unknown' ? 'unknown' : 'declared', ms,
+    ...outcomeOf(p.error), request: p.args, result: p.error != null ? p.error : p.result,
+  };
 }
 
 /** A handoff or message: a write to the team's messages, to one agent or everyone. */
@@ -105,9 +58,9 @@ function talkAction(e: Event): PlantAction {
 }
 
 /** Every agent's actions in recorded order: tool calls, handoffs and messages. */
-export function arenaActions(b: BranchDetail, effects: Map<string, Effect>): PlantAction[] {
+export function arenaActions(b: BranchDetail, declarations: Declarations): PlantAction[] {
   return [...b.events].sort((x, y) => x.seq - y.seq).flatMap((e) => {
-    if (e.kind === 'tool_call') return [toolAction(e, effects)];
+    if (e.kind === 'tool_call') return [toolAction(e, declarations)];
     if (e.kind === 'handoff' || (e.kind as string) === 'message') return [talkAction(e)];
     return [];
   });
@@ -169,10 +122,10 @@ function usageOf(b: BranchDetail): UsagePoint[] {
 }
 
 /** The branch as a plant: its world's systems (and the team's messages when used), actions, permits, rights and usage. */
-export function arenaPlant(b: BranchDetail, parts: WorldPartInfo[] | null): Plant {
-  const { systems, effects } = worldOf(b, parts);
-  const actions = arenaActions(b, effects);
-  const all = [...systems];
+export function arenaPlant(b: BranchDetail): Plant {
+  const declarations = worldOf(b);
+  const actions = arenaActions(b, declarations);
+  const all = Object.entries(declarations.systems ?? {}).map(([part, decl]) => systemOf(part, decl));
   if (actions.some((a) => a.system === TEAM_MESSAGES)) all.push(MESSAGES);
   if (actions.some((a) => a.system === 'unknown') && !all.some((s) => s.id === 'unknown')) all.push({ id: 'unknown', kind: 'unknown', name: 'Not said', basis: 'unknown' });
   return { systems: all, actions, permits: permitsOf(actions, all), rights: rightsOf(b), usage: usageOf(b) };

@@ -118,7 +118,7 @@ export function useSimulatedSource(run: string, branchId: string): ControlSource
   const d = useArenaRun(run, branchId);
   const b = d.detail;
   const m = useMapped(b);
-  const plant = useMemo(() => (b ? arenaPlant(b, d.parts) : undefined), [b, d.parts]);
+  const plant = useMemo(() => (b ? arenaPlant(b) : undefined), [b]);
   const cursor = useCursor(m.lay ? inOrder(m.lay) : []);
   const info = arenaOf(run, branchId, d);
   const save = b && m.lay ? saveAt(inOrder(m.lay).filter((s) => s.snapshot).map((s) => s.seq), cursor.cursor) : null;

@@ -16,9 +16,21 @@ export const ev = (seq: number, t: number, agent: string | null, kind: EventKind
 const change = (id: string, summary: string, decision: unknown = null) => ({ id, action: 'refund', system: 'shop', summary, payload: {}, reason: 'Boots arrived damaged', decision });
 const WORLD = [{ part: 'retail', integration: 'mongo' }, { part: 'plant', integration: 'counter' }, { part: 'desk', integration: 'sculptured' }];
 
+export const SYSTEMS = {
+  retail: { kind: 'erp', product: 'ERPNext', stands_in_for: 'SAP S/4HANA', simulated: false },
+  plant: { kind: 'plant', product: 'Isaac Sim', simulated: true },
+  desk: { kind: 'approvals', product: 'Sculptured approvals', simulated: true },
+};
+export const TOOLS = {
+  get_order_details: { effect: 'read', part: 'retail' },
+  exchange_delivered_order_items: { effect: 'write', part: 'retail' },
+  propose_change: { effect: 'write', part: 'desk' },
+  decide_change: { effect: 'write', part: 'desk' },
+};
+
 export function events(): Event[] {
   return [
-    ev(0, 0, null, 'run_start', { task_id: '27', world: WORLD, fingerprints: { retail: { server_version: '16.4' } } }),
+    ev(0, 0, null, 'run_start', { task_id: '27', world: WORLD, systems: SYSTEMS, tools: TOOLS, fingerprints: { retail: { server_version: '16.4' } } }),
     ev(1, 0, 'triage', 'agent_start'),
     ev(2, 4, 'triage', 'tool_call', { name: 'get_order_details', args: { order_id: '#W1' }, result: {}, error: null, part: 'retail', reads: ['orders/#W1'], writes: [] }),
     ev(3, 5, 'triage', 'tool_call', { name: 'propose_change', args: {}, result: change('c1', 'Refund order #W1'), error: null, part: 'desk', reads: [], writes: ['change/c1'], saves: { desk: 'd1' } }),
