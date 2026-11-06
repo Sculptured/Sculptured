@@ -5,6 +5,7 @@ import { arena } from '../tests/api';
 import { branchNames, inOrder, layout, summarize, type Step } from '../tests/model';
 import type { BranchDetail, Change, RestoreMode } from '../tests/types';
 import { agentsOf, approvalsOf, DECIDED_BY_AGENTS, feedOf, outcomeOf, toolCallsPerMin } from './simulatedFeed';
+import { arenaPlant } from './plant/arenaPlant';
 import { useArenaRun, type ArenaRunData } from './simulatedData';
 import { rowsAt, saveAt } from './simulatedWorld';
 import { ActionError, type Action, type ActionReport, type ControlSource, type SimulatedTimeline, type TeamActions } from './source';
@@ -117,6 +118,7 @@ export function useSimulatedSource(run: string, branchId: string): ControlSource
   const d = useArenaRun(run, branchId);
   const b = d.detail;
   const m = useMapped(b);
+  const plant = useMemo(() => (b ? arenaPlant(b, d.parts) : undefined), [b, d.parts]);
   const cursor = useCursor(m.lay ? inOrder(m.lay) : []);
   const info = arenaOf(run, branchId, d);
   const save = b && m.lay ? saveAt(inOrder(m.lay).filter((s) => s.snapshot).map((s) => s.seq), cursor.cursor) : null;
@@ -136,6 +138,7 @@ export function useSimulatedSource(run: string, branchId: string): ControlSource
     message: () => unavailable(NO_MESSAGES),
     team: TEAM,
     metrics: metricsOf(b),
+    ...(plant ? { plant } : {}),
     ...(b && m.lay ? { timeline: timelineOf(run, b, cursor, m.lay) } : {}),
     ...(b ? { world: worldOf(b, save) } : {}),
     arena: info,

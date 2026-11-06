@@ -30,6 +30,9 @@ export const afterName = (text: string, who: string) => (text.startsWith(`${who}
 /** The id of the alarm a feed entry raises (as alarms.ts makes it), if it raises one. */
 export const alarmIdOf = (item: FeedItem) => (item.alarm ? `${item.alarm}:${item.alarmKey ?? item.id}` : undefined);
 
+/** When readings are taken: now, or the end of a run that has finished (its figures stay as they were then). */
+export const readingTime = (source: Pick<ControlSource, 'running' | 'endedAt'>, now: number) => (!source.running && source.endedAt !== undefined ? source.endedAt : now);
+
 const two = (n: number) => String(n).padStart(2, '0');
 
 /** A moment as a 24-hour wall clock, "14:31:05". */

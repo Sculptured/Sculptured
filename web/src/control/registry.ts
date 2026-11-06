@@ -1,17 +1,21 @@
 import { createRegistry, type PaneType } from '../workspace/registry';
 import type { ControlCtx } from './context';
+import { ACTIONS_DEFAULTS, ActionsPane, ActionsSettingsForm } from './panes/Actions';
 import { AgentDetailPane, AgentSettingsForm } from './panes/AgentDetail';
 import { AlarmsPane, AlarmsSettingsForm } from './panes/Alarms';
 import { ApprovalsPane } from './panes/Approvals';
 import { ComparePane } from './panes/Compare';
 import { MetricsPane } from './panes/Metrics';
 import { OverviewPane } from './panes/Overview';
+import { ProcessPane } from './panes/Process';
 import { RawEventsPane, RawSettingsForm } from './panes/RawEvents';
 import { ResultsPane, ResultsSettingsForm } from './panes/Results';
 import { STATUS_DEFAULTS, StatusPane, StatusSettingsForm } from './panes/Status';
 import { TIMELINE_DEFAULTS, TimelinePane, TimelineSettingsForm } from './panes/Timeline';
+import { TrendsPane } from './panes/Trends';
 import { WorldPane } from './panes/World';
 import { gated } from './SimGate';
+import './plant/plant.css';
 
 const deploymentOnly = (ctx: unknown) => (ctx as ControlCtx | undefined)?.kind === 'deployment';
 const simulatedOnly = (ctx: unknown) => (ctx as ControlCtx | undefined)?.kind === 'simulated';
@@ -21,6 +25,10 @@ const PANES: PaneType[] = [
   { type: 'overview', title: 'System overview', glyph: '◫', selection: true, Body: OverviewPane },
   { type: 'status', title: 'Status', glyph: '≡', selection: true, defaultSettings: STATUS_DEFAULTS, Settings: StatusSettingsForm, Body: StatusPane },
   { type: 'timeline', title: 'Timeline', glyph: '⏱', selection: true, defaultSettings: TIMELINE_DEFAULTS, Settings: TimelineSettingsForm, Body: TimelinePane },
+  // The control plane: the process view (level 2), the action timeline with each action's trace (level 4), trends.
+  { type: 'process', title: 'Process view', glyph: '⊞', selection: true, Body: ProcessPane },
+  { type: 'actions', title: 'Action timeline', glyph: '≣', selection: true, defaultSettings: ACTIONS_DEFAULTS, Settings: ActionsSettingsForm, Body: ActionsPane },
+  { type: 'trends', title: 'Trends', glyph: '∿', Body: TrendsPane },
   { type: 'alarms', title: 'Alarms', glyph: '▲', selection: true, Settings: AlarmsSettingsForm, Body: AlarmsPane },
   { type: 'approvals', title: 'Approvals', glyph: '◆', Body: ApprovalsPane },
   // Agent detail has its own Follow selection switch in its head (it pins the agent), so it does not take

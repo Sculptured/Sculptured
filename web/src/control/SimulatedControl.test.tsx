@@ -38,7 +38,7 @@ async function loaded(path?: string) {
 describe('A simulated run in the Control workspace', () => {
   it('opens on Replay, with the run, its outcome and controls that say why they are off', async () => {
     const { container } = await loaded();
-    expect(within(screen.getByRole('tablist', { name: 'Layouts' })).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Replay', 'Live', 'Cost']);
+    expect(within(screen.getByRole('tablist', { name: 'Layouts' })).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Replay', 'Process', 'Live', 'Cost']);
     expect(layoutTab('Replay')).toHaveAttribute('aria-selected', 'true');
     for (const t of ['Timeline', 'World state', 'Compare']) expect(pane(t)).toBeInTheDocument();
     const heading = screen.getByRole('heading', { name: /Task 27 · Original/ });

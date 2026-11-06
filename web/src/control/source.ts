@@ -1,6 +1,7 @@
 import type { ControlMode } from '../generated/ControlMode';
 import type { Layout, Step } from '../tests/model';
 import type { Branch, BranchDetail, Change, Comparison, RestoreMode, RestorePlan, WorldPartInfo } from '../tests/types';
+import type { Plant } from './plant/model';
 
 /**
  * What the Control panes read: one interface over a deployment (a Sculptured team running for real)
@@ -162,6 +163,11 @@ export type ControlSource = {
   metrics: { tokensIn?: number; tokensOut?: number; tokens?: number; costUsd?: number; toolCallsPerMin: (number | null)[] };
   /** What could not be loaded, in plain words (the rest of the source is then incomplete). */
   problems?: string[];
+  /**
+   * The systems the team acts on and every action it took on them (the process view, the action
+   * timeline and the trends read it); absent where a source has none yet.
+   */
+  plant?: Plant;
   /** Simulated only. */
   timeline?: SimulatedTimeline;
   /**

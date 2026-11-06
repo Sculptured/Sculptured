@@ -13,6 +13,18 @@ function live(): Node {
   return split('live', 'col', [top, stack(['live-timeline', 'timeline'])], [2.2, 1]);
 }
 
+/**
+ * Process (the control plane): the process view beside Alarms (Approvals and Trends as tabs), and the
+ * action timeline across the bottom.
+ */
+function process(): Node {
+  const top = split('process-top', 'row', [
+    stack(['process-view', 'process']),
+    stack(['process-alarms', 'alarms'], ['process-trends', 'trends'], ['process-approvals', 'approvals']),
+  ], [1.6, 1]);
+  return split('process', 'col', [top, stack(['process-actions', 'actions'])], [1.5, 1]);
+}
+
 /** Agent focus: one agent's detail beside the Timeline over Raw events. */
 const focus = (): Node => split('focus', 'row', [stack(['focus-agent', 'agent']), split('focus-side', 'col', [stack(['focus-timeline', 'timeline']), stack(['focus-raw', 'raw'])], [1, 1])], [1, 1]);
 
@@ -26,7 +38,7 @@ function cost(kind: ControlSource['kind']): Node {
 const replay = (): Node => split('replay', 'col', [stack(['replay-timeline', 'timeline']), split('replay-bottom', 'row', [stack(['replay-world', 'world']), stack(['replay-compare', 'compare'])], [1, 1])], [1.7, 1]);
 
 /**
- * A simulated run's first-open layouts: Replay first, then Live and Cost (Agent focus and Results
+ * A simulated run's first-open layouts: Replay first, then Process, Live and Cost (Agent focus and Results
  * are a deployment's: an Arena run's agents have no conversation or results to show there).
  */
 function simulatedDefaults(): PageLayouts {
@@ -35,6 +47,7 @@ function simulatedDefaults(): PageLayouts {
     active: 'replay',
     layouts: [
       { id: 'replay', name: 'Replay', root: replay(), popped: [] },
+      { id: 'process', name: 'Process', root: process(), popped: [] },
       { id: 'live', name: 'Live', root: live(), popped: [] },
       { id: 'cost', name: 'Cost', root: cost('simulated'), popped: [] },
     ],
@@ -49,6 +62,7 @@ export function controlDefaults(kind: ControlSource['kind']): PageLayouts {
     active: 'live',
     layouts: [
       { id: 'live', name: 'Live', root: live(), popped: [] },
+      { id: 'process', name: 'Process', root: process(), popped: [] },
       { id: 'focus', name: 'Agent focus', root: focus(), popped: [] },
       { id: 'cost', name: 'Cost', root: cost(kind), popped: [] },
     ],

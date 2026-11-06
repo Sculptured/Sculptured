@@ -1,0 +1,96 @@
+/* The control-plane panes (process view, action timeline, trends) and the organisation overview, in the
+   high-performance HMI manner: neutral greys, writes heavier than reads, colour only for abnormal
+   states (a refusal or an error), always with a glyph and a word. Tokens only. */
+
+.pl-abn { color: var(--status-failed); }
+.pl-kind {
+  display: inline-block; min-width: 4.2ch; padding: 0 4px; border: 1px solid var(--line-3); border-radius: var(--radius-sm);
+  font-family: var(--font-mono); font-size: var(--text-xs); font-weight: var(--weight-semibold); letter-spacing: 0.02em; text-align: center; color: var(--text);
+}
+.pl-kind.is-unknown { border-style: dashed; color: var(--muted); }
+.pl-sys-name { display: inline-flex; flex-direction: column; min-width: 0; line-height: var(--leading-tight); }
+.pl-sys-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.pl-sys-line { color: var(--muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-outcome { white-space: nowrap; color: var(--muted); }
+.pl-outcome.is-abnormal { color: var(--status-failed); font-weight: var(--weight-semibold); }
+.pl-effect { display: inline-block; min-width: 2ch; font-family: var(--font-mono); font-size: var(--text-xs); text-align: center; color: var(--muted); }
+.pl-effect.is-write { color: var(--text); font-weight: var(--weight-bold); }
+.pl-permit { white-space: nowrap; color: var(--muted); }
+.pl-permit.is-waiting { color: var(--status-waiting); }
+.pl-permit.is-refused { color: var(--status-failed); }
+.pl-linkish { padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pl-linkish:focus-visible { outline: 2px solid var(--focus-ring); }
+
+/* ── Process view: units | flows | equipment ── */
+.pl-process { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; font-size: var(--text-sm); }
+.pl-grid { display: grid; grid-template-columns: minmax(150px, 34%) minmax(40px, 1fr) minmax(170px, 38%); flex: none; }
+.pl-col { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.pl-unit, .pl-equip { box-sizing: border-box; padding: 4px 0; }
+.pl-unit-hit {
+  display: flex; flex-direction: column; justify-content: center; gap: 1px; width: 100%; height: 100%; padding: 2px 8px; min-width: 0;
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: var(--radius-sm); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.pl-unit-hit:hover { border-color: var(--line-3); }
+.pl-unit-hit:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.pl-equip .pl-unit-hit { border-width: 2px; border-radius: 2px; }
+.is-focus > .pl-unit-hit { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.is-abnormal > .pl-unit-hit { border-left: 3px solid var(--status-failed); }
+.pl-unit-top { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.pl-unit-top strong { overflow: hidden; text-overflow: ellipsis; font-weight: var(--weight-medium); }
+.pl-unit-word { color: var(--muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }
+.pl-unit-fig { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-rights { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-lines { width: 100%; height: 100%; overflow: visible; }
+.pl-flow { stroke: var(--line-3); stroke-width: 1px; fill: none; }
+.pl-flow.is-read { stroke: var(--muted); stroke-width: 1px; }
+.pl-flow.is-write { stroke: var(--text); stroke-width: 2.5px; }
+.pl-flow.is-unknown { stroke: var(--muted); stroke-dasharray: 1 4; }
+.pl-flow.is-abnormal { stroke: var(--status-failed); }
+.pl-flow.is-dim { opacity: 0.18; }
+@media (prefers-reduced-motion: no-preference) {
+  .pl-flow.is-live { stroke-dasharray: 6 4; animation: pl-flowing 0.9s linear infinite; }
+}
+@keyframes pl-flowing { to { stroke-dashoffset: -10; } }
+.pl-flowlist summary { cursor: pointer; color: var(--muted); font-size: var(--text-xs); }
+.pl-flowlist ul, .pl-permits ul { list-style: none; margin: 4px 0 0; padding: 0; font-size: var(--text-sm); }
+.pl-flowlist li, .pl-permits li { padding: 1px 0; border-bottom: 1px solid var(--line); }
+.pl-permit-what { color: var(--text); }
+
+/* ── Action timeline (sequence of events) ── */
+.pl-actions { display: flex; flex-direction: column; gap: 4px; min-width: 0; height: 100%; min-height: 0; font-size: var(--text-xs); }
+.pl-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--space-3); }
+.pl-seg { display: inline-flex; gap: 2px; }
+.pl-soe { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.pl-soe-axis, .pl-soe-lane { display: grid; grid-template-columns: minmax(90px, 16%) minmax(0, 1fr); gap: var(--space-2); }
+.pl-soe-axis { grid-template-columns: minmax(90px, 16%) auto auto; justify-content: space-between; border-bottom: 1px solid var(--line-2); padding-bottom: 2px; }
+.pl-soe-lanes { list-style: none; margin: 0; padding: 0; }
+.pl-soe-lane { align-items: start; border-bottom: 1px solid var(--line); }
+.pl-soe-who { padding-top: 3px; color: var(--text); font-weight: var(--weight-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-soe-track { position: relative; height: 100%; min-height: 22px; background: var(--well); margin-right: 5ch; }
+.pl-mark {
+  position: absolute; height: 16px; padding: 0 3px; line-height: 14px; white-space: nowrap;
+  border: 1px solid var(--line-3); border-radius: 2px; background: var(--panel); color: var(--muted);
+  font-family: var(--font-mono); font-size: 10px; cursor: pointer;
+}
+.pl-mark.is-write { background: var(--text); border-color: var(--text); color: var(--panel); font-weight: var(--weight-bold); }
+.pl-mark.is-unknown { border-style: dotted; }
+.pl-mark.is-abnormal { border: 2px solid var(--status-failed); color: var(--status-failed); background: var(--red-soft); font-weight: var(--weight-bold); }
+.pl-mark.is-picked { outline: 2px solid var(--accent); outline-offset: 1px; z-index: 2; }
+.pl-mark:focus-visible { outline: 2px solid var(--focus-ring); z-index: 2; }
+.pl-soe-list tr { cursor: pointer; }
+.pl-soe-list tr.is-abnormal td { box-shadow: inset 0 -1px 0 var(--red-line); }
+.pl-soe-list tr.is-abnormal td:first-child { box-shadow: inset 3px 0 0 var(--status-failed); }
+.pl-soe-list tr.is-picked td { background: var(--accent-soft); }
+
+/* ── Trace (level 4) ── */
+.pl-trace { border-top: 1px solid var(--line-2); padding-top: 4px; font-size: var(--text-sm); }
+.pl-trace-facts { display: grid; grid-template-columns: 9ch minmax(0, 1fr); gap: 2px var(--space-2); margin: 0 0 4px; }
+.pl-trace-facts dt { color: var(--muted); font-size: var(--text-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.pl-trace-facts dd { margin: 0; min-width: 0; }
+.pl-reason { display: block; color: var(--text); font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.pl-trace-io { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-2); }
+.pl-trace-io figure { margin: 0; min-width: 0; }
+.pl-trace-io figcaption { color: var(--muted); font-size: var(--text-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.pl-trace-io pre { max-height: 200px; margin: 2px 0 0; padding: 4px 6px; overflow: auto; background: var(--well); border: 1px solid var(--line); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.pl-trends tr.is-abnormal td:first-child { box-shadow: inset 3px 0 0 var(--status-failed); }

@@ -12,7 +12,9 @@ export type EventKind =
   | 'tool_call'
   | 'handoff'
   | 'agent_end'
-  | 'check';
+  | 'check'
+  | 'message'
+  | 'world_event';
 
 export type RestoreMode = 'exact' | 'approximate';
 /** How one part of a rerun's world is (or was) restored (`model.rs` `RestoredHow`). */

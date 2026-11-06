@@ -1,6 +1,7 @@
 import { useCallback, useMemo, type RefObject } from 'react';
 import { api, type SeatControlMode } from '../api';
 import { plural } from '../format';
+import type { EventRecord } from '../generated/EventRecord';
 import type { SeatView } from '../generated/SeatView';
 import { useShell, type RunHandle } from '../shell/ShellContext';
 import { hasProcess } from '../status';
@@ -10,6 +11,7 @@ import { displayName, nameForId, type NameMap } from '../vocab';
 import { agentLine, agentReport, controlReport, messageCan, NOTHING_RUNNING, pauseCan, resumeCan, stopCan, teamCan, type Modes } from './deploymentAgents';
 import { approvalsOf, metricsOf, useDeploymentData } from './deploymentData';
 import { feedFrom, startedAt, toolCallsPerMin } from './deploymentFeed';
+import { deploymentPlant } from './plant/deploymentPlant';
 import { ActionError, type Action, type Approval, type Availability, type ControlSource, type TeamActions } from './source';
 import { useActionRunner, type MakeAction } from './useActionRunner';
 
@@ -37,6 +39,15 @@ function useTeamView(team: string) {
   return { shell, state, connected, designOnly, ids, seats, nameOf, title: shell.titles[team] ?? team };
 }
 
+/** What the events read as: tool calls per minute and the plant (systems, actions, permits, usage). */
+function useEventReadings(team: string, ids: string[], events: EventRecord[], since: number | undefined) {
+  const shell = useShell();
+  const rate = useMemo(() => toolCallsPerMin(events, shell.now, since), [events, shell.now, since]);
+  const draft = shell.drafts?.[team];
+  const plant = useMemo(() => deploymentPlant(events, draft, ids), [events, draft, ids]);
+  return { rate, plant };
+}
+
 /**
  * A Sculptured team as a ControlSource: the shell's live stream, recent events, questions, usage,
  * the run budget, and the agent and team control routes.
@@ -49,11 +60,10 @@ export function useDeploymentSource(team: string): ControlSource {
     () => feedFrom(events, { nameOf, title, seats: state.seats, questions: data.questions, budget: data.budget }),
     [events, nameOf, title, state.seats, data.questions, data.budget],
   );
-  const rate = useMemo(() => toolCallsPerMin(events, shell.now, since), [events, shell.now, since]);
+  const { rate, plant } = useEventReadings(team, ids, events, since);
   const act = useActionRunner(data.reload);
   const ctx: Ctx = { team, seats: state.seats, modes: data.modes, nameOf, act };
   const approvals = approvalsOf(data.questions);
-  const problems = [...(error ? [`Could not load recent events: ${error}`] : []), ...data.problems];
   return {
     kind: 'deployment',
     title,
@@ -68,7 +78,8 @@ export function useDeploymentSource(team: string): ControlSource {
     message: (agent, text) => messageAction(ctx, agent, text),
     team: teamActions(ctx, seats, !state.snapshot && !connected && !designOnly, shell.refs.run),
     metrics: metricsOf(data.usage, data.costEvents, rate),
-    problems,
+    plant,
+    problems: [...(error ? [`Could not load recent events: ${error}`] : []), ...data.problems],
   };
 }
 
