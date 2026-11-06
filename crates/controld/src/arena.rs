@@ -22,6 +22,8 @@ pub const DEFAULT_ARENA_URL: &str = "http://127.0.0.1:4510";
 pub struct Arena {
     base: String,
     client: reqwest::Client,
+    /// The external runs Sculptured drives on this arenad (Run in Arena), by branch.
+    pub(crate) drives: crate::arena_runs::Drives,
 }
 
 impl Arena {
@@ -38,7 +40,17 @@ impl Arena {
         Arc::new(Arena {
             base: base.trim_end_matches('/').to_string(),
             client,
+            drives: crate::arena_runs::Drives::default(),
         })
+    }
+
+    /// arenad's own address for API `path` (`runs`, `branches/<id>/finish`).
+    pub(crate) fn api_url(&self, path: &str) -> String {
+        format!("{}/api/{path}", self.base)
+    }
+
+    pub(crate) fn http(&self) -> &reqwest::Client {
+        &self.client
     }
 
     /// `SCULPTURED_ARENA_URL`, else [`DEFAULT_ARENA_URL`].
@@ -119,7 +131,7 @@ async fn pass_through(res: reqwest::Response) -> Result<Response, ApiError> {
     Ok(out)
 }
 
-fn unreachable_arena() -> ApiError {
+pub(crate) fn unreachable_arena() -> ApiError {
     ApiError::new(
         StatusCode::SERVICE_UNAVAILABLE,
         "arena_unreachable",
@@ -128,7 +140,7 @@ fn unreachable_arena() -> ApiError {
 }
 
 /// arenad's `{"error": "<text>"}` in Sculptured's envelope: a code per status, the text as evidence.
-fn arena_error(status: StatusCode, text: &str) -> ApiError {
+pub(crate) fn arena_error(status: StatusCode, text: &str) -> ApiError {
     let said = serde_json::from_str::<serde_json::Value>(text)
         .ok()
         .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string))

@@ -2,6 +2,7 @@ pub mod account;
 pub mod analytics;
 pub mod api;
 pub mod arena;
+pub mod arena_runs;
 pub mod auth;
 pub mod background;
 pub mod budget;
