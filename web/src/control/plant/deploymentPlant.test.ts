@@ -17,6 +17,7 @@ describe('a deployment as a plant', () => {
       called(7, 'c4', 'mcp__rig__propose_change'),
       called(8, 'c5', 'Bash'), cls(8, 'c5', { kind: 'shell-other' }), result(9, 'c5', 'exit 1', true),
       called(10, 'c6', 'mcp__other__x'),
+      called(11, 'c7', 'mcp__arena-coord__get_lot'),
     ], draft, []);
     expect(p.actions.map((a) => [a.system, a.tool, a.effect, a.outcome, a.ms ?? null])).toEqual([
       ['files', 'Read', 'read', 'ok', 1000],
@@ -25,6 +26,7 @@ describe('a deployment as a plant', () => {
       ['approvals', 'propose_change', 'write', 'running', null],
       ['shell', 'Bash', 'unknown', 'error', 1000],
       ['mcp:other', 'x', 'unknown', 'running', null],
+      ['mcp:arena', 'get_lot', 'unknown', 'running', null],
     ]);
     expect(p.systems.find((s) => s.id === 'mcp:erp')).toMatchObject({ kind: 'mcp', name: 'ERPNext MCP', basis: 'sculptured' });
     expect(p.systems.find((s) => s.id === 'mcp:other')).toMatchObject({ kind: 'mcp', name: 'other', basis: 'unknown' });

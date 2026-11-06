@@ -145,6 +145,8 @@ export const ERROR_WORDS: Record<string, string> = {
   arena_full: "Arena's saves have reached their space limit. Delete old runs or clean up saves to make room.",
   arena_refused: 'Arena did not accept this request.',
   arena_failed: 'Arena hit a problem with this request.',
+  arena_task_unknown: 'Arena has no such task. Pick one from the list.',
+  team_empty: 'This team has no agents to run in Arena.',
   // Everything else.
   internal: 'Sculptured hit an internal problem. Try again; if it keeps happening, restart Sculptured.',
   login_required: 'Sign in to use Sculptured.',
@@ -171,7 +173,7 @@ export const UNREACHABLE = 'Could not reach Sculptured. Check that it is still r
 
 /** One sentence for any error from the API client. */
 // Start refusals name the plan, the computer or the project in the server's words; generic words would hide why.
-const VERBATIM = new Set(['plan_limit', 'needs_computer', 'project_archived', 'generate_unusable', 'generate_failed', 'generate_invalid', 'generate_timeout', 'design_too_large', 'proposal_invalid', 'no_request', 'cli_not_signed_in', 'cli_missing', 'not_allowed_here', 'computer_timeout', 'session_file_invalid', 'runner_without_reports', 'no_logs', 'no_sessions']);
+const VERBATIM = new Set(['plan_limit', 'needs_computer', 'project_archived', 'generate_unusable', 'generate_failed', 'generate_invalid', 'generate_timeout', 'design_too_large', 'proposal_invalid', 'no_request', 'cli_not_signed_in', 'cli_missing', 'not_allowed_here', 'computer_timeout', 'session_file_invalid', 'runner_without_reports', 'no_logs', 'no_sessions', 'arena_team_not_started']);
 
 export function errorText(e: unknown): string {
   if (!(e instanceof ApiError)) return UNREACHABLE;

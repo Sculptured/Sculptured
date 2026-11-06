@@ -12,7 +12,9 @@ import { BOARD_STYLES, setBoardStyle, useBoardStyle, type BoardStyle } from '../
 import { StructureBoard } from '../structure/StructureBoard';
 import type { WorkflowTarget } from '../workflow/WorkflowGraph';
 import { useProject, type Project } from './ProjectContext';
-import { startReasonOf } from './useProjectRun';
+import { blockingCount, startReasonOf } from './useProjectRun';
+import { RunInArena } from '../arena/RunInArena';
+import { plural } from '../format';
 
 /** Why Run is off before a team's first start. */
 export const RUN_NOT_YET = 'Run opens once the team has started';
@@ -63,6 +65,9 @@ export function BoardStyleSwitch() {
   );
 }
 
+/** Why the design can't run in Arena now: its problems (Arena runs a copy, so the team running here is no reason). */
+const designProblems = (p: Project) => { const n = p.draft ? blockingCount(p) : 0; return n > 0 ? `Fix ${plural(n, 'thing')} on the design first.` : null; };
+
 /**
  * `/p/:team/board`: the board, full width, in Design or Run. A card opens its agent's page; coming
  * back keeps the board's view and selection.
@@ -79,7 +84,8 @@ export function BoardPage() {
     return () => setBoardView(null);
   }, [mode, setBoardView]);
   const startReason = startReasonOf(p);
-  const lead = <><ModeSwitch mode={mode} p={p} onChange={(m) => setParams((prev) => { const next = new URLSearchParams(prev); next.set('mode', m); return next; }, { replace: true })} /><BoardStyleSwitch /></>;
+  const arena = mode === 'design' && p.builtHere ? <RunInArena team={p.team} blocked={designProblems(p)} /> : null;
+  const lead = <><ModeSwitch mode={mode} p={p} onChange={(m) => setParams((prev) => { const next = new URLSearchParams(prev); next.set('mode', m); return next; }, { replace: true })} /><BoardStyleSwitch />{arena}</>;
   const toWorkflow = (t: WorkflowTarget | 'list') => navigate(workflowPath(p.team, typeof t === 'object' ? `stage:${t.stage}` : t));
   if (mode === 'design') {
     const openAgent = (id: string) => {

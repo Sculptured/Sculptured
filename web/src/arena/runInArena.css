@@ -1,0 +1,18 @@
+/* Run in Arena: the board's button and its panel. Tokens only. */
+.ria { position: relative; display: inline-flex; }
+.ria-panel {
+  position: absolute; z-index: 30; top: calc(var(--control-h-sm) + 6px); left: 0; width: min(420px, calc(100vw - 32px));
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
+  background: var(--raised); border: 1px solid var(--line-2); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop);
+  font-size: var(--text-sm); color: var(--text);
+}
+.ria-title { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.ria-form { display: flex; flex-direction: column; gap: var(--space-2); }
+.ria-field { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: var(--text-xs); }
+.ria-field select { min-height: var(--control-h); padding: 0 6px; background: var(--well); color: var(--text); border: 1px solid var(--line-2); border-radius: var(--radius-sm); font: inherit; font-size: var(--text-sm); }
+.ria-note { margin: 0; color: var(--muted); font-size: var(--text-xs); }
+.ria-act { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.ria-act .reason { color: var(--muted); font-size: var(--text-xs); }
+.ria-error { margin: 0; color: var(--status-failed); }
+.ria-runs { list-style: none; margin: 0; padding: var(--space-2) 0 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.ria-runs li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }

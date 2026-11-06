@@ -91,6 +91,7 @@ A `PaneType` (`registry.ts`) declares:
 | `team` | `start`, `pauseAll`, `resumeAll`, `stop`, `emergencyStop`, each an `Action` with `can`: ok, or not ok with a plain `why` |
 | `agentControl`, `message` | Per-agent pause, resume, stop and message |
 | `metrics` | Tokens, cost, tool calls per minute; `undefined` means unknown, never 0 |
+| `plant` | The control plane's model (`control/plant/model.ts`): the systems the team acts on, every action (system, effect and where it is known from, duration, outcome, request and result), permits, decision rights and usage |
 | `timeline`, `run` (simulated) | Steps, saves, cursor, restore plan, fork, compare, world rows |
 
 **The deployment source** (`deploymentSource.ts`) reads:
@@ -103,6 +104,12 @@ A `PaneType` (`registry.ts`) declares:
 Start and Stop team… go through the project bar's own handle (`shell.refs.run`), with its confirmations. Until the stream has answered, every team action says "Connecting…". A design that has never started has no stream, so it is not waiting for one: Start is offered at once.
 
 **The simulated source** (`simulatedSource.ts`) reads the branch, its stream, rows, the restore plan, fork and compare through `/api/arena/*`. Arena runs cannot be paused or stopped from Control yet; those actions say so. While Arena does not answer, `SimGate` shows "Arena is not running" in each pane, with how to start it.
+
+**The plant** (`web/src/control/plant/`) is read by both sources into one shape, so the Process view, the Action timeline and Trends never ask which kind of run they show. `deploymentPlant.ts` places each `tool-called` (with its `tool-resulted` and `action-interpreted`) on a system with `toolSystems.ts`: the `rig` MCP server is Team messages (or Approvals for `propose_change`, `request_input`, `approve`), a team component is an MCP server by its id, an `arena-<agent>` server (Run in Arena) is the Arena world, and the interpreter's class gives files, shell and web. Permits come from `native-permission` questions and `change-proposed`/`change-decided`; rights from the draft (`authority`, `permission`, `mandate`). `arenaPlant.ts` takes each part's `system` and each tool's `effect` from the run's world in `run_start`, then the branch's own `world`, then `GET /api/world` only for a part whose integration matches; without them kind and effect are `unknown` and rows written are an `observed` write. `flows.ts`, `lanes.ts` and `trends.ts` are pure.
+
+**The organisation overview** (`web/src/control/org/`, `/control`) reads `GET /api/control/overview` (`crates/controld/src/control_overview.rs`, from the `seats`, `questions` and `actions` projections and the latest run's `usage-reported` events), Arena's runs and `GET /api/arena/suites` (404: no suites in this Arena).
+
+**Run in Arena** (`crates/controld/src/arena_runs/`, the board's `web/src/arena/RunInArena.tsx`): `POST /api/teams/{id}/arena-runs` starts an external run, registers each agent (`plan::registration`), stores and starts the run's own team (`plan::run_draft`: one `mcp-remote` component per agent, Arena's task after the job of each agent nobody hands work to), and spawns `drive::run`, which polls the team's events, posts each `usage-reported` to Arena, and finishes (agent ends, `finish`, Stop team) when asked, when the team stops, or after every agent stays finished for the settle time. Driven runs are kept in memory on the `Arena` handle (`drives`), so a restart of Sculptured forgets them, and their Arena branch stays running until arenad restarts (Arena then marks it interrupted).
 
 **Alarms.** `alarms.ts` is pure. A feed entry tagged with a rule raises an alarm when that rule is on, and a threshold rule only after its wait. The alarm's id is the rule plus the condition's key (a question, an agent's session), so an acknowledgement (`useAlarms`, kept per team) stays valid however the condition is seen again.
 
@@ -164,3 +171,9 @@ The two committed videos were recorded before that restriction. The two committe
 | Arena not answering is said plainly in every pane | `web/src/arena/ArenaControlPage.test.tsx`, `web/src/control/SimulatedControl.test.tsx`, `web/src/control/simulatedSource.test.tsx` (`arena_down_is_plain`) |
 | A design that never started can Start at once | `web/src/control/deploymentSource.controls.test.tsx` |
 | Control opens first, starts, keeps a dragged layout, moves by keyboard, pauses, resumes, stops; phone pane switcher | `web/e2e/control.spec.ts` |
+| An Arena action's system and effect come from what the world declares, else unknown; today's world only for the same integration | `web/src/control/plant/arenaPlant.test.ts` |
+| A deployment's calls are placed by Sculptured's own tools; permits show who granted them | `web/src/control/plant/deploymentPlant.test.ts` |
+| Process view, action marks (a refusal stands out), trace evidence, trends | `web/src/control/panes/ControlPlane.test.tsx` |
+| Alarms have priorities; shelving leaves the master caution; refusals and failed safety checks alarm | `web/src/control/ControlPage.test.tsx`, `web/src/control/alarms.test.ts` |
+| Every team is a unit with its state and figures | `crates/controld/tests/control_overview.rs`, `web/src/control/org/OrgControl.test.tsx` |
+| A board runs as an Arena external run and is finished when its agents are, or when asked | `crates/controld/tests/arena_runs.rs`, `web/src/arena/RunInArena.test.tsx` |

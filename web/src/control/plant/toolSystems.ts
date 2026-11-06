@@ -11,8 +11,8 @@ import type { Basis, Effect, SystemUnit } from './model';
 
 /** Sculptured's own MCP server for the team tools (drivers `MCP_SERVER`). */
 const TEAM_SERVER = 'rig';
-/** The MCP server Run in Arena gives each agent (controld `arena_runs`). */
-export const ARENA_SERVER = 'arena';
+/** Run in Arena gives each agent its own MCP server, `arena-<agent>` (controld `arena_runs::plan::server_id`). */
+const isArenaServer = (server: string) => server === 'arena' || server.startsWith('arena-');
 
 const TEAM_READS = new Set(['team_status', 'search_history', 'read_decisions', 'workflow_status', 'read_skill', 'read_pdf', 'ping']);
 const GATE_TOOLS = new Set(['propose_change', 'request_input', 'approve']);
@@ -42,7 +42,7 @@ function mcpPlace(server: string, tool: string, components: Component[]): ToolPl
     if (GATE_TOOLS.has(tool)) return { system: SYSTEMS.approvals, tool, ...known('write') };
     return { system: SYSTEMS.team, tool, ...known(TEAM_READS.has(tool) ? 'read' : 'write') };
   }
-  if (server === ARENA_SERVER) return { system: { id: `mcp:${server}`, kind: 'mcp', name: 'Arena world', product: 'Arena (staging)', part: server, basis: 'sculptured' }, tool, ...known('unknown') };
+  if (isArenaServer(server)) return { system: { id: 'mcp:arena', kind: 'mcp', name: 'Arena world', product: 'Arena (staging)', basis: 'sculptured' }, tool, ...known('unknown') };
   const c = components.find((x) => x.id === server);
   return { system: { id: `mcp:${server}`, kind: 'mcp', name: c?.name ?? server, part: server, basis: c ? 'sculptured' : 'unknown' }, tool, ...known('unknown') };
 }
