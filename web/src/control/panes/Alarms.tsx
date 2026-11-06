@@ -1,45 +1,69 @@
 import type { PaneProps } from '../../workspace/registry';
 import { useSelection } from '../../workspace/selection';
-import { RULE_WORDS, type Alarm, type AlarmRule } from '../alarms';
+import { priorityOf, PRIORITY_WORDS, RULE_WORDS, type Alarm, type AlarmRule } from '../alarms';
 import { afterName, clockAt, nameIn, useControl } from '../context';
 
 /**
- * Alarms: the master caution list, newest first. Each is acknowledged on its own (kept per team);
- * an acknowledged alarm stays listed, marked so. The rules and their thresholds are in Settings.
+ * Alarms: the master caution list, highest priority first, then newest. Each is acknowledged on its
+ * own (kept per team); an acknowledged alarm stays listed, marked so. Shelve takes an alarm out of
+ * the master caution for an hour (it stays listed under Shelved, and can be put back). The rules and
+ * their thresholds are in Settings.
  */
+
+function Priority({ rule }: { rule: string }) {
+  const p = priorityOf(rule);
+  const w = PRIORITY_WORDS[p];
+  return <span className={`ctl-prio is-${p}`} title={`Priority ${w.word}`}>{w.mark}<span className="ctl-prio-word"> {w.word}</span></span>;
+}
 
 function Row({ a }: { a: Alarm }) {
   const { source, alarms } = useControl();
   const { select } = useSelection();
   const acked = alarms.acked.has(a.id);
+  const until = alarms.shelved.get(a.id);
   const who = nameIn(source, a.agent);
+  const state = until ? `◫ shelved to ${clockAt(until)}` : acked ? '✓ acknowledged' : '▲ new';
   return (
-    <li className={`ctl-alarm${acked ? ' is-acked' : ' is-lit'}`}>
-      <span className="ctl-alarm-state">{acked ? '✓ acknowledged' : '▲ new'}</span>
+    <li className={`ctl-alarm${until ? ' is-shelved' : acked ? ' is-acked' : ' is-lit'}`}>
+      <span className="ctl-alarm-state"><Priority rule={a.rule} /> {state}</span>
       <button type="button" className="ctl-alarm-what" onClick={() => select({ time: a.at, ...(a.agent ? { agent: a.agent } : {}) })}>
         <time className="ctl-t">{clockAt(a.at)}</time>
         <span className="ctl-who">{who}</span>
         <span className="ctl-alarm-text">{afterName(a.text, who)} <span className="ctl-rule">· {RULE_WORDS[a.rule] ?? a.rule}</span></span>
       </button>
-      {!acked && <button type="button" className="btn btn-secondary btn-sm" onClick={() => alarms.ack(a.id)}>Acknowledge</button>}
+      <span className="ctl-row">
+        {!acked && !until && <button type="button" className="btn btn-secondary btn-sm" onClick={() => alarms.ack(a.id)}>Acknowledge</button>}
+        {until
+          ? <button type="button" className="btn btn-ghost btn-sm" onClick={() => alarms.unshelve(a.id)}>Unshelve</button>
+          : <button type="button" className="btn btn-ghost btn-sm" onClick={() => alarms.shelve(a.id)}>Shelve 1 h</button>}
+      </span>
     </li>
   );
 }
+
+/** Highest priority first, then newest. */
+const byPriority = (x: Alarm, y: Alarm) => PRIORITY_WORDS[priorityOf(x.rule)].rank - PRIORITY_WORDS[priorityOf(y.rule)].rank || y.at - x.at;
 
 export function AlarmsPane() {
   const { alarms } = useControl();
   const on = alarms.rules.filter((r) => r.on).length;
   if (alarms.list.length === 0)
     return <p className="ctl-empty">○ No alarms. {on} of {alarms.rules.length} rules are on (Settings, ⋯).</p>;
+  const active = alarms.list.filter((a) => !alarms.shelved.has(a.id)).sort(byPriority);
+  const shelved = alarms.list.filter((a) => alarms.shelved.has(a.id)).sort(byPriority);
   return (
     <div className="ctl-alarms">
       <p className="ctl-pane-head">
-        <span><strong className={alarms.unacked > 0 ? 'ctl-lit' : undefined}>{alarms.unacked}</strong> not acknowledged · {alarms.list.length} in all</span>
+        <span><strong className={alarms.unacked > 0 ? 'ctl-lit' : undefined}>{alarms.unacked}</strong> not acknowledged · {alarms.list.length} in all{shelved.length ? ` · ${shelved.length} shelved` : ''}</span>
         {alarms.unacked > 1 && <button type="button" className="btn btn-sm btn-ghost" onClick={alarms.ackAll}>Acknowledge all</button>}
       </p>
-      <ol className="ctl-alarm-list" aria-label="Alarms, newest first">
-        {[...alarms.list].reverse().map((a) => <Row key={a.id} a={a} />)}
+      <ol className="ctl-alarm-list" aria-label="Alarms, highest priority first">
+        {active.map((a) => <Row key={a.id} a={a} />)}
       </ol>
+      {shelved.length > 0 && <>
+        <h3 className="ctl-sub">Shelved</h3>
+        <ol className="ctl-alarm-list" aria-label="Shelved alarms">{shelved.map((a) => <Row key={a.id} a={a} />)}</ol>
+      </>}
     </div>
   );
 }

@@ -38,12 +38,21 @@ function tokenWords(m: ControlCtx['source']['metrics']): string {
   return m.tokens !== undefined ? `${compactNumber(m.tokens)} total` : 'unknown';
 }
 
-/** Lit while some alarm is not acknowledged; "unknown" while nothing about the run could be read. */
+/** The caution in words: not acknowledged, else acknowledged and shelved, else none. */
+function cautionWords({ unacked, list, shelved }: ControlCtx['alarms'], unread: boolean): string {
+  if (unread) return 'unknown';
+  if (unacked > 0) return `${unacked} not acknowledged`;
+  if (list.length === 0) return 'no alarms';
+  const off = list.filter((a) => shelved.has(a.id)).length;
+  return [list.length - off ? `${list.length - off} acknowledged` : '', off ? `${off} shelved` : ''].filter(Boolean).join(', ');
+}
+
+/** Lit while some alarm is neither acknowledged nor shelved; "unknown" while nothing about the run could be read. */
 function Caution({ ctx }: { ctx: ControlCtx }) {
   const { unacked, list } = ctx.alarms;
   const lit = unacked > 0;
   const unread = !!ctx.source.unread;
-  const words = unread ? 'unknown' : lit ? `${unacked} not acknowledged` : list.length > 0 ? `${list.length} acknowledged` : 'no alarms';
+  const words = cautionWords(ctx.alarms, unread);
   return (
     <button type="button" className={`ctl-caution${lit ? ' is-lit' : ''}`} onClick={() => ctx.show('alarms')} aria-label={`Master caution: ${words}. Open Alarms`}>
       <span className="ctl-caution-glyph" aria-hidden="true">{unread ? '∅' : lit ? '▲' : list.length > 0 ? '✓' : '○'}</span>

@@ -10,7 +10,7 @@ import { controlPage } from './ControlPage';
 import { controlDefaults } from './defaults';
 import { A, control, header, layoutTab, pane, paneTab, resetControl } from './pageHarness';
 import { question } from './testHarness';
-import { ackKey } from './useAlarms';
+import { ackKey, shelfKey } from './useAlarms';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
@@ -133,7 +133,7 @@ describe('Control page', () => {
     const user = userEvent.setup();
     await user.click(caution);
     expect(paneTab('Alarms')).toHaveAttribute('aria-selected', 'true');
-    const list = screen.getByRole('list', { name: 'Alarms, newest first' });
+    const list = screen.getByRole('list', { name: 'Alarms, highest priority first' });
     expect(list).toHaveTextContent('▲ new');
     await user.click(within(list).getByRole('button', { name: 'Acknowledge' }));
     expect(screen.getByRole('button', { name: /^Master caution: 1 acknowledged/ })).toBeInTheDocument();
@@ -145,6 +145,22 @@ describe('Control page', () => {
     await act(async () => {});
     act(() => stream().emit('snapshot', failed));
     expect(await screen.findByRole('button', { name: /^Master caution: 1 acknowledged/ })).toBeInTheDocument();
+  });
+
+  it('an alarm shows its priority; shelving takes it out of the master caution until it is put back', async () => {
+    const failed = snapshot({ seats: [seatView('a', { lifecycle: 'failed' }), seatView('b')] });
+    await twoTeams('/p/r/control', failed);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /^Master caution: 1 not acknowledged/ }));
+    const list = screen.getByRole('list', { name: 'Alarms, highest priority first' });
+    expect(list).toHaveTextContent('P1 high');
+    await user.click(within(list).getByRole('button', { name: 'Shelve 1 h' }));
+    expect(screen.getByRole('button', { name: /^Master caution: 1 shelved\./ })).toBeInTheDocument();
+    const shelf = screen.getByRole('list', { name: 'Shelved alarms' });
+    expect(shelf).toHaveTextContent(/◫ shelved to \d\d:\d\d:\d\d/);
+    expect(Object.keys(JSON.parse(localStorage.getItem(shelfKey('r'))!))).toHaveLength(1);
+    await user.click(within(shelf).getByRole('button', { name: 'Unshelve' }));
+    expect(screen.getByRole('button', { name: /^Master caution: 1 not acknowledged/ })).toBeInTheDocument();
   });
 
   it('pane_route_renders_single_pane', async () => {

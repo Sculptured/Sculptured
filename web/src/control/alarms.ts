@@ -18,6 +18,8 @@ export const DEFAULT_RULES: AlarmRule[] = [
   { id: 'limit', on: true },
   { id: 'question-waiting', on: true, threshold: 300 },
   { id: 'part-error', on: true },
+  { id: 'refused', on: true },
+  { id: 'safety', on: true },
 ];
 
 /** Each rule in plain words, for the Alarms pane's settings. */
@@ -29,7 +31,29 @@ export const RULE_WORDS: Record<string, string> = {
   limit: 'A usage limit or the run budget was reached',
   'question-waiting': 'A question has waited longer than the threshold',
   'part-error': 'A part of the world reported an error (simulated runs)',
+  refused: "A system or a gate refused an agent's call",
+  safety: 'A hard safety check failed (Arena runs)',
 };
+
+/**
+ * Each rule's priority (ISA-18.2 style: how soon the operator must act). High: something failed or
+ * was unsafe; medium: something waits on the operator or was refused; low: worth knowing.
+ */
+export type Priority = 'high' | 'medium' | 'low';
+const PRIORITY: Record<string, Priority> = {
+  failed: 'high', safety: 'high', 'part-error': 'high',
+  attention: 'medium', 'question-waiting': 'medium', refused: 'medium', stall: 'medium', limit: 'medium',
+  'context-ceiling': 'low',
+};
+export const priorityOf = (rule: string): Priority => PRIORITY[rule] ?? 'medium';
+export const PRIORITY_WORDS: Record<Priority, { mark: string; word: string; rank: number }> = {
+  high: { mark: 'P1', word: 'high', rank: 0 },
+  medium: { mark: 'P2', word: 'medium', rank: 1 },
+  low: { mark: 'P3', word: 'low', rank: 2 },
+};
+
+/** A call's error in a system's own words reads as a refusal (a gate, a rule, a permission), not a fault. */
+export const REFUSAL_WORDS = /permission|refus|denied|not allowed|not permitted|forbidden|read[- ]only|requires approval|not approved|blocked by|safety rule|user rejected/i;
 
 const validThreshold = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 

@@ -5,6 +5,7 @@ import type { SeatView } from '../generated/SeatView';
 import type { TeamBudget } from '../generated/TeamBudget';
 import { activityLines } from '../progress/sentences';
 import { ACTIVITY, hasProcess } from '../status';
+import { REFUSAL_WORDS } from './alarms';
 import { eventWords } from './eventWords';
 import { perMinute } from './rate';
 import type { FeedItem } from './source';
@@ -55,6 +56,8 @@ function alarmOf(b: EventBody, open: Set<string>, session: string | undefined): 
       return { alarm: 'context-ceiling' };
     case 'limit-reached':
       return { alarm: 'limit' };
+    case 'tool-resulted':
+      return b.is_error && REFUSAL_WORDS.test(b.output.slice(0, 500)) ? { alarm: 'refused', alarmKey: `call:${b.call_id}` } : null;
     case 'question-raised':
       return open.has(b.question_id) ? { alarm: 'question-waiting', alarmKey: b.question_id } : null;
     default:

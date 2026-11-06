@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alarmsFrom, DEFAULT_RULES, withDefaults, type AlarmRule } from './alarms';
+import { alarmsFrom, DEFAULT_RULES, priorityOf, withDefaults, type AlarmRule } from './alarms';
 import type { AgentLine, FeedItem } from './source';
 
 const item = (id: string, alarm: string | undefined, at = 1_000, agent = 'a'): FeedItem => ({
@@ -8,7 +8,7 @@ const item = (id: string, alarm: string | undefined, at = 1_000, agent = 'a'): F
 const line = (id: string, word: string, alarm?: AgentLine['alarm']): AgentLine => ({
   id, name: id.toUpperCase(), status: { glyph: '•', word, tone: 'idle' }, ...(alarm ? { alarm } : {}),
 });
-const RULE_IDS = ['failed', 'attention', 'stall', 'context-ceiling', 'limit', 'question-waiting', 'part-error'];
+const RULE_IDS = ['failed', 'attention', 'stall', 'context-ceiling', 'limit', 'question-waiting', 'part-error', 'refused', 'safety'];
 const LATER = 10 * 60_000;
 
 describe('alarm rules', () => {
@@ -59,5 +59,30 @@ describe('alarm rules', () => {
     expect(merged.find((r) => r.id === 'question-waiting')?.threshold).toBe(30);
     expect(withDefaults('nonsense')).toEqual(DEFAULT_RULES);
     expect(withDefaults([{ id: 'question-waiting', on: 'yes', threshold: -4 }])).toEqual(DEFAULT_RULES);
+  });
+});
+
+describe('refusals, hard safety checks and priorities', () => {
+  it('an Arena tool refusal and a failed hard safety check raise their alarms; a plain error does not', async () => {
+    const { branchB1, ev } = await import('./simHarness');
+    const { feedOf } = await import('./simulatedFeed');
+    const b = branchB1();
+    b.events.push(
+      ev(12, 20, 'resolver', 'tool_call', { name: 'ship_lot', args: {}, result: null, error: 'refused: lot CVX-2611 is on hold', part: 'erp', reads: [], writes: [] }),
+      ev(13, 21, 'resolver', 'tool_call', { name: 'get_lot', args: {}, result: null, error: 'timeout', part: 'erp', reads: [], writes: [] }),
+      ev(14, 22, null, 'check', { passed: false, gold_db: null, differing_rows: [], checks: [{ name: 'no held lot shipped', passed: false, safety: true }, { name: 'deviation opened', passed: false }] }),
+    );
+    const alarms = alarmsFrom(feedOf(b), [], DEFAULT_RULES, Date.now());
+    expect(alarms.map((a) => [a.rule, priorityOf(a.rule)])).toEqual([['refused', 'medium'], ['safety', 'high']]);
+    expect(alarms[1]!.text).toBe('A hard safety check failed: no held lot shipped');
+  });
+
+  it("a deployment's refused tool call raises the refused alarm, keyed by its call", async () => {
+    const { ev } = await import('../test-fixtures');
+    const { feedFrom } = await import('./deploymentFeed');
+    const feed = feedFrom([ev(1, { type: 'tool-resulted', turn_id: null, call_id: 'c9', output: 'Blocked by safety rule: no prod writes', is_error: true }),
+      ev(2, { type: 'tool-resulted', turn_id: null, call_id: 'c10', output: 'file not found', is_error: true })],
+    { nameOf: () => 'A', title: 'T', seats: {}, questions: [], budget: null });
+    expect(feed.filter((f) => f.alarm).map((f) => [f.alarm, f.alarmKey])).toEqual([['refused', 'call:c9']]);
   });
 });

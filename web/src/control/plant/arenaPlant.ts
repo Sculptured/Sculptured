@@ -1,3 +1,4 @@
+import { REFUSAL_WORDS } from '../alarms';
 import type { BranchDetail, Event, RunStartPayload, WorldPartInfo } from '../../tests/types';
 import type { Basis, Effect, Outcome, Permit, Plant, PlantAction, Rights, SystemUnit, UsagePoint } from './model';
 
@@ -69,12 +70,11 @@ function worldOf(b: BranchDetail, parts: WorldPartInfo[] | null) {
 }
 
 const keysOf = (v: unknown) => (Array.isArray(v) ? v.length : 0);
-const REFUSAL = /refus|denied|not allowed|not permitted|forbidden|read[- ]only|requires approval|not approved/i;
 
 function outcomeOf(error: unknown): { outcome: Outcome; reason?: string } {
   if (error == null) return { outcome: 'ok' };
   const reason = typeof error === 'string' ? error : JSON.stringify(error);
-  return { outcome: REFUSAL.test(reason) ? 'refused' : 'error', reason };
+  return { outcome: REFUSAL_WORDS.test(reason) ? 'refused' : 'error', reason };
 }
 
 function effectOf(tool: string, p: Doc, effects: Map<string, Effect>): { effect: Effect; effectBasis: Basis } {

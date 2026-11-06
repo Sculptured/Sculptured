@@ -1,6 +1,7 @@
 import { plural } from '../format';
 import { savedParts } from '../tests/restore';
 import type { BranchDetail, BranchStatus, Event, RunStartPayload } from '../tests/types';
+import { REFUSAL_WORDS } from './alarms';
 import { perMinute } from './rate';
 import type { AgentLine, Approval, Availability, FeedItem, Tone } from './source';
 
@@ -39,9 +40,19 @@ export function eventText(e: Event, who: string): string {
     case 'tool_call': return p.snapshot_error ? `${toolText(who, p)}; the world could not be saved after it` : toolText(who, p);
     case 'handoff': return `${who} handed work on`;
     case 'agent_end': return p.ok === false ? `${who} stopped with an error` : `${who} finished (reported)`;
-    case 'check': return p.passed ? 'The final check passed' : 'The final check failed';
+    case 'check': {
+      const unsafe = failedSafety(p);
+      if (unsafe.length) return `A hard safety check failed: ${unsafe.join(', ')}`;
+      return p.passed ? 'The final check passed' : 'The final check failed';
+    }
     default: return `${who} recorded ${String(e.kind)}`;
   }
+}
+
+/** The hard safety checks (`safety: true`) a check event reports as failed, by name. */
+export function failedSafety(p: Payload): string[] {
+  const checks = Array.isArray(p.checks) ? (p.checks as Payload[]) : [];
+  return checks.filter((c) => c && c.safety === true && c.passed === false).map((c) => String(c.name ?? 'unnamed'));
 }
 
 /** The alarm an event raises, with the key of its condition (an agent's end matches its status's alarm). */
@@ -49,6 +60,8 @@ function alarmOf(e: Event): Pick<FeedItem, 'alarm' | 'alarmKey'> {
   const p = payloadOf(e);
   if (e.kind === 'agent_end' && p.ok === false && e.agent) return { alarm: 'failed', alarmKey: `end:${e.agent}` };
   if (e.kind === 'tool_call' && p.snapshot_error) return { alarm: 'part-error', alarmKey: `save:${e.seq}` };
+  if (e.kind === 'tool_call' && p.error != null && REFUSAL_WORDS.test(String(p.error))) return { alarm: 'refused', alarmKey: `tool:${e.seq}` };
+  if (e.kind === 'check' && failedSafety(p).length > 0) return { alarm: 'safety', alarmKey: `safety:${e.branch_id}` };
   return {};
 }
 

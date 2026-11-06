@@ -1,3 +1,4 @@
+import { REFUSAL_WORDS } from '../alarms';
 import type { ActionClass } from '../../generated/ActionClass';
 import type { EventRecord } from '../../generated/EventRecord';
 import type { TeamDraft } from '../../generated/TeamDraft';
@@ -15,14 +16,13 @@ const seatOf = (e: EventRecord) => (e.subject.kind === 'seat' ? e.subject.id : e
 /** A seat's member id (`group.member@team` → `member`). */
 export const memberOf = (seat: string) => seat.split('@')[0]!.split('.').pop()!;
 
-const REFUSAL = /permission|denied|refus|not allowed|blocked by|safety rule|user rejected/i;
 
 /** One tool call's result as an outcome; a refusal is an error the gate, a rule or the person gave. */
 function outcomeOf(r: Body<'tool-resulted'> | undefined): { outcome: Outcome; reason?: string } {
   if (!r) return { outcome: 'running' };
   if (!r.is_error) return { outcome: 'ok' };
   const reason = r.output.slice(0, 500);
-  return { outcome: REFUSAL.test(reason) ? 'refused' : 'error', reason };
+  return { outcome: REFUSAL_WORDS.test(reason) ? 'refused' : 'error', reason };
 }
 
 type Calls = { results: Map<string, { body: Body<'tool-resulted'>; at: number }>; classes: Map<string, ActionClass> };

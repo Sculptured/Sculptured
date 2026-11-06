@@ -10,6 +10,9 @@ import type { ControlSource } from './source';
 
 export const ackKey = (team: string) => `sculptured.alarms.ack.${team}`;
 export const rulesKey = (team: string) => `sculptured.alarms.rules.${team}`;
+export const shelfKey = (team: string) => `sculptured.alarms.shelf.${team}`;
+/** How long Shelve takes an alarm out of the master caution. */
+export const SHELVE_MS = 3_600_000;
 /** Acknowledgements kept per team; the oldest go first. */
 const MAX_ACKS = 500;
 
@@ -21,6 +24,10 @@ function write(key: string, value: unknown) {
 }
 
 const parseAcks = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+/** Shelved alarms: id → until when (ms). Bad entries are dropped. */
+const parseShelf = (v: unknown): Record<string, number> => Object.fromEntries(
+  Object.entries(v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}).filter((e): e is [string, number] => typeof e[1] === 'number'),
+);
 
 /** A value in localStorage under `key`, read with `parse` (module level, so stable), followed across windows. */
 function useStored<T>(key: string, parse: (v: unknown) => T) {
@@ -40,10 +47,14 @@ export type AlarmsApi = {
   /** Every alarm the rules raise now, oldest first. */
   list: Alarm[];
   acked: Set<string>;
-  /** How many are not acknowledged: the master caution's count. */
+  /** How many are neither acknowledged nor shelved: the master caution's count. */
   unacked: number;
   ack(id: string): void;
   ackAll(): void;
+  /** Shelved alarms and until when; a shelved alarm stays listed but leaves the master caution. */
+  shelved: Map<string, number>;
+  shelve(id: string): void;
+  unshelve(id: string): void;
   rules: AlarmRule[];
   setRules(rules: AlarmRule[]): void;
 };
@@ -51,15 +62,20 @@ export type AlarmsApi = {
 export function useAlarms(team: string, source: Pick<ControlSource, 'feed' | 'agents'>, now: number): AlarmsApi {
   const [acks, setAcks] = useStored(ackKey(team), parseAcks);
   const [rules, setStoredRules] = useStored(rulesKey(team), withDefaults);
+  const [shelf, setShelf] = useStored(shelfKey(team), parseShelf);
   const list = useMemo(() => alarmsFrom(source.feed, source.agents, rules, now), [source.feed, source.agents, rules, now]);
   const acked = useMemo(() => new Set(acks), [acks]);
+  const shelved = useMemo(() => new Map(Object.entries(shelf).filter(([, until]) => until > now)), [shelf, now]);
   const add = (ids: string[]) => setAcks((cur) => [...cur, ...ids.filter((id) => !cur.includes(id))].slice(-MAX_ACKS));
   return {
     list,
     acked,
-    unacked: list.filter((a) => !acked.has(a.id)).length,
+    unacked: list.filter((a) => !acked.has(a.id) && !shelved.has(a.id)).length,
     ack: (id) => add([id]),
-    ackAll: () => add(list.map((a) => a.id)),
+    ackAll: () => add(list.filter((a) => !shelved.has(a.id)).map((a) => a.id)),
+    shelved,
+    shelve: (id) => setShelf((cur) => ({ ...cur, [id]: Date.now() + SHELVE_MS })),
+    unshelve: (id) => setShelf((cur) => Object.fromEntries(Object.entries(cur).filter(([k]) => k !== id))),
     rules,
     setRules: (next) => setStoredRules(() => next),
   };

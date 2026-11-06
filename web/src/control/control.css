@@ -234,3 +234,12 @@
 .ctl-head-more > summary { padding: 4px 0; color: var(--muted); font-size: var(--text-xs); cursor: pointer; }
 .ctl-head-more .ctl-strip { margin-bottom: 4px; }
 .ctl-clock.is-quiet { color: var(--muted); }
+
+/* Alarm priority (P1 high · P2 medium · P3 low): a mark and a word; a shelved alarm is quiet. */
+.ctl-prio { display: inline-block; margin-right: 4px; padding: 0 3px; border: 1px solid currentColor; border-radius: 2px; font-family: var(--font-mono); }
+.ctl-prio.is-high { color: var(--status-failed); }
+.ctl-prio.is-medium { color: var(--status-waiting); }
+.ctl-prio.is-low { color: var(--muted); }
+.ctl-prio-word { font-family: var(--font-ui); }
+.ctl-alarm { grid-template-columns: 19ch minmax(0, 1fr) auto; }
+.ctl-alarm.is-shelved .ctl-alarm-state, .ctl-alarm.is-shelved .ctl-alarm-text { color: var(--muted); }

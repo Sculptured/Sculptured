@@ -130,7 +130,7 @@ describe('Control header, round 2', () => {
     const off: Action = { can: { ok: false, why: 'Fix 2 things first' }, run: async () => ({ text: 'Fix 2 things first', skipped: [], refused: true }) };
     const source = { kind: 'deployment', title: 't', running: false, agents: [], feed: [], approvals: [], metrics: { toolCallsPerMin: [] },
       team: { start: off, stop: off, pauseAll: off, resumeAll: off, emergencyStop: off } } as unknown as ControlSource;
-    const alarms = { list: [], acked: new Set<string>(), unacked: 0, ack() {}, ackAll() {}, rules: [], setRules() {} };
+    const alarms = { list: [], acked: new Set<string>(), unacked: 0, ack() {}, ackAll() {}, shelved: new Map<string, number>(), shelve() {}, unshelve() {}, rules: [], setRules() {} };
     const ctx: ControlCtx = { kind: 'deployment', team: 'r', source, alarms, show() {}, now: 0, startFix: { text: 'Fix 2 things', to: '/p/r/board?mode=design' } };
     render(<MemoryRouter><ControlHeader ctx={ctx} /></MemoryRouter>);
     expect(screen.getByRole('link', { name: 'Fix 2 things' })).toHaveAttribute('href', '/p/r/board?mode=design');
