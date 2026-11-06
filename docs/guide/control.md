@@ -11,7 +11,7 @@ Every picture and video on this page comes from a recording of the real app. The
 
 The same videos are also in `docs/videos/` as WebM.
 
-The alarm/approval video, phone screenshots, Arena captures and captures of the control plane (Process layout, Control room, Run in Arena) are pending. On November 2, 2026, the recording environment denied local socket creation and Docker access, so the real test server and throwaway Arena could not start. No substitute screens are included. The recording spec contains the remaining capture flows for an environment with those permissions.
+The alarm/approval video, phone screenshots, Arena captures, and captures of the control plane on an Arena run are pending. The Process layout, Control room and Run in Arena screenshots below were captured on November 6, 2026 from the real app (a throwaway instance with a practice team; Arena was not running). On November 2, 2026, the recording environment denied local socket creation and Docker access, so the real test server and throwaway Arena could not start. No substitute screens are included. The recording spec contains the remaining capture flows for an environment with those permissions.
 
 ## 1. Open Control
 
@@ -130,6 +130,8 @@ The **Process** layout watches a team the way an operator watches a plant: the a
 - For a team running for real, Sculptured knows its own tools: the team tools (messages, handoffs, status) are **Team messages**; proposing a change, asking you for input or approving is **Approvals**; each component the team adds is an **MCP server** under its own name; Claude Code's file tools are **Agent folders**, its shell is **Shell**, and its web tools are **Web and HTTP APIs**. An MCP server Sculptured does not know is shown under its server name. Whether a call read or wrote is shown only where Sculptured knows it (file reads and edits, the team tools); otherwise it says "unknown".
 - For an Arena run, each part of Arena's world says what kind of system it is, which product runs it, what an open-source stand-in stands in for and whether it is simulated, and each tool says whether it reads or writes. A run recorded before Arena kept these shows "kind unknown"; a call that wrote rows is shown as an observed write.
 
+![The Process layout of a practice team: two agents as units, the Shell as equipment with dotted lines (effect unknown), Alarms beside it, and the Action timeline with each call marked SHELL·?](../images/control/process-layout.png)
+
 **Process view.** Agents on the left, each with its status (mark and word), its actions per minute over the last five minutes, the calls refused or failed, and its first decision right (hover for all). Systems on the right, each with its kind as a short code (ERP, DB, API, MCP, MSG, APR…), its name and what it is ("ERPNext · stands in for SAP S/4HANA · real"), its reads and writes. A line joins an agent to each system it acted on: heavy for writes, thin for reads, dotted where the effect is unknown, red with ⊘ where a call was refused or failed, moving while it was used in the last minute. Click a unit to dim everything else; **Flows as a list** gives the same as text. **Interlocks · permits** lists the changes and tool uses that waited on a decision: waiting, granted or refused, and by whom ("permit granted by you", "by the team's rules").
 
 **Decision rights** come from the design: what an agent decides (its authority), whether it asks before using tools, and how many of the team's rules check the changes it proposes. In an Arena run, an agent Arena gives only read tools says "read only".
@@ -217,6 +219,8 @@ If Arena is not running, every Arena pane says "Arena is not running" and how to
 
 **Control room** in the top bar (`/control`) is the overview of every project at once, the first level of the control plane. It is a workspace like Control.
 
+![Control room: one practice project as a unit, and the Arena panes saying Arena is not running](../images/control/control-room.png)
+
 - **Deployments:** each project as a unit: its state (running, needs attention, N failed, stopped, not started), its agents running out of all, its alarms (agents failed or needing attention, open questions, calls that failed in the last 15 minutes), a sparkline of tool calls per minute over 15 minutes, its latest action and the latest run's cost and tokens ("≥" when some report had no price; "unknown" when none did). Units with alarms come first. A unit's name opens its Control.
 - **Arena runs:** Arena's recent runs, newest first, with their team and outcome; a run Sculptured drove from a board says "driven by its design". Each opens in Control.
 - **Test suites:** Arena's test suites, once Arena has them. Until then the pane says they are not available in this Arena yet.
@@ -229,6 +233,8 @@ On a project's Design board, **Run in Arena…** runs the team in Arena, the sta
 2. Sculptured starts an Arena run with `runner: "external"`, registers each agent of the board with Arena, and starts the board's own copy of the team (a project named after the board, the task and the run). Each agent gets its Arena world as an MCP server; the agents nobody hands work to get Arena's task after their own job. The agents run on your Claude Code or Codex sign-in, as any team does, and may cost money.
 3. While it runs, Sculptured passes each usage report its agents' CLIs make to Arena. Arena records every tool call its world sees.
 4. The run finishes when every agent has finished its turns and nothing waits on it for 30 seconds, when you stop the copy (Stop team or Emergency stop), or when you press **Finish now**. Sculptured then records each agent's end with its tokens and cost, asks Arena to freeze and score the world, and stops the copy.
+
+![The Run in Arena panel on the Design board while Arena is not running](../images/control/run-in-arena.png)
 
 The panel lists the board's Arena runs with their state; each opens in Control (section 8). **Run a test suite** stays disabled with its reason: Arena has no suites yet, or, once it does, Sculptured does not drive suite runs yet.
 

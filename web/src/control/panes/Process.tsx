@@ -28,7 +28,7 @@ function flowClass(f: Flow, focus: string | null) {
 
 function Lines({ agents, systems, flows, focus, height }: { agents: string[]; systems: SystemUnit[]; flows: Flow[]; focus: string | null; height: number }) {
   return (
-    <svg className="pl-lines" viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" aria-hidden="true">
+    <svg className="pl-lines" viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" style={{ height }} aria-hidden="true">
       {flows.map((f) => {
         const a = agents.indexOf(f.agent);
         const s = systems.findIndex((x) => x.id === f.system);

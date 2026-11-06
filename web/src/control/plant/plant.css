@@ -24,7 +24,7 @@
 /* ── Process view: units | flows | equipment ── */
 .pl-process { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; font-size: var(--text-sm); }
 .pl-grid { display: grid; grid-template-columns: minmax(150px, 34%) minmax(40px, 1fr) minmax(170px, 38%); flex: none; }
-.pl-col { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.pl-col { list-style: none; margin: 0; padding: 0; min-width: 0; align-self: start; }
 .pl-unit, .pl-equip { box-sizing: border-box; padding: 4px 0; }
 .pl-unit-hit {
   display: flex; flex-direction: column; justify-content: center; gap: 1px; width: 100%; height: 100%; padding: 2px 8px; min-width: 0;
@@ -40,7 +40,7 @@
 .pl-unit-word { color: var(--muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; }
 .pl-unit-fig { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pl-rights { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pl-lines { width: 100%; height: 100%; overflow: visible; }
+.pl-lines { display: block; align-self: start; width: 100%; overflow: visible; }
 .pl-flow { stroke: var(--line-3); stroke-width: 1px; fill: none; }
 .pl-flow.is-read { stroke: var(--muted); stroke-width: 1px; }
 .pl-flow.is-write { stroke: var(--text); stroke-width: 2.5px; }
@@ -101,3 +101,7 @@
 .org-unit-name { color: var(--text); font-weight: var(--weight-medium); }
 .org-rate { display: flex; align-items: flex-end; gap: 6px; min-width: 120px; }
 .org-rate .ctl-spark { flex: 1; min-width: 60px; }
+/* Narrow panes and phones: wide tables and the process grid scroll sideways inside their pane. */
+.org-units, .pl-soe-list-wrap { overflow-x: auto; }
+.pl-process { overflow-x: auto; }
+.pl-grid { min-width: 420px; }
