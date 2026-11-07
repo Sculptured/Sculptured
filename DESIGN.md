@@ -241,7 +241,7 @@ Honesty is the one rule above taste. Status is always a glyph plus a word, never
 
 The token file is layered so that a look is a single override block:
 
-1. **Canonical tokens** on `:root` (the Coastal values): surfaces back to front (`--bg`, `--panel`, `--raised`, `--raised-2`, `--hover`, `--well`, `--scrim`, `--glass`), lines (`--line`, `--line-2`, `--line-3`), text (`--text`, `--muted`, `--text-disabled`), the accent family (`--accent`, `--accent-strong`, `--accent-ink`, `--accent-deep`, `--on-hue`), status hues (`--red`, `--green`, `--amber`, `--violet`, `--blue`), provider colours (`--claude`, `--codex`, `--practice`, `--other`), data series (`--k-*`, `--series-1..6`), type, space, radius, depth and motion. `--light` and `--shade` are the two mixing ends used for every inset highlight, shadow and scrim.
+1. **Canonical tokens** on `:root` (the Coastal values): surfaces back to front (`--bg`, `--panel`, `--raised`, `--raised-2`, `--hover`, `--well`, `--scrim`, `--glass`), lines (`--line`, `--line-2`, `--line-3`), text (`--text`, `--muted`, `--text-disabled`), the accent family (`--accent`, `--accent-strong`, `--accent-ink`, `--accent-deep`, `--on-hue`), status hues (`--red`, `--green`, `--amber`, `--violet`, `--blue`), provider colours (`--claude`, `--codex`, `--other`), data series (`--k-*`, `--series-1..6`), type, space, radius, depth and motion. `--light` and `--shade` are the two mixing ends used for every inset highlight, shadow and scrim.
 2. **Derived tokens** built with `var()` and `color-mix(in srgb, …)` on the canonical ones: `--accent-soft` (accent at 10%), `--accent-line` (40%), `--red-soft`, `--green-soft`, `--amber-soft`, `--violet-soft`, `--focus-ring`, `--selection`, scrollbar colours, and all `--status-*` tokens. They follow a look automatically.
 3. **Look-level material tokens**, so a look can be flat without touching component CSS: `--glass-blur`, `--overlay-blur`, `--app-bg`, `--sidebar-bg`, `--sidebar-line`, `--nav-current-bg`, `--nav-current-ring`, `--panel-shadow`, `--canvas-bg`, `--canvas-dot`, `--canvas-dot-size`, `--group-bg`, `--group-line`, `--group-label`, `--card-bg`, `--card-bg-needs-you`, `--card-bg-idle`, `--accent-fill`, `--accent-fill-strong`, `--btn-primary-shadow`, `--brand-mark-bg`, `--wash`, `--avatar-bg`.
 4. **Legacy aliases** (`--r`, `--r-sm`, `--r-lg`, `--surface`, `--border`, `--mono`) point at canonical names. New CSS uses the canonical names.
@@ -296,7 +296,7 @@ Each look has a quiet neutral ground, one accent, and four status hues that only
 - **Amber** (`*-amber`): waiting, needs setup, and heuristic provenance. In Standard, a needs-you card is tinted with amber-soft over the raised surface.
 - **Green** (`*-green`): verified. A check Sculptured ran has passed.
 - **Violet** (`*-violet`): unknown.
-- Providers (`--claude`, `--codex`, `--practice`, `--other`) colour vendor marks, the working accent of a card (its 2px top rule and running chips), and the vendor name. They are identity, never status.
+- Providers (`--claude`, `--codex`, `--other`) colour vendor marks, the working accent of a card (its 2px top rule and running chips), and the vendor name. They are identity, never status.
 
 ### Named Rules
 **The Shape-Plus-Word Rule.** Colour only ever adds to a glyph and a word. Every state has a mark (`◉ needs you`, `▲ stuck`, `⧗ waiting for a slot`, `⣟ working`, `✓ done (reported)`, `○ idle`, `∅ unknown`, `◌ launching`, `◑ stopping`, `■ stopped`, `✕ failed`, `○ planned`), and a selected card carries a `✓` badge as well as the accent ring.

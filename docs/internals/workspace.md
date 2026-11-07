@@ -7,7 +7,7 @@ Sources:
 - `web/src/control/`: `ControlPage.tsx`, `ControlHeader.tsx`, `EmergencyStop.tsx`, `ActionButton.tsx`, `registry.ts`, `defaults.ts`, `context.ts`, `source.ts`, `deploymentSource.ts`, `deploymentData.ts`, `deploymentFeed.ts`, `deploymentAgents.ts`, `simulatedSource.ts`, `simulatedFeed.ts`, `SimulatedControlPage.tsx`, `SimGate.tsx`, `alarms.ts`, `useAlarms.ts`, `panes/`
 - `web/src/arena/`: `ArenaControlPage.tsx`, `registry.ts`, `defaults.ts`, `data.ts`, `gate.tsx`, `panes/`
 - `crates/controld/src/collaboration/{pausing,team_pausing,controls}.rs` (pause, resume, stop-now), `crates/controld/src/arena.rs` (the `/api/arena/*` proxy)
-- `web/e2e/control.spec.ts`, `web/e2e/control-video.spec.ts`, `web/e2e/fixtures/{control-team,recording}.ts`
+- `web/e2e/control.spec.ts`, `web/e2e/fixtures/control-team.ts`
 
 ```mermaid
 flowchart LR
@@ -123,9 +123,9 @@ Start and Stop team… go through the project bar's own handle (`shell.refs.run`
 3. Optionally put it in a default layout (`defaults.ts`). Pane ids must be unique across the page's layouts. Saved layouts without it keep working, and a saved layout naming a type you later remove drops that pane.
 4. Test it with `web/src/control/testHarness.tsx` (deployment) or `simHarness.ts` (simulated), and check `openRigWords` (`web/src/test-vocab.ts`) finds no OpenRig words outside `data-advanced`.
 
-## 7. End-to-end tests and recordings
+## 7. End-to-end tests
 
-`web/e2e/control.spec.ts` runs against the real binary (`crates/e2e-server`) with Practice agents:
+`web/e2e/control.spec.ts` runs against the real binary (`crates/e2e-server`):
 
 - `/p/<team>` opens Control;
 - Start;
@@ -135,20 +135,9 @@ Start and Stop team… go through the project bar's own handle (`shell.refs.run`
 - Emergency stop with its confirm;
 - on Pixel 7, the pane switcher.
 
-The team is made by `web/e2e/fixtures/control-team.ts`: a Planner who hands work to a Buyer and an Inspector, and a rule that an order over $5,000 needs a person. Messages that are stub scripts make things happen: `limit` reaches a usage limit, and `propose_change:{…}` proposes an order.
+The team is made by `web/e2e/fixtures/control-team.ts`: a Planner who hands work to a Buyer and an Inspector, and a rule that an order over $5,000 needs a person. The spec starts the team, so it runs real agents and only with `RIG_E2E_LIVE=1` (it costs credits).
 
-`web/e2e/control-video.spec.ts` records the guide's screenshots (`docs/images/control/`) and videos (`docs/videos/`). It runs only with `RECORD_VIDEOS=1`:
-
-```bash
-cd web && RECORD_VIDEOS=1 npx playwright test control-video.spec.ts
-```
-
-- **Videos.** Each is recorded at 1280×800. `fixtures/recording.ts` draws only a pointer and a step caption over the real app (both marked `data-recording-overlay`), and encodes WebM (VP9) and MP4 (H.264) with ffmpeg when it is installed.
-- **Arena captures** need serve to reach an arenad (`SCULPTURED_ARENA_URL`) with the retail example. Without one they are skipped, saying why.
-  - Arena captures are pending: the November 2 recording environment denied Docker access and local socket creation. No Arena media is committed by this task.
-  - Use a throwaway Postgres and save folder, and a scripted stand-in model; never call a real model for recordings.
-
-The two committed videos were recorded before that restriction. The two committed PNGs are still frames extracted from those real recordings. The alarm/approval recording and phone captures remain pending; the partial alarm video was discarded.
+The guide's screenshots and videos were removed with the model-less practice agents they showed. New captures must be recordings of the real app with real agents.
 
 ## Architecture invariants
 

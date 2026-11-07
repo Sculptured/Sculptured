@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> Note (2026-11-07): the Practice agent (the model-less `stub` driver, kind `practice`) that this document uses was removed. Every agent must use a real model; tests that need an agent are now `live_…` tests on Claude Code with haiku.
+
 **Goal:** A dockable, mission-control-style workspace. It is Sculptured's Control page for real and simulated deployments, and the Arena control page that replaces the Tests section.
 
 **Architecture:** One in-house docking engine sits in `web/src/workspace/`. It has a pure layout-tree model, persistence, pane registry, selection bus and React views. Two pages register panes: `web/src/control/` and `web/src/arena/`. Panes read a `ControlSource` interface, which has a deployment implementation (the shell stream plus controld routes) and a simulated one (`/api/arena/*`). The backend gets small controld routes for pause and resume, and arenad routes for world, usage and gc.

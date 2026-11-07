@@ -69,7 +69,7 @@ classDiagram
 | Field | Meaning |
 |---|---|
 | `id` | Immutable. It becomes the rig name and the end of every seat id. |
-| `agents[].kind` | `claude`, `codex` or `practice` (the stub driver: no model calls, no cost) |
+| `agents[].kind` | `claude`, `codex` or `opencode`; any other kind is refused ("agents must use a real model") |
 | `agents[].job` | The agent's standing work. A head agent's Job is its first message at Start. |
 | `folder`, `agents[].folder` | Working folder. An agent's own folder wins over the team's (`effective_folder`). |
 | `models`, `groups[].models`, `advanced.model` | Model per provider. The agent's own model wins, then its group's, then the team's. None means the CLI's default. |
@@ -222,7 +222,7 @@ stateDiagram-v2
 
 ## 8. Seat tools
 
-hostd offers these tools to every Claude, Codex and Practice agent as an MCP server (`hostd/src/seat_tools/mod.rs::tool_list`). It forwards each call as `FromHost::SeatTool`, and controld answers it (`controld/src/seat_tools/mod.rs::dispatch`). An invalid call is recorded as `report-rejected` evidence and answered with a tool error. It never interrupts the agent.
+hostd offers these tools to every Claude, Codex and OpenCode agent as an MCP server (`hostd/src/seat_tools/mod.rs::tool_list`). It forwards each call as `FromHost::SeatTool`, and controld answers it (`controld/src/seat_tools/mod.rs::dispatch`). An invalid call is recorded as `report-rejected` evidence and answered with a tool error. It never interrupts the agent.
 
 | Tool | What it does |
 |---|---|

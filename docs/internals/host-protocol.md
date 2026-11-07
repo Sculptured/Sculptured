@@ -18,7 +18,7 @@ flowchart LR
   R -- "FromHost: Hello, Event, CommandResult, SeatTool, OpResult" --> C
   R -- "handle HostCommand" --> S["Supervisor"]
   R -- "ops::answer LocalOp" --> S
-  S -- "spawns" --> D["Drivers: Claude Code, Codex, stub"]
+  S -- "spawns" --> D["Drivers: Claude Code, Codex, OpenCode"]
   S -- "appends HostEvent" --> J[("hostd.sqlite journal")]
   A["Agent's MCP shim"] -- "seat_tools ToolRequest over a Unix socket" --> S
 ```

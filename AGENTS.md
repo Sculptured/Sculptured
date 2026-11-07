@@ -59,9 +59,17 @@ ongoing collaboration. Routing and workflow automation support that experience.
   An incomplete or invalid agent report never interrupts the agent.
 
 ## Testing
-- Routine tests never make real model calls or third-party requests. Use `crates/fixtures`
-  (fake CLIs) and the stub driver. Playwright uses Practice agents (`runtime: stub`) only, against
-  the real binary started by `crates/e2e-server` with a throwaway data dir and `HOME`.
+- Every agent runs a real model (Claude Code, Codex or OpenCode). There is no scripted or fake
+  agent, in the product or in tests; never add one.
+- Routine tests never make real model calls or third-party requests. Logic that needs no agent
+  (parsing, validation, store, API contracts, UI) is a plain test with no agent. Parser tests may
+  replay recorded CLI output with the fixture CLIs in `crates/fixtures`.
+- Behaviour that needs an agent is a live test on the real Claude Code CLI with haiku (or Codex):
+  named `live_…`, `#[ignore]`d, run with `cargo test -p <crate> --test <file> -- --ignored live_`
+  (controld helpers in `crates/controld/tests/common/live.rs`). They need `claude` installed and
+  signed in and cost credits. Assert on what Sculptured records, never on the model's wording.
+- Playwright runs against the real binary started by `crates/e2e-server` with a throwaway data dir
+  and `HOME`. Specs that start agents run only with `RIG_E2E_LIVE=1`.
 - Add behaviour tests for meaningful visual interactions, report validation and source
   boundaries.
 - Visual changes are checked with real captures of the running app; report any check you could

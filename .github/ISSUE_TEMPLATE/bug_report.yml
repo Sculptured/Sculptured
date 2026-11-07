@@ -25,7 +25,7 @@ body:
     attributes:
       label: Agents involved
       multiple: true
-      options: [Claude Code, Codex, Practice agents, None]
+      options: [Claude Code, Codex, OpenCode, None]
   - type: input
     id: os
     attributes:

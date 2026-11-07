@@ -3,6 +3,8 @@
 Status: agreed with the user in conversation on 2026-11-02. Where this says "my call", the
 controller decided it; everything else the user said or confirmed.
 
+> Note (2026-11-07): the Practice agent (the model-less `stub` driver, kind `practice`) that this document uses was removed. Every agent must use a real model; tests that need an agent are now `live_…` tests on Claude Code with haiku.
+
 ## Intent
 
 Sculptured is becoming a platform for testing, watching, controlling and deploying agent teams.

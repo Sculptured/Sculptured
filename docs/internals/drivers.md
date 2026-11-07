@@ -1,9 +1,9 @@
 # Agent drivers: Claude Code, Codex and OpenCode
 
-A driver starts one coding CLI for one agent, sends it the operator's messages and turns everything the CLI prints into one shared list of events (`DriverEvent`). Sculptured has four drivers: Claude Code (`claude-stream`), Codex (`codex-app-server`), OpenCode (`opencode-acp`, open models) and the Practice driver (`stub`), which calls no model. The runner on each computer (`hostd`) owns the drivers. controld only names a driver and sends launch parameters.
+A driver starts one coding CLI for one agent, sends it the operator's messages and turns everything the CLI prints into one shared list of events (`DriverEvent`). Sculptured has three drivers: Claude Code (`claude-stream`), Codex (`codex-app-server`) and OpenCode (`opencode-acp`, open models). Every agent runs a real model; there is no model-less driver. The runner on each computer (`hostd`) owns the drivers. controld only names a driver and sends launch parameters.
 
 Sources:
-- `crates/drivers/src/{lib,process,stub}.rs`
+- `crates/drivers/src/{lib,process}.rs`
 - `crates/drivers/src/claude/{mod,parser,limits}.rs`
 - `crates/drivers/src/codex/{mod,session,core}.rs`, `crates/drivers/src/codex/parser/{mod,turns,items,requests}.rs`
 - `crates/drivers/src/opencode/{mod,config,core,parser,session}.rs`
@@ -20,28 +20,26 @@ flowchart LR
   S -- "LaunchSpec" --> D{"Driver trait"}
   D --> CL["ClaudeStreamDriver"]
   D --> CX["CodexAppServerDriver"]
-  D --> ST["StubDriver: Practice"]
   CL -- "stream-json over stdin and stdout" --> P1["claude -p"]
   CX -- "JSON-RPC 2.0 over stdin and stdout" --> P2["codex app-server"]
   CL -- "DriverEvent stream" --> M["hostd mapping.rs"]
   CX -- "DriverEvent stream" --> M
-  ST -- "DriverEvent stream" --> M
   M -- "EventBody journaled, sent to controld" --> C
 ```
 
-- **Choosing a driver.** `launch::driver_for` maps an agent type to a driver name: Claude Code → `claude-stream`, Codex → `codex-app-server`, OpenCode → `opencode-acp`, Practice (`Runtime::Stub`) → `stub`. hostd registers all four in `run.rs::drivers`; `opencode` is looked up on `PATH` and in `~/.opencode/bin` when each agent starts. The `claude` and `codex` programs default to the names on `PATH`; `--claude-program` and `--codex-program` override them.
-- **The trait.** `Driver` has `launch`, `resume`, `fork` (Codex and stub only) and `capabilities`. A `Session` has `send`, `interrupt`, `stop(grace)`, `answer` and `take_events`. The event stream always ends with `Exited`.
+- **Choosing a driver.** `launch::driver_for` maps an agent type to a driver name: Claude Code → `claude-stream`, Codex → `codex-app-server`, OpenCode → `opencode-acp`. hostd registers all three in `run.rs::drivers`; `opencode` is looked up on `PATH` and in `~/.opencode/bin` when each agent starts. The `claude` and `codex` programs default to the names on `PATH`; `--claude-program` and `--codex-program` override them.
+- **The trait.** `Driver` has `launch`, `resume`, `fork` (Codex only) and `capabilities`. A `Session` has `send`, `interrupt`, `stop(grace)`, `answer` and `take_events`. The event stream always ends with `Exited`.
 - **Capabilities** (`model::Caps`) tell the UI which controls to disable:
 
-| Capability | Claude Code | Codex | OpenCode | Practice |
-|---|---|---|---|---|
-| `interrupt` | yes | yes | yes (`session/cancel`) | yes |
-| `resume` | yes | yes | yes (`session/resume`) | yes |
-| `fork` | no (not probed) | yes | no (unstable in ACP v1) | yes |
-| `usage` | yes | yes | yes, partial tokens (§3a) | yes |
-| `questions` | no | only with `native_questions` (off in `run.rs`) | no | yes |
-| `mid_turn_input` | no: messages queue | no: the driver queues | no: the driver queues | no |
-| `subagent_events` | yes | no (not observed) | no | no |
+| Capability | Claude Code | Codex | OpenCode |
+|---|---|---|---|
+| `interrupt` | yes | yes | yes (`session/cancel`) |
+| `resume` | yes | yes | yes (`session/resume`) |
+| `fork` | no (not probed) | yes | no (unstable in ACP v1) |
+| `usage` | yes | yes | yes, partial tokens (§3a) |
+| `questions` | no | only with `native_questions` (off in `run.rs`) | no |
+| `mid_turn_input` | no: messages queue | no: the driver queues | no: the driver queues |
+| `subagent_events` | yes | no (not observed) | no |
 
 ## 2. How Claude Code is driven
 
@@ -184,28 +182,14 @@ stateDiagram-v2
 - hostd itself runs in its own session (`setsid` in `sculptured/src/main.rs`), so Ctrl-C at `serve` does not reach agents. On SIGTERM or SIGINT, hostd stops every agent with a 3 s grace.
 - The supervisor bounds Stop at grace + 5 s and records Attention ("stop timed out") if it is exceeded.
 
-## 7. Practice agents and fixture CLIs
+## 7. Recorded CLI output and live tests
 
-**Practice agents** (`AgentKind::Practice`, `StubDriver`) call no model and cost nothing. The message text is a script:
-
-| Script | Effect |
-|---|---|
-| `hang` | the turn stays open until interrupted or stopped |
-| `crash` | exits with code 3 |
-| `fail` | the turn ends Failed |
-| `limit` | `LimitReached` (usage) with the Claude CLI's words, then Failed |
-| `tool:<cmd>` | a `Bash` call and its result; nothing runs |
-| `ask:`, `ask-only:`, `ask-silent:` | raises a question |
-| `perm:<cmd>` | asks permission when restricted |
-| `request:`, `report:` | calls the seat tools through the socket |
-| anything else | replies `stub received: <text>` |
-
-Each turn reports 10 input and 5 output tokens with no cost.
-
-**Fixture CLIs** stand in for the real ones in tests. They replay shapes from the scrubbed recordings in `crates/fixtures/recordings/`:
+**Fixture CLIs** replay recorded output of the real CLIs so the parsers and process handling can be tested without a model call. They replay shapes from the scrubbed recordings in `crates/fixtures/recordings/`:
 - `fake-claude`: scripts such as `hang`, `crash`, `subagent`, `limit`, `unknown`, `big`, `env:`, `tool:`.
 - `fake-codex`: scripts such as `hang`, `hang-child`, `crash`, `fail`, `tool:`, `edit:`, `run:`, `ask:`. One deliberate difference: a mid-turn `turn/start` gets error -32600, so a driver bug shows up.
 - `codex-probe` and `mcp-ping-stub` drive the real `codex app-server` to make new recordings. They spend model calls, so they are run by hand only.
+
+**Live tests** check what only a running agent shows on the real Claude Code CLI with haiku (or Codex). They are named `live_…`, `#[ignore]`d, and run with `cargo test -p <crate> --test <file> -- --ignored live_`; they need the CLI installed and signed in and cost credits. See [Testing](testing.md#3-live-tests).
 
 ## Architecture invariants
 
@@ -231,7 +215,6 @@ Each turn reports 10 input and 5 output tokens with no cost.
 | Unknown server requests are refused | `crates/drivers/tests/codex_recordings.rs::unknown_server_requests_are_refused_not_ignored` |
 | Codex resume counts only new usage | `codex_contract.rs::resume_counts_only_new_usage_and_fork_gets_a_new_thread` |
 | Seat tools reach Codex as thread config | `codex_contract.rs::seat_tools_reach_codex_as_thread_config` |
-| Practice `limit` and `fail` scripts | `crates/drivers/tests/stub_m2.rs` (`limit_ends_the_turn_on_a_usage_limit_with_the_clis_words`, `fail_ends_the_turn_failed`) |
 
 ## Not built yet / deferred
 

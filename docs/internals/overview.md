@@ -44,7 +44,7 @@ flowchart LR
   H["hostd, sculptured hostd"] -- "WebSocket /host: Hello, events" --> C
   C -- "Launch, Send, Stop, Op" --> H
   H -- "journal until acked" --> J[("hostd journal")]
-  H -- "spawns via drivers" --> CLI["claude, codex or stub driver"]
+  H -- "spawns via drivers" --> CLI["claude, codex or opencode driver"]
   CLI -- "starts MCP server rig" --> ST["sculptured seat-tools"]
   ST -- "local socket: tool calls" --> H
   E["Desktop app, Electron"] -- "starts or reuses serve on 4410" --> C
@@ -84,7 +84,7 @@ The Cargo workspace is `crates/*` (`spikes/` is excluded). The hosted gateway an
 | `crates/host-proto` | Messages between controld and a runner, as JSON frames over a WebSocket (`ToHost`, `FromHost`, Hello, Welcome, acks). | Yes: [Host protocol](host-protocol.md) |
 | `crates/controld` | The product server: HTTP API, guard and hosted auth, SQLite event store and projections, launches, handoffs, questions, workflow engine, checks, usage, analytics, the context ceiling ([Protections](protections.md)) knowledge ([Knowledge](knowledge.md)) the team's status page ([Status page](status-page.md)), proposed changes with rule checks ([Proposed changes](changes.md)) and triggers from other systems ([Triggers](triggers.md)). | Yes: `/api/*`, `/host` |
 | `crates/hostd` | The agent runner: supervises agent processes, journals their events, serves seat tools on a local socket, enforces the computer owner's policy. | Client of `/host` |
-| `crates/drivers` | One driver per CLI: `claude` (stream-json), `codex` (app-server JSON-RPC), `stub` (Practice agents, no model). | Internal trait `Driver` ([Drivers](drivers.md)) |
+| `crates/drivers` | One driver per CLI: `claude` (stream-json), `codex` (app-server JSON-RPC), `opencode` (ACP, open models). | Internal trait `Driver` ([Drivers](drivers.md)) |
 | `crates/localops` | Folders, git, own copies, checks, CLI sign-in, plan usage, generation, project maps. Called in-process or by a runner. | Yes: `LocalOp` JSON |
 | `crates/interpreter` | Heuristic reading of tool calls into plain-language actions and risk flags. Pure; never reads the filesystem, never blocks. | No |
 | `crates/signing` | HMAC `sign` and `verify` for gateway-to-instance requests. | Yes: request signature |
@@ -140,9 +140,8 @@ The user-facing word comes first, the code name second.
 |---|---|
 | **Team** (`rig`, `TeamDraft`, `CompiledRig`) | A set of agents and their connections, designed on the board and started together. |
 | **Group** (`pod`, `DraftGroup`) | A box of agents inside a team. Its id becomes the RigSpec pod id. |
-| **Agent** (`DraftAgent`, `member`) | One Claude Code, Codex or Practice worker with a name, a **Job** and a **Folder**. |
+| **Agent** (`DraftAgent`, `member`) | One Claude Code, Codex or OpenCode worker with a name, a **Job** and a **Folder**. |
 | **Seat** (`SeatId`) | An agent's stable internal address, `pod.member@rig`. Process ids and CLI session ids are never part of it. |
-| **Practice agent** (`AgentKind::Practice`, runtime `stub`) | Runs the stub driver inside the runner. Calls no model and costs nothing. |
 | **Connection** (`ConnectionKind`, edge) | "hands work to" (`delegates_to`, orders launch), "reports to" and "watches" (design intent, not enforced). |
 | **Handoff** | Work passed along a "hands work to" connection, recorded with its message ([Team lifecycle](team-lifecycle.md)). |
 | **Workflow** (`model::Workflow`) | Bounded task dispatch through reusable stages; routes may branch and loop. |

@@ -2,22 +2,11 @@
 
 Control is a project's mission-control page. It shows the live board, what every agent is doing, what waits for you and what went wrong, and it holds the controls for the whole team: Start, Pause all, Resume all, Stop team… and Emergency stop. You arrange it yourself: panes dock beside each other or as tabs, and each layout is kept in this browser.
 
-Every picture and video on this page comes from a recording of the real app. The teams in them are small practice teams whose agents follow fixed scripts instead of calling a model, so their replies read "stub received: …". The screenshots are still frames from those recordings and include their step captions.
-
-**Videos** (each under a minute):
-
-1. [Open a project on Control and start the team](../videos/control-1-open-and-start.mp4)
-2. [Rearrange panes and switch layouts](../videos/control-2-rearrange.mp4)
-
-The same videos are also in `docs/videos/` as WebM.
-
-The alarm/approval video, phone screenshots, Arena captures, and captures of the control plane on an Arena run are pending. The Process layout, Control room and Run in Arena screenshots below were captured on November 6, 2026 from the real app (a throwaway instance with a practice team; Arena was not running). On November 2, 2026, the recording environment denied local socket creation and Docker access, so the real test server and throwaway Arena could not start. No substitute screens are included. The recording spec contains the remaining capture flows for an environment with those permissions.
+This guide has no screenshots or videos at the moment: the earlier ones showed model-less practice teams, which Sculptured no longer has.
 
 ## 1. Open Control
 
 A project opens on Control (`/p/<project>/control`); it is the first tab of the project bar. Its first layout, **Live**, puts the live board first, with Status beside it and the Timeline across the bottom.
-
-![Control in the Live layout: the run status strip and team controls at the top, the live board on the left, Status on the right, and the Timeline across the bottom](../images/control/control-live.png)
 
 Click an agent on the board (or press Enter on it) to open it in an **Agent detail** pane and select it in every other pane.
 
@@ -54,8 +43,6 @@ After each action a note under the header says what it did, and names any agent 
 An operator pause stays in force when a budget is raised or its plan window resets. Use **Resume all** or the agent's **Resume** to end that pause.
 
 ## 3. Panes and layouts
-
-[Video 2](../videos/control-2-rearrange.mp4) shows each of these.
 
 **Layouts.** The tabs under the header are layouts. Control starts with four:
 
@@ -96,8 +83,6 @@ The ✕ on a tab also closes it.
 
 **Look.** Control uses the **Plant** look unless you pick another in the Look setting: neutral greys in the manner of an industrial control system (ISA-101), where colour appears only for something abnormal (a failure, a refusal, an alarm), always with a mark and a word. **Mission** is the earlier near-black look with a cyan accent. **Follow app look** makes it look like the rest of the app. With the app in its light look, the dark panes sit inside the light top bar and project bar, so the page has a visible seam between the two; choose **Follow app look** if you prefer one look throughout.
 
-![The Live layout in the Follow app look](../images/control/follow-app-look.png)
-
 Layouts and the Look setting are kept per project in this browser. A layout saved by an older version, or one naming a pane that no longer exists, opens without that pane rather than failing.
 
 ## 4. The panes
@@ -129,8 +114,6 @@ The **Process** layout watches a team the way an operator watches a plant: the a
 
 - For a team running for real, Sculptured knows its own tools: the team tools (messages, handoffs, status) are **Team messages**; proposing a change, asking you for input or approving is **Approvals**; each component the team adds is an **MCP server** under its own name; Claude Code's file tools are **Agent folders**, its shell is **Shell**, and its web tools are **Web and HTTP APIs**. An MCP server Sculptured does not know is shown under its server name. Whether a call read or wrote is shown only where Sculptured knows it (file reads and edits, the team tools); otherwise it says "unknown".
 - For an Arena run, each part of Arena's world says what kind of system it is, which product runs it, what an open-source stand-in stands in for and whether it is simulated, and each tool says whether it reads or writes. A run recorded before Arena kept these shows "kind unknown"; a call that wrote rows is shown as an observed write.
-
-![The Process layout of a practice team: two agents as units, the Shell as equipment with dotted lines (effect unknown), Alarms beside it, and the Action timeline with each call marked SHELL·?](../images/control/process-layout.png)
 
 **Process view.** Agents on the left, each with its status (mark and word), its actions per minute over the last five minutes, the calls refused or failed, and its first decision right (hover for all). Systems on the right, each with its kind as a short code (ERP, DB, API, MCP, MSG, APR…), its name and what it is ("ERPNext · stands in for SAP S/4HANA · real"), its reads and writes. A line joins an agent to each system it acted on: heavy for writes, thin for reads, dotted where the effect is unknown, red with ⊘ where a call was refused or failed, moving while it was used in the last minute. Click a unit to dim everything else; **Flows as a list** gives the same as text. **Interlocks · permits** lists the changes and tool uses that waited on a decision: waiting, granted or refused, and by whom ("permit granted by you", "by the team's rules").
 
@@ -219,8 +202,6 @@ If Arena is not running, every Arena pane says "Arena is not running" and how to
 
 **Control room** in the top bar (`/control`) is the overview of every project at once, the first level of the control plane. It is a workspace like Control.
 
-![Control room: one practice project as a unit, and the Arena panes saying Arena is not running](../images/control/control-room.png)
-
 - **Deployments:** each project as a unit: its state (running, needs attention, N failed, stopped, not started), its agents running out of all, its alarms (agents failed or needing attention, open questions, calls that failed in the last 15 minutes), a sparkline of tool calls per minute over 15 minutes, its latest action and the latest run's cost and tokens ("≥" when some report had no price; "unknown" when none did). Units with alarms come first. A unit's name opens its Control.
 - **Arena runs:** Arena's recent runs, newest first, with their team and outcome; a run Sculptured drove from a board says "driven by its design". Each opens in Control.
 - **Test suites:** Arena's test suites, once Arena has them. Until then the pane says they are not available in this Arena yet.
@@ -234,10 +215,6 @@ On a project's Design board, **Run in Arena…** runs the team in Arena, the sta
 3. While it runs, Sculptured passes each usage report its agents' CLIs make to Arena. Arena records every tool call its world sees.
 4. The run finishes when every agent has finished its turns and nothing waits on it for 30 seconds, when you stop the copy (Stop team or Emergency stop), or when you press **Finish now**. Sculptured then records each agent's end with its tokens and cost, asks Arena to freeze and score the world, and stops the copy.
 
-![The Run in Arena panel on the Design board while Arena is not running](../images/control/run-in-arena.png)
-
 The panel lists the board's Arena runs with their state; each opens in Control (section 8). **Run a test suite** stays disabled with its reason: Arena has no suites yet, or, once it does, Sculptured does not drive suite runs yet.
 
 What Arena records is what its own endpoints see: the world's tool calls, and the usage Sculptured reports. Handoffs and messages between the agents go through Sculptured's team tools, so Arena does not record them unless the agents use Arena's own talk tools.
-
-<!-- Recorded with web/e2e/control-video.spec.ts (RECORD_VIDEOS=1); see docs/internals/workspace.md. -->

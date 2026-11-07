@@ -1,12 +1,12 @@
 # Testing strategy and how to run each suite
 
-Sculptured is tested from pure Rust unit tests up to Playwright flows against the real binary. No routine test calls a model or a third party: fake CLIs stand in for Claude Code and Codex, and Practice agents stand in for agents in the browser tests. This page says what each suite covers and the exact command to run it.
+Sculptured is tested from pure Rust unit tests up to Playwright flows against the real binary. Every agent runs a real model, in tests too: there is no scripted or fake agent. Logic that needs no agent is a plain test with no agent and no model. Behaviour that needs an agent is a **live test** on the real Claude Code CLI with haiku (or Codex), skipped unless asked for, because it costs credits. Driver parser tests replay recorded CLI output. This page says what each suite covers and the exact command to run it.
 
 Sources:
 - `Cargo.toml` (workspace members and `[profile.dev]`), `crates/*/tests/`, `#[cfg(test)] mod tests` in `crates/*/src`
 - `crates/fixtures/src/bin/{fake-claude,fake-codex,codex-probe,mcp-ping-stub}.rs`, `crates/fixtures/recordings/`
-- `crates/e2e-server/src/{lib,main}.rs`, `crates/drivers/src/stub.rs`
-- `crates/controld/tests/common/`, `crates/hostd/tests/common/mod.rs`
+- `crates/e2e-server/src/{lib,main}.rs`
+- `crates/controld/tests/common/` (live helpers in `common/live.rs`), `crates/hostd/tests/common/mod.rs`
 - `web/package.json`, `web/vite.config.ts`, `web/playwright{,.layout,.hosted}.config.ts`, `web/e2e/`, `web/src/test-*.ts`
 - `desktop/package.json`, `docs-site/package.json`, `docs/HOSTED-DEV.md`, `.github/workflows/release.yml`, `AGENTS.md`
 
@@ -15,8 +15,9 @@ Sources:
 ```mermaid
 flowchart BT
   U["Rust unit tests: mod tests in crates/*/src"] --> I["Rust integration tests: crates/*/tests"]
-  I --> K["Driver contract tests: drivers against fake-claude and fake-codex"]
-  K --> P["Process smoke: real sculptured binary, stub agents"]
+  I --> K["Driver contract tests: drivers against recorded CLI output"]
+  K --> P["Process smoke: real sculptured binary"]
+  P --> V["Live tests: real Claude Code on haiku, ignored by default"]
   W["Web unit and component tests: Vitest, jsdom"] --> L["Playwright layout: built UI, mocked API"]
   P --> E["Playwright end to end: real binary via e2e-server"]
   L --> E
@@ -25,30 +26,30 @@ flowchart BT
 | Layer | Where | Runs a real process? | Calls a model? |
 |---|---|---|---|
 | Rust unit | `mod tests` in `crates/*/src` | No | No |
-| Rust integration | `crates/*/tests/*.rs` | In-process controld router and hostd supervisor; stub driver | No |
+| Rust integration | `crates/*/tests/*.rs` | In-process controld router and hostd supervisor; no agent | No |
 | Driver contract | `crates/fixtures/tests/{claude,codex}_contract.rs`, `crates/drivers/tests/` | Fake CLIs | No |
-| Process smoke | `crates/sculptured/tests/process_smoke.rs` | The `sculptured` binary | No (stub) |
+| Process smoke | `crates/sculptured/tests/process_smoke.rs` | The `sculptured` binary | No |
+| Live | `live_…` tests in `crates/*/tests/*.rs`, `#[ignore]`d | Real `claude` (or `codex`) CLI | Yes: haiku, costs credits |
 | Web component | `web/src/**/*.test.{ts,tsx}` | No (jsdom, mocked `api`) | No |
 | Playwright layout | `web/e2e/layout.spec.ts` | `vite preview` only; every `/api/*` answered by route fixtures | No |
-| Playwright e2e | `web/e2e/{team,rig,handoff,codex,many-teams}.spec.ts` | Real binary from `crates/e2e-server` | No (Practice agents, fake-codex) |
+| Playwright e2e | `web/e2e/*.spec.ts` | Real binary from `crates/e2e-server` | No, except specs that start agents: those run only with `RIG_E2E_LIVE=1` and use real Claude Code |
 | Desktop | `desktop/test/*.test.mjs` | Node test runner | No |
 
 There is no CI test job. The only workflow, `.github/workflows/release.yml`, builds release binaries and runs only when started by hand. Every suite on this page is run locally.
 
-## 2. Fake CLIs instead of real model calls
+## 2. Recorded CLI output for driver tests
 
-`crates/fixtures` builds two programs that speak the same protocol as the real CLIs:
+To test how the drivers parse each CLI's protocol without a model call, `crates/fixtures` builds two programs that replay recorded output of the real CLIs. They are recorded-output replays for parser and process tests, not agents:
 
 - **`fake-claude`** imitates `claude -p --input-format stream-json --output-format stream-json`. Every line it prints mirrors a shape in `crates/fixtures/recordings/claude-*.jsonl` (scrubbed recordings of Claude Code 2.1.289).
 - **`fake-codex`** imitates `codex app-server` (JSON-RPC). Its lines mirror `codex-*.jsonl` and `codex-m2-*.jsonl`. One divergence is deliberate: a `turn/start` during a running turn gets error `-32600`, so a driver bug shows up in tests.
 
-The test chooses behaviour with the **message text**, so the same driver code runs unchanged:
+The test chooses which recorded shape to replay with the **message text**, so the same driver code runs unchanged:
 
 | Fake | Scripts (message text) |
 |---|---|
 | `fake-claude` | `crash`, `hang`, `subagent`, `unknown`, `big`, `limit`, `env:…`, `tool:…`, anything else a normal reply |
 | `fake-codex` | `hang`, `hang-child`, `crash-on-interrupt`, `fail`, `crash`, `crash-once`, `mystery`, `unknown`, `ask:…`, plus tool, edit and run scripts |
-| stub driver (`drivers::stub`, Practice agents) | `hang`, `crash`, `fail`, `limit`, `tool:<cmd>`, `ask:`, `ask-only:`, `ask-silent:`, `perm:`, `request:`, `report:`; anything else echoes `stub received: <text>` |
 
 ```mermaid
 sequenceDiagram
@@ -66,9 +67,19 @@ sequenceDiagram
 
 - Fixture tests find the fakes with `env!("CARGO_BIN_EXE_fake-claude")`. controld tests use `common::fake_bin(name)`, which builds the binary with cargo if it is missing.
 - `codex-probe` and `mcp-ping-stub` drive the **real** `codex app-server` to make new recordings. They spend real model calls on the user's login, so they are run by hand, with approval, and never by a routine test.
-- In e2e, `crates/e2e-server` passes `--codex-program <fake-codex>` to `serve`, so Codex agents run on the fake. Claude agents are not started in e2e; the flows use Practice agents.
+- In e2e, `crates/e2e-server` passes `--codex-program <fake-codex>` to `serve`. Specs that only design teams, read pages or check API contracts start no agent. Specs that start agents are skipped unless `RIG_E2E_LIVE=1` is set; then they run real Claude Code agents and cost credits.
 
-## 3. Running each suite
+## 3. Live tests
+
+Behaviour that only a running agent shows (turns, tool calls, questions, permissions, handoffs, stops, limits Sculptured enforces) is tested on the real Claude Code CLI with its cheapest model, haiku, or on Codex where the test is about Codex. The variance of a real model is part of what is tested.
+
+- Each live test is named `live_…` and marked `#[ignore = "live: …"]`, so a normal `cargo test` skips it.
+- Run them with `cargo test -p <crate> --test <file> -- --ignored live_`. They need `claude` (or `codex`) installed and signed in, and they spend credits on that login.
+- controld's helpers are in `crates/controld/tests/common/live.rs`: `require()` (skips with a printed reason when `claude` is missing), `require_codex()`, `connect(s)` (a runner with the real CLIs), `work_folder(s)`, `make_live`, `team(s, template)`, and waits of 240 s (`wait_for`, `wait_event`, `wait_turns`). `CLAUDE_MODEL` is `haiku`.
+- Prompts are tiny and explicit ("Reply with the single word OK and nothing else.") and agents work only inside the test's temporary folder.
+- A live test asserts on what Sculptured records and enforces (sessions launched, turns, tool calls captured, questions, permissions, statuses, handoffs, limits), never on the model's exact words, counts it chooses, or paths.
+
+## 4. Running each suite
 
 **Disk first.** The root disk on the development machine is nearly full. `[profile.dev] debug = "line-tables-only"` in `Cargo.toml` exists because full debug info made test builds about 15 GB. Build with `CARGO_INCREMENTAL=0`, and remove `target/debug` afterwards.
 
@@ -78,12 +89,14 @@ sequenceDiagram
 | One crate | `CARGO_INCREMENTAL=0 cargo test -p controld` |
 | One integration file | `CARGO_INCREMENTAL=0 cargo test -p controld --test hosted_ops` |
 | One test by name | `CARGO_INCREMENTAL=0 cargo test -p hostd --test policy ops_stay_inside_allowed_folders` |
+| Live tests in one file (costs credits) | `CARGO_INCREMENTAL=0 cargo test -p controld --test <file> -- --ignored live_` |
 | Regenerate TypeScript types | `npm --prefix web run gen` (runs `cargo test --workspace export_bindings`) |
 | Web unit and component | `npm --prefix web test` |
 | One web file | `npm --prefix web test -- src/structure/StructureBoard.test.tsx` |
 | Web types and build | `npm --prefix web run build` (`tsc --noEmit` then `vite build`) |
 | Web lint | `npm --prefix web run lint` (ESLint, zero warnings; functions at most 30 lines, files at most 300) |
-| Playwright e2e | `npm --prefix web run e2e` (desktop and Pixel 7 projects) |
+| Playwright e2e | `npm --prefix web run e2e` (desktop and Pixel 7 projects; specs that start agents are skipped) |
+| Playwright e2e with live agents (costs credits) | `RIG_E2E_LIVE=1 npm --prefix web run e2e` |
 | One e2e spec | `cd web && npx playwright test e2e/team.spec.ts` |
 | Playwright layout | `npm --prefix web run e2e:layout` (needs a built `web/dist`) |
 | Desktop | `npm --prefix desktop test` |
@@ -94,15 +107,16 @@ Notes:
 - e2e builds the UI and the binary unless `SCULPTURED_BIN` and `RIG_E2E_FAKE_CODEX` point at prebuilt ones. `RIG_E2E_PORT` moves it off port 14410.
 - clippy settings live in `clippy.toml` (`too-many-lines-threshold = 30`) and `[workspace.lints.clippy]`.
 
-## 4. Test helpers
+## 5. Test helpers
 
 | Helper | What it gives a test |
 |---|---|
-| `crates/controld/tests/common/m2.rs` | `serve()`, `serve_hosted()`, `signed(...)`, `connect_stub(...)`, `practice_team`, `practice_chain`, `start_team`, `say`, `wait_event`, `events` |
+| `crates/controld/tests/common/m2.rs` | `serve()`, `serve_hosted()`, `signed(...)`, `connect(...)`, `chain(...)` (a team of Claude agents on haiku that is never started), `start_team`, `say`, `wait_event`, `events` |
+| `crates/controld/tests/common/live.rs` | Live-test helpers: `require()`, `require_codex()`, `drivers()`, `connect(s)`, `work_folder`, `make_live`, `team`, 240 s waits |
 | `crates/controld/tests/common/mod.rs` | `wait_for` (10 s deadline), `fake_bin`, `lifecycle`, `work_message` |
 | `crates/controld/tests/common/{knobbed,seat_tools}.rs` | Servers with chosen limits; seat-tool calls end to end |
 | `controld` feature `test-seams` | Test-only hooks (`seams` module), enabled only by controld's own dev-dependency on itself, so release builds carry none |
-| `crates/hostd/tests/common/mod.rs` | A fake controld socket (`accept`, `recv`, `send`, `linked`), `stub_sup`, `Capture` of launch specs, seat-tool socket calls |
+| `crates/hostd/tests/common/mod.rs` | A fake controld socket (`accept`, `recv`, `send`, `linked`), `Capture` of launch specs, seat-tool socket calls |
 | `crates/e2e-server` `Session` | Throwaway data dir and `HOME` holding only `projects/alpha` and `projects/beta`; stops serve, then hostd by recorded pid, and removes the directory |
 | `web/src/test-setup.ts` | jest-dom matchers; `cleanup()` after each test |
 | `web/src/test-fixtures.ts` | `FakeEventSource`, `openFake`, builders such as `teamDraft`, `draftAgent`, `seatView`, `ev` |
@@ -110,7 +124,7 @@ Notes:
 | `web/src/test-vocab.ts` | `openRigWords(root)`: OpenRig words visible outside `data-advanced` or raw evidence |
 | `web/e2e/fixtures/{layout-api,progress-api}.ts` | Route fixtures for the layout spec |
 
-## 5. Visual checks
+## 6. Visual checks
 
 `AGENTS.md` asks that visual changes be checked with real captures of the running app, and that any check not run be reported. What the repository contains:
 
@@ -120,7 +134,7 @@ Notes:
 
 Other capture tools (for example Puppeteer scripts) are not in the repository. User guides and videos must be recordings of the real application, never mocked screens.
 
-## 6. Known flaky test
+## 7. Known flaky test
 
 `web/src/structure/StructureBoard.test.tsx` › *keeps the board mounted while editing workflow input, review routes and dispatch settings* fails under full-suite load and passes alone. Rerun it by itself before treating a failure as real:
 
@@ -128,15 +142,16 @@ Other capture tools (for example Puppeteer scripts) are not in the repository. U
 npm --prefix web test -- src/structure/StructureBoard.test.tsx -t "keeps the board mounted"
 ```
 
-## 7. Architecture invariants
+## 8. Architecture invariants
 
-- No routine test makes a real model call or a third-party request. Fakes replace the CLIs.
-- Browser end-to-end tests use Practice agents, plus fake-codex for Codex, against the real binary with a throwaway data dir and `HOME`.
+- Every agent runs a real model. There is no scripted or fake agent, in the product or in tests.
+- No routine test makes a real model call or a third-party request. Tests that need an agent are `#[ignore]`d `live_…` tests on haiku; Playwright specs that start agents need `RIG_E2E_LIVE=1`.
+- Browser end-to-end tests run against the real binary with a throwaway data dir and `HOME`.
 - Recording tools that call real models (`codex-probe`) are manual only.
 - The `test-seams` hooks never reach a normal or release build.
 - The layout spec never starts a server; the real-binary specs never mock the API.
 
-## 8. Properties and their tests
+## 9. Properties and their tests
 
 | Property | Test |
 |---|---|

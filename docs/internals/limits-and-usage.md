@@ -118,12 +118,11 @@ flowchart LR
   CX["Codex turn"] -- "model from thread answer" --> T{"Model in the price table?"}
   T -- yes --> C2["Cost, source openai-list-prices"]
   T -- no --> NO["No cost"]
-  PR["Practice agent"] --> NO
 ```
 
 - **Claude Code** reports its own `costUSD` per model. A turn's cost is the delta of the summed figure. The first turn after a resume has no cost (`cost_unknown`), because the earlier cost is not known.
 - **Codex** turns are priced by `pricing::openai_cost` from a table of OpenAI standard-tier, short-context list prices (per million input, cached input and output tokens) copied on `OPENAI_PRICES_CHECKED` = 2026-10-12. Contexts over 272K input tokens cost more, so those turns are underestimated. A model not in the table gets no cost.
-- **Nothing else is priced.** Practice agents report no cost.
+- **Nothing else is priced.**
 - `cost_partial` is true when some reports in the turn had a cost and others did not, so `cost_usd` is a lower bound.
 
 Disclosure in the web app (`ItemBoard.tsx`):

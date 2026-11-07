@@ -32,7 +32,7 @@ T=airplane-c172                      # or live-textbook, math-workbench, or any 
 F=examples/teams/$T.json
 
 curl -s -X POST $BASE/api/teams -H 'content-type: application/json' \
-  -d "{\"request_id\":\"$(uuidgen)\",\"template\":\"blank\",\"practice\":false,\"name\":\"$T\"}"
+  -d "{\"request_id\":\"$(uuidgen)\",\"template\":\"blank\",\"name\":\"$T\"}"
 REV=$(curl -s $BASE/api/teams/$T | jq '.draft.revision')
 jq --argjson rev "$REV" --arg rid "$(uuidgen)" '{request_id:$rid, revision:$rev, draft:(. + {revision:$rev})}' $F |
   curl -s -X PUT $BASE/api/teams/$T -H 'content-type: application/json' -d @-

@@ -123,7 +123,7 @@ flowchart TD
 
 - **Comparisons are whole path components:** `/home/a/proj2` is *not* inside `/home/a/proj`.
 - **Symlinks resolve first:** a link inside an allowed folder that points outside is refused.
-- **Relative paths:** a relative folder, including an empty one, means "the first allowed folder". That is what a Practice team with no folder uses.
+- **Relative paths:** a relative folder, including an empty one, means "the first allowed folder".
 - **Program, environment and arguments:** `LaunchParams.program`, `.env` and `.extra_args` are refused outright. controld never sets them, so only a compromised or hostile server would. (A *check* does run a command from the team's design; that is a separate capability, off by default when sandboxed. See [Local operations §5](local-ops.md#5-checks-run-as-events).)
 - **Visible refusal:** the runner journals an Attention event "launch failed: <reason>" and answers `CommandResult {ok: false}`, so the agent shows why it didn't start.
 - **The same rules cover local operations:** browsing folders, git, copies and checks resolve their paths the same way and also need their capability turned on (`RunnerPolicy::check_op`). See [Local operations](local-ops.md).

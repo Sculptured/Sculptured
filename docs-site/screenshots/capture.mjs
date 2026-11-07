@@ -1,11 +1,13 @@
 // Captures the docs' screenshots, and the README's board image, from the real, running app: never
 // drawn or mocked.
 //
-//   1. Build and serve the app with a fresh data folder and Practice agents (no model is called):
+//   1. Build and serve the app with a fresh data folder (see README.md here):
 //        cargo build -p sculptured && npm --prefix web run build
-//        sculptured serve --port 4499 --data-dir <empty folder> --claude-program <fixture CLI>
-//      The fixture CLI (see README.md here) answers "Improve this team with AI" with one canned team.
+//        HOME=<home> sculptured serve --port 4499 --data-dir <empty folder> --codex-program /bin/false
 //   2. node screenshots/capture.mjs --base http://127.0.0.1:4499 --session-folder <home>/app
+//
+// Every agent is a real Claude Code agent on haiku, working in the session folder, so capturing
+// costs credits. Each team is stopped once its pictures are taken.
 //
 // Every team, prompt and session in the shots is a made-up demo; nothing personal is shown.
 // The app's default look (Coastal) and board style (Cards) are used: each browser here starts fresh.
@@ -34,6 +36,8 @@ const fixtures = new URL('../../crates/controld/tests/fixtures/sessions/claude/'
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const rid = () => `docs-${Math.random().toString(36).slice(2)}`;
 const DESKTOP = { width: 1280, height: 800 };
+// Every team's Claude agents run on the cheapest model.
+const MODELS = { claude: 'haiku' };
 
 async function api(method, url, body, type = 'application/json') {
   const res = await fetch(base + url, { method, headers: { 'content-type': type }, body: type === 'application/json' && body !== undefined ? JSON.stringify(body) : body });
@@ -42,11 +46,11 @@ async function api(method, url, body, type = 'application/json') {
   return json;
 }
 
-/** A Practice team from a template, renamed, with these jobs and agent names (by template agent name). */
+/** A team of Claude agents on haiku in the session folder, from a template, renamed, with these jobs and agent names (by template agent name). */
 async function team(template, name, jobs = {}, names = {}) {
-  const rec = await api('POST', '/api/teams', { request_id: rid(), template, practice: true, name });
-  const draft = { ...rec.draft, agents: rec.draft.agents.map((a) => ({ ...a, job: jobs[a.name] ?? a.job, name: names[a.name] ?? a.name })) };
-  return save(draft, rec.draft.revision);
+  const rec = await api('POST', '/api/teams', { request_id: rid(), template, name });
+  const agents = rec.draft.agents.map((a) => ({ ...a, kind: 'claude', job: jobs[a.name] ?? a.job, name: names[a.name] ?? a.name }));
+  return save({ ...rec.draft, folder: sessionFolder, models: MODELS, agents }, rec.draft.revision);
 }
 
 async function save(draft, revision) {
@@ -57,13 +61,36 @@ async function start(draft) {
   await api('POST', `/api/teams/${draft.id}/start`, { request_id: rid(), revision: draft.revision });
 }
 
+/** Stops the team, so its agents spend nothing more. */
+async function stop(draft) {
+  await api('POST', `/api/teams/${draft.id}/stop`, { request_id: rid() });
+}
+
+/** Polls `check` every 2 s until it returns something truthy: a real model's turn takes seconds to minutes. */
+async function until(what, check, ms = 240_000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const found = await check().catch(() => null);
+    if (found) return found;
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+    await wait(2000);
+  }
+}
+
 /** The run's agents: [{ id, name, parent }]. */
 async function agents(id) {
   const runs = await api('GET', `/api/teams/${id}/deployments`);
   return (await api('GET', `/api/teams/${id}/deployments/${runs[0].start_seq}`)).agents;
 }
 
-const send = (seat, text) => api('POST', `/api/seats/${encodeURIComponent(seat)}/send`, { request_id: rid(), text, intent: 'instruct', interrupt: false });
+const send = (seat, text, interrupt = false) => api('POST', `/api/seats/${encodeURIComponent(seat)}/send`, { request_id: rid(), text, intent: 'instruct', interrupt });
+
+/** An instruction to ask the person through Sculptured's question tool; the agent then waits for the answer. */
+const askVia = (question, options) =>
+  `Use your request_input tool now to ask me exactly this question: "${question}", with the options ${options.map((o) => `"${o}"`).join(' and ')}. Then wait for my answer.`;
+
+/** True once the agent has asked a question. */
+const asked = async (seat) => (await api('GET', `/api/seats/${encodeURIComponent(seat)}/questions`)).length > 0;
 
 // The app's own addresses (web/src/paths.ts).
 const enc = encodeURIComponent;
@@ -172,7 +199,7 @@ async function startFrom(page) {
   await shot(page, 'quickstart/start-from.png');
 }
 
-/** A Practice team: Design board, its limits in Settings, Run board with a question, the card, phone, History. */
+/** A team: Design board, its limits in Settings, Run board with a question, the card, phone, History. */
 async function websiteLaunch(page) {
   const draft = await team('planner-builders', 'Website launch', {
     Planner: 'Plan the landing page and hand each section to a builder.',
@@ -187,16 +214,15 @@ async function websiteLaunch(page) {
   await scrollTo(page, 'fieldset', 'center', 'Limits on spawned agents');
   await shot(page, 'guides/team-limits.png');
   await start(draft);
-  await wait(4000);
-  const planner = (await agents(draft.id)).find((a) => a.name === 'Planner');
-  // A Practice agent asks when its message starts with "ask:".
-  await send(planner.id, 'ask: Which colour scheme should the new landing page use? | Calm blue | Bold orange');
-  await wait(2500);
+  const planner = await until('the Planner to run', async () => (await agents(draft.id)).find((a) => a.name === 'Planner'));
+  // The Planner is busy with its job: interrupt it with the instruction to ask.
+  await send(planner.id, askVia('Which colour scheme should the new landing page use?', ['Calm blue', 'Bold orange']), true);
+  await until('the Planner to ask', () => asked(planner.id));
   await open(page, board(draft.id, 'run'));
   await cards(page, 3);
   await shot(page, 'quickstart/run-board.png');
   await open(page, agentPage(draft.id, planner.id));
-  const card = await page.waitForSelector('.open-questions');
+  const card = await page.waitForSelector('.open-questions', { timeout: 30_000 });
   const box = await card.boundingBox();
   await shot(page, 'guides/question-card.png', { clip: { x: box.x - 12, y: box.y - 12, width: box.width + 24, height: box.height + 16 } });
   await fresh({ width: 390, height: 844, isMobile: true, hasTouch: true }, async (phone) => {
@@ -209,19 +235,18 @@ async function websiteLaunch(page) {
     await historyTree(p);
     await shot(p, 'guides/history.png', { settle: 2000 });
   });
+  await stop(draft);
 }
 
-/** One Practice agent that starts eight helpers: the Run board folds them into "+N more". */
+/** One agent that starts eight helpers: the Run board folds them into "+N more". */
 async function manyChildren() {
   const draft = await team('solo', 'Research sprint', { Claude: 'Split the research into topics and start a helper for each.' }, { Claude: 'Lead researcher' });
   await start(draft);
-  await wait(3000);
-  const lead = (await agents(draft.id))[0];
+  const lead = await until('the lead to run', async () => (await agents(draft.id))[0]);
   const topics = ['pricing pages', 'onboarding emails', 'docs search', 'status pages', 'changelogs', 'API keys', 'billing', 'team invites'];
-  for (const [i, t] of topics.entries()) {
-    await send(lead.id, `spawn_agent:${JSON.stringify({ request_id: `topic-${i}`, name: `Research ${t}`, task: `Find three good examples of ${t}.` })}`);
-    await wait(1500);
-  }
+  const helpers = topics.map((t, i) => ({ request_id: `topic-${i}`, name: `Research ${t}`, task: `Find three good examples of ${t}.` }));
+  await send(lead.id, `Use your spawn_agent tool once for each of these eight helpers, with exactly these arguments, and then stop: ${JSON.stringify(helpers)}`, true);
+  await until('eight helpers', async () => (await agents(draft.id)).length >= 9);
   await wait(3000);
   await fresh(DESKTOP, async (page) => {
     await open(page, board(draft.id, 'run'));
@@ -237,6 +262,7 @@ async function manyChildren() {
     await page.mouse.up();
     await shot(page, 'guides/more-children.png', { settle: 1500 });
   });
+  await stop(draft);
 }
 
 /** Import a Claude Code session (the test fixture: a made-up "login page" session), then improve it. */
@@ -272,7 +298,8 @@ async function importSession() {
     await unfold(page, 'More settings');
     await click(page, '.improve-from-run button', 'Improve this team with AI');
     await click(page, 'button', 'Ask Claude Code');
-    await page.waitForSelector('.improve-offer', { timeout: 30_000 });
+    // Claude Code writes the proposal: a real model call.
+    await page.waitForSelector('.improve-offer', { timeout: 240_000 });
     await scrollTo(page, '.improve-offer');
     await shot(page, 'import/improve.png');
   });
@@ -283,17 +310,18 @@ async function importSession() {
  * that needs you. 1440×860 at twice the pixels, so it stays sharp on GitHub.
  */
 async function readmeBoard() {
-  const rec = await api('POST', '/api/teams', { request_id: rid(), template: 'blank', practice: true, name: 'Checkout redesign' });
+  const rec = await api('POST', '/api/teams', { request_id: rid(), template: 'blank', name: 'Checkout redesign' });
   const folder = sessionFolder;
   const group = (id, label, col) => ({ id, label, x: 40 + col * 320, y: 40, w: 260, h: 560 });
   const agent = (id, name, col, row, job) => ({
-    id, name, job, group_id: ['plan', 'build', 'review', 'ship'][col], kind: 'practice', folder,
+    id, name, job, group_id: ['plan', 'build', 'review', 'ship'][col], kind: 'claude', folder,
     x: 70 + col * 320, y: 110 + row * 260, advanced: { model: null, permission: 'unrestricted', resume: 'resume-if-possible' },
   });
   const arrow = (from, to) => ({ id: `c-${from}-${to}`, from, to, kind: 'hands-work-to' });
   const draft = {
     ...rec.draft,
     folder,
+    models: MODELS,
     groups: [group('plan', 'Plan', 0), group('build', 'Build', 1), group('review', 'Review & test', 2), group('ship', 'Ship', 3)],
     agents: [
       agent('product-lead', 'Product lead', 0, 0, 'Turn the checkout brief into a plan: what changes, in what order, and how we will know it works.'),
@@ -312,22 +340,22 @@ async function readmeBoard() {
   };
   const saved = await save(draft, rec.draft.revision);
   await start(saved);
-  // The first wave runs through every agent (a Practice agent answers at once); then the next wave.
-  await wait(8000);
-  const seats = Object.fromEntries((await agents(saved.id)).map((a) => [a.name, a.id]));
-  await send(seats['Frontend builder'], 'Build the card form and the order summary next.');
-  await send(seats['API builder'], 'Add retries to the payment endpoint.');
-  await wait(1500);
-  // A Practice agent's turn stays open on "hang": it shows as working.
-  await send(seats['Frontend builder'], 'hang');
-  await send(seats['API builder'], 'hang');
-  await send(seats.Designer, 'ask: Should the checkout keep the order summary on the right, or fold it above the payment form? | Keep it on the right | Fold it above');
+  // Every agent runs; only the Product lead (nobody hands it work) starts on its job.
+  const all = await until('every agent to run', async () => { const a = await agents(saved.id); return a.length >= 8 && a; });
+  const seats = Object.fromEntries(all.map((a) => [a.name, a.id]));
+  // A real command that takes a while keeps each builder's turn open: it shows as working.
+  const busy = (task) => `${task} Start by running exactly \`sleep 600\` with your Bash tool, then begin.`;
+  await send(seats['Frontend builder'], busy('Build the card form and the order summary next.'));
+  await send(seats['API builder'], busy('Add retries to the payment endpoint.'));
+  await send(seats.Designer, askVia('Should the checkout keep the order summary on the right, or fold it above the payment form?', ['Keep it on the right', 'Fold it above']));
+  await until('the Designer to ask', () => asked(seats.Designer));
   await wait(2500);
   await fresh({ width: 1440, height: 860, deviceScaleFactor: 2 }, async (page) => {
     await open(page, board(saved.id, 'run'));
     await cards(page, 8);
     await shot(page, 'board.png', { dir: readmeImages, settle: 2500 });
   });
+  await stop(saved);
 }
 
 await main();

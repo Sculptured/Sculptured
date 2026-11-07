@@ -40,7 +40,7 @@ How the code fits together is in [docs/internals/](docs/internals/README.md); st
 
 These keep the product honest; reviewers will hold changes to them. The full list is in [AGENTS.md](AGENTS.md).
 
-- **No real model calls in tests.** Use the fake CLIs in `crates/fixtures` and Practice agents.
+- **Every agent runs a real model, and routine tests call none.** Logic that needs no agent is a plain test. Behaviour that needs an agent is a live test on the real Claude Code CLI with haiku: named `live_…`, `#[ignore]`d, run with `cargo test -p <crate> --test <file> -- --ignored live_` (needs `claude` signed in; costs credits). There is no scripted or fake agent; never add one.
 - **Never claim more than we know.** Keep planned, in progress, reported complete, verified and blocked distinct, and label where information came from. Unknown stays unknown.
 - **Plain words on the main path.** Advanced concepts stay under Advanced.
 - **Every drag has a keyboard path**, status is never colour alone, and the phone layout shows the same evidence.

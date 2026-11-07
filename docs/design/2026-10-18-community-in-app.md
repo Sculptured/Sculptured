@@ -1,5 +1,7 @@
 # Community in the App (sculptured repo) Implementation Plan
 
+> Note (2026-11-07): the Practice agent (the model-less `stub` driver, kind `practice`) that this document uses was removed. Every agent must use a real model; tests that need an agent are now `live_…` tests on Claude Code with haiku.
+
 
 **Goal:** Make Community a top-bar section of the app in every build. Locally it is opt-in: controld pairs a `community`-scope device key and proxies an allow-listed `/api/community/*` to the Sculptured server. The web app gets Explore, People, profiles, Saved, Yours, Publish and Moderation pages. "Add to project" and "Save to Library" work directly against the local Library.
 
