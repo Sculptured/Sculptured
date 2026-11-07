@@ -56,26 +56,37 @@ export function toolPath(input: unknown): string | null {
   return str(o.file_path) ?? str(o.notebook_path) ?? str(o.path) ?? str(o.filename) ?? null;
 }
 
+type Obj = Record<string, unknown>;
+
+const searchSummary = (o: Obj) => {
+  const pattern = str(o.pattern) ?? str(o.query);
+  const where = str(o.path);
+  return pattern ? (where ? `${pattern} in ${where}` : pattern) : where;
+};
+
+/** What each kind of call acts on, first choice. */
+const PRIMARY: Partial<Record<ToolKind, (o: Obj, name: string, input: unknown) => string | null>> = {
+  bash: (o) => str(o.command) ?? str(o.cmd),
+  read: (_o, name, input) => pathSummary(name, input),
+  edit: (_o, name, input) => pathSummary(name, input),
+  search: searchSummary,
+  web: (o) => str(o.url) ?? str(o.query),
+  task: (o) => str(o.description) ?? str(o.prompt),
+};
+
+const pathSummary = (name: string, input: unknown) => toolPath(input) ?? (typeof input === 'string' ? editOf(name, input)?.path ?? null : null);
+
+/** The same input read without knowing the kind: a command, a path, a description, a query, an address. */
+const anySummary = (o: Obj, input: unknown) => str(o.command) ?? toolPath(input) ?? str(o.description) ?? str(o.query) ?? str(o.url);
+
+/** The input as text, when nothing in it names what the call acts on. */
+const asText = (input: unknown) => (input === null || input === undefined ? '' : typeof input === 'string' ? input : (JSON.stringify(input) ?? ''));
+
 /** One line saying what the call acts on: a path, a command, a pattern, an address. */
 export function toolSummary(name: string, input: unknown): string {
   const o = obj(input);
-  const kind = toolKind(name);
-  let s: string | null = null;
-  if (kind === 'bash') s = str(o.command) ?? str(o.cmd);
-  else if (kind === 'read' || kind === 'edit') s = toolPath(input) ?? (typeof input === 'string' ? editOf(name, input)?.path ?? null : null);
-  else if (kind === 'search') {
-    const pattern = str(o.pattern) ?? str(o.query);
-    const where = str(o.path);
-    s = pattern ? (where ? `${pattern} in ${where}` : pattern) : where;
-  } else if (kind === 'web') s = str(o.url) ?? str(o.query);
-  else if (kind === 'task') s = str(o.description) ?? str(o.prompt);
-  if (s === null) s = str(o.command) ?? toolPath(input) ?? str(o.description) ?? str(o.query) ?? str(o.url);
-  if (s === null) {
-    if (input === null || input === undefined) return '';
-    if (typeof input === 'string') s = input;
-    else s = JSON.stringify(input) ?? '';
-  }
-  return firstLine(s);
+  const s = PRIMARY[toolKind(name)]?.(o, name, input) ?? anySummary(o, input);
+  return firstLine(s ?? asText(input));
 }
 
 export type Hunk = { old: string; new: string };
@@ -83,33 +94,34 @@ export type Hunk = { old: string; new: string };
 export type EditAction = 'edited' | 'wrote' | 'created';
 export type EditInfo = { path: string; action: EditAction; hunks: Hunk[] };
 
+/** An `apply_patch` call: the file it adds, updates or deletes, with the patch as its one hunk. */
+function patchEdit(input: unknown, o: Obj): EditInfo | null {
+  const patch = typeof input === 'string' ? input : (str(o.input) ?? str(o.patch));
+  const m = patch ? /^\*\*\* (Add|Update|Delete) File: (.+)$/m.exec(patch) : null;
+  if (!patch || !m) return null;
+  return { path: m[2].trim(), action: m[1] === 'Add' ? 'created' : 'edited', hunks: [{ old: '', new: patch }] };
+}
+
+/** An edit tool's input: replacements, or the whole new content of a file. */
+function plainEdit(path: string, o: Obj, output: string | undefined): EditInfo {
+  if (Array.isArray(o.edits)) return { path, action: 'edited', hunks: o.edits.map((e) => ({ old: String(obj(e).old_string ?? ''), new: String(obj(e).new_string ?? '') })) };
+  if (typeof o.old_string === 'string' || typeof o.new_string === 'string') return { path, action: 'edited', hunks: [{ old: String(o.old_string ?? ''), new: String(o.new_string ?? '') }] };
+  const content = typeof o.content === 'string' ? o.content : typeof o.new_source === 'string' ? o.new_source : null;
+  if (content === null) return { path, action: 'edited', hunks: [] };
+  const created = output !== undefined && /\bcreated\b/i.test(output.split('\n')[0] ?? '');
+  return { path, action: created ? 'created' : 'wrote', hunks: [{ old: '', new: content }] };
+}
+
 /**
  * The change an edit call asked for, from its input. A Write is `wrote` unless the tool's
  * own result says it created the file. Null for calls that change no file.
  */
 export function editOf(name: string, input: unknown, output?: string): EditInfo | null {
-  const n = name.toLowerCase();
   const o = obj(input);
-  if (n === 'apply_patch') {
-    const patch = typeof input === 'string' ? input : (str(o.input) ?? str(o.patch));
-    if (!patch) return null;
-    const m = /^\*\*\* (Add|Update|Delete) File: (.+)$/m.exec(patch);
-    if (!m) return null;
-    return { path: m[2].trim(), action: m[1] === 'Add' ? 'created' : 'edited', hunks: [{ old: '', new: patch }] };
-  }
+  if (name.toLowerCase() === 'apply_patch') return patchEdit(input, o);
   if (toolKind(name) !== 'edit') return null;
   const path = toolPath(input);
-  if (!path) return null;
-  if (Array.isArray(o.edits)) {
-    const hunks = o.edits.map((e) => ({ old: String(obj(e).old_string ?? ''), new: String(obj(e).new_string ?? '') }));
-    return { path, action: 'edited', hunks };
-  }
-  if (typeof o.old_string === 'string' || typeof o.new_string === 'string')
-    return { path, action: 'edited', hunks: [{ old: String(o.old_string ?? ''), new: String(o.new_string ?? '') }] };
-  const content = typeof o.content === 'string' ? o.content : typeof o.new_source === 'string' ? o.new_source : null;
-  if (content === null) return { path, action: 'edited', hunks: [] };
-  const created = output !== undefined && /\bcreated\b/i.test(output.split('\n')[0] ?? '');
-  return { path, action: created ? 'created' : 'wrote', hunks: [{ old: '', new: content }] };
+  return path ? plainEdit(path, o, output) : null;
 }
 
 export type DiffLine = { op: ' ' | '-' | '+'; text: string };
