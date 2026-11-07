@@ -56,14 +56,17 @@ export const planOf = (b: RunBudget | undefined, provider: string, window: strin
 /** Problems the server would refuse, in the same words, so the form can say them first. */
 export function budgetProblems(b: RunBudget | undefined): string[] {
   if (!b) return [];
-  const out: string[] = [];
-  for (const p of b.plan ?? []) {
-    if (p.hard <= 0 || p.hard > 100) out.push(`Plan budget: ${p.hard} is not a percent between 0 and 100`);
-    else if (p.soft != null && p.soft > p.hard) out.push('Plan budget: the soft value is above the hard value');
-    if (p.pause && p.pause.max_windows < 1) out.push('Plan budget: a paused run needs at least 1 window');
-  }
+  const out = (b.plan ?? []).flatMap(planProblems);
   if (b.tokens?.soft != null && b.tokens.soft > b.tokens.hard) out.push('Token budget: the soft value is above the hard value');
   if (b.minutes?.soft != null && b.minutes.soft > b.minutes.hard) out.push('Time budget: the soft value is above the hard value');
   if (b.max_working === 0) out.push('Most agents working at once must be at least 1');
+  return out;
+}
+
+function planProblems(p: PlanBudget): string[] {
+  const out: string[] = [];
+  if (p.hard <= 0 || p.hard > 100) out.push(`Plan budget: ${p.hard} is not a percent between 0 and 100`);
+  else if (p.soft != null && p.soft > p.hard) out.push('Plan budget: the soft value is above the hard value');
+  if (p.pause && p.pause.max_windows < 1) out.push('Plan budget: a paused run needs at least 1 window');
   return out;
 }
