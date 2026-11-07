@@ -18,38 +18,57 @@ type World = { done?: string[]; skipped?: string[]; hosts: { id: string }[]; sig
 beforeEach(() => { SETUP_POLL.ms = 30; });
 afterEach(() => vi.restoreAllMocks());
 
+type NewConn = { name: string; provider: string; model?: string | null; key: string };
+type Req = { u: string; method: string; body: NewConn & { done: string[]; skipped: string[] } };
+type Out = { posts: { url: string; body: unknown }[]; puts: { done: string[]; skipped: string[] }[] };
+type Route = (w: World, q: Req, out: Out) => Promise<Response> | null;
+
+const RUNNING_POLICY = { allowed_folders: [], access: 'full', capabilities: ['cli_sign_in'], platform: 'linux' };
+
+/** The fake connection a POST creates, with the last four characters of its key. */
+function created(w: World, body: NewConn): Conn {
+  return { id: `c${w.connections.length + 1}`, name: body.name, provider: body.provider, model: body.model ?? null, key_last4: String(body.key).slice(-4), checked: null, created_at: '2026-10-21T00:00:00Z' };
+}
+
+const addConnection: Route = (w, { u, method, body }, { posts }) => {
+  if (!u.endsWith('/gw/api/connections') || method !== 'POST') return null;
+  posts.push({ url: u, body });
+  const c = created(w, body);
+  w.connections = [...w.connections, c];
+  return reply(c);
+};
+
+const checkConnection: Route = (w, { u, method, body }, { posts }) => {
+  const check = u.match(/\/gw\/api\/connections\/([^/]+)\/check$/);
+  if (!check || method !== 'POST') return null;
+  posts.push({ url: u, body });
+  const result = w.check ?? { ok: true, detail: 'Key works' };
+  w.connections = w.connections.map((c) => (c.id === check[1] ? { ...c, checked: { ...result, at: '2026-10-21T00:00:00Z' } } : c));
+  // The gateway answers with the connection, its `checked` filled in.
+  return reply(w.connections.find((c) => c.id === check[1]));
+};
+
+const ROUTES: Route[] = [
+  (_w, { u, method, body }, { puts }) => { if (!u.endsWith('/api/setup') || method !== 'PUT') return null; puts.push(body); return reply(body); },
+  (w, { u }) => (u.endsWith('/api/setup') ? reply({ done: w.done ?? ['welcome'], skipped: w.skipped ?? [] }) : null),
+  (w, { u }) => (u.endsWith('/api/hosts') ? reply(w.hosts.map((h) => ({ ...h, drivers: ['claude'], policy: RUNNING_POLICY }))) : null),
+  (w, { u }) => (u.includes('/api/clis') ? reply([{ name: 'claude', installed: true, version: '2', signed_in: w.signedIn ?? false, account: null, detail: '' }, { name: 'codex', installed: true, version: '1', signed_in: false, account: null, detail: '' }]) : null),
+  (w, { u }) => (u.endsWith('/gw/api/devices') ? reply(w.hosts.map((h) => ({ id: h.id, name: 'Laptop', platform: 'linux', created_at: '', last_seen: null, connected: true }))) : null),
+  (_w, { u }) => (u.endsWith('/gw/api/releases') ? reply({ targets: ['x86_64-unknown-linux-gnu'] }) : null),
+  (_w, { u }) => (u.endsWith('/gw/api/clusters') ? reply({ clusters: [], available: true }) : null),
+  addConnection,
+  (w, { u }) => (u.endsWith('/gw/api/connections') ? reply({ connections: w.connections }) : null),
+  checkConnection,
+];
+
 function serve(w: World) {
-  const posts: { url: string; body: unknown }[] = [];
-  const puts: { done: string[]; skipped: string[] }[] = [];
+  const out: Out = { posts: [], puts: [] };
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
-    const u = String(url);
-    const method = init?.method ?? 'GET';
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    if (u.endsWith('/api/setup') && method === 'PUT') { puts.push(body); return reply(body); }
-    if (u.endsWith('/api/setup')) return reply({ done: w.done ?? ['welcome'], skipped: w.skipped ?? [] });
-    if (u.endsWith('/api/hosts')) return reply(w.hosts.map((h) => ({ ...h, drivers: ['claude'], policy: { allowed_folders: [], access: 'full', capabilities: ['cli_sign_in'], platform: 'linux' } })));
-    if (u.includes('/api/clis')) return reply([{ name: 'claude', installed: true, version: '2', signed_in: w.signedIn ?? false, account: null, detail: '' }, { name: 'codex', installed: true, version: '1', signed_in: false, account: null, detail: '' }]);
-    if (u.endsWith('/gw/api/devices')) return reply(w.hosts.map((h) => ({ id: h.id, name: 'Laptop', platform: 'linux', created_at: '', last_seen: null, connected: true })));
-    if (u.endsWith('/gw/api/releases')) return reply({ targets: ['x86_64-unknown-linux-gnu'] });
-    if (u.endsWith('/gw/api/clusters')) return reply({ clusters: [], available: true });
-    if (u.endsWith('/gw/api/connections') && method === 'POST') {
-      posts.push({ url: u, body });
-      const c: Conn = { id: `c${w.connections.length + 1}`, name: body.name, provider: body.provider, model: body.model ?? null, key_last4: String(body.key).slice(-4), checked: null, created_at: '2026-10-21T00:00:00Z' };
-      w.connections = [...w.connections, c];
-      return reply(c);
-    }
-    if (u.endsWith('/gw/api/connections')) return reply({ connections: w.connections });
-    const check = u.match(/\/gw\/api\/connections\/([^/]+)\/check$/);
-    if (check && method === 'POST') {
-      posts.push({ url: u, body });
-      const result = w.check ?? { ok: true, detail: 'Key works' };
-      w.connections = w.connections.map((c) => (c.id === check[1] ? { ...c, checked: { ...result, at: '2026-10-21T00:00:00Z' } } : c));
-      // The gateway answers with the connection, its `checked` filled in.
-      return reply(w.connections.find((c) => c.id === check[1]));
-    }
+    const q = { u: String(url), method: init?.method ?? 'GET', body: (init?.body ? JSON.parse(String(init.body)) : undefined) as Req['body'] };
+    for (const route of ROUTES) { const r = route(w, q, out); if (r) return r; }
     return reply({}, 404);
   });
-  return { posts, puts };
+  return out;
 }
 
 function open(path = '/setup') {

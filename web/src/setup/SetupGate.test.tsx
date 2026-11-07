@@ -11,19 +11,25 @@ const SIGNED_IN: HostedSession = { kind: 'signed-in', user: { id: 'u', name: 'An
 
 type World = { progress?: { done: string[]; skipped: string[] }; hosts?: { id: string }[]; signedIn?: boolean; connections?: unknown[] };
 
+type Req = { u: string; method: string; init?: RequestInit };
+type Route = (w: World, q: Req, puts: { done: string[]; skipped: string[] }[]) => Promise<Response> | null;
+
+const ROUTES: Route[] = [
+  (_w, { u, method, init }, puts) => { if (!u.endsWith('/api/setup') || method !== 'PUT') return null; const b = JSON.parse(String(init!.body)); puts.push(b); return reply(b); },
+  (w, { u }) => (u.endsWith('/api/setup') ? reply(w.progress ?? { done: [], skipped: [] }) : null),
+  (w, { u }) => (u.endsWith('/api/hosts') ? reply((w.hosts ?? []).map((h) => ({ ...h, drivers: ['claude'], policy: null }))) : null),
+  (w, { u }) => (u.includes('/api/clis') ? reply([{ name: 'claude', installed: true, version: '2', signed_in: w.signedIn ?? false, account: null, detail: '' }]) : null),
+  (w, { u }) => (u.endsWith('/gw/api/connections') ? reply({ connections: w.connections ?? [] }) : null),
+];
+
 /** A fake core and gateway; returns the calls made and the progress saved. */
 function serve(w: World) {
   const calls: string[] = [];
   const puts: { done: string[]; skipped: string[] }[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
-    const u = String(url);
-    const method = init?.method ?? 'GET';
-    calls.push(`${method} ${u}`);
-    if (u.endsWith('/api/setup') && method === 'PUT') { const b = JSON.parse(String(init!.body)); puts.push(b); return reply(b); }
-    if (u.endsWith('/api/setup')) return reply(w.progress ?? { done: [], skipped: [] });
-    if (u.endsWith('/api/hosts')) return reply((w.hosts ?? []).map((h) => ({ ...h, drivers: ['claude'], policy: null })));
-    if (u.includes('/api/clis')) return reply([{ name: 'claude', installed: true, version: '2', signed_in: w.signedIn ?? false, account: null, detail: '' }]);
-    if (u.endsWith('/gw/api/connections')) return reply({ connections: w.connections ?? [] });
+    const q = { u: String(url), method: init?.method ?? 'GET', init };
+    calls.push(`${q.method} ${q.u}`);
+    for (const route of ROUTES) { const r = route(w, q, puts); if (r) return r; }
     return reply({}, 404);
   });
   return { calls, puts };

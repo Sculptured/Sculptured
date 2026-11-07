@@ -10,15 +10,24 @@ const workflow: Workflow = { input: '', dispatcher: 'dispatch', collector: 'fron
 ] };
 const draft = teamDraft({ agents: ['dispatch', 'build', 'alice', 'bob', 'frontend'].map((id) => draftAgent(id)), workflow });
 const build = workflow.stages[0];
+type Parts = { stage: WorkflowStage; panel: boolean; none: boolean; keys: string };
+
+/** One rule per kind: its fields are present and the other kinds' are absent. */
+const KIND_RULES: Record<string, (p: Parts) => boolean> = {
+  check: ({ stage: s, none, keys }) => none && !!s.command && keys === 'failed,passed' && !s.prompt && !s.into,
+  human: ({ stage: s, none }) => none && !!s.prompt && Object.keys(s.routes).length >= 2 && !s.command,
+  merge: ({ stage: s, none, keys }) => none && keys === 'conflict,merged' && !s.command && !s.prompt,
+  panel: ({ stage: s }) => !s.agent && !s.workers?.length && s.reviewers!.length >= 2 && !s.command && !s.prompt,
+  agent: ({ stage: s }) => !!s.agent && !s.command && !s.prompt && !s.into && !s.reviewers?.length,
+};
+
 /** The kind rules the server checks (rigspec): each kind's fields present, other kinds' absent. */
 function valid(s: WorkflowStage): boolean {
-  const kind = s.kind ?? 'agent', panel = (s.reviewers?.length ?? 0) > 0, none = !s.agent && !s.workers?.length && !panel;
-  const keys = Object.keys(s.routes).sort().join(',');
-  if (kind === 'check') return none && !!s.command && keys === 'failed,passed' && !s.prompt && !s.into;
-  if (kind === 'human') return none && !!s.prompt && Object.keys(s.routes).length >= 2 && !s.command;
-  if (kind === 'merge') return none && keys === 'conflict,merged' && !s.command && !s.prompt;
-  if (panel) return !s.agent && !s.workers?.length && s.reviewers!.length >= 2 && !s.command && !s.prompt;
-  return !!s.agent && !s.command && !s.prompt && !s.into && !s.reviewers?.length;
+  const panel = (s.reviewers?.length ?? 0) > 0, none = !s.agent && !s.workers?.length && !panel;
+  const kind = s.kind ?? 'agent';
+  // A stage with reviewers is a panel whatever its kind says, unless its kind has rules of its own.
+  const rule = KIND_RULES[kind === 'agent' && panel ? 'panel' : kind];
+  return rule({ stage: s, panel, none, keys: Object.keys(s.routes).sort().join(',') });
 }
 
 it('turns a stage into each type with that type\'s fields, keeping its way forward', () => {
