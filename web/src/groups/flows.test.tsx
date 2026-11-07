@@ -28,7 +28,7 @@ it('does not add agents to a running project',async()=>{
 it('creates a blank project, inserts the group and navigates without starting it',async()=>{
  const record=teamRecord({draft:teamDraft({id:'new',agents:[],connections:[]})});vi.mocked(api.createTeam).mockResolvedValue(record);vi.mocked(api.getTeam).mockResolvedValue(record);vi.mocked(api.saveTeam).mockImplementation(async()=>{vi.mocked(api.listTeams).mockResolvedValue([{id:'new',name:'Newly imported project',agent_count:2,updated_at_ms:1,started:null}]);return record;});
  render(<MemoryRouter><ProjectList/><Routes><Route path="/" element={<AddToProject block={block()} onClose={()=>{}}/>}/><Route path="*" element={<Destination/>}/></Routes></MemoryRouter>);
- await userEvent.click(screen.getByRole('button',{name:'Add & open project'}));await screen.findByText('/team/new/structure');expect(api.createTeam).toHaveBeenCalledWith('blank',false,'Review pair',expect.any(String));
+ await userEvent.click(screen.getByRole('button',{name:'Add & open project'}));await screen.findByText('/team/new/structure');expect(api.createTeam).toHaveBeenCalledWith('blank','Review pair',expect.any(String));
  expect(await within(screen.getByRole('navigation',{name:'Test projects'})).findByText('Newly imported project')).toBeVisible();
 });
 it('inspects individual agents and connections on the full board with linked source details',async()=>{

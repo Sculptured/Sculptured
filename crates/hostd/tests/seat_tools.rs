@@ -13,7 +13,7 @@ use tokio::net::TcpListener;
 
 #[tokio::test]
 async fn pending_calls_keep_their_frame_until_the_matching_reply_arrives() {
-    let supervisor = crate::common::stub_sup();
+    let supervisor = crate::common::sup();
     let mut outgoing = supervisor.subscribe_tool_calls();
     let caller = supervisor.clone();
     let task = tokio::spawn(async move {
@@ -194,7 +194,7 @@ fn the_shim_refuses_approve_unless_restricted_and_unknown_methods() {
 /// No link yet (the computer is offline): the call waits, and goes as soon as a link comes up.
 #[tokio::test]
 async fn without_controld_a_tool_call_waits_for_the_link() {
-    let sup = crate::common::stub_sup();
+    let sup = crate::common::sup();
     let s = sup.clone();
     let call = tokio::spawn(async move {
         s.tool_call("dev.a@r", "report", json!({ "summary": "later" }))
@@ -220,7 +220,7 @@ async fn without_controld_a_tool_call_waits_for_the_link() {
 
 #[tokio::test]
 async fn a_tool_call_goes_to_controld_and_back() {
-    let sup = crate::common::stub_sup();
+    let sup = crate::common::sup();
     let mut ws = crate::common::linked(&sup).await;
     let s = sup.clone();
     let call = tokio::spawn(async move {
@@ -250,7 +250,7 @@ async fn a_tool_call_goes_to_controld_and_back() {
 
 #[tokio::test]
 async fn a_refused_call_returns_controlds_words() {
-    let sup = crate::common::stub_sup();
+    let sup = crate::common::sup();
     let mut ws = crate::common::linked(&sup).await;
     let s = sup.clone();
     let call =
@@ -281,7 +281,7 @@ async fn a_refused_call_returns_controlds_words() {
 /// and controld's reply reaches the agent.
 #[tokio::test]
 async fn a_dropped_link_resends_pending_tool_calls_on_reconnect() {
-    let sup = crate::common::stub_sup();
+    let sup = crate::common::sup();
     let mut ws = crate::common::linked(&sup).await;
     let s = sup.clone();
     let call = tokio::spawn(async move {
@@ -315,7 +315,7 @@ async fn a_dropped_link_resends_pending_tool_calls_on_reconnect() {
 /// welcomes it. None is lost: every one reaches controld, and each answer reaches its call.
 #[tokio::test]
 async fn a_link_that_lags_still_passes_every_call_on() {
-    let sup = crate::common::stub_sup();
+    let sup = crate::common::sup();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}/host", listener.local_addr().unwrap());
     let s = sup.clone();

@@ -1,12 +1,15 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { centre, drag, practiceTeam, stackOf, startFromControl } from './fixtures/control-team';
+import { centre, controlTeam, drag, stackOf, startFromControl } from './fixtures/control-team';
+import { confirmStart, liveOnly } from './fixtures/live';
 
 /**
- * Control against the real binary, Practice agents only (crates/e2e-server): the project opens on
- * Control with the live board first; Start; drag a pane beside another and see the layout kept after
- * a reload; the keyboard "Move to…" path; Pause all and Resume all; Emergency stop with its confirm;
- * and on a phone, the pane switcher.
+ * Control against the real binary with real Claude Code agents on haiku (crates/e2e-server; live,
+ * see fixtures/live.ts): the project opens on Control with the live board first; Start; drag a pane
+ * beside another and see the layout kept after a reload; the keyboard "Move to…" path; Pause all and
+ * Resume all; Emergency stop with its confirm; and on a phone, the pane switcher.
  */
+
+liveOnly();
 
 const box = async (l: Locator) => (await l.boundingBox())!;
 
@@ -37,8 +40,8 @@ async function dismissToasts(page: Page) {
 
 test('desktop: Control opens first, starts, keeps a dragged layout, moves by keyboard, pauses, resumes and stops', async ({ page, request }, info) => {
   test.skip(info.project.name !== 'desktop', 'desktop flow');
-  test.setTimeout(120_000);
-  const id = await practiceTeam(request, `Control ${Date.now()}`);
+  test.setTimeout(300_000);
+  const id = await controlTeam(request, `Control ${Date.now()}`);
 
   // The project opens on Control, whose first pane is the System overview (the live board).
   await page.goto(`/p/${id}`);
@@ -72,27 +75,28 @@ test('desktop: Control opens first, starts, keeps a dragged layout, moves by key
   // Pause all, then Resume all: each says what it did.
   const controls = page.getByRole('group', { name: 'Team controls' });
   await controls.getByRole('button', { name: 'Pause all' }).click();
-  await expect(outcome(page)).toContainText('Paused 3 agents', { timeout: 15_000 });
+  await expect(outcome(page)).toContainText('Paused 3 agents', { timeout: 60_000 });
   const strip = page.getByRole('list', { name: 'Run status' });
-  await expect(strip).toContainText('3 paused', { timeout: 15_000 });
+  await expect(strip).toContainText('3 paused', { timeout: 60_000 });
   await controls.getByRole('button', { name: 'Resume all' }).click();
-  await expect(outcome(page)).toContainText('Resumed 3 agents', { timeout: 15_000 });
+  await expect(outcome(page)).toContainText('Resumed 3 agents', { timeout: 60_000 });
 
   // Emergency stop asks first (Cancel has focus), then stops every agent; after that nothing runs.
-  await expect(strip).toContainText('3 running', { timeout: 15_000 });
+  await expect(strip).toContainText('3 running', { timeout: 60_000 });
   await controls.getByRole('button', { name: 'Emergency stop' }).click();
   const confirm = page.getByRole('alertdialog', { name: 'Emergency stop' });
   await expect(confirm).toContainText('Stop all 3 agents now?');
   await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await confirm.getByRole('button', { name: 'Stop now' }).click();
-  await expect(outcome(page)).toContainText('Stopping 3 agents now', { timeout: 15_000 });
-  await expect(controls.getByRole('button', { name: 'Emergency stop' })).toBeDisabled({ timeout: 30_000 });
-  await expect(strip).toContainText('3 stopped', { timeout: 30_000 });
+  await expect(outcome(page)).toContainText('Stopping 3 agents now', { timeout: 60_000 });
+  await expect(controls.getByRole('button', { name: 'Emergency stop' })).toBeDisabled({ timeout: 60_000 });
+  await expect(strip).toContainText('3 stopped', { timeout: 60_000 });
 });
 
 test('mobile: one pane at a time, chosen from the pane switcher', async ({ page, request }, info) => {
   test.skip(info.project.name !== 'mobile', 'phone layout');
-  const id = await practiceTeam(request, `Control phone ${Date.now()}`);
+  test.setTimeout(300_000);
+  const id = await controlTeam(request, `Control phone ${Date.now()}`);
   await page.goto(`/p/${id}/control`);
   const pane = page.getByRole('combobox', { name: 'Pane' });
   await expect(pane).toBeVisible();
@@ -105,9 +109,10 @@ test('mobile: one pane at a time, chosen from the pane switcher', async ({ page,
   await expect(page.getByRole('button', { name: 'Emergency stop' })).toBeVisible();
   await page.getByText('Agents, tokens, cost and team controls').click();
   await page.getByRole('group', { name: 'Team controls' }).getByRole('button', { name: 'Start' }).click();
+  await confirmStart(page);
   await pane.selectOption({ label: 'Status' });
-  await expect(page.getByText(/Planner/).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('button', { name: 'Emergency stop' })).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByText(/Planner/).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Emergency stop' })).toBeEnabled({ timeout: 60_000 });
   // Leave nothing running for the other specs.
   await request.post(`/api/teams/${id}/stop`, { data: { request_id: `stop-${id}` } });
 });

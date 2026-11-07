@@ -40,7 +40,7 @@ describe('Design board in Logos style', () => {
     expect(localStorage.getItem(BOARD_STYLE_KEY)).toBe('logos');
     expect(document.querySelectorAll('.sb-card.is-logo')).toHaveLength(2);
     expect([pos('Builder'), pos('Reviewer')]).toEqual(cardsAt);
-    expect(card('Builder')).toHaveTextContent('Practice · free');
+    expect(card('Builder')).toHaveTextContent("Claude · Claude's default");
     // Full text belongs to cards: it says so instead of doing nothing.
     await user.click(screen.getByRole('button', { name: 'More tools' }));
     expect(screen.getByRole('button', { name: 'Full text' })).toBeDisabled();

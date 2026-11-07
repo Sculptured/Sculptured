@@ -182,8 +182,10 @@ describe('Handoffs: stuck state', () => {
     const pane = await screen.findByRole('region', { name: 'Activity' });
     const button = within(pane).getByRole('button', { name: 'Hand over again' });
     expect(button).toHaveAttribute('data-tip', "Send Planner's latest finished turn to Builder; every agent downstream runs once");
-    // Practice agents are free: no question asked.
+    // Builder runs on your Claude account: asked first.
     await userEvent.click(button);
+    expect(api.handOver).not.toHaveBeenCalled();
+    await userEvent.click(within(pane).getByRole('button', { name: 'Re-run 1 agent' }));
     expect(api.handOver).toHaveBeenCalledWith('dev.a@r');
     expect(within(pane).queryByRole('alertdialog')).toBeNull();
     // A stopped team offers neither.

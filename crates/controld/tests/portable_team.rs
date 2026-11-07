@@ -16,9 +16,9 @@ async fn team_count(s: &Served) -> usize {
         .unwrap_or(0)
 }
 
-/// A two-agent Practice team with folders, own copies and the restricted posture.
+/// A two-agent Claude team with folders, own copies and the restricted posture.
 async fn designed(s: &Served) -> (String, String) {
-    let id = crate::common::m2::practice_chain(
+    let id = crate::common::m2::chain(
         s,
         "Exported",
         &[("a", "Alpha", "plan"), ("b", "Beta", "build")],

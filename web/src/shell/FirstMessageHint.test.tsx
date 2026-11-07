@@ -117,7 +117,7 @@ describe('First message of a first agent with no Job', () => {
       id === 'team.builder@t'
         ? [
             ev(1, { type: 'message-consumed', message_id: 'old', turn_id: 't0' }, id),
-            ev(2, { type: 'tenure-started', tenure: 2, cause: 'fresh', driver: 'stub', native_session_id: null, caps: seatView('a').caps! }, id),
+            ev(2, { type: 'tenure-started', tenure: 2, cause: 'fresh', driver: 'claude', native_session_id: null, caps: seatView('a').caps! }, id),
             ev(3, { type: 'message-consumed', message_id: 'm1', turn_id: 't1' }, id),
           ]
         : [],
@@ -134,7 +134,7 @@ describe('First message of a first agent with no Job', () => {
       id === 'team.builder@t'
         ? [
             ev(1, { type: 'message-consumed', message_id: 'old', turn_id: 't0' }, id),
-            ev(2, { type: 'tenure-started', tenure: 2, cause: 'fresh', driver: 'stub', native_session_id: null, caps: seatView('a').caps! }, id),
+            ev(2, { type: 'tenure-started', tenure: 2, cause: 'fresh', driver: 'claude', native_session_id: null, caps: seatView('a').caps! }, id),
           ]
         : [],
     );

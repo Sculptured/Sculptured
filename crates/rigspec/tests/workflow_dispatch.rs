@@ -2,7 +2,7 @@
 use model::{TeamDraft, Workflow, WorkflowDispatch};
 
 fn textbook() -> TeamDraft {
-    let mut d = rigspec::textbook::template("book", "Book", true);
+    let mut d = rigspec::textbook::template("book", "Book");
     d.folder = Some("/tmp".into());
     d
 }

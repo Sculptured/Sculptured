@@ -1,10 +1,14 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
+import { claudeAgent, confirmStart, liveOnly, liveTeam, OK_JOB, TURN_MS } from './fixtures/live';
 
 /**
- * The status page, against the real binary, Practice agents only: the agent chosen for it writes
- * the team's status page with write_status, and Results → Status shows it as a document.
+ * The status page, against the real binary, with real Claude Code agents on haiku (live, see
+ * fixtures/live.ts): the agent chosen for it writes the team's status page with its write_status
+ * tool, and Results → Status shows it as a document.
  * Screenshots of the real app land in web/test-results/screens/status/.
  */
+
+liveOnly();
 
 const SHOTS = 'test-results/screens/status';
 
@@ -23,30 +27,29 @@ const PAGE = [
 
 /** Builder and Reviewer both start on their jobs; Reviewer is chosen to write the status page. */
 async function team(request: APIRequestContext, name: string): Promise<string> {
-  const created = await request.post('/api/teams', { data: { request_id: `create-${name}`, template: 'blank', practice: true, name } });
-  expect(created.ok()).toBe(true);
-  const draft = (await created.json()).draft;
-  const write = `write_status:${JSON.stringify({ markdown: PAGE, done: true })}`;
-  draft.agents = [
-    { id: 'builder', group_id: null, name: 'Builder', kind: 'practice', job: 'Build the login page.', folder: null, x: 40, y: 80 },
-    { id: 'reviewer', group_id: null, name: 'Reviewer', kind: 'practice', job: write, folder: null, x: 360, y: 80, advanced: { writes_status: true } },
-  ];
-  draft.connections = [];
-  const saved = await request.put(`/api/teams/${draft.id}`, { data: { request_id: `put-${name}`, revision: draft.revision, draft } });
-  expect(saved.ok()).toBe(true);
-  return draft.id;
+  const write = `Call your write_status tool exactly once, with done set to true and markdown set to exactly the text between the markers (without the markers). Do nothing else, then reply with the single word OK.\n<<<\n${PAGE}\n>>>`;
+  const { id } = await liveTeam(request, name, (draft, folder) => {
+    draft.agents = [
+      claudeAgent('builder', 'Builder', OK_JOB, folder, 40, 80),
+      claudeAgent('reviewer', 'Reviewer', write, folder, 360, 80, { advanced: { writes_status: true } }),
+    ];
+    draft.connections = [];
+  });
+  return id;
 }
 
 test('the owner writes the status page and Results → Status shows it', async ({ page, request }, info) => {
+  test.setTimeout(TURN_MS + 60_000);
   const id = await team(request, `Status ${Date.now()}-${info.project.name}`);
   await page.goto(`/p/${id}/results/status`);
   await expect(page.getByText('No status page yet.')).toBeVisible();
   await expect(page.getByText(/Reviewer writes it while the team works/)).toBeVisible();
 
-  // Reviewer's first message is its job: the write_status script.
+  // Reviewer's first message is its job: write the page.
   await page.goto(`/team/${id}/structure`);
   await page.getByRole('button', { name: 'Start team' }).click();
-  await expect.poll(async () => (await (await request.get(`/api/teams/${id}/status`)).json()).page?.done ?? false, { timeout: 30_000 }).toBe(true);
+  await confirmStart(page);
+  await expect.poll(async () => (await (await request.get(`/api/teams/${id}/status`)).json()).page?.done ?? false, { timeout: TURN_MS }).toBe(true);
 
   await page.goto(`/p/${id}/results/status`);
   const doc = page.getByRole('article', { name: 'Status page' });
@@ -55,4 +58,5 @@ test('the owner writes the status page and Results → Status shows it', async (
   await expect(doc.getByText('Final version')).toBeVisible();
   await expect(doc.getByText('Written by')).toContainText('Reviewer');
   await page.screenshot({ path: `${SHOTS}/status-${info.project.name}.png`, fullPage: true });
+  await request.post(`/api/teams/${id}/stop`, { data: { request_id: `stop-${id}` } });
 });

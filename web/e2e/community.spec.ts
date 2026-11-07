@@ -103,7 +103,7 @@ test('publish a group from the Library after choosing a handle', async ({ page, 
     draft: {
       id, name: 'Draft checker', revision: 0, connections: [],
       groups: [{ id: 'g', label: 'Draft checker', x: 0, y: 0, w: 300, h: 200 }],
-      agents: [{ id: 'checker', group_id: 'g', name: 'Checker', kind: 'practice', job: 'Check the draft.', folder: null, x: 20, y: 20 }],
+      agents: [{ id: 'checker', group_id: 'g', name: 'Checker', kind: 'claude', job: 'Check the draft.', folder: null, x: 20, y: 20 }],
     },
   };
   expect((await request.put(`/api/group-blocks/${id}`, { data: { request_id: `put-${id}`, block } })).ok()).toBe(true);

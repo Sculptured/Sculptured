@@ -17,19 +17,16 @@ fn fixture(name: &str) -> String {
 }
 
 #[test]
-fn every_template_compiles_with_practice_agents() {
+fn every_template_compiles_once_it_has_a_folder() {
     let infos = rigspec::templates::templates();
     assert_eq!(
         infos.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
         TEMPLATE_IDS
     );
     for id in TEMPLATE_IDS {
-        let d = rigspec::templates::template(id, "t", "T", true).unwrap();
+        let mut d = rigspec::templates::template(id, "t", "T").unwrap();
         assert_eq!(d.revision, 0);
-        assert!(
-            d.agents.iter().all(|a| a.kind == AgentKind::Practice),
-            "{id}"
-        );
+        d.folder = Some("/srv/t".into());
         match id {
             "blank" => assert!(
                 rigspec::validate_draft(&d)
@@ -42,17 +39,17 @@ fn every_template_compiles_with_practice_agents() {
             }
         }
     }
-    assert!(rigspec::templates::template("nope", "t", "T", false).is_none());
+    assert!(rigspec::templates::template("nope", "t", "T").is_none());
 }
 
 #[test]
-fn templates_have_the_spec_shapes_and_need_only_folders_without_practice() {
-    let solo = rigspec::templates::template("solo", "t", "T", false).unwrap();
+fn templates_have_the_spec_shapes_and_need_only_folders() {
+    let solo = rigspec::templates::template("solo", "t", "T").unwrap();
     assert_eq!(
         (solo.agents.len(), solo.agents[0].kind),
         (1, AgentKind::Claude)
     );
-    let br = rigspec::templates::template("builder-reviewer", "t", "T", false).unwrap();
+    let br = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     assert_eq!(
         br.agents.iter().map(|a| a.kind).collect::<Vec<_>>(),
         [AgentKind::Claude, AgentKind::Codex]
@@ -64,7 +61,7 @@ fn templates_have_the_spec_shapes_and_need_only_folders_without_practice() {
         ),
         ("builder", "reviewer")
     );
-    let pb = rigspec::templates::template("planner-builders", "t", "T", false).unwrap();
+    let pb = rigspec::templates::template("planner-builders", "t", "T").unwrap();
     assert_eq!(pb.agents.len(), 3);
     assert!(
         pb.connections
@@ -94,8 +91,7 @@ fn import_as_imported(yaml: &str) -> (Imported, String) {
 
 #[test]
 fn export_then_import_round_trips_names_jobs_and_positions() {
-    let mut d =
-        rigspec::templates::template("builder-reviewer", "my-team", "My team", true).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "my-team", "My team").unwrap();
     d.groups = vec![group("build", "Build", 10), group("check", "Check", 300)];
     d.agents[0].group_id = Some("build".into());
     d.agents[1].group_id = Some("check".into());
@@ -219,13 +215,13 @@ fn group(id: &str, label: &str, x: i32) -> DraftGroup {
     }
 }
 
-/// A Practice agent "Helper" at (40, 300) with no folder.
+/// A Claude agent "Helper" at (40, 300) with no folder.
 fn helper(group_id: Option<&str>, advanced: AgentAdvanced) -> DraftAgent {
     DraftAgent {
         id: "helper".into(),
         group_id: group_id.map(Into::into),
         name: "Helper".into(),
-        kind: AgentKind::Practice,
+        kind: AgentKind::Claude,
         job: String::new(),
         folder: None,
         x: 40,
@@ -241,7 +237,7 @@ fn round_trip(d: &TeamDraft) -> Imported {
 
 #[test]
 fn export_never_invents_a_folder_and_import_maps_a_blank_one_back_to_none() {
-    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", false).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     d.agents[1].folder = Some("/srv/repo".into());
     d.agents.push(helper(None, AgentAdvanced::default()));
     let yaml = rigspec::exchange::export_yaml(&d);
@@ -261,11 +257,7 @@ fn export_never_invents_a_folder_and_import_maps_a_blank_one_back_to_none() {
         "a Claude agent with no folder gets no made-up folder:\n{yaml}"
     );
     assert_eq!(cwd("reviewer"), "/srv/repo");
-    assert_eq!(
-        cwd("helper"),
-        ".",
-        "a Practice agent runs in the home folder, as when started"
-    );
+    assert_eq!(cwd("helper"), "", "no agent gets a made-up folder");
     let errs = rigspec::compile(&yaml).unwrap_err();
     assert!(
         errs.iter().any(|e| e.path == "pods[0].members[0].cwd"),
@@ -333,7 +325,7 @@ fn a_relative_folder_is_reported_as_not_imported() {
 
 #[test]
 fn empty_drawn_groups_keep_their_names_order_and_boxes() {
-    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", true).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     d.groups = vec![
         group("ideas", "Ideas for later", 600),
         group("build", "Build", 10),
@@ -356,7 +348,7 @@ fn empty_drawn_groups_keep_their_names_order_and_boxes() {
 #[test]
 fn ungrouped_agents_and_a_drawn_main_group_round_trip_unchanged() {
     for id in ["solo", "builder-reviewer", "planner-builders"] {
-        let d = rigspec::templates::template(id, "t", "T", true).unwrap();
+        let d = rigspec::templates::template(id, "t", "T").unwrap();
         let back = round_trip(&d);
         assert!(back.dropped.is_empty(), "{id}: {:?}", back.dropped);
         assert_eq!(
@@ -367,7 +359,7 @@ fn ungrouped_agents_and_a_drawn_main_group_round_trip_unchanged() {
         assert_eq!(back.draft.connections.len(), d.connections.len(), "{id}");
     }
     // The drawn "Main group" keeps the default group id (`team`).
-    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", true).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     d.groups = vec![group(DEFAULT_GROUP_ID, "Main group", 10)];
     d.agents[1].group_id = Some(DEFAULT_GROUP_ID.into());
     let b = round_trip(&d).draft;
@@ -419,7 +411,7 @@ fn text_in_the_layout_comment_cannot_add_spec_keys() {
             ("job", job.clone(), "My team".to_string()),
             ("name", String::new(), name.clone()),
         ] {
-            let mut d = rigspec::templates::template("solo", "t", "T", true).unwrap();
+            let mut d = rigspec::templates::template("solo", "t", "T").unwrap();
             d.agents[0].job = job.clone();
             d.name = name.clone();
             let yaml = rigspec::exchange::export_yaml(&d);
@@ -453,7 +445,7 @@ fn text_in_the_layout_comment_cannot_add_spec_keys() {
 
 #[test]
 fn connection_ends_models_and_resume_survive_a_round_trip() {
-    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", true).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     d.groups = vec![group("build", "Build", 10), group("check", "Check", 300)];
     d.agents[0].group_id = Some("build".into());
     d.agents[1].group_id = Some("check".into());
@@ -536,7 +528,7 @@ fn inside(a: &DraftAgent, g: &DraftGroup) -> bool {
 
 #[test]
 fn a_comment_that_misses_a_group_with_agents_is_laid_out_again() {
-    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", true).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     d.groups = vec![group("build", "Build", 10)];
     d.agents[0].group_id = Some("build".into());
     d.agents[1].group_id = Some("build".into());
@@ -558,7 +550,7 @@ fn a_comment_that_misses_a_group_with_agents_is_laid_out_again() {
 
 #[test]
 fn bad_groups_in_the_layout_comment_are_reported_not_drawn() {
-    let mut d = rigspec::templates::template("solo", "t", "T", true).unwrap();
+    let mut d = rigspec::templates::template("solo", "t", "T").unwrap();
     d.groups = vec![
         group("good", "Good", 10),
         group("wide", "Wide", 300),
@@ -587,7 +579,7 @@ fn bad_groups_in_the_layout_comment_are_reported_not_drawn() {
     );
     assert!(back.dropped.iter().all(|x| x.severity == Severity::Warning));
     // A bad box for a group that has agents falls back to the computed layout.
-    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", true).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     d.groups = vec![group("build", "Build", 10)];
     d.agents[0].group_id = Some("build".into());
     let yaml = edit_comment(&rigspec::exchange::export_yaml(&d), |m| {
@@ -647,12 +639,12 @@ pods:
   - id: one
     label: One
     members:
-      - { id: a, agent_ref: "builtin:sculptured-agent", profile: default, runtime: stub, cwd: "." }
-      - { id: a-two, agent_ref: "builtin:sculptured-agent", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "builtin:sculptured-agent", profile: default, runtime: claude-code, cwd: "." }
+      - { id: a-two, agent_ref: "builtin:sculptured-agent", profile: default, runtime: claude-code, cwd: "." }
   - id: two
     label: Two
     members:
-      - { id: a, agent_ref: "builtin:sculptured-agent", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "builtin:sculptured-agent", profile: default, runtime: claude-code, cwd: "." }
 "#;
     let imported = rigspec::exchange::import_yaml(yaml, |_| "dup".into()).unwrap();
     let ids: Vec<&str> = imported
@@ -684,7 +676,7 @@ pods:
 
 #[test]
 fn inherited_project_folder_survives_export_and_import() {
-    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", false).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     d.folder = Some("/home/me/project".into());
     d.agents[1].folder = Some("/home/me/review".into());
     let loaded =
@@ -703,7 +695,7 @@ fn inherited_project_folder_survives_export_and_import() {
 /// A model connection is the person's own: a team file never names it, and importing gives none.
 #[test]
 fn a_team_file_never_carries_an_agents_model_connection() {
-    let mut d = rigspec::templates::template("builder-reviewer", "t", "T", false).unwrap();
+    let mut d = rigspec::templates::template("builder-reviewer", "t", "T").unwrap();
     d.agents[0].kind = AgentKind::Claude;
     d.agents[0].connection = Some("conn-secret-id".into());
     let yaml = rigspec::exchange::export_yaml(&d);

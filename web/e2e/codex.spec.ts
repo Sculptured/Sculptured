@@ -17,7 +17,7 @@ test('desktop: two Codex agents start, run and hand work over', async ({ page, r
   expect(made.ok()).toBe(true);
   const folder = (await made.json()).path as string;
 
-  const created = await request.post('/api/teams', { data: { request_id: `create-${stamp}`, template: 'blank', practice: false, name: `Codex pair ${stamp}` } });
+  const created = await request.post('/api/teams', { data: { request_id: `create-${stamp}`, template: 'blank', name: `Codex pair ${stamp}` } });
   expect(created.ok()).toBe(true);
   const draft = (await created.json()).draft;
   draft.agents = [

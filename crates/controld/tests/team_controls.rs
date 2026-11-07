@@ -1,15 +1,22 @@
-//! `GET /api/teams/{id}/controls`: every agent of a team with a control mode, in one request
-//! (Practice agents, no model is called).
+//! `GET /api/teams/{id}/controls`: every agent of a team with a control mode, in one request. Live:
+//! the agents run on the real Claude Code CLI (they get no job; a pause asks for one short wrap-up).
 mod common;
+#[path = "common/live_controls.rs"]
+mod live_controls;
 use axum::http::StatusCode;
-use common::m2::{connect_stub, get, seat, start_team};
+use common::m2::{get, seat, start_team};
 use common::pausing::*;
+use live_controls::wait_paused;
 use serde_json::json;
 
 #[tokio::test]
-async fn team_controls_lists_each_agents_mode_and_only_this_team() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_team_controls_lists_each_agents_mode_and_only_this_team() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
+    let _runner = common::live::connect(&s).await;
     let (id, [a, _b, c]) = three_with_c_stopped(&s, "controls-one").await;
     let other = team(&s, "controls-two", &["x"]).await;
     common::m2::start_team(&s, &other).await;
@@ -28,11 +35,23 @@ async fn team_controls_lists_each_agents_mode_and_only_this_team() {
 }
 
 #[tokio::test]
-async fn team_controls_is_empty_for_a_team_without_controls() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_team_controls_is_empty_for_a_team_without_controls() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
+    let _runner = common::live::connect(&s).await;
     let id = team(&s, "controls-none", &["a"]).await;
     start_team(&s, &id).await;
+    let (status, body) = get(&s.router, &format!("/api/teams/{id}/controls")).await;
+    assert_eq!((status, body), (StatusCode::OK, json!({})));
+}
+
+#[tokio::test]
+async fn team_controls_is_empty_for_a_team_never_started() {
+    let s = common::m2::serve().await;
+    let id = team(&s, "controls-never", &["a"]).await;
     let (status, body) = get(&s.router, &format!("/api/teams/{id}/controls")).await;
     assert_eq!((status, body), (StatusCode::OK, json!({})));
 }

@@ -121,7 +121,7 @@ describe('useDeploymentSource', () => {
     const want = [`failed:${B}:3`, 'question-waiting:q3'];
     const withEvents: Record<string, EventRecord[]> = {
       [A]: [ev(1, { type: 'question-raised', question_id: 'q3', source: 'request-input', prompt: question('q3').prompt, turn_id: null })],
-      [B]: [ev(2, { type: 'tenure-started', tenure: 3, cause: 'fresh', driver: 'stub', native_session_id: null, caps: seatView('b').caps! }, B),
+      [B]: [ev(2, { type: 'tenure-started', tenure: 3, cause: 'fresh', driver: 'claude', native_session_id: null, caps: seatView('b').caps! }, B),
         ev(3, { type: 'seat-lifecycle-changed', lifecycle: 'failed', reason: 'crashed' }, B)],
     };
     const first = await open(failedB, withEvents);

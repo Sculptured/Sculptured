@@ -14,7 +14,7 @@ vi.mock('../api', async (orig) => {
 });
 
 const row = (member: string, name: string, over: Partial<SeatView> = {}): AgentRow =>
-  ({ id: `dev.${member}@r`, rig: 'r', name, group: 'Dev', folder: '~', seat: seatView(member, over), state: { ...STATES.idle, key: 'idle' }, vendor: { cls: 'v-practice', name: 'Practice' }, summary: 'idle', lastMs: null, activity: undefined }) as unknown as AgentRow;
+  ({ id: `dev.${member}@r`, rig: 'r', name, group: 'Dev', folder: '~', seat: seatView(member, over), state: { ...STATES.idle, key: 'idle' }, vendor: { cls: 'v-claude', name: 'Claude' }, summary: 'idle', lastMs: null, activity: undefined }) as unknown as AgentRow;
 
 const team = () => [row('a', 'Planner'), row('b', 'Builder'), row('c', 'Reviewer'), row('d', 'Archivist', { lifecycle: 'stopped' })];
 

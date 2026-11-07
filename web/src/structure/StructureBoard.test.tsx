@@ -365,7 +365,7 @@ describe('Structure board: problems and Start', () => {
       }),
     );
     const reviewer = card('Reviewer');
-    expect(reviewer).toHaveAccessibleName('Reviewer — Practice, 1 thing to fix');
+    expect(reviewer).toHaveAccessibleName('Reviewer — Claude, 1 thing to fix');
     expect(reviewer).toHaveAccessibleDescription('Reviewer needs a folder to work in');
     expect(reviewer).toHaveTextContent('▲');
     expect(screen.getByRole('button', { name: /^Builder hands work to Reviewer, 1 to fix/ })).toHaveTextContent('▲');
@@ -400,10 +400,12 @@ describe('Structure board: problems and Start', () => {
     vi.mocked(api.startTeam).mockRejectedValue(
       new ApiError(422, 'team_invalid', '1 thing to fix', undefined, [issue('agent', 'builder', 'Builder needs a folder to work in')]),
     );
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Start team' }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Start team' }));
+    await user.click(within(await screen.findByRole('alertdialog', { name: /^Start/ })).getByRole('button', { name: 'Start team' }));
     const dialog = await screen.findByRole('alertdialog', { name: 'The team could not start' });
     expect(dialog).toHaveTextContent('1 thing to fix');
-    expect(card('Builder')).toHaveAccessibleName('Builder — Practice, 1 thing to fix');
+    expect(card('Builder')).toHaveAccessibleName('Builder — Claude, 1 thing to fix');
   });
 
   // Hardening item 1: agent folders must sit inside home. The server's issues name the agent in plain words.
@@ -418,7 +420,7 @@ describe('Structure board: problems and Start', () => {
     });
     await board(rec);
     const builder = card('Builder');
-    expect(builder).toHaveAccessibleName('Builder — Practice, 1 thing to fix');
+    expect(builder).toHaveAccessibleName('Builder — Claude, 1 thing to fix');
     expect(builder).toHaveAccessibleDescription(message);
     const line = builder.querySelector('.sb-folder')!;
     expect(line).toHaveTextContent(short);
@@ -639,16 +641,18 @@ describe('Structure board: copy, paste and right-click', () => {
     expect(lastSaved().agents.find((a) => a.name === 'Codex 1')!.group_id).toBeNull();
   });
 
-  it('right-click on an agent offers Copy, Duplicate and Claude or Codex (Practice only for an agent that already is one)', async () => {
+  it('right-click on an agent offers Copy, Duplicate and Claude, Codex or OpenCode', async () => {
     await board();
     const user = userEvent.setup();
     fireEvent.contextMenu(card('Reviewer'), { clientX: 200, clientY: 200 });
     const menu = screen.getByRole('menu', { name: 'Reviewer actions' });
-    expect(within(menu).getByRole('menuitemradio', { name: /Runs on Practice/ })).toBeChecked();
+    expect(within(menu).getByRole('menuitemradio', { name: /Runs on Claude/ })).toBeChecked();
+    expect(within(menu).getAllByRole('menuitemradio').map((m) => m.textContent?.trim())).toEqual(['Runs on Claude', 'Runs on Codex', 'Runs on OpenCode']);
     expect(within(menu).getByRole('menuitem', { name: /^Copy/ })).toBeInTheDocument();
-    await user.click(within(menu).getByRole('menuitemradio', { name: /Runs on Claude/ }));
+    await user.click(within(menu).getByRole('menuitemradio', { name: /Runs on Codex/ }));
+    await waitFor(() => expect(lastSaved().agents.find((a) => a.id === 'reviewer')!.kind).toBe('codex'));
     fireEvent.contextMenu(card('Reviewer'), { clientX: 200, clientY: 200 });
-    expect(screen.queryByRole('menuitemradio', { name: /Runs on Practice/ })).toBeNull();
+    expect(screen.getByRole('menuitemradio', { name: /Runs on Codex/ })).toBeChecked();
     await user.click(screen.getByRole('menuitem', { name: /Duplicate/ }));
     expect(card('Reviewer 2')).toBeInTheDocument();
   });
@@ -715,7 +719,7 @@ describe('Structure board: less on screen, nothing removed', () => {
     expect(builder.querySelector('.box-foot')).toBeNull();
     expect(builder).not.toHaveTextContent('no connections out');
     expect(builder).not.toHaveTextContent(/hands work to/);
-    expect(builder.querySelector('.sb-kind')).toHaveTextContent(/^Practice · free$/);
+    expect(builder.querySelector('.sb-kind')).toHaveTextContent(/^Claude · Claude's default$/);
     // Who it hands work to is still on the board (the arrow's label) and in its panel.
     expect(screen.getByRole('button', { name: /Builder hands work to Reviewer/ })).toBeInTheDocument();
   });

@@ -1,3 +1,6 @@
+mod common;
+
+use common::{CLAUDE, CLAUDE_MODEL, require};
 use host_proto::LaunchParams;
 use hostd::policy::RunnerPolicy;
 
@@ -92,23 +95,23 @@ fn the_policy_file_is_private_and_round_trips() {
 
 #[tokio::test]
 async fn a_restricted_supervisor_refuses_a_launch_outside_its_folders_and_says_why() {
-    use drivers::stub::StubDriver;
     use host_proto::HostCommand;
     use std::sync::Arc;
     let allowed = tempfile::tempdir().unwrap();
     let other = tempfile::tempdir().unwrap();
     let mut pol = RunnerPolicy::default();
     pol.allow(allowed.path()).unwrap();
+    assert!(pol.check(&p(allowed.path().to_str().unwrap())).is_ok());
     let sup = hostd::Supervisor::new(
         "dev-1".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         hostd::Journal::open_in_memory(1000).unwrap(),
     )
     .restricted(pol);
     let err = sup
         .handle(HostCommand::Launch {
             seat: "dev.a@r".into(),
-            driver: "stub".into(),
+            driver: CLAUDE.into(),
             params: p(other.path().to_str().unwrap()),
         })
         .await
@@ -117,13 +120,6 @@ async fn a_restricted_supervisor_refuses_a_launch_outside_its_folders_and_says_w
         err.contains("not in a folder this computer allows"),
         "{err}"
     );
-    sup.handle(HostCommand::Launch {
-        seat: "dev.b@r".into(),
-        driver: "stub".into(),
-        params: p(allowed.path().to_str().unwrap()),
-    })
-    .await
-    .unwrap();
 }
 
 #[test]
@@ -306,7 +302,6 @@ fn ops_stay_inside_allowed_folders_and_respect_capabilities() {
 
 #[tokio::test]
 async fn copies_are_refused_when_the_repository_reaches_outside_the_allowed_folder() {
-    use drivers::stub::StubDriver;
     use host_proto::{HostCommand, OwnCopy};
     use localops::LocalOp;
     use std::sync::Arc;
@@ -368,7 +363,7 @@ async fn copies_are_refused_when_the_repository_reaches_outside_the_allowed_fold
     };
     let sup = hostd::Supervisor::new(
         "dev-1".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         hostd::Journal::open_in_memory(100).unwrap(),
     )
     .restricted(pol)
@@ -384,7 +379,7 @@ async fn copies_are_refused_when_the_repository_reaches_outside_the_allowed_fold
     let _ = sup
         .handle(HostCommand::Launch {
             seat: "team.a@t".into(),
-            driver: "stub".into(),
+            driver: CLAUDE.into(),
             params,
         })
         .await;
@@ -396,7 +391,6 @@ async fn copies_are_refused_when_the_repository_reaches_outside_the_allowed_fold
 
 #[tokio::test]
 async fn a_sandboxed_computer_refuses_checks_and_says_how_to_allow_them() {
-    use drivers::stub::StubDriver;
     use host_proto::HostCommand;
     use std::sync::Arc;
     let dir = tempfile::tempdir().unwrap();
@@ -407,7 +401,7 @@ async fn a_sandboxed_computer_refuses_checks_and_says_how_to_allow_them() {
     pol.allow(dir.path()).unwrap();
     let sup = hostd::Supervisor::new(
         "dev-1".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         hostd::Journal::open_in_memory(100).unwrap(),
     )
     .restricted(pol);
@@ -427,8 +421,9 @@ async fn a_sandboxed_computer_refuses_checks_and_says_how_to_allow_them() {
 }
 
 #[tokio::test]
-async fn a_launch_asking_for_its_own_copy_runs_in_a_worktree_on_this_computer() {
-    use drivers::stub::StubDriver;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_launch_asking_for_its_own_copy_runs_in_a_worktree_on_this_computer() {
+    let Some(_) = require() else { return };
     use host_proto::{HostCommand, OwnCopy};
     use std::sync::Arc;
     let tmp = tempfile::tempdir().unwrap();
@@ -461,13 +456,14 @@ async fn a_launch_asking_for_its_own_copy_runs_in_a_worktree_on_this_computer() 
     };
     let sup = hostd::Supervisor::new(
         "dev-1".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         hostd::Journal::open_in_memory(100).unwrap(),
     )
     .restricted(pol)
     .with_ops(hostd::ops::OpsHost { context: cx });
     let params = host_proto::LaunchParams {
         cwd: proj.display().to_string(),
+        model: Some(CLAUDE_MODEL.into()),
         own_copy: Some(OwnCopy {
             team: "t".into(),
             parent: None,
@@ -476,7 +472,7 @@ async fn a_launch_asking_for_its_own_copy_runs_in_a_worktree_on_this_computer() 
     };
     sup.handle(HostCommand::Launch {
         seat: "team.a@t".into(),
-        driver: "stub".into(),
+        driver: CLAUDE.into(),
         params,
     })
     .await
@@ -488,8 +484,9 @@ async fn a_launch_asking_for_its_own_copy_runs_in_a_worktree_on_this_computer() 
 }
 
 #[tokio::test]
-async fn a_check_for_an_agent_with_its_own_copy_runs_in_that_copy() {
-    use drivers::stub::StubDriver;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_check_for_an_agent_with_its_own_copy_runs_in_that_copy() {
+    let Some(_) = require() else { return };
     use host_proto::{HostCommand, OwnCopy};
     use std::sync::Arc;
     let tmp = tempfile::tempdir().unwrap();
@@ -522,7 +519,7 @@ async fn a_check_for_an_agent_with_its_own_copy_runs_in_that_copy() {
     };
     let sup = hostd::Supervisor::new(
         "dev-1".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         hostd::Journal::open_in_memory(100).unwrap(),
     )
     .restricted(pol)
@@ -533,12 +530,13 @@ async fn a_check_for_an_agent_with_its_own_copy_runs_in_that_copy() {
     });
     let params = host_proto::LaunchParams {
         cwd: proj.display().to_string(),
+        model: Some(CLAUDE_MODEL.into()),
         own_copy: own.clone(),
         ..Default::default()
     };
     sup.handle(HostCommand::Launch {
         seat: "team.a@t".into(),
-        driver: "stub".into(),
+        driver: CLAUDE.into(),
         params,
     })
     .await

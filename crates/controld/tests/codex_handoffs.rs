@@ -9,7 +9,6 @@ use controld::handoffs::CONTINUE_PREFIX;
 use controld::reconciler::{HANDOFF_ACTOR, TEAM_START_ACTOR};
 use drivers::claude::ClaudeStreamDriver;
 use drivers::codex::CodexAppServerDriver;
-use drivers::stub::StubDriver;
 
 use model::{EventBody, SeatLifecycle, TurnStatus};
 use serde_json::json;
@@ -20,7 +19,7 @@ async fn codex_host(s: &Served) {
         program: crate::common::fake_bin("fake-codex"),
         native_questions: false,
     };
-    crate::common::m2::connect(s, vec![Arc::new(StubDriver), Arc::new(codex)], None).await;
+    crate::common::m2::connect(s, vec![Arc::new(codex)], None).await;
     crate::common::wait_for("the Codex driver", || {
         s.st.hosts.has_driver("local", "codex-app-server")
     })
@@ -36,12 +35,7 @@ async fn mixed_host(s: &Served) {
     let claude = ClaudeStreamDriver {
         program: crate::common::fake_bin("fake-claude"),
     };
-    crate::common::m2::connect(
-        s,
-        vec![Arc::new(StubDriver), Arc::new(codex), Arc::new(claude)],
-        None,
-    )
-    .await;
+    crate::common::m2::connect(s, vec![Arc::new(codex), Arc::new(claude)], None).await;
     crate::common::wait_for("the Codex and Claude drivers", || {
         s.st.hosts.has_driver("local", "codex-app-server")
             && s.st.hosts.has_driver("local", "claude-stream")
@@ -89,7 +83,7 @@ async fn team_with_models(
         &s.router,
         "POST",
         "/api/teams",
-        json!({ "request_id": rid(), "template": "blank", "practice": false, "name": name }),
+        json!({ "request_id": rid(), "template": "blank", "name": name }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{rec}");

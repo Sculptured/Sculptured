@@ -94,7 +94,7 @@ fn next_seq_and_seats_survive_reopen() {
         append(&mut j, 1);
         append(&mut j, 2);
         j.ack(2).unwrap();
-        j.record_seat("dev.a@r", "stub", Some("native-1"), 2)
+        j.record_seat("dev.a@r", "claude-stream", Some("native-1"), 2)
             .unwrap();
     }
     let mut j = Journal::open(&path, 100).unwrap();

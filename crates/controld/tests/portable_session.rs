@@ -24,15 +24,23 @@ async fn text(router: &axum::Router, uri: &str) -> (StatusCode, String, axum::ht
     (status, String::from_utf8(bytes.to_vec()).unwrap(), headers)
 }
 
-/// A running Practice team on a stub computer; returns (team, its run's start seq, the agent's seat, the computer).
-async fn ran(s: &Served) -> (String, i64, String, hostd::Supervisor) {
-    let host = crate::common::m2::connect_stub(s).await;
-    let id = crate::common::m2::practice_chain(s, "Recorded", &[("a", "Alpha", "plan")], &[]).await;
-    crate::common::m2::start_team(s, &id).await;
+/// A started one-agent team with no computer connected, so its run is recorded but no model runs;
+/// returns (team, its run's start seq, the agent's seat).
+async fn ran(s: &Served) -> (String, i64, String) {
+    let id = crate::common::m2::chain(s, "Recorded", &[("a", "Alpha", "plan")], &[]).await;
+    let (status, body) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        &format!("/api/teams/{id}/start"),
+        json!({ "request_id": rid() }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    common::wait_for("boot finished", || !s.st.is_booting(&id)).await;
     let (_, runs) =
         crate::common::m2::get(&s.router, &format!("/api/teams/{id}/deployments")).await;
     let seq = runs[0]["start_seq"].as_i64().unwrap();
-    (id.clone(), seq, crate::common::m2::seat(&id, "a"), host)
+    (id.clone(), seq, crate::common::m2::seat(&id, "a"))
 }
 
 fn run_rows(s: &Served, id: &str, from: i64) -> i64 {
@@ -56,7 +64,7 @@ fn parse(file: &str) -> (SessionHeader, Vec<SessionLine>) {
 #[tokio::test]
 async fn a_run_downloads_with_the_team_as_it_started_and_every_event() {
     let s = crate::common::m2::serve().await;
-    let (id, seq, agent, _host) = ran(&s).await;
+    let (id, seq, agent) = ran(&s).await;
     let (_, rec) = crate::common::m2::get(&s.router, &format!("/api/teams/{id}")).await;
     let mut draft = rec["draft"].clone();
     draft["agents"][0]["name"] = json!("Renamed later");
@@ -118,7 +126,7 @@ async fn a_run_downloads_with_the_team_as_it_started_and_every_event() {
 #[tokio::test]
 async fn a_long_run_downloads_every_event() {
     let s = crate::common::m2::serve().await;
-    let (id, seq, agent, _host) = ran(&s).await;
+    let (id, seq, agent) = ran(&s).await;
     for i in 0..2100 {
         s.st.local_event(
             Actor::System("test".into()),
@@ -147,7 +155,7 @@ async fn a_long_run_downloads_every_event() {
 #[tokio::test]
 async fn a_run_from_before_snapshots_has_a_null_team() {
     let s = crate::common::m2::serve().await;
-    let (id, seq, _, _host) = ran(&s).await;
+    let (id, seq, _) = ran(&s).await;
     s.st.store
         .lock()
         .unwrap()
@@ -207,7 +215,7 @@ async fn team_count(s: &Served) -> usize {
 #[tokio::test]
 async fn an_exported_run_imports_as_a_past_run_and_exports_identically() {
     let s = crate::common::m2::serve().await;
-    let (id, seq, agent, _host) = ran(&s).await;
+    let (id, seq, agent) = ran(&s).await;
     crate::common::m2::stop_team(&s, &id).await;
     common::wait_for("stopped", || {
         common::lifecycle(&s.st, &agent) == Some(model::SeatLifecycle::Stopped)
@@ -300,7 +308,7 @@ async fn an_exported_run_imports_as_a_past_run_and_exports_identically() {
 #[tokio::test]
 async fn a_broken_session_file_says_which_line() {
     let s = crate::common::m2::serve().await;
-    let (id, seq, _, _host) = ran(&s).await;
+    let (id, seq, _) = ran(&s).await;
     let (_, original, _) = text(
         &s.router,
         &format!("/api/teams/{id}/deployments/{seq}/session"),
@@ -344,7 +352,7 @@ async fn a_broken_session_file_says_which_line() {
 #[tokio::test]
 async fn a_run_with_an_event_this_build_cannot_read_still_downloads_unchanged() {
     let s = crate::common::m2::serve().await;
-    let (id, seq, agent, _host) = ran(&s).await;
+    let (id, seq, agent) = ran(&s).await;
     let future = format!(
         r#"{{"seq":0,"host":"test","host_seq":1,"at_ms":1,"actor":{{"kind":"system","id":"x"}},"subject":{{"kind":"seat","id":"{agent}"}},"provenance":"verified","body":{{"type":"from-a-newer-build","n":1}}}}"#
     );
@@ -368,7 +376,7 @@ async fn a_run_with_an_event_this_build_cannot_read_still_downloads_unchanged() 
 #[tokio::test]
 async fn a_run_whose_team_cannot_be_imported_says_why() {
     let s = crate::common::m2::serve().await;
-    let (id, seq, _, _host) = ran(&s).await;
+    let (id, seq, _) = ran(&s).await;
     let (_, original, _) = text(
         &s.router,
         &format!("/api/teams/{id}/deployments/{seq}/session"),

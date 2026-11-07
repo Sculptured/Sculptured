@@ -1,14 +1,18 @@
 //! Pause and resume at the edges: calling a pause off, an agent still settling, an agent that is not
-//! running or already stopping, and agents started by another agent (Practice agents, no model).
+//! running or already stopping, and agents started by another agent. Live: the agents run on the real
+//! Claude Code CLI (they get no job; a pause asks for one short wrap-up, a child one short task).
 mod common;
+#[path = "common/live_controls.rs"]
+mod live_controls;
 use common::lifecycle;
-use common::m2::{Served, connect_stub, rid, seat, start_team};
+use common::m2::{Served, rid, seat, start_team};
 use common::pausing::*;
 use controld::store::ControlMode;
+use live_controls::{SAY_OK, wait_lifecycle, wait_paused};
 use model::{EventBody, SeatLifecycle};
 use serde_json::{Value, json};
 
-/// A running Practice team of agents a and b.
+/// A running team of live agents a and b.
 async fn running(s: &Served, name: &str) -> (String, String, String) {
     let id = team(s, name, &["a", "b"]).await;
     start_team(s, &id).await;
@@ -23,9 +27,13 @@ fn record(s: &Served, seat: &str, mode: ControlMode) {
 }
 
 #[tokio::test]
-async fn resume_while_pausing_calls_the_pause_off() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_resume_while_pausing_calls_the_pause_off() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
+    let _runner = common::live::connect(&s).await;
     let (_, a, _) = running(&s, "call-off").await;
     record(&s, &a, ControlMode::Pausing);
 
@@ -46,9 +54,13 @@ async fn resume_while_pausing_calls_the_pause_off() {
 }
 
 #[tokio::test]
-async fn resume_while_still_stopping_is_refused_and_stays_paused() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_resume_while_still_stopping_is_refused_and_stays_paused() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
+    let _runner = common::live::connect(&s).await;
     let (_, a, _) = running(&s, "settling").await;
     ok(control(&s, &a, "pause").await);
     wait_paused(&s, &[&a]).await;
@@ -68,9 +80,13 @@ async fn resume_while_still_stopping_is_refused_and_stays_paused() {
 }
 
 #[tokio::test]
-async fn pause_needs_a_running_agent_without_another_stop() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_pause_needs_a_running_agent_without_another_stop() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
+    let _runner = common::live::connect(&s).await;
     let (id, a, b) = running(&s, "refusals").await;
     ok(control(&s, &a, "hard").await);
     wait_lifecycle(&s, &[&a], SeatLifecycle::Stopped).await;
@@ -93,17 +109,19 @@ async fn pause_needs_a_running_agent_without_another_stop() {
     assert_eq!(mode(&s, &b).await, json!("soft"), "the soft stop is kept");
 }
 
-/// A running solo team whose agent started a child; returns (team, parent, child).
+/// A running team of one agent that started a child; returns (team, parent, child).
 async fn parent_and_child(s: &Served) -> (String, String, String) {
-    let id = common::m2::practice_team(s, "solo").await;
-    let parent = seat(&id, "claude");
+    let id = team(s, "solo", &["lead"]).await;
+    start_team(s, &id).await;
+    let parent = seat(&id, "lead");
     let child = spawn(s, &parent, "child1").await;
     (id, parent, child)
 }
 
-/// `parent` starts a child agent; returns it once it runs.
+/// `parent` starts a child agent (made directly through Sculptured's tool handler, as the parent's
+/// call would make it) with one short task; returns it once it runs.
 async fn spawn(s: &Served, parent: &str, request_id: &str) -> String {
-    let args = json!({"request_id": request_id, "name": "Helper", "task": "Check the endpoints"});
+    let args = json!({"request_id": request_id, "name": "Helper", "task": SAY_OK});
     let (ok, result, error) = common::seat_tools::direct(s, parent, "spawn_agent", args).await;
     assert!(ok, "{error:?}");
     let child = result["child"].as_str().unwrap().to_string();
@@ -112,7 +130,11 @@ async fn spawn(s: &Served, parent: &str, request_id: &str) -> String {
 }
 
 #[tokio::test]
-async fn a_paused_agent_pauses_and_resumes_the_agents_it_started() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_paused_agent_pauses_and_resumes_the_agents_it_started() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let (s, _runner, _dir) = common::seat_tools::with_tools().await;
     let (_, parent, child) = parent_and_child(&s).await;
 
@@ -135,7 +157,11 @@ async fn a_paused_agent_pauses_and_resumes_the_agents_it_started() {
 }
 
 #[tokio::test]
-async fn pause_all_and_resume_all_cover_the_agents_an_agent_started() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_pause_all_and_resume_all_cover_the_agents_an_agent_started() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let (s, _runner, _dir) = common::seat_tools::with_tools().await;
     let (id, parent, child) = parent_and_child(&s).await;
 
@@ -165,7 +191,11 @@ async fn paused_below_a_soft_stop(s: &Served) -> (String, String, String, String
 }
 
 #[tokio::test]
-async fn a_pause_says_what_it_does_to_agents_stopping_another_way() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_pause_says_what_it_does_to_agents_stopping_another_way() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let (s, _runner, _dir) = common::seat_tools::with_tools().await;
     let (_, p, c, _) = paused_below_a_soft_stop(&s).await;
     let body = ok(control(&s, &p, "pause").await);
@@ -184,7 +214,11 @@ async fn a_pause_says_what_it_does_to_agents_stopping_another_way() {
 }
 
 #[tokio::test]
-async fn resume_all_resumes_an_agent_below_a_soft_stop_once() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_resume_all_resumes_an_agent_below_a_soft_stop_once() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let (s, _runner, _dir) = common::seat_tools::with_tools().await;
     let (id, p, c, g) = paused_below_a_soft_stop(&s).await;
     ok(control(&s, &p, "pause").await);

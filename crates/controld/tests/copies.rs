@@ -21,21 +21,30 @@ fn sh(dir: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
+/// A one-agent team recorded as started once and stopped (no model runs); returns (team, its agent's seat).
+async fn stopped_solo(s: &crate::common::m2::Served) -> (String, String) {
+    let id = crate::common::m2::chain(s, "Solo", &[("claude", "Claude", "")], &[]).await;
+    let draft = s.st.store.lock().unwrap().draft(&id).unwrap().unwrap();
+    let rig = rigspec::from_draft(&draft).unwrap().rig;
+    s.st.store
+        .lock()
+        .unwrap()
+        .upsert_rig(
+            &rig,
+            &controld::store::RigSource::Team {
+                id: id.clone(),
+                revision: draft.revision,
+            },
+            model::Desired::Stopped,
+        )
+        .unwrap();
+    (id, rig.seats[0].id.clone())
+}
+
 #[tokio::test]
 async fn an_agent_works_in_its_own_copy_that_merges_back_and_can_be_removed() {
-    let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let seat =
-        s.st.store
-            .lock()
-            .unwrap()
-            .rig_snapshot(&id)
-            .unwrap()
-            .unwrap()
-            .seats[0]
-            .id
-            .clone();
-    crate::common::m2::stop_team(&s, &id).await;
+    let s = crate::common::m2::serve().await;
+    let (id, seat) = stopped_solo(&s).await;
     let proj = s.home.path().join("proj");
     std::fs::create_dir_all(proj.join("src")).unwrap();
     sh(&proj, &["init", "-q", "-b", "main"]);
@@ -135,19 +144,8 @@ async fn an_agent_works_in_its_own_copy_that_merges_back_and_can_be_removed() {
 /// `SCULPTURED_TEST_COPIES_DIR` points this at a real drive (e.g. an exFAT SSD); by default a temp folder.
 #[tokio::test]
 async fn copies_go_to_the_chosen_folder_and_a_missing_drive_is_refused() {
-    let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let seat =
-        s.st.store
-            .lock()
-            .unwrap()
-            .rig_snapshot(&id)
-            .unwrap()
-            .unwrap()
-            .seats[0]
-            .id
-            .clone();
-    crate::common::m2::stop_team(&s, &id).await;
+    let s = crate::common::m2::serve().await;
+    let (id, seat) = stopped_solo(&s).await;
     let proj = s.home.path().join("proj");
     std::fs::create_dir_all(&proj).unwrap();
     sh(&proj, &["init", "-q", "-b", "main"]);

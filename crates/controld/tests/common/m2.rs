@@ -1,4 +1,5 @@
-//! Helpers for M2 integration tests: a served controld, a stub host, HTTP calls and event waits.
+//! Helpers for M2 integration tests: a served controld, a host, HTTP calls and event waits.
+//! Live agents (the real CLIs) are set up with `super::live`.
 //! Later tasks use these and keep their own extra helpers in their own test files.
 #![allow(dead_code)]
 use axum::Router;
@@ -7,7 +8,6 @@ use axum::http::{Request, StatusCode};
 use controld::AppState;
 use controld::store::Store;
 use drivers::Driver;
-use drivers::stub::StubDriver;
 use hostd::journal::Journal;
 use hostd::supervisor::{SeatToolsHost, Supervisor};
 use http_body_util::BodyExt;
@@ -154,10 +154,6 @@ async fn connect_with(
     sup
 }
 
-pub async fn connect_stub(s: &Served) -> Supervisor {
-    connect(s, vec![Arc::new(StubDriver)], None).await
-}
-
 pub fn rid() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -200,23 +196,9 @@ pub fn seat(team: &str, agent: &str) -> String {
     format!("team.{agent}@{team}")
 }
 
-/// Creates a Practice team from a built-in template and starts it; returns the team id once every agent runs.
-pub async fn practice_team(s: &Served, template: &str) -> String {
-    let (status, rec) = call(
-        &s.router,
-        "POST",
-        "/api/teams",
-        json!({ "request_id": rid(), "template": template, "practice": true }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{rec}");
-    let id = rec["draft"]["id"].as_str().unwrap().to_string();
-    start_team(s, &id).await;
-    id
-}
-
-/// A Practice team of `(id, name, job)` agents joined by "hands work to" `(from, to)` links. Not started.
-pub async fn practice_chain(
+/// A team of `(id, name, job)` Claude agents (on the cheapest model, in `live::work_folder`) joined by
+/// "hands work to" `(from, to)` links. Not started: starting it runs real agents (`super::live`).
+pub async fn chain(
     s: &Served,
     name: &str,
     agents: &[(&str, &str, &str)],
@@ -226,7 +208,7 @@ pub async fn practice_chain(
         &s.router,
         "POST",
         "/api/teams",
-        json!({ "request_id": rid(), "template": "blank", "practice": true, "name": name }),
+        json!({ "request_id": rid(), "template": "blank", "name": name }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{rec}");
@@ -235,9 +217,10 @@ pub async fn practice_chain(
         .iter()
         .enumerate()
         .map(|(i, (id, name, job))| {
-            json!({ "id": id, "group_id": null, "name": name, "kind": "practice", "job": job, "folder": null, "x": 40 + 260 * i as i32, "y": 40 })
+            json!({ "id": id, "group_id": null, "name": name, "kind": "claude", "job": job, "folder": null, "x": 40 + 260 * i as i32, "y": 40 })
         })
         .collect();
+    super::live::make_live(s, &mut draft);
     draft["connections"] =
         links.iter().map(|(from, to)| json!({ "id": format!("c-{from}-{to}"), "from": from, "to": to, "kind": "hands-work-to" })).collect();
     let id = draft["id"].as_str().unwrap().to_string();

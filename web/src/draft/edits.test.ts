@@ -28,7 +28,7 @@ describe('ids', () => {
     const base = teamDraft();
     const d = { ...base, agents: [...base.agents, { ...base.agents[0], id: 'x', name: 'claude 1' }] };
     expect(nextAgentName(d, 'claude')).toBe('Claude 2');
-    expect(nextAgentName(d, 'practice')).toBe('Practice 1');
+    expect(nextAgentName(d, 'codex')).toBe('Codex 1');
   });
 
   it('derives seat ids and names from immutable ids', () => {

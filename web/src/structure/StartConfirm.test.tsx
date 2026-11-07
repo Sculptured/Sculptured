@@ -37,16 +37,15 @@ beforeEach(() => {
 });
 
 describe('startConfirmation', () => {
-  it('is null for a team of Practice agents only: those start without asking', () => {
-    expect(startConfirmation(teamDraft(), '/home/me')).toBeNull();
+  it('is null before the design has loaded', () => {
     expect(startConfirmation(undefined, '/home/me')).toBeNull();
   });
 
   it('says how many real agents start, where, on whose account, and who goes first', () => {
-    const d = teamDraft({ agents: [claude('lead'), claude('builder'), draftAgent('helper')], connections: [{ id: 'c', from: 'lead', to: 'builder', kind: 'hands-work-to' }] });
+    const d = teamDraft({ agents: [claude('lead'), claude('builder'), claude('helper')], connections: [{ id: 'c', from: 'lead', to: 'builder', kind: 'hands-work-to' }] });
     expect(startConfirmation(d, '/home/me')).toEqual({
-      title: 'Start 2 Claude agents?',
-      // The Practice helper has no upstream either, so it starts first too.
+      title: 'Start 3 Claude agents?',
+      // The helper has no upstream either, so it starts first too.
       body: 'They run in ~/projects/web-shop and use your Claude account. First to start: Lead and Helper.',
       efficiency: [],
       limits: [NO_LIMITS],
@@ -121,17 +120,6 @@ describe('Start team asks first when the team has real agents', () => {
     await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Start team' }));
     await waitFor(() => expect(api.startTeam).toHaveBeenCalledWith('t', expect.any(Number), expect.any(String), false, false));
     await waitFor(() => expect(where()).toBe('/p/t/board?mode=run'));
-  });
-
-  it('a Practice-only team starts at once, with no dialog', async () => {
-    fakeTeam();
-    vi.mocked(api.startTeam).mockResolvedValue({ rig: 't', warnings: [] });
-    renderAt('/team/t/structure');
-    const start = await screen.findByRole('button', { name: 'Start team' });
-    await waitFor(() => expect(start).toBeEnabled());
-    await userEvent.setup().click(start);
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-    await waitFor(() => expect(api.startTeam).toHaveBeenCalled());
   });
 
   it('on the Live board of a stopped team too', async () => {

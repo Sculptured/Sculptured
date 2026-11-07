@@ -22,7 +22,7 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, cwd: "." }
 "#;
 
 fn tables(st: &controld::AppState) -> Vec<String> {
@@ -144,7 +144,7 @@ async fn restore_offer_is_projected_and_cleared_by_a_new_tenure() {
     let started = EventBody::TenureStarted {
         tenure: 2,
         cause: TenureCause::Fresh,
-        driver: "stub".into(),
+        driver: "claude-stream".into(),
         native_session_id: None,
         caps: Caps::default(),
     };
@@ -227,12 +227,24 @@ async fn a_limit_is_projected_and_cleared_by_the_next_turn() {
     );
 }
 
+/// Live: a stopped agent relaunched fresh starts tenure 2 with the given cause; its folder is recorded.
 #[tokio::test]
-async fn relaunch_starts_a_new_tenure_with_the_given_cause_and_records_the_folder() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_relaunch_starts_a_new_tenure_with_the_given_cause_and_records_the_folder() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve().await;
-    crate::common::m2::connect_stub(&s).await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let agent = crate::common::m2::seat(&id, "claude");
+    let _host = crate::common::live::connect(&s).await;
+    let id = crate::common::m2::chain(
+        &s,
+        "Relaunch",
+        &[("a", "A", "Reply with the single word OK and nothing else.")],
+        &[],
+    )
+    .await;
+    crate::common::m2::start_team(&s, &id).await;
+    let agent = crate::common::m2::seat(&id, "a");
     let cwd =
         s.st.store
             .lock()
@@ -244,13 +256,13 @@ async fn relaunch_starts_a_new_tenure_with_the_given_cause_and_records_the_folde
             .unwrap();
     assert_eq!(
         std::fs::canonicalize(&cwd).unwrap(),
-        std::fs::canonicalize(s.home.path()).unwrap(),
-        "a Practice agent without a folder runs in the home folder ({cwd})"
+        std::fs::canonicalize(crate::common::live::work_folder(&s)).unwrap(),
+        "the agent runs in its folder ({cwd})"
     );
     controld::reconciler::stop_seat(&s.st, &agent)
         .await
         .unwrap();
-    crate::common::wait_for("stopped", || {
+    crate::common::live::wait_for("stopped", || {
         crate::common::lifecycle(&s.st, &agent) == Some(SeatLifecycle::Stopped)
     })
     .await;
@@ -286,6 +298,7 @@ async fn relaunch_starts_a_new_tenure_with_the_given_cause_and_records_the_folde
                 }
             ))
     );
+    crate::common::m2::stop_team(&s, &id).await;
 }
 
 #[test]

@@ -33,8 +33,8 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
-      - { id: b, agent_ref: "local:b", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, cwd: "." }
+      - { id: b, agent_ref: "local:b", profile: default, runtime: claude-code, cwd: "." }
 "#;
 
 /// Says Hello as `hello` (raw JSON, so an M1 shape can be sent) and waits for Welcome.
@@ -60,7 +60,7 @@ fn m1_hello(live: &[&str]) -> Value {
         host_id: "local".into(),
         protocol: PROTOCOL_VERSION,
         drivers: vec![DriverInfo {
-            name: "stub".into(),
+            name: "claude-stream".into(),
             caps: Caps::default(),
         }],
         live_seats: live.iter().map(|s| s.to_string()).collect(),
@@ -103,7 +103,7 @@ fn restricted_launch() -> HostCommand {
     };
     HostCommand::Launch {
         seat: "dev.a@r".into(),
-        driver: "stub".into(),
+        driver: "claude-stream".into(),
         params,
     }
 }
@@ -266,7 +266,7 @@ async fn a_new_connection_ends_the_evicted_one() {
 
 #[test]
 fn an_action_is_keyed_by_seat_session_and_call() {
-    // Call ids repeat across sessions (the stub's `turn-1-call`, fake-claude's `toolu_1`).
+    // Call ids repeat across sessions (fake-claude replays `toolu_1` in every session).
     let store = controld::store::Store::open_in_memory().unwrap();
     let insert = "INSERT INTO actions (seat, call_id, rig, tenure, called_seq, at_ms, tool, input_json) VALUES ('dev.a@r', 'toolu_1', 'r', ?1, 1, 0, 'Bash', '{}')";
     store.connection().execute(insert, [1]).unwrap();
@@ -506,7 +506,7 @@ async fn an_answer_is_refused_plainly_on_an_older_runner_and_the_question_reopen
     );
 }
 
-/// `launch::launch_params` goes through `fit_params`: an unrestricted Practice agent on an older runner
+/// `launch::launch_params` goes through `fit_params`: an unrestricted Claude agent on an older runner
 /// launches without Sculptured's tools and the drop is recorded on it; a runner that serves them keeps them.
 #[tokio::test]
 async fn launch_params_drop_seat_tools_on_an_older_runner_and_keep_them_on_a_current_one() {
@@ -528,11 +528,24 @@ async fn launch_params_drop_seat_tools_on_an_older_runner_and_keep_them_on_a_cur
             _ => None,
         })
         .collect();
-    assert_eq!(dropped, vec![vec!["seat-tools".to_string()]]);
+    // A Claude agent also leaves out the person's own setup and its protections on that runner.
+    assert_eq!(
+        dropped,
+        vec![vec![
+            features::SEAT_TOOLS.to_string(),
+            features::CLAUDE_SETUP.to_string(),
+            features::PROTECTION.to_string()
+        ]]
+    );
     drop(ws);
     crate::common::wait_for("host gone", || !s.st.hosts.is_connected("local")).await;
 
-    let _ws = host(&s, hello(&[], &[], &[features::SEAT_TOOLS])).await;
+    let current = [
+        features::SEAT_TOOLS,
+        features::CLAUDE_SETUP,
+        features::PROTECTION,
+    ];
+    let _ws = host(&s, hello(&[], &[], &current)).await;
     crate::common::wait_for("host connected", || s.st.hosts.is_connected("local")).await;
     let params = controld::launch::launch_params(&s.st, "local", "r", seat, s.home.path()).unwrap();
     assert_eq!(
@@ -565,6 +578,8 @@ async fn relaunch_drops_the_usage_baseline_on_a_runner_that_cannot_seed_it() {
                 features::POSTURE,
                 features::SEAT_TOOLS,
                 features::ANSWER,
+                features::CLAUDE_SETUP,
+                features::PROTECTION,
             ],
         ),
     )
@@ -572,7 +587,7 @@ async fn relaunch_drops_the_usage_baseline_on_a_runner_that_cannot_seed_it() {
     crate::common::wait_for("host connected", || s.st.hosts.is_connected("local")).await;
     let st = s.st.clone();
     let mode = host_proto::LaunchMode::Resume {
-        native_session_id: "stub-dev.a@r".into(),
+        native_session_id: "session-dev.a@r".into(),
     };
     let relaunch = tokio::spawn(async move {
         controld::launch::relaunch(
@@ -614,7 +629,7 @@ async fn a_command_the_runner_cannot_do_is_refused_as_older_runner() {
     crate::common::wait_for("host connected", || s.st.hosts.is_connected("local")).await;
     let restart = || HostCommand::Restart {
         seat: "dev.a@r".into(),
-        driver: "stub".into(),
+        driver: "claude-stream".into(),
         params: LaunchParams {
             cwd: "/tmp".into(),
             usage_baseline: Some([1, 2, 3, 4]),

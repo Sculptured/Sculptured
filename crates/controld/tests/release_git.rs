@@ -7,7 +7,7 @@ async fn project_git_is_scoped_and_commits_only_reviewed_index() {
     let s = crate::common::m2::serve().await;
     let folder = s.home.path().join("project");
     std::fs::create_dir(&folder).unwrap();
-    let mut d = rigspec::templates::template("blank", "git-test", "Git test", false).unwrap();
+    let mut d = rigspec::templates::template("blank", "git-test", "Git test").unwrap();
     d.folder = Some(folder.to_string_lossy().into());
     s.st.store.lock().unwrap().insert_draft(&d).unwrap();
     let route = "/api/teams/git-test/git";

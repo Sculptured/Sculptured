@@ -1,9 +1,13 @@
+//! controld and its agent runner over the host link: booting layers, losing and regaining the link,
+//! sending and stopping. The live tests launch the real Claude Code CLI (haiku); most send it nothing,
+//! so no model is asked anything. The others never launch an agent.
 mod common;
+#[path = "common/live_controls.rs"]
+mod live_controls;
 
 use controld::store::Store;
 use controld::{AppState, reconciler};
 use drivers::Driver;
-use drivers::stub::StubDriver;
 use hostd::journal::Journal;
 use hostd::supervisor::Supervisor;
 use model::{Desired, EventBody, SeatLifecycle};
@@ -17,8 +21,8 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
-      - { id: b, agent_ref: "local:b", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, model: haiku, cwd: "." }
+      - { id: b, agent_ref: "local:b", profile: default, runtime: claude-code, model: haiku, cwd: "." }
     edges: [{ kind: delegates_to, from: a, to: b }]
 "#;
 
@@ -37,8 +41,12 @@ async fn serve() -> (AppState, String) {
     (st, format!("ws://{addr}/host"))
 }
 
+/// The driver a live runner offers for Claude agents.
+const CLAUDE: &str = "claude-stream";
+
+/// A runner with the real CLIs (`common::live`).
 fn supervisor() -> Supervisor {
-    let drivers: Vec<Arc<dyn Driver>> = vec![Arc::new(StubDriver)];
+    let drivers: Vec<Arc<dyn Driver>> = crate::common::live::drivers();
     Supervisor::new(
         "local".into(),
         drivers,
@@ -92,7 +100,11 @@ fn first_launching_seq(st: &AppState, seat: &str) -> i64 {
 }
 
 #[tokio::test]
-async fn boot_runs_layers_in_order_and_survives_link_loss() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_boot_runs_layers_in_order_and_survives_link_loss() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
@@ -100,7 +112,7 @@ async fn boot_runs_layers_in_order_and_survives_link_loss() {
 
     let (s1, u1) = (sup.clone(), url.clone());
     let link = tokio::spawn(async move { hostd::link::run_link(&u1, TOKEN, &s1).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
 
     reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
     assert_eq!(
@@ -142,13 +154,17 @@ async fn boot_runs_layers_in_order_and_survives_link_loss() {
 }
 
 #[tokio::test]
-async fn hostd_restart_puts_dead_seats_in_attention() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_hostd_restart_puts_dead_seats_in_attention() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
     let (s1, u1) = (supervisor(), url.clone());
     let link = tokio::spawn(async move { hostd::link::run_link(&u1, TOKEN, &s1).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
     assert_eq!(
         crate::common::lifecycle(&st, "dev.a@r"),
@@ -179,34 +195,39 @@ async fn hostd_restart_puts_dead_seats_in_attention() {
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn send_and_stop_through_the_link() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_send_and_stop_through_the_link() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
     let sup = supervisor();
     let s1 = sup.clone();
     let _link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &s1).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
 
     let id = reconciler::send_message(
         &st,
         "dev.a@r",
-        "hello".into(),
+        live_controls::SAY_OK.into(),
         model::MessageIntent::Inform,
         false,
     )
     .await
     .unwrap();
-    crate::common::wait_for("message consumed", || {
+    crate::common::live::wait_for("message consumed", || {
         st.store.lock().unwrap().message_state(&id).unwrap() == Some(model::MessageState::Consumed)
     })
     .await;
+    crate::common::live::wait_turns(&st, "dev.a@r", 1).await;
     let texts: Vec<String> = st
         .store
         .lock()
         .unwrap()
-        .events_for_seat("dev.a@r", 0, 100)
+        .events_for_seat("dev.a@r", 0, 1000)
         .unwrap()
         .into_iter()
         .filter_map(|e| match e.body {
@@ -214,7 +235,10 @@ async fn send_and_stop_through_the_link() {
             _ => None,
         })
         .collect();
-    assert_eq!(texts, ["stub received: hello"]);
+    assert!(
+        texts.iter().any(|t| !t.trim().is_empty()),
+        "the agent's reply is recorded: {texts:?}"
+    );
 
     reconciler::stop_rig(st.clone(), "r".into()).await.unwrap();
     crate::common::wait_for("seats stopped", || {
@@ -250,7 +274,7 @@ async fn unsupported_runtime_needs_attention() {
     let rig = boot_rig(
         &st,
         &SPEC.replace(
-            "runtime: stub, cwd: \".\" }\n      - { id: b",
+            "runtime: claude-code, model: haiku, cwd: \".\" }\n      - { id: b",
             "runtime: pi, cwd: \".\" }\n      - { id: b",
         ),
     );
@@ -283,7 +307,6 @@ async fn disconnected_host_needs_attention() {
 
 // ---- fix round 1 ----
 
-use drivers::{DriverError, LaunchSpec, Session};
 use futures::{SinkExt, StreamExt};
 use host_proto::{FromHost, PROTOCOL_VERSION};
 use model::TurnStatus;
@@ -359,13 +382,17 @@ async fn expect_closed_after_hello(url: &str, host_id: &str, protocol: u32) {
 }
 
 #[tokio::test]
-async fn next_layer_launches_after_previous_layer_is_running() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_next_layer_launches_after_previous_layer_is_running() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
     let sup = supervisor();
     let _link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
     let a_running = seq_where(&st, "dev.a@r", lc(SeatLifecycle::Running)).unwrap();
     let b_launching = seq_where(&st, "dev.b@r", lc(SeatLifecycle::Launching)).unwrap();
@@ -422,13 +449,17 @@ async fn send_without_host_records_message_failed() {
 }
 
 #[tokio::test]
-async fn launching_and_stopping_seats_go_stale_on_link_loss() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_launching_and_stopping_seats_go_stale_on_link_loss() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
     let sup = supervisor();
     let link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
     set_lifecycle(&st, "dev.a@r", SeatLifecycle::Launching);
     set_lifecycle(&st, "dev.b@r", SeatLifecycle::Stopping);
@@ -441,39 +472,49 @@ async fn launching_and_stopping_seats_go_stale_on_link_loss() {
 }
 
 #[tokio::test]
-async fn interrupt_reaches_the_seat_before_the_instruction() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_interrupt_reaches_the_seat_before_the_instruction() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
     let sup = supervisor();
     let _link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
 
     let first = reconciler::send_message(
         &st,
         "dev.a@r",
-        "hang".into(),
+        live_controls::HANG.into(),
         model::MessageIntent::Inform,
         false,
     )
     .await
     .unwrap();
-    crate::common::wait_for("hang consumed", || {
+    crate::common::live::wait_for("the long Bash call", || {
         st.store.lock().unwrap().message_state(&first).unwrap()
             == Some(model::MessageState::Consumed)
+            && seq_where(
+                &st,
+                "dev.a@r",
+                |b| matches!(b, EventBody::ToolCalled { name, .. } if name == "Bash"),
+            )
+            .is_some()
     })
     .await;
     let second = reconciler::send_message(
         &st,
         "dev.a@r",
-        "next".into(),
+        live_controls::SAY_OK.into(),
         model::MessageIntent::Instruct,
         true,
     )
     .await
     .unwrap();
-    crate::common::wait_for("instruction consumed", || {
+    crate::common::live::wait_for("instruction consumed", || {
         st.store.lock().unwrap().message_state(&second).unwrap()
             == Some(model::MessageState::Consumed)
     })
@@ -486,25 +527,37 @@ async fn interrupt_reaches_the_seat_before_the_instruction() {
         .unwrap();
     let interrupted = events
         .iter()
-        .find(|e| matches!(&e.body, EventBody::TurnEnded { turn_id, status: TurnStatus::Interrupted } if turn_id == "turn-1"))
-        .expect("turn-1 interrupted")
+        .find(|e| {
+            matches!(
+                &e.body,
+                EventBody::TurnEnded {
+                    status: TurnStatus::Interrupted,
+                    ..
+                }
+            )
+        })
+        .expect("the long turn was interrupted")
         .seq;
     let consumed = events
         .iter()
-        .find(|e| matches!(&e.body, EventBody::MessageConsumed { message_id, turn_id } if *message_id == second && turn_id == "turn-2"))
-        .expect("turn-2 consumed the instruction")
+        .find(|e| matches!(&e.body, EventBody::MessageConsumed { message_id, .. } if *message_id == second))
+        .expect("a later turn consumed the instruction")
         .seq;
     assert!(interrupted < consumed);
 }
 
 #[tokio::test]
-async fn concurrent_boots_do_not_mark_running_seats_attention() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_concurrent_boots_do_not_mark_running_seats_attention() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
     let sup = supervisor();
     let _link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     let p = dir.path().to_path_buf();
     tokio::join!(
         reconciler::boot(st.clone(), rig.clone(), p.clone()),
@@ -527,57 +580,44 @@ async fn concurrent_boots_do_not_mark_running_seats_attention() {
     assert!(seq_where(&st, "dev.a@r", lc(SeatLifecycle::Attention)).is_none());
 }
 
-/// Stub driver whose launch takes a while, so a stop can land while layer 0 is booting.
-struct SlowStub;
-
-#[async_trait::async_trait]
-impl Driver for SlowStub {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(&self, spec: LaunchSpec) -> Result<Box<dyn Session>, DriverError> {
-        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
-        StubDriver.launch(spec).await
-    }
-    async fn resume(
-        &self,
-        spec: LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn Session>, DriverError> {
-        StubDriver.resume(spec, native_id).await
-    }
-}
-
+/// The runner's link drops just before a boot, so layer 0 waits for the computer to come back (as
+/// after a Wi-Fi change): a stop lands while it waits.
 #[tokio::test]
-async fn stop_during_layer_zero_prevents_layer_one() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_stop_during_layer_zero_prevents_layer_one() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
-    let drivers: Vec<Arc<dyn Driver>> = vec![Arc::new(SlowStub)];
-    let sup = Supervisor::new(
-        "local".into(),
-        drivers,
-        Journal::open_in_memory(10_000).unwrap(),
-    );
-    let _link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    let sup = supervisor();
+    let (s1, u1) = (sup.clone(), url.clone());
+    let link = tokio::spawn(async move { hostd::link::run_link(&u1, TOKEN, &s1).await });
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
+    link.abort();
+    crate::common::wait_for("host gone", || !st.hosts.is_connected("local")).await;
     let (st2, p) = (st.clone(), dir.path().to_path_buf());
     let booting = tokio::spawn(async move { reconciler::boot(st2, rig, p).await });
     crate::common::wait_for("boot started", || st.is_booting("r")).await;
     reconciler::stop_rig(st.clone(), "r".into()).await.unwrap();
+    let _link2 = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
     booting.await.unwrap();
     assert!(
         seq_where(&st, "dev.b@r", lc(SeatLifecycle::Launching)).is_none(),
         "layer 1 launched after stop"
     );
     assert!(!st.is_booting("r"));
-    crate::common::wait_for("launched seat stopped", || {
-        crate::common::lifecycle(&st, "dev.a@r") == Some(SeatLifecycle::Stopped)
+    crate::common::live::wait_for("nothing left running", || {
+        ["dev.a@r", "dev.b@r"].iter().all(|x| {
+            !matches!(
+                crate::common::lifecycle(&st, x),
+                Some(SeatLifecycle::Running | SeatLifecycle::Launching | SeatLifecycle::Stopping)
+            )
+        })
     })
     .await;
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
     for seat in ["dev.a@r", "dev.b@r"] {
         assert_ne!(
             crate::common::lifecycle(&st, seat),
@@ -588,14 +628,18 @@ async fn stop_during_layer_zero_prevents_layer_one() {
 }
 
 #[tokio::test]
-async fn attention_seat_with_live_process_recovers_on_reconnect_and_can_be_stopped() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_attention_seat_with_live_process_recovers_on_reconnect_and_can_be_stopped() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
     let sup = supervisor();
     let (s1, u1) = (sup.clone(), url.clone());
     let link = tokio::spawn(async move { hostd::link::run_link(&u1, TOKEN, &s1).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
 
     set_lifecycle(&st, "dev.a@r", SeatLifecycle::Attention);
@@ -626,93 +670,23 @@ async fn attention_seat_with_live_process_recovers_on_reconnect_and_can_be_stopp
 
 // ---- fix round 2 ----
 
-/// Wraps the stub so a session's first event (SessionReady) arrives 300ms late: the
-/// Launch command returns while the seat is still Launching.
-struct DelayedReady;
-
-struct DelayedSession(Box<dyn Session>);
-
-#[async_trait::async_trait]
-impl Session for DelayedSession {
-    async fn send(&mut self, msg: drivers::OutboundMessage) -> Result<(), DriverError> {
-        self.0.send(msg).await
-    }
-    async fn interrupt(&mut self) -> Result<(), DriverError> {
-        self.0.interrupt().await
-    }
-    async fn stop(&mut self, grace: std::time::Duration) -> Result<(), DriverError> {
-        self.0.stop(grace).await
-    }
-    fn take_events(&mut self) -> Option<futures::stream::BoxStream<'static, drivers::DriverEvent>> {
-        let inner = self.0.take_events()?;
-        Some(
-            inner
-                .enumerate()
-                .then(|(i, e)| async move {
-                    if i == 0 {
-                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                    }
-                    e
-                })
-                .boxed(),
-        )
-    }
-}
-
-#[async_trait::async_trait]
-impl Driver for DelayedReady {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(&self, spec: LaunchSpec) -> Result<Box<dyn Session>, DriverError> {
-        Ok(Box::new(DelayedSession(StubDriver.launch(spec).await?)))
-    }
-    async fn resume(
-        &self,
-        spec: LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn Session>, DriverError> {
-        Ok(Box::new(DelayedSession(
-            StubDriver.resume(spec, native_id).await?,
-        )))
-    }
-}
-
-async fn delayed_host(st: &AppState, url: String) {
-    let drivers: Vec<Arc<dyn Driver>> = vec![Arc::new(DelayedReady)];
-    let sup = Supervisor::new(
-        "local".into(),
-        drivers,
-        Journal::open_in_memory(10_000).unwrap(),
-    );
-    tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
-}
-
+/// The runner's link drops just before the first boot, so it waits for the computer to come back
+/// while a second boot of the same team is asked for: that one returns at once.
 #[tokio::test]
-async fn layer_wait_holds_next_layer_until_previous_is_running() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_duplicate_boot_is_an_immediate_no_op() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
-    delayed_host(&st, url).await;
-    reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
-    let a_running = seq_where(&st, "dev.a@r", lc(SeatLifecycle::Running)).unwrap();
-    let b_launching = seq_where(&st, "dev.b@r", lc(SeatLifecycle::Launching)).unwrap();
-    assert!(
-        b_launching > a_running,
-        "b launched at {b_launching} before a was running at {a_running}"
-    );
-}
-
-#[tokio::test]
-async fn duplicate_boot_is_an_immediate_no_op() {
-    let (st, url) = serve().await;
-    let dir = tempfile::tempdir().unwrap();
-    let rig = boot_rig(&st, SPEC);
-    delayed_host(&st, url).await;
+    let sup = supervisor();
+    let (s1, u1) = (sup.clone(), url.clone());
+    let link = tokio::spawn(async move { hostd::link::run_link(&u1, TOKEN, &s1).await });
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
+    link.abort();
+    crate::common::wait_for("host gone", || !st.hosts.is_connected("local")).await;
     let (st1, r1, p1) = (st.clone(), rig.clone(), dir.path().to_path_buf());
     let first = tokio::spawn(async move { reconciler::boot(st1, r1, p1).await });
     crate::common::wait_for("boot started", || st.is_booting("r")).await;
@@ -723,6 +697,7 @@ async fn duplicate_boot_is_an_immediate_no_op() {
         "duplicate boot waited: {:?}",
         started.elapsed()
     );
+    let _link2 = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
     first.await.unwrap();
     for seat in ["dev.a@r", "dev.b@r"] {
         let launches = st
@@ -748,7 +723,7 @@ async fn send_to_seat_not_running_on_connected_host_fails_end_to_end() {
     boot_rig(&st, SPEC);
     let sup = supervisor();
     let _link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     let err = reconciler::send_message(
         &st,
         "dev.a@r",
@@ -780,7 +755,11 @@ async fn send_to_seat_not_running_on_connected_host_fails_end_to_end() {
 /// I8: controld's cursor for the host is 50 but hostd's journal is fresh. The new
 /// events must still be ingested (the journal fast-forwards to 51).
 #[tokio::test]
-async fn reset_host_journal_events_are_still_ingested() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_reset_host_journal_events_are_still_ingested() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (st, url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(&st, SPEC);
@@ -796,7 +775,7 @@ async fn reset_host_journal_events_are_still_ingested() {
     assert_eq!(st.store.lock().unwrap().host_cursor("local").unwrap(), 50);
     let sup = supervisor();
     let _link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     tokio::time::timeout(
         std::time::Duration::from_secs(10),
         reconciler::boot(st.clone(), rig, dir.path().to_path_buf()),
@@ -828,17 +807,16 @@ fn provenance(st: &AppState, seat: &str) -> Option<model::Provenance> {
         .and_then(|s| s.lifecycle_provenance)
 }
 
-/// M1: lifecycle changes controld infers are heuristic; the host's own are protocol-observed.
+/// M1: lifecycle changes controld infers are heuristic: no driver for the runtime, or no runner.
 #[tokio::test]
-async fn inferred_lifecycle_changes_are_labelled_heuristic() {
-    use model::Provenance::{Heuristic, ProtocolObserved};
-    // No driver for the runtime, and no host connected.
+async fn inferred_lifecycle_changes_without_a_runner_are_labelled_heuristic() {
+    use model::Provenance::Heuristic;
     let (st, _url) = serve().await;
     let dir = tempfile::tempdir().unwrap();
     let rig = boot_rig(
         &st,
         &SPEC.replace(
-            "runtime: stub, cwd: \".\" }\n      - { id: b",
+            "runtime: claude-code, model: haiku, cwd: \".\" }\n      - { id: b",
             "runtime: pi, cwd: \".\" }\n      - { id: b",
         ),
     );
@@ -849,13 +827,22 @@ async fn inferred_lifecycle_changes_are_labelled_heuristic() {
         Some(Heuristic),
         "host not connected"
     );
+}
 
-    // Running comes from the host; unreachable and reconnected-without-process are inferred.
+/// M1: Running comes from the host; unreachable and reconnected-without-process are inferred.
+#[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_inferred_lifecycle_changes_are_labelled_heuristic() {
+    use model::Provenance::{Heuristic, ProtocolObserved};
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
     let (st, url) = serve().await;
     let rig = boot_rig(&st, SPEC);
     let (s1, u1) = (supervisor(), url.clone());
     let link = tokio::spawn(async move { hostd::link::run_link(&u1, TOKEN, &s1).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     reconciler::boot(st.clone(), rig, dir.path().to_path_buf()).await;
     assert_eq!(provenance(&st, "dev.a@r"), Some(ProtocolObserved));
     link.abort();
@@ -889,7 +876,7 @@ async fn stopping_an_attention_seat_with_no_process_marks_it_stopped() {
     boot_rig(&st, SPEC);
     let sup = supervisor();
     let _link = tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || st.hosts.has_driver("local", CLAUDE)).await;
     set_lifecycle(&st, "dev.a@r", SeatLifecycle::Attention);
     set_lifecycle(&st, "dev.b@r", SeatLifecycle::Attention);
 
@@ -931,6 +918,6 @@ async fn a_connected_runner_without_the_driver_says_what_it_cannot_run() {
     );
     assert_eq!(
         reason(&st, "dev.b@r").as_deref(),
-        Some("Sculptured's agent runner can't run Practice agents")
+        Some("Sculptured's agent runner can't run Claude agents")
     );
 }

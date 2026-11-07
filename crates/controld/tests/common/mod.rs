@@ -1,6 +1,7 @@
 //! Helpers shared by the controld integration tests.
 #![allow(dead_code)]
 pub mod community;
+pub mod live;
 pub mod m2;
 pub mod pausing;
 pub mod seat_tools;

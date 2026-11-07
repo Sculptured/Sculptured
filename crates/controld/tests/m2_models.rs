@@ -13,7 +13,7 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, cwd: "." }
 "#;
 
 const A: &str = "dev.a@r";

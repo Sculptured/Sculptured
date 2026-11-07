@@ -1,24 +1,27 @@
 //! Proposed changes: an agent calls `propose_change` before changing a business system. Sculptured checks
 //! the team's rules itself, approves a change that passes them when the team allows that, and otherwise asks
-//! a person; nobody answering in time means not approved. Practice agents through the real seat-tools socket.
+//! a person; nobody answering in time means not approved. Live: the buyer runs on the real Claude Code
+//! CLI and calls `propose_change` through the real seat-tools shim and socket.
 mod common;
 use axum::http::StatusCode;
-use common::m2::{call, get, rid, say, seat, start_team, wait_event};
+use common::live::wait_event;
+use common::m2::{call, get, rid, say, seat, start_team};
 use model::{EventBody, QuestionSource};
 use serde_json::{Value, json};
 
-/// A Practice buyer on a team whose rules allow purchase orders up to $5,000 from two suppliers.
+/// A live buyer on a team whose rules allow purchase orders up to $5,000 from two suppliers.
 async fn buying_team(s: &common::m2::Served, approve_within: bool) -> (String, String) {
     let (status, rec) = call(
         &s.router,
         "POST",
         "/api/teams",
-        json!({ "request_id": rid(), "template": "blank", "practice": true, "name": "Buying" }),
+        json!({ "request_id": rid(), "template": "blank", "name": "Buying" }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{rec}");
     let mut draft = rec["draft"].clone();
-    draft["agents"] = json!([{ "id": "buyer", "group_id": null, "name": "Buyer", "kind": "practice", "job": "", "folder": null, "x": 40, "y": 40 }]);
+    draft["agents"] = json!([{ "id": "buyer", "group_id": null, "name": "Buyer", "kind": "claude", "job": "", "folder": null, "x": 40, "y": 40 }]);
+    common::live::make_live(s, &mut draft);
     draft["mandate"] = json!({ "approve_within": approve_within, "rules": [
         { "id": "limit", "action": "create_purchase_order", "field": "amount", "test": { "kind": "at-most", "value": 5000 } },
         { "id": "vendor", "action": "create_purchase_order", "field": "supplier", "test": { "kind": "one-of", "values": ["Acme Hydraulics", "Bolt & Co"] } },
@@ -32,24 +35,28 @@ async fn buying_team(s: &common::m2::Served, approve_within: bool) -> (String, S
     (id, buyer)
 }
 
+/// The operator's message asking the buyer to propose one purchase order with exactly these arguments.
 fn order(amount: u32, supplier: &str) -> String {
     let p = json!({ "action": "create_purchase_order", "system": "ERP", "summary": format!("Order 2 SP-118 bearings from {supplier}, ${amount}"),
         "payload": { "amount": amount, "supplier": supplier, "item": "SP-118", "qty": 2 }, "reason": "the press is down" });
-    format!("propose_change:{p}")
+    format!(
+        "Call your propose_change tool exactly once with exactly these arguments: {p}\nWhen it answers, reply with one short sentence. Do not use any other tool."
+    )
 }
 
+/// The output of the buyer's tool call whose result contains `words` (Sculptured's answer to it).
 async fn reply(s: &common::m2::Served, buyer: &str, words: &str) -> String {
     let e = wait_event(
         &s.st,
         buyer,
         words,
-        |b| matches!(b, EventBody::AgentText { text, .. } if text.contains(words)),
+        |b| matches!(b, EventBody::ToolResulted { output, .. } if output.contains(words)),
     )
     .await;
-    let EventBody::AgentText { text, .. } = e.body else {
+    let EventBody::ToolResulted { output, .. } = e.body else {
         unreachable!()
     };
-    text
+    output
 }
 
 async fn changes(s: &common::m2::Served, id: &str) -> Value {
@@ -59,17 +66,21 @@ async fn changes(s: &common::m2::Served, id: &str) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_change_within_the_rules_is_approved_by_them_without_asking_anyone() {
-    let (s, _sup, _dir) = common::seat_tools::with_tools().await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_change_within_the_rules_is_approved_by_them_without_asking_anyone() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (s, _sup, _dir) = crate::common::live::with_tools().await;
     let (id, buyer) = buying_team(&s, true).await;
     say(&s, &buyer, &order(4200, "Acme Hydraulics")).await;
     let text = reply(&s, &buyer, "Approved by the team's rules").await;
     assert!(text.contains("Carry out exactly this change"), "{text}");
     let v = changes(&s, &id).await;
     let c = &v["changes"][0];
-    assert_eq!(
-        c["summary"],
-        "Order 2 SP-118 bearings from Acme Hydraulics, $4200"
+    assert!(
+        c["summary"].as_str().unwrap().contains("Acme Hydraulics"),
+        "{c}"
     );
     assert_eq!(c["agent_name"], "Buyer");
     assert_eq!(c["payload"]["item"], "SP-118");
@@ -91,8 +102,12 @@ async fn a_change_within_the_rules_is_approved_by_them_without_asking_anyone() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_change_over_the_limit_waits_for_a_person_who_can_refuse_it() {
-    let (s, _sup, _dir) = common::seat_tools::with_tools().await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_change_over_the_limit_waits_for_a_person_who_can_refuse_it() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (s, _sup, _dir) = crate::common::live::with_tools().await;
     let (id, buyer) = buying_team(&s, true).await;
     say(&s, &buyer, &order(7300, "Acme Hydraulics")).await;
     let e = wait_event(&s.st, &buyer, "an approval", |b| {
@@ -109,12 +124,13 @@ async fn a_change_over_the_limit_waits_for_a_person_who_can_refuse_it() {
         unreachable!()
     };
     assert_eq!(source, QuestionSource::Approval);
-    assert_eq!(
-        prompt.text,
-        "Order 2 SP-118 bearings from Acme Hydraulics, $7300"
-    );
+    assert!(prompt.text.contains("Acme Hydraulics"), "{}", prompt.text);
     let input = prompt.tool_input.unwrap();
-    assert_eq!(input["checks"][0]["words"], "amount is 7300, at most 5000");
+    let words = input["checks"][0]["words"].as_str().unwrap();
+    assert!(
+        words.starts_with("amount is") && words.ends_with("at most 5000"),
+        "{words}"
+    );
     assert_eq!(input["checks"][0]["passed"], false);
     let (_, inbox) = get(&s.router, "/api/inbox").await;
     assert_eq!(inbox[0]["kind"], "approval", "{inbox}");
@@ -148,8 +164,12 @@ async fn a_change_over_the_limit_waits_for_a_person_who_can_refuse_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_person_can_approve_and_a_team_without_approve_within_always_asks() {
-    let (s, _sup, _dir) = common::seat_tools::with_tools().await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_person_can_approve_and_a_team_without_approve_within_always_asks() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (s, _sup, _dir) = crate::common::live::with_tools().await;
     let (id, buyer) = buying_team(&s, false).await;
     say(&s, &buyer, &order(100, "Bolt & Co")).await;
     let e = wait_event(&s.st, &buyer, "an approval", |b| {
@@ -176,8 +196,12 @@ async fn a_person_can_approve_and_a_team_without_approve_within_always_asks() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_approval_nobody_gives_in_time_is_not_approved() {
-    let (s, _sup, _dir) = common::seat_tools::with_tools().await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_an_approval_nobody_gives_in_time_is_not_approved() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (s, _sup, _dir) = crate::common::live::with_tools().await;
     s.st.store
         .lock()
         .unwrap()
@@ -185,16 +209,17 @@ async fn an_approval_nobody_gives_in_time_is_not_approved() {
         .unwrap();
     let (id, buyer) = buying_team(&s, true).await;
     say(&s, &buyer, &order(9000, "Cheap Parts Ltd")).await;
-    let text = reply(&s, &buyer, "Not approved: nobody answered in time").await;
+    reply(&s, &buyer, "Not approved: nobody answered in time").await;
+    let c = &changes(&s, &id).await["changes"][0];
+    assert_eq!(c["decision"]["by"], "nobody-in-time");
     assert!(
-        text.contains(
-            "✗ supplier is \\\"Cheap Parts Ltd\\\", not one of Acme Hydraulics, Bolt & Co"
-        ),
-        "{text}"
-    );
-    assert_eq!(
-        changes(&s, &id).await["changes"][0]["decision"]["by"],
-        "nobody-in-time"
+        c["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["passed"] == false
+                && r["words"].as_str().unwrap().contains("Cheap Parts Ltd")),
+        "{c}"
     );
     let (_, qs) = get(&s.router, &format!("/api/seats/{buyer}/questions")).await;
     assert_eq!(qs[0]["decision"]["source"], "rejected-on-timeout", "{qs}");

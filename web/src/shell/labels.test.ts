@@ -75,7 +75,7 @@ describe('connection labels sit beside their curve, never on it', () => {
   });
 
   it('a card dropped right against another (no gap at all): the label still finds a clear spot', () => {
-    // Seen in the browser: Practice 1 dropped touching Reviewer's bottom edge, offset to the left.
+    // Seen in the browser: an agent card dropped touching Reviewer's bottom edge, offset to the left.
     check([card(0, 0), card(260, 0), card(130, 200)], [
       [0, 1],
       [1, 2],

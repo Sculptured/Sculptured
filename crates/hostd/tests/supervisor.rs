@@ -1,8 +1,12 @@
+//! The supervisor: launch, messages, stop and crashes of real Claude Code agents (live tests), and
+//! its refusals and slot rules (plain tests; the slot rules use a driver whose send never returns).
+mod common;
+
 use async_trait::async_trait;
-use drivers::stub::StubDriver;
+use common::{CLAUDE, require};
 use drivers::{Driver, DriverError, DriverEvent, LaunchSpec, OutboundMessage, Session};
 use futures::stream::{BoxStream, StreamExt};
-use host_proto::{HostCommand, HostEvent, LaunchParams};
+use host_proto::{HostCommand, HostEvent};
 use hostd::{Journal, Supervisor};
 
 use model::{Caps, EventBody, MessageIntent, SeatActivity, SeatLifecycle, Subject};
@@ -17,20 +21,13 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 const SEAT: &str = "dev.a@r";
 
 fn sup() -> Supervisor {
-    Supervisor::new(
-        "local".into(),
-        vec![Arc::new(StubDriver)],
-        Journal::open_in_memory(1000).unwrap(),
-    )
+    common::sup()
 }
 fn launch_in(cwd: &Path, driver: &str) -> HostCommand {
     HostCommand::Launch {
         seat: SEAT.into(),
         driver: driver.into(),
-        params: LaunchParams {
-            cwd: cwd.display().to_string(),
-            ..Default::default()
-        },
+        params: common::params(cwd),
     }
 }
 fn send(id: &str, text: &str) -> HostCommand {
@@ -70,39 +67,56 @@ async fn until(rx: &mut Receiver<HostEvent>, pred: impl Fn(&EventBody) -> bool) 
 }
 
 #[tokio::test]
-async fn launch_reports_launching_tenure_running() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_launch_reports_launching_tenure_running() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
     let s = sup();
     let mut rx = s.subscribe();
-    s.handle(launch_in(dir.path(), "stub")).await.unwrap();
-    let got = until(&mut rx, is_idle).await;
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    let got = common::until(&mut rx, is_idle).await;
     assert!(is_lifecycle(&got[0], SeatLifecycle::Launching));
     assert!(
         matches!(&got[1], EventBody::TenureStarted { tenure: 1, driver, native_session_id: Some(n), .. }
-        if driver == "stub" && n == "stub-dev.a@r")
+        if driver == CLAUDE && !n.is_empty()),
+        "{got:?}"
     );
     assert!(is_lifecycle(&got[2], SeatLifecycle::Running));
     assert_eq!(s.live_seats().await, vec![SEAT.to_string()]);
-    assert_eq!(s.driver_infos()[0].name, "stub");
+    assert_eq!(s.driver_infos()[0].name, CLAUDE);
 }
 
 #[tokio::test]
-async fn send_is_delivered_consumed_and_answered() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_send_is_delivered_consumed_and_answered() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
     let s = sup();
     let mut rx = s.subscribe();
-    s.handle(launch_in(dir.path(), "stub")).await.unwrap();
-    until(&mut rx, is_idle).await;
-    s.handle(send("m1", "hello")).await.unwrap();
-    let got = until(&mut rx, |b| matches!(b, EventBody::TurnEnded { .. })).await;
-    assert!(got.contains(&EventBody::MessageConsumed {
-        message_id: "m1".into(),
-        turn_id: "turn-1".into()
-    }));
-    assert!(got.contains(&EventBody::AgentText {
-        turn_id: Some("turn-1".into()),
-        text: "stub received: hello".into()
-    }));
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    common::until(&mut rx, is_idle).await;
+    s.handle(send(
+        "m1",
+        "Reply with the single word OK and nothing else.",
+    ))
+    .await
+    .unwrap();
+    let got = common::until(&mut rx, |b| matches!(b, EventBody::TurnEnded { .. })).await;
+    let turn = got
+        .iter()
+        .find_map(|b| match b {
+            EventBody::MessageConsumed {
+                message_id,
+                turn_id,
+            } if message_id == "m1" => Some(turn_id.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("m1 consumed: {got:?}"));
+    assert!(
+        got.iter()
+            .any(|b| matches!(b, EventBody::AgentText { turn_id: Some(t), .. } if *t == turn)),
+        "the agent answered in that turn: {got:?}"
+    );
     let all = s.unacked_after(0).unwrap();
     assert!(all.iter().any(|e| e.body
         == EventBody::MessageDelivered {
@@ -117,11 +131,13 @@ async fn send_is_delivered_consumed_and_answered() {
 }
 
 #[tokio::test]
-async fn second_launch_is_refused() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_second_launch_is_refused() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
     let s = sup();
-    s.handle(launch_in(dir.path(), "stub")).await.unwrap();
-    let err = s.handle(launch_in(dir.path(), "stub")).await.unwrap_err();
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    let err = s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap_err();
     assert_eq!(err, "seat dev.a@r is already running");
 }
 
@@ -140,7 +156,7 @@ async fn missing_cwd_goes_to_attention_naming_the_path() {
     let s = sup();
     let mut rx = s.subscribe();
     let err = s
-        .handle(launch_in(Path::new("/definitely/not/here"), "stub"))
+        .handle(launch_in(Path::new("/definitely/not/here"), CLAUDE))
         .await
         .unwrap_err();
     assert!(err.contains("/definitely/not/here"), "{err}");
@@ -158,40 +174,42 @@ async fn missing_cwd_goes_to_attention_naming_the_path() {
     assert!(s.live_seats().await.is_empty());
 }
 
+/// The agent's CLI process is killed (as a crash would end it).
 #[tokio::test]
-async fn crash_goes_to_attention() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_crash_goes_to_attention() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
     let s = sup();
     let mut rx = s.subscribe();
-    s.handle(launch_in(dir.path(), "stub")).await.unwrap();
-    until(&mut rx, is_idle).await;
-    s.handle(send("m1", "crash")).await.unwrap();
-    let got = until(&mut rx, |b| is_lifecycle(b, SeatLifecycle::Attention)).await;
-    assert!(got.iter().any(|b| matches!(
-        b,
-        EventBody::TenureEnded {
-            tenure: 1,
-            exit_code: Some(3),
-            ..
-        }
-    )));
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    common::until(&mut rx, is_idle).await;
+    common::crash(&s, SEAT);
+    let got = common::until(&mut rx, |b| is_lifecycle(b, SeatLifecycle::Attention)).await;
+    assert!(
+        got.iter()
+            .any(|b| matches!(b, EventBody::TenureEnded { tenure: 1, .. })),
+        "{got:?}"
+    );
     match got.last().unwrap() {
         EventBody::SeatLifecycleChanged {
             reason: Some(r), ..
         } => {
-            assert!(r.starts_with("exited unexpectedly (code 3)"), "{r}");
+            assert!(r.starts_with("exited unexpectedly"), "{r}");
         }
         other => panic!("{other:?}"),
     }
 }
 
 #[tokio::test]
-async fn stop_then_relaunch_starts_tenure_2() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_stop_then_relaunch_starts_tenure_2() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
     let s = sup();
     let mut rx = s.subscribe();
-    s.handle(launch_in(dir.path(), "stub")).await.unwrap();
-    until(&mut rx, is_idle).await;
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    common::until(&mut rx, is_idle).await;
     s.handle(HostCommand::Stop {
         seat: SEAT.into(),
         grace_ms: 1000,
@@ -199,11 +217,11 @@ async fn stop_then_relaunch_starts_tenure_2() {
     })
     .await
     .unwrap();
-    let got = until(&mut rx, |b| is_lifecycle(b, SeatLifecycle::Stopped)).await;
+    let got = common::until(&mut rx, |b| is_lifecycle(b, SeatLifecycle::Stopped)).await;
     assert!(got.iter().any(|b| is_lifecycle(b, SeatLifecycle::Stopping)));
     assert!(s.live_seats().await.is_empty());
-    s.handle(launch_in(dir.path(), "stub")).await.unwrap();
-    let got = until(&mut rx, |b| matches!(b, EventBody::TenureStarted { .. })).await;
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    let got = common::until(&mut rx, |b| matches!(b, EventBody::TenureStarted { .. })).await;
     assert!(matches!(
         got.last().unwrap(),
         EventBody::TenureStarted { tenure: 2, .. }
@@ -304,7 +322,7 @@ impl Session for BlockingSession {
 fn sup_with(release: Option<Arc<Notify>>) -> Supervisor {
     Supervisor::new(
         "local".into(),
-        vec![Arc::new(StubDriver), Arc::new(BlockingDriver { release })],
+        vec![Arc::new(BlockingDriver { release })],
         Journal::open_in_memory(1000).unwrap(),
     )
 }
@@ -345,20 +363,9 @@ async fn a_wedged_send_does_not_freeze_other_seats_or_its_own_stop() {
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert!(!hung.is_finished(), "the send must be stuck");
 
-    within("launch y", s.handle(cmd_for(y, "stub", dir.path())))
+    within("launch y", s.handle(cmd_for(y, "blocking", dir.path())))
         .await
         .unwrap();
-    within(
-        "send y",
-        s.handle(HostCommand::Send {
-            seat: y.into(),
-            message_id: "m".into(),
-            intent: MessageIntent::Inform,
-            text: "hi".into(),
-        }),
-    )
-    .await
-    .unwrap();
     within("live_seats", s.live_seats()).await;
     within(
         "stop y",
@@ -394,12 +401,14 @@ async fn a_wedged_send_does_not_freeze_other_seats_or_its_own_stop() {
 }
 
 #[tokio::test]
-async fn stop_journals_terminal_events_before_returning_and_before_a_relaunch() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_stop_journals_terminal_events_before_returning_and_before_a_relaunch() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
     let s = sup();
     let mut rx = s.subscribe();
-    s.handle(launch_in(dir.path(), "stub")).await.unwrap();
-    until(&mut rx, is_idle).await;
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    common::until(&mut rx, is_idle).await;
     s.handle(HostCommand::Stop {
         seat: SEAT.into(),
         grace_ms: 1000,
@@ -420,8 +429,8 @@ async fn stop_journals_terminal_events_before_returning_and_before_a_relaunch() 
         .expect("Stopped journaled before Stop returned")
         .host_seq;
 
-    s.handle(launch_in(dir.path(), "stub")).await.unwrap();
-    until(&mut rx, |b| {
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    common::until(&mut rx, |b| {
         matches!(b, EventBody::TenureStarted { tenure: 2, .. })
     })
     .await;

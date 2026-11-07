@@ -22,7 +22,7 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:agents/a", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:agents/a", profile: default, runtime: codex, cwd: "." }
       - { id: b, agent_ref: "local:agents/b", profile: default, runtime: claude-code, cwd: "." }
     edges: EDGES
 "#;
@@ -67,8 +67,8 @@ fn first_project_reports_culture_file_as_not_enforced() {
 #[test]
 fn unknown_member_key_is_rejected_with_its_name() {
     let yaml = mini("[]").replace(
-        "runtime: stub, cwd: \".\" }",
-        "runtime: stub, cwd: \".\", colour: red }",
+        "runtime: codex, cwd: \".\" }",
+        "runtime: codex, cwd: \".\", colour: red }",
     );
     let errs = errors(rigspec::compile(&yaml));
     assert!(
@@ -88,7 +88,7 @@ fn delegation_cycle_is_rejected() {
 #[test]
 fn a_loop_entered_from_a_starting_seat_compiles_and_its_closing_edge_orders_nothing() {
     let yaml = mini("[{kind: delegates_to, from: a, to: b}, {kind: delegates_to, from: b, to: c}, {kind: delegates_to, from: c, to: b}]")
-        .replace("    edges:", "      - { id: c, agent_ref: \"local:agents/c\", profile: default, runtime: stub, cwd: \".\" }\n    edges:");
+        .replace("    edges:", "      - { id: c, agent_ref: \"local:agents/c\", profile: default, runtime: codex, cwd: \".\" }\n    edges:");
     let rig = rigspec::compile(&yaml).unwrap();
     let layers: Vec<Vec<&str>> = rig
         .launch_layers
@@ -158,9 +158,20 @@ fn duplicate_member_is_rejected() {
 
 #[test]
 fn unknown_runtime_is_rejected() {
-    let yaml = mini("[]").replace("runtime: stub", "runtime: gpt");
+    let yaml = mini("[]").replace("runtime: codex", "runtime: gpt");
     let errs = errors(rigspec::compile(&yaml));
     assert!(errs.iter().any(|d| d.path == "pods[0].members[0].runtime"));
+}
+
+#[test]
+fn a_stub_runtime_is_an_error_naming_the_real_model_rule() {
+    let yaml = mini("[]").replace("runtime: codex", "runtime: stub");
+    let errs = errors(rigspec::compile(&yaml));
+    let d = errs
+        .iter()
+        .find(|d| d.path == "pods[0].members[0].runtime")
+        .unwrap_or_else(|| panic!("{errs:?}"));
+    assert!(d.message.contains(model::REAL_MODEL_REQUIRED), "{d:?}");
 }
 
 #[test]

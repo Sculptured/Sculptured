@@ -1,7 +1,7 @@
 //! Tests: Run in Arena. A board team runs in Arena as an external run: Sculptured starts the run,
 //! registers each board agent, runs the board's own team with each agent's Arena MCP endpoint, passes
 //! usage on, and finishes the run once every agent has finished. Arena here is a fake that records
-//! what it is told; the agents are Practice agents (stub driver). No model calls.
+//! what it is told. Runs are live: the board's agents run on the real Claude Code CLI on the cheapest model.
 mod common;
 use axum::Router;
 use axum::extract::{Path, State};
@@ -9,6 +9,13 @@ use axum::routing::{get, post};
 use controld::arena::Arena;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
+
+/// The task's instructions: they leave the work to the agent's job (cheap for a live agent).
+const TASK_INSTRUCTIONS: &str = "Do exactly what your job says.";
+
+/// The board agents' jobs: cheap for live agents.
+const COORD_JOB: &str = "Coordinate. Reply with one short sentence.";
+const QUALITY_JOB: &str = "Check quality. Reply with one short sentence.";
 
 /// What the fake arenad was told, in order: `(route, body)`.
 type Calls = Arc<Mutex<Vec<(String, Value)>>>;
@@ -20,7 +27,7 @@ fn record(calls: &Calls, route: String, body: Value) {
 /// A fake arenad for external runs on a free loopback port: its base URL and what it was told.
 async fn fake_arenad() -> (String, Calls) {
     let calls: Calls = Arc::default();
-    let tasks = json!([{ "id": "T1", "reason": "Batch failed", "ticket": "Batch CVX-2611 failed its EM limit.", "instructions": "Work the incident." }]);
+    let tasks = json!([{ "id": "T1", "reason": "Batch failed", "ticket": "Batch CVX-2611 failed its EM limit.", "instructions": TASK_INSTRUCTIONS }]);
     let app = Router::new()
         .route("/api/tasks", get(move || async move { axum::Json(tasks) }))
         .route("/api/runs", post(|State(c): State<Calls>, axum::Json(b): axum::Json<Value>| async move {
@@ -57,9 +64,10 @@ fn told(calls: &Calls, prefix: &str) -> Vec<Value> {
         .collect()
 }
 
-/// The board's first driven run's state once it is no longer driving or finishing (at most 10 s).
+/// The board's first driven run's state once it is no longer driving or finishing (live agents: at
+/// most 240 s).
 async fn settled_state(s: &common::m2::Served, board: &str) -> Value {
-    for _ in 0..200 {
+    for _ in 0..4800 {
         let (_, list) = common::m2::get(&s.router, &format!("/api/teams/{board}/arena-runs")).await;
         let state = list["runs"][0]["state"].clone();
         if state["state"] != "driving" && state["state"] != "finishing" {
@@ -70,12 +78,15 @@ async fn settled_state(s: &common::m2::Served, board: &str) -> Value {
     panic!("the run did not finish");
 }
 
-async fn served() -> (common::m2::Served, Calls) {
+/// A served controld that knows the fake arenad; with a live host when `live`.
+async fn served(live: bool) -> (common::m2::Served, Calls) {
     let (base, calls) = fake_arenad().await;
     let mut s = common::m2::serve().await;
     s.st = s.st.clone().with_arena(Arena::new(&base));
     s.router = controld::app(s.st.clone(), None);
-    common::m2::connect_stub(&s).await;
+    if live {
+        common::live::connect(&s).await;
+    }
     (s, calls)
 }
 
@@ -112,24 +123,28 @@ fn check_jobs(d: &model::TeamDraft) {
     );
     let job = &coord.job;
     assert!(
-        job.starts_with("Coordinate.")
+        job.starts_with(COORD_JOB)
             && job.contains("failed its EM limit")
-            && job.contains("Work the incident."),
+            && job.contains(TASK_INSTRUCTIONS),
         "{job}"
     );
-    assert_eq!(d.agent("quality").unwrap().job, "Check quality.");
+    assert_eq!(d.agent("quality").unwrap().job, QUALITY_JOB);
 }
 
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn a_board_runs_in_arena_as_an_external_run_and_is_finished_when_its_agents_are() {
-    let (s, calls) = served().await;
-    let board = common::m2::practice_chain(
+async fn live_a_board_runs_in_arena_as_an_external_run_and_is_finished_when_its_agents_are() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (s, calls) = served(true).await;
+    let board = common::m2::chain(
         &s,
         "Larchmont",
         &[
-            ("coord", "Coordinator", "Coordinate."),
-            ("quality", "Quality", "Check quality."),
+            ("coord", "Coordinator", COORD_JOB),
+            ("quality", "Quality", QUALITY_JOB),
         ],
         &[("coord", "quality")],
     )
@@ -164,8 +179,8 @@ async fn a_board_runs_in_arena_as_an_external_run_and_is_finished_when_its_agent
             ))
             .collect::<Vec<_>>(),
         [
-            ("coord", "external", "Coordinate."),
-            ("quality", "external", "Check quality.")
+            ("coord", "external", COORD_JOB),
+            ("quality", "external", QUALITY_JOB)
         ]
     );
     let team = v["team"].as_str().unwrap().to_string();
@@ -189,18 +204,16 @@ async fn a_board_runs_in_arena_as_an_external_run_and_is_finished_when_its_agent
         "each usage report goes to Arena"
     );
     let seat = common::m2::seat(&team, "coord");
-    common::wait_for("the run's team is stopped", || {
+    common::live::wait_for("the run's team is stopped", || {
         common::lifecycle(&s.st, &seat).is_some_and(|l| !controld::store::is_live(l))
     })
     .await;
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn finish_asks_the_run_to_finish_now_and_an_unknown_task_is_refused() {
-    let (s, calls) = served().await;
-    let board =
-        common::m2::practice_chain(&s, "Solo", &[("coord", "Coordinator", "hang")], &[]).await;
+async fn an_unknown_task_is_refused() {
+    let (s, calls) = served(false).await;
+    let board = common::m2::chain(&s, "Solo", &[("coord", "Coordinator", COORD_JOB)], &[]).await;
     let (status, v) = common::m2::call(
         &s.router,
         "POST",
@@ -213,7 +226,17 @@ async fn finish_asks_the_run_to_finish_now_and_an_unknown_task_is_refused() {
         (400, Some("arena_task_unknown"))
     );
     assert!(told(&calls, "runs").is_empty());
+}
 
+#[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_finish_asks_the_run_to_finish_now() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (s, calls) = served(true).await;
+    let hang = "Use your Bash tool to run exactly: sleep 600";
+    let board = common::m2::chain(&s, "Solo", &[("coord", "Coordinator", hang)], &[]).await;
     let (status, v) = common::m2::call(
         &s.router,
         "POST",
@@ -222,6 +245,13 @@ async fn finish_asks_the_run_to_finish_now_and_an_unknown_task_is_refused() {
     )
     .await;
     assert_eq!(status.as_u16(), 200, "{v}");
+    let seat = common::m2::seat(v["team"].as_str().unwrap(), "coord");
+    common::live::wait_for("the coordinator working", || {
+        common::m2::events(&s.st, &seat)
+            .iter()
+            .any(|e| matches!(e.body, model::EventBody::TurnStarted { .. }))
+    })
+    .await;
     let (status, _) =
         common::m2::call(&s.router, "POST", "/api/arena-runs/br-1/finish", json!({})).await;
     assert_eq!(status.as_u16(), 200);

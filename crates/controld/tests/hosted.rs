@@ -208,7 +208,7 @@ async fn hosted_teams_may_use_folders_on_the_users_computer_not_the_servers_home
             .oneshot(signed_json(
                 "POST",
                 "/api/teams",
-                serde_json::json!({"request_id": "r1", "template": "solo", "practice": true}),
+                serde_json::json!({"request_id": "r1", "template": "solo"}),
             ))
             .await
             .unwrap(),
@@ -261,13 +261,25 @@ async fn with_several_computers_and_no_choice_start_asks_which_one() {
             .oneshot(signed_json(
                 "POST",
                 "/api/teams",
-                serde_json::json!({"request_id": "r1", "template": "solo", "practice": true}),
+                serde_json::json!({"request_id": "r1", "template": "solo"}),
             ))
             .await
             .unwrap(),
     )
     .await;
-    let id = rec["draft"]["id"].as_str().unwrap().to_string();
+    let mut draft = rec["draft"].clone();
+    let id = draft["id"].as_str().unwrap().to_string();
+    draft["folder"] = serde_json::json!("/Users/someone/proj");
+    let res = r
+        .clone()
+        .oneshot(signed_json(
+            "PUT",
+            &format!("/api/teams/{id}"),
+            serde_json::json!({"request_id": "r3", "revision": draft["revision"], "draft": draft}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
     let body = json_of(
         r.clone()
             .oneshot(signed_json(
@@ -299,7 +311,7 @@ async fn a_hosted_team_without_a_connected_computer_needs_setup() {
             .oneshot(signed_json(
                 "POST",
                 "/api/teams",
-                serde_json::json!({"request_id": "c1", "template": "solo", "practice": true}),
+                serde_json::json!({"request_id": "c1", "template": "solo"}),
             ))
             .await
             .unwrap(),
@@ -335,8 +347,7 @@ async fn a_local_team_never_asks_for_a_computer() {
         .header("host", "127.0.0.1:1")
         .header("content-type", "application/json")
         .body(Body::from(
-            serde_json::json!({"request_id": "l1", "template": "solo", "practice": true})
-                .to_string(),
+            serde_json::json!({"request_id": "l1", "template": "solo"}).to_string(),
         ))
         .unwrap();
     let rec = json_of(r.oneshot(req).await.unwrap()).await;

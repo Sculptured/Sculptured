@@ -1,6 +1,7 @@
 //! The e2e launcher leaves nothing behind: the throwaway directory is removed and hostd is
 //! stopped. hostd is played by a copy of `sh` named `sculptured`, started on the session's
-//! data dir like the real one, so the name-and-dir check is exercised for real.
+//! data dir like the real one, so the name-and-dir check is exercised for real. It also keeps away
+//! from the person's own Sculptured (ports, home) while letting agents sign in to Claude Code.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -147,4 +148,71 @@ fn shutdown_stops_the_community_stub_too() {
     session.adopt_stub(stub);
     session.shutdown();
     assert!(!e2e_server::alive(pid), "the stub is stopped");
+}
+
+#[test]
+fn the_ports_of_the_persons_own_sculptured_are_never_used() {
+    use e2e_server::usable_port;
+    assert_eq!(usable_port("4410"), None);
+    assert_eq!(usable_port("4420"), None);
+    assert_eq!(usable_port("0"), None);
+    assert_eq!(usable_port("not a port"), None);
+    assert_eq!(usable_port("14410"), Some(14410));
+}
+
+#[test]
+fn agents_sign_in_with_the_persons_claude_code_setup_not_the_throwaway_home() {
+    use e2e_server::claude_config_dir;
+    let real = tempfile::tempdir().unwrap();
+    assert_eq!(
+        claude_config_dir(None, Some(real.path())),
+        None,
+        "no setup, nothing to point at"
+    );
+    std::fs::create_dir(real.path().join(".claude")).unwrap();
+    assert_eq!(
+        claude_config_dir(None, Some(real.path())),
+        Some(real.path().join(".claude"))
+    );
+    let given = tempfile::tempdir().unwrap();
+    assert_eq!(
+        claude_config_dir(Some(given.path().as_os_str()), Some(real.path())),
+        Some(given.path().to_path_buf()),
+        "CLAUDE_CONFIG_DIR as the person set it wins"
+    );
+}
+
+#[test]
+fn the_claude_cli_is_found_on_path_or_in_the_real_home() {
+    use e2e_server::find_claude;
+    let bin = tempfile::tempdir().unwrap();
+    let real = tempfile::tempdir().unwrap();
+    assert_eq!(
+        find_claude(None, Some(bin.path().as_os_str()), Some(real.path())),
+        None
+    );
+    std::fs::create_dir_all(real.path().join(".local/bin")).unwrap();
+    std::fs::write(real.path().join(".local/bin/claude"), "").unwrap();
+    assert_eq!(
+        find_claude(None, Some(bin.path().as_os_str()), Some(real.path())),
+        Some(real.path().join(".local/bin/claude")),
+        "the real home's ~/.local/bin, which the throwaway HOME hides"
+    );
+    std::fs::write(bin.path().join("claude"), "").unwrap();
+    assert_eq!(
+        find_claude(None, Some(bin.path().as_os_str()), Some(real.path())),
+        Some(bin.path().join("claude")),
+        "PATH first"
+    );
+    let given = bin.path().join("my-claude");
+    assert_eq!(
+        find_claude(Some(given.as_os_str()), None, None),
+        None,
+        "a given program that is not there"
+    );
+    std::fs::write(&given, "").unwrap();
+    assert_eq!(
+        find_claude(Some(given.as_os_str()), None, None),
+        Some(given)
+    );
 }

@@ -1,5 +1,7 @@
 //! Seat-tool calls as controld handles them: invalid calls are evidence, questions are capped,
 //! `approve` and `record_decision` are only for the agents and questions they belong to.
+#[path = "common/asking.rs"]
+mod asking;
 mod common;
 
 use common::m2::Served;
@@ -112,16 +114,12 @@ async fn a_huge_question_is_capped_not_refused() {
 }
 
 /// Important 3 (defence in depth): controld refuses `approve` for any agent that would not be launched
-/// with it, whatever reached it: an unknown seat, or an unrestricted Practice agent.
+/// with it, whatever reached it: an unknown seat, or an unrestricted Claude agent.
 #[tokio::test]
 async fn approve_is_refused_for_an_agent_not_launched_with_it() {
-    let s = crate::common::m2::serve().await;
-    crate::common::m2::connect_stub(&s).await;
-    let agent = crate::common::m2::seat(
-        &crate::common::m2::practice_team(&s, "solo").await,
-        "claude",
-    );
-    for who in ["team.a@t", agent.as_str()] {
+    let s = asking::recorded_agents().await;
+    let agent = asking::A;
+    for who in ["team.a@t", agent] {
         let (ok, _, err) = crate::common::seat_tools::direct(
             &s,
             who,
@@ -140,7 +138,7 @@ async fn approve_is_refused_for_an_agent_not_launched_with_it() {
         );
     }
     assert!(
-        !crate::common::m2::events(&s.st, &agent)
+        !crate::common::m2::events(&s.st, agent)
             .iter()
             .any(|e| matches!(e.body, EventBody::QuestionRaised { .. })),
         "nothing was asked"

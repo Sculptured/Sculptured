@@ -8,7 +8,7 @@ import type {DeploymentHistory} from '../generated/DeploymentHistory';
 vi.mock('../api',async orig=>{const m=await orig<typeof import('../api')>();return {...m,api:{...m.api,deployments:vi.fn(),deployment:vi.fn(),deploymentEvents:vi.fn(),teamReport:vi.fn()}}});
 it('opens a stopped historical subtree and its run-scoped evidence, and switches deployments',async()=>{
  const run={start_seq:20,started_ms:200,initial_agents:1};
- const data:DeploymentHistory={run,has_snapshot:false,stopped_ms:250,summary_truncated:false,agents:[{id:'a',name:'Leader',parent:null,runtime:'stub',lifecycle:'stopped',launched_ms:201,last_ms:250,output_tokens:12},{id:'b',name:'Removed child',parent:'a',runtime:'stub',lifecycle:'stopped',launched_ms:203,last_ms:249,output_tokens:15}]};
+ const data:DeploymentHistory={run,has_snapshot:false,stopped_ms:250,summary_truncated:false,agents:[{id:'a',name:'Leader',parent:null,runtime:'claude-code',lifecycle:'stopped',launched_ms:201,last_ms:250,output_tokens:12},{id:'b',name:'Removed child',parent:'a',runtime:'claude-code',lifecycle:'stopped',launched_ms:203,last_ms:249,output_tokens:15}]};
  vi.mocked(api.deployments).mockResolvedValue([run,{...run,start_seq:10}]);vi.mocked(api.deployment).mockResolvedValue(data);vi.mocked(api.deploymentEvents).mockResolvedValueOnce({events:[ev(24,{type:'agent-text',turn_id:null,text:'Recorded result'})],has_more:true}).mockResolvedValue({events:[],has_more:false});
  render(<MemoryRouter><DeploymentHistoryView rig="r"/></MemoryRouter>);
  fireEvent.click(await screen.findByRole('button',{name:'Inspect historical Removed child'}));

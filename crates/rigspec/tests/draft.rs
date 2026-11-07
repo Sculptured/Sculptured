@@ -60,7 +60,12 @@ fn pair() -> TeamDraft {
     team(
         vec![
             agent("builder", "Builder", AgentKind::Claude, Some("/tmp")),
-            agent("reviewer", "Reviewer", AgentKind::Practice, None),
+            agent(
+                "reviewer",
+                "Reviewer",
+                AgentKind::Codex,
+                Some("/srv/review"),
+            ),
         ],
         vec![link("c1", "builder", "reviewer")],
     )
@@ -81,11 +86,8 @@ fn a_pair_compiles_with_ids_from_draft_ids_and_names_as_labels() {
     assert_eq!(b.rig.seats[0].label.as_deref(), Some("Builder"));
     assert_eq!(b.rig.seats[0].runtime, Runtime::ClaudeCode);
     assert_eq!(b.rig.seats[0].cwd, "/tmp");
-    assert_eq!(b.rig.seats[1].runtime, Runtime::Stub);
-    assert_eq!(
-        b.rig.seats[1].cwd, ".",
-        "a Practice agent without a folder runs in the home folder"
-    );
+    assert_eq!(b.rig.seats[1].runtime, Runtime::Codex);
+    assert_eq!(b.rig.seats[1].cwd, "/srv/review");
     assert_eq!(b.rig.edges[0].kind, EdgeKind::DelegatesTo);
     assert_eq!(
         b.rig.launch_layers,
@@ -159,7 +161,7 @@ fn groups_become_pods_and_cross_group_connections_are_top_level_edges() {
 #[test]
 fn a_missing_folder_is_pinned_to_the_agent_in_plain_words() {
     let mut d = pair();
-    d.agents[1].kind = AgentKind::Claude;
+    d.agents[1].folder = None;
     let issues = rigspec::from_draft(&d).unwrap_err();
     let i = find(&issues, "folder-missing");
     assert_eq!(i.message, "Reviewer needs a folder to work in");
@@ -372,9 +374,9 @@ fn restricted_maps_to_an_enforced_policy() {
 fn compiler_paths_map_back_to_draft_elements() {
     let mut d = team(
         vec![
-            agent("a", "A", AgentKind::Practice, None),
-            agent("b", "B", AgentKind::Practice, None),
-            agent("c", "C", AgentKind::Practice, None),
+            agent("a", "A", AgentKind::Claude, Some("/tmp")),
+            agent("b", "B", AgentKind::Claude, Some("/tmp")),
+            agent("c", "C", AgentKind::Claude, Some("/tmp")),
         ],
         vec![link("c-ab", "a", "b"), link("c-bc", "b", "c")],
     );
@@ -711,7 +713,7 @@ fn an_agent_runs_its_own_model_else_its_groups_else_the_teams() {
             agent("a", "A", AgentKind::Claude, Some("/tmp")),
             agent("b", "B", AgentKind::Codex, Some("/tmp")),
             agent("c", "C", AgentKind::Claude, Some("/tmp")),
-            agent("p", "P", AgentKind::Practice, None),
+            agent("o", "O", AgentKind::Opencode, Some("/tmp")),
         ],
         vec![],
     );
@@ -741,7 +743,7 @@ fn an_agent_runs_its_own_model_else_its_groups_else_the_teams() {
         Some("haiku"),
         "the agent's own model wins"
     );
-    assert_eq!(model("p"), None, "Practice agents inherit nothing");
+    assert_eq!(model("o"), None, "no OpenCode model is set anywhere");
     let spec = rigspec::from_draft(&d).unwrap().spec;
     let member = |id: &str| {
         spec.pods
@@ -785,7 +787,8 @@ fn project_folder_is_inherited_without_overwriting_agent_overrides() {
 
 #[test]
 fn textbook_template_keeps_source_open_and_groups_the_reusable_review_component() {
-    let d = rigspec::textbook::template("book", "Book", true);
+    let mut d = rigspec::textbook::template("book", "Book");
+    d.folder = Some("/tmp/book".into());
     let w = d.workflow.as_ref().unwrap();
     assert!(w.input.is_empty());
     assert_eq!(d.groups.len(), 2);
@@ -915,7 +918,7 @@ fn a_claude_agents_model_connection_reaches_its_compiled_seat_and_other_kinds_ig
     assert_eq!(
         seat("reviewer").connection,
         None,
-        "a Practice agent has no model connection"
+        "a Codex agent has no model connection"
     );
     let plain = rigspec::from_draft(&pair()).unwrap();
     assert!(plain.rig.seats.iter().all(|s| s.connection.is_none()));

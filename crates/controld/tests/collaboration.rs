@@ -1,16 +1,73 @@
+//! Agents that start agents, message each other and are stopped, team limits on spawning, deployment
+//! history, and usage. The live tests run real Claude Code agents on haiku (the lead gets no job; each
+//! child gets one short task); usage reports are recorded directly where a test needs exact numbers.
 mod common;
+#[path = "common/live_controls.rs"]
+mod live_controls;
 
-use common::m2::rid;
+use common::m2::{Served, rid};
+use live_controls::{SAY_OK, wait_lifecycle};
 
 use model::{Actor, EventBody, SeatLifecycle};
 use serde_json::json;
 
+/// A started team of one live agent, `lead`, with no job and the team limits `limits` (if any);
+/// returns (team, the lead's seat).
+async fn solo(s: &Served, limits: Option<serde_json::Value>) -> (String, String) {
+    let (status, rec) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        "/api/teams",
+        json!({"request_id":rid(),"template":"blank","name":"solo"}),
+    )
+    .await;
+    assert!(status.is_success(), "{rec}");
+    let mut draft = rec["draft"].clone();
+    draft["agents"] = json!([{"id":"lead","group_id":null,"name":"Lead","kind":"claude","job":"","folder":null,"x":40,"y":40}]);
+    crate::common::live::make_live(s, &mut draft);
+    if let Some(limits) = limits {
+        draft["limits"] = limits;
+    }
+    let id = draft["id"].as_str().unwrap().to_string();
+    let (status, body) = crate::common::m2::call(
+        &s.router,
+        "PUT",
+        &format!("/api/teams/{id}"),
+        json!({"request_id":rid(),"revision":draft["revision"].clone(),"draft":draft}),
+    )
+    .await;
+    assert!(status.is_success(), "{body}");
+    crate::common::m2::start_team(s, &id).await;
+    let lead = crate::common::m2::seat(&id, "lead");
+    (id, lead)
+}
+
+/// A team of `agents` (Claude, no jobs) started with no computer connected: its agents are on the
+/// board (and need attention) without any CLI running.
+async fn on_the_board(s: &Served, name: &str, agents: &[&str]) -> String {
+    let agents: Vec<(&str, &str, &str)> = agents.iter().map(|a| (*a, *a, "")).collect();
+    let id = crate::common::m2::chain(s, name, &agents, &[]).await;
+    let (status, body) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        &format!("/api/teams/{id}/start"),
+        json!({"request_id":rid()}),
+    )
+    .await;
+    assert!(status.is_success(), "{body}");
+    crate::common::wait_for("boot finished", || !s.st.is_booting(&id)).await;
+    id
+}
+
 #[tokio::test]
-async fn managed_children_messages_and_hard_stop_are_observed_and_idempotent() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_managed_children_messages_and_hard_stop_are_observed_and_idempotent() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let parent = crate::common::m2::seat(&id, "claude");
-    let args = json!({"request_id":"child1","name":"Geometry helper","task":"Check sampled curve endpoints"});
+    let (id, parent) = solo(&s, None).await;
+    let args = json!({"request_id":"child1","name":"Geometry helper","task":SAY_OK});
     let (ok, result, error) =
         crate::common::seat_tools::direct(&s, &parent, "spawn_agent", args.clone()).await;
     assert!(ok, "{error:?}");
@@ -52,9 +109,10 @@ async fn managed_children_messages_and_hard_stop_are_observed_and_idempotent() {
             .iter()
             .filter(|e| e.actor == Actor::Seat(child.clone())
                 && e.provenance == model::Provenance::AgentReported
-                && matches!(e.body, EventBody::MessageQueued { .. }))
+                && matches!(&e.body, EventBody::MessageQueued { text, .. } if text.contains("Endpoint check: complete")))
             .count(),
-        1
+        1,
+        "the replayed message is queued once"
     );
     let (ok, _, _) = crate::common::seat_tools::direct(
         &s,
@@ -102,11 +160,14 @@ async fn managed_children_messages_and_hard_stop_are_observed_and_idempotent() {
     );
 }
 #[tokio::test]
-async fn soft_stop_wraps_up_then_stops_and_archive_is_recoverable() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_soft_stop_wraps_up_then_stops_and_archive_is_recoverable() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let agent = crate::common::m2::seat(&id, "claude");
-    crate::common::m2::say(&s, &agent, "hang").await;
+    let (id, agent) = solo(&s, None).await;
+    live_controls::hang(&s, &agent).await;
     let (status, body) = crate::common::m2::call(
         &s.router,
         "POST",
@@ -115,10 +176,7 @@ async fn soft_stop_wraps_up_then_stops_and_archive_is_recoverable() {
     )
     .await;
     assert!(status.is_success(), "{body}");
-    crate::common::wait_for("wrap-up stopped", || {
-        crate::common::lifecycle(&s.st, &agent) == Some(SeatLifecycle::Stopped)
-    })
-    .await;
+    wait_lifecycle(&s, &[&agent], SeatLifecycle::Stopped).await;
     assert!(
         crate::common::m2::events(&s.st, &agent)
             .iter()
@@ -177,10 +235,13 @@ async fn soft_stop_wraps_up_then_stops_and_archive_is_recoverable() {
 }
 
 #[tokio::test]
-async fn nested_children_inherit_budget_and_exhaustion_cannot_be_resumed() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_nested_children_inherit_budget_and_exhaustion_cannot_be_resumed() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let parent = crate::common::m2::seat(&id, "claude");
+    let (id, parent) = solo(&s, None).await;
     // Public budget changes are refused while live.
     let (status, _) = crate::common::m2::call(
         &s.router,
@@ -222,7 +283,7 @@ async fn nested_children_inherit_budget_and_exhaustion_cannot_be_resumed() {
         &s,
         &parent,
         "spawn_agent",
-        json!({"request_id":"nested-child","name":"Branch","task":"Bounded branch"}),
+        json!({"request_id":"nested-child","name":"Branch","task":SAY_OK}),
     )
     .await;
     assert!(ok, "{error:?}");
@@ -231,7 +292,7 @@ async fn nested_children_inherit_budget_and_exhaustion_cannot_be_resumed() {
         &s,
         &child,
         "spawn_agent",
-        json!({"request_id":"nested-leaf","name":"Leaf","task":"Bounded leaf"}),
+        json!({"request_id":"nested-leaf","name":"Leaf","task":SAY_OK}),
     )
     .await;
     assert!(ok, "{error:?}");
@@ -268,10 +329,7 @@ async fn nested_children_inherit_budget_and_exhaustion_cannot_be_resumed() {
         },
     )
     .unwrap();
-    crate::common::wait_for("leaf budget stop", || {
-        crate::common::lifecycle(&s.st, &leaf) == Some(SeatLifecycle::Stopped)
-    })
-    .await;
+    wait_lifecycle(&s, &[&leaf], SeatLifecycle::Stopped).await;
     assert_eq!(
         crate::common::lifecycle(&s.st, &parent),
         Some(SeatLifecycle::Running)
@@ -301,14 +359,19 @@ async fn nested_children_inherit_budget_and_exhaustion_cannot_be_resumed() {
         .unwrap();
 }
 
-/// No limits unless the team sets them: one agent spawns more than 64 agents, and a chain goes deeper than 4.
+/// No limits unless the team sets them: one agent spawns more than 64 agents, and a chain goes deeper
+/// than 4. Each wide child but the first is stopped once it is up, so only a few CLIs run at once.
 #[tokio::test]
-async fn without_team_limits_agents_spawn_past_the_old_caps_and_retries_do_not_count() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_without_team_limits_agents_spawn_past_the_old_caps_and_retries_do_not_count() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let root = crate::common::m2::seat(&id, "claude");
+    let (id, root) = solo(&s, None).await;
     for i in 0..64 {
-        let args = json!({"request_id":format!("wide-{i}"),"name":format!("Child {i}"),"task":"Small bounded task"});
+        let args =
+            json!({"request_id":format!("wide-{i}"),"name":format!("Child {i}"),"task":SAY_OK});
         let (ok, result, error) =
             crate::common::seat_tools::direct(&s, &root, "spawn_agent", args.clone()).await;
         assert!(ok, "child {i}: {error:?}");
@@ -317,6 +380,16 @@ async fn without_team_limits_agents_spawn_past_the_old_caps_and_retries_do_not_c
                 crate::common::seat_tools::direct(&s, &root, "spawn_agent", args).await;
             assert!(ok, "{error:?}");
             assert_eq!(result, replay);
+        } else {
+            let child = result["child"].as_str().unwrap();
+            let (status, body) = crate::common::m2::call(
+                &s.router,
+                "POST",
+                &format!("/api/seats/{child}/control"),
+                json!({"request_id":rid(),"mode":"hard"}),
+            )
+            .await;
+            assert!(status.is_success(), "{body}");
         }
     }
     assert_eq!(
@@ -325,7 +398,7 @@ async fn without_team_limits_agents_spawn_past_the_old_caps_and_retries_do_not_c
     );
     let mut parent = s.st.store.lock().unwrap().children(&root).unwrap()[0].clone();
     for level in 2..=6 {
-        let (ok,child,error)=crate::common::seat_tools::direct(&s,&parent,"spawn_agent",json!({"request_id":format!("deep-{level}"),"name":format!("Level {level}"),"task":"Small bounded task"})).await;
+        let (ok,child,error)=crate::common::seat_tools::direct(&s,&parent,"spawn_agent",json!({"request_id":format!("deep-{level}"),"name":format!("Level {level}"),"task":SAY_OK})).await;
         assert!(ok, "level {level}: {error:?}");
         parent = child["child"].as_str().unwrap().to_string();
     }
@@ -334,42 +407,20 @@ async fn without_team_limits_agents_spawn_past_the_old_caps_and_retries_do_not_c
         .unwrap();
 }
 
-/// A solo Practice team with the team limits `limits`, started.
-async fn limited_team(s: &common::m2::Served, limits: serde_json::Value) -> String {
-    let (status, rec) = crate::common::m2::call(
-        &s.router,
-        "POST",
-        "/api/teams",
-        json!({"request_id":rid(),"template":"solo","practice":true}),
-    )
-    .await;
-    assert!(status.is_success(), "{rec}");
-    let mut draft = rec["draft"].clone();
-    draft["limits"] = limits;
-    let id = draft["id"].as_str().unwrap().to_string();
-    let (status, body) = crate::common::m2::call(
-        &s.router,
-        "PUT",
-        &format!("/api/teams/{id}"),
-        json!({"request_id":rid(),"revision":draft["revision"].clone(),"draft":draft}),
-    )
-    .await;
-    assert!(status.is_success(), "{body}");
-    crate::common::m2::start_team(s, &id).await;
-    id
-}
-
 #[tokio::test]
-async fn a_team_agent_limit_refuses_the_spawn_and_names_the_setting() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_team_agent_limit_refuses_the_spawn_and_names_the_setting() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = limited_team(&s, json!({"max_agents":3})).await;
-    let root = crate::common::m2::seat(&id, "claude");
+    let (id, root) = solo(&s, Some(json!({"max_agents":3}))).await;
     for i in 0..2 {
         let (ok, _, error) = crate::common::seat_tools::direct(
             &s,
             &root,
             "spawn_agent",
-            json!({"request_id":format!("c{i}"),"name":"Helper","task":"Help"}),
+            json!({"request_id":format!("c{i}"),"name":"Helper","task":SAY_OK}),
         )
         .await;
         assert!(ok, "{error:?}");
@@ -378,7 +429,7 @@ async fn a_team_agent_limit_refuses_the_spawn_and_names_the_setting() {
         &s,
         &root,
         "spawn_agent",
-        json!({"request_id":"c2","name":"Helper","task":"Help"}),
+        json!({"request_id":"c2","name":"Helper","task":SAY_OK}),
     )
     .await;
     assert!(!ok);
@@ -392,16 +443,19 @@ async fn a_team_agent_limit_refuses_the_spawn_and_names_the_setting() {
 }
 
 #[tokio::test]
-async fn a_team_level_limit_refuses_a_deeper_child_and_names_the_setting() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_team_level_limit_refuses_a_deeper_child_and_names_the_setting() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = limited_team(&s, json!({"max_child_levels":2})).await;
-    let mut parent = crate::common::m2::seat(&id, "claude");
+    let (id, mut parent) = solo(&s, Some(json!({"max_child_levels":2}))).await;
     for level in 1..=2 {
         let (ok, child, error) = crate::common::seat_tools::direct(
             &s,
             &parent,
             "spawn_agent",
-            json!({"request_id":format!("l{level}"),"name":"Helper","task":"Help"}),
+            json!({"request_id":format!("l{level}"),"name":"Helper","task":SAY_OK}),
         )
         .await;
         assert!(ok, "{error:?}");
@@ -411,7 +465,7 @@ async fn a_team_level_limit_refuses_a_deeper_child_and_names_the_setting() {
         &s,
         &parent,
         "spawn_agent",
-        json!({"request_id":"l3","name":"Helper","task":"Help"}),
+        json!({"request_id":"l3","name":"Helper","task":SAY_OK}),
     )
     .await;
     assert!(!ok);
@@ -425,10 +479,13 @@ async fn a_team_level_limit_refuses_a_deeper_child_and_names_the_setting() {
 }
 
 #[tokio::test]
-async fn deployment_history_keeps_removed_children_and_isolates_run_evidence() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_deployment_history_keeps_removed_children_and_isolates_run_evidence() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let root = crate::common::m2::seat(&id, "claude");
+    let (id, root) = solo(&s, None).await;
     let runs = crate::common::m2::get(&s.router, &format!("/api/teams/{id}/deployments"))
         .await
         .1;
@@ -437,12 +494,11 @@ async fn deployment_history_keeps_removed_children_and_isolates_run_evidence() {
         &s,
         &root,
         "spawn_agent",
-        json!({"request_id":"historical-child","name":"Historical child","task":"old run task"}),
+        json!({"request_id":"historical-child","name":"Historical child","task":SAY_OK}),
     )
     .await;
     assert!(ok, "{error:?}");
     let child = result["child"].as_str().unwrap().to_string();
-    crate::common::m2::say(&s, &root, "first run evidence").await;
     controld::reconciler::stop_rig(s.st.clone(), id.clone())
         .await
         .unwrap();
@@ -534,10 +590,13 @@ async fn deployment_history_keeps_removed_children_and_isolates_run_evidence() {
 /// A per-agent token limit counts the agent and, when it says so, the agents it spawned; reaching it
 /// soft-stops the agent (wrap-up, then stop with its subagents) and a stopped agent cannot be resumed.
 #[tokio::test]
-async fn a_token_limit_including_subagents_soft_stops_the_agent_with_its_children() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_token_limit_including_subagents_soft_stops_the_agent_with_its_children() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let parent = crate::common::m2::seat(&id, "claude");
+    let (id, parent) = solo(&s, None).await;
     crate::common::wait_for("parent ready", || {
         crate::common::lifecycle(&s.st, &parent) == Some(SeatLifecycle::Running)
             && !s.st.is_booting(&id)
@@ -547,7 +606,7 @@ async fn a_token_limit_including_subagents_soft_stops_the_agent_with_its_childre
         &s,
         &parent,
         "spawn_agent",
-        json!({"request_id":"c","name":"Helper","task":"Help"}),
+        json!({"request_id":"c","name":"Helper","task":SAY_OK}),
     )
     .await;
     assert!(ok, "{error:?}");
@@ -596,12 +655,7 @@ async fn a_token_limit_including_subagents_soft_stops_the_agent_with_its_childre
         "{budget}"
     );
     assert_eq!(mine["exhausted"], true, "{budget}");
-    crate::common::wait_for("parent and child stopped", || {
-        [&parent, &child]
-            .iter()
-            .all(|x| crate::common::lifecycle(&s.st, x) == Some(SeatLifecycle::Stopped))
-    })
-    .await;
+    wait_lifecycle(&s, &[&parent, &child], SeatLifecycle::Stopped).await;
     let (status, _) = crate::common::m2::call(
         &s.router,
         "POST",
@@ -614,18 +668,9 @@ async fn a_token_limit_including_subagents_soft_stops_the_agent_with_its_childre
 
 #[tokio::test]
 async fn team_usage_reports_running_totals_and_the_latest_context_fill() {
-    let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let seat =
-        s.st.store
-            .lock()
-            .unwrap()
-            .rig_snapshot(&id)
-            .unwrap()
-            .unwrap()
-            .seats[0]
-            .id
-            .clone();
+    let s = crate::common::m2::serve().await;
+    let id = on_the_board(&s, "solo", &["lead"]).await;
+    let seat = crate::common::m2::seat(&id, "lead");
     let put = |body: EventBody| {
         s.st.local_event(
             Actor::System("fixture".into()),
@@ -686,9 +731,6 @@ async fn team_usage_reports_running_totals_and_the_latest_context_fill() {
         ),
         (Some(900), Some(false))
     );
-    controld::reconciler::stop_rig(s.st.clone(), id)
-        .await
-        .unwrap();
 }
 
 /// The account page's summary: every team's tokens and costs together, by day, by CLI and by team,
@@ -696,38 +738,18 @@ async fn team_usage_reports_running_totals_and_the_latest_context_fill() {
 #[tokio::test]
 async fn account_usage_sums_every_teams_tokens_costs_and_activity() {
     use model::pricing::{Cost, CostSource};
-    let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
+    let s = crate::common::m2::serve().await;
     let (a, b) = (
-        crate::common::m2::practice_team(&s, "solo").await,
-        crate::common::m2::practice_team(&s, "builder-reviewer").await,
+        on_the_board(&s, "solo", &["lead"]).await,
+        on_the_board(&s, "builder-reviewer", &["builder", "reviewer"]).await,
     );
-    let seat_of = |id: &str| {
-        s.st.store
-            .lock()
-            .unwrap()
-            .rig_snapshot(id)
-            .unwrap()
-            .unwrap()
-            .seats[0]
-            .id
-            .clone()
-    };
-    let (sa, sb) = (seat_of(&a), seat_of(&b));
-    // The Practice agents' own first turns report tokens too: settle them, then measure what we add.
-    let usage = || async {
-        crate::common::m2::get(&s.router, "/api/account/usage")
-            .await
-            .1
-    };
-    let mut before = usage().await;
-    for _ in 0..50 {
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        let now = usage().await;
-        if now == before {
-            break;
-        }
-        before = now;
-    }
+    let (sa, sb) = (
+        crate::common::m2::seat(&a, "lead"),
+        crate::common::m2::seat(&b, "builder"),
+    );
+    let before = crate::common::m2::get(&s.router, "/api/account/usage")
+        .await
+        .1;
     let n = |v: &serde_json::Value, p: &str| v.pointer(p).and_then(|x| x.as_u64()).unwrap_or(0);
     let team_tokens = |v: &serde_json::Value, id: &str| {
         v["top_teams"]
@@ -830,7 +852,7 @@ async fn account_usage_sums_every_teams_tokens_costs_and_activity() {
             ("openai-list-prices".to_string(), 1.0)
         ]
         .into(),
-        "Practice agents report no cost"
+        "only the reported costs"
     );
     let days = u["by_day"].as_array().unwrap();
     assert_eq!(days.len(), 30, "the last 30 days, empty ones included");

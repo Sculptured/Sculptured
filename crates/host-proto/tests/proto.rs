@@ -15,7 +15,7 @@ fn messages_round_trip_with_tags() {
         host_id: "local".into(),
         protocol: PROTOCOL_VERSION,
         drivers: vec![DriverInfo {
-            name: "stub".into(),
+            name: "claude-stream".into(),
             caps: Caps::default(),
         }],
         live_seats: vec!["dev.a@r".into()],
@@ -31,7 +31,7 @@ fn messages_round_trip_with_tags() {
         command_id: "c1".into(),
         command: Box::new(HostCommand::Launch {
             seat: "dev.a@r".into(),
-            driver: "stub".into(),
+            driver: "claude-stream".into(),
             params: LaunchParams {
                 cwd: "/tmp".into(),
                 ..Default::default()
@@ -64,7 +64,7 @@ fn messages_round_trip_with_tags() {
 fn m2_commands_and_frames_round_trip() {
     let restart = HostCommand::Restart {
         seat: "dev.a@r".into(),
-        driver: "stub".into(),
+        driver: "claude-stream".into(),
         params: LaunchParams {
             cwd: "/tmp".into(),
             seat_tools: Some(SeatToolsParams {
@@ -120,7 +120,7 @@ fn m2_commands_and_frames_round_trip() {
 
 #[test]
 fn m1_launch_params_still_decode() {
-    let old = r#"{"cmd":"launch","seat":"dev.a@r","driver":"stub","params":{"cwd":"/tmp","model":null,"program":null,"env":[],"extra_args":[]}}"#;
+    let old = r#"{"cmd":"launch","seat":"dev.a@r","driver":"claude-stream","params":{"cwd":"/tmp","model":null,"program":null,"env":[],"extra_args":[]}}"#;
     match host_proto::decode::<HostCommand>(old).unwrap() {
         HostCommand::Launch { params, .. } => {
             assert_eq!(params.posture, PermissionPosture::Unrestricted);
@@ -193,7 +193,7 @@ fn an_m1_hello_advertises_no_features_and_no_launching_seats() {
 fn commands_name_the_host_features_they_need() {
     let launch = |params: LaunchParams| HostCommand::Launch {
         seat: "dev.a@r".into(),
-        driver: "stub".into(),
+        driver: "claude-stream".into(),
         params,
     };
     let plain = LaunchParams {
@@ -231,7 +231,7 @@ fn commands_name_the_host_features_they_need() {
     );
     let restart = HostCommand::Restart {
         seat: "dev.a@r".into(),
-        driver: "stub".into(),
+        driver: "claude-stream".into(),
         params: plain,
         mode: LaunchMode::Fresh,
         cause: TenureCause::Handover,

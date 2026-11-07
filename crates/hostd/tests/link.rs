@@ -1,13 +1,17 @@
+//! The link to controld: commands, replay after a reconnect, journal fast-forward, keepalive.
+mod common;
+
 use async_trait::async_trait;
-use drivers::stub::StubDriver;
+use common::{CLAUDE, require};
 use drivers::{Driver, DriverError, DriverEvent, LaunchSpec, OutboundMessage, Session};
 use futures::stream::BoxStream;
 use futures::{SinkExt, StreamExt};
 
-use host_proto::{FromHost, HostCommand, LaunchParams, PROTOCOL_VERSION, ToHost};
+use host_proto::{FromHost, HostCommand, PROTOCOL_VERSION, ToHost};
 use hostd::{Journal, Supervisor};
 
 use model::{Caps, EventBody, MessageIntent, SeatLifecycle};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
@@ -37,7 +41,7 @@ async fn accept(listener: &TcpListener) -> Ws {
 
 async fn recv(ws: &mut Ws) -> FromHost {
     loop {
-        let m = tokio::time::timeout(Duration::from_secs(3), ws.next())
+        let m = tokio::time::timeout(Duration::from_secs(10), ws.next())
             .await
             .expect("frame in time")
             .expect("socket open")
@@ -70,21 +74,17 @@ async fn command(ws: &mut Ws, command_id: &str, command: HostCommand) {
     .await;
 }
 
-fn launch(seat: &str, driver: &str, dir: &tempfile::TempDir) -> HostCommand {
-    let params = LaunchParams {
-        cwd: dir.path().display().to_string(),
-        ..Default::default()
-    };
+fn launch(seat: &str, driver: &str, dir: &Path) -> HostCommand {
     HostCommand::Launch {
         seat: seat.into(),
         driver: driver.into(),
-        params,
+        params: common::params(dir),
     }
 }
 
 /// Launches `dev.a@r` on the first connection; its Launching event arrives before the result.
-async fn launch_and_see_running(ws: &mut Ws, dir: &tempfile::TempDir) {
-    command(ws, "c1", launch("dev.a@r", "stub", dir)).await;
+async fn launch_and_see_running(ws: &mut Ws, dir: &Path) {
+    command(ws, "c1", launch("dev.a@r", CLAUDE, dir)).await;
     let (mut got_result, mut saw_launching, mut saw_running) = (false, false, false);
     while !(got_result && saw_running) {
         match recv(ws).await {
@@ -153,14 +153,12 @@ async fn reconnect_and_replay(sup: &Supervisor, listener: &TcpListener, url: Str
 }
 
 #[tokio::test]
-async fn link_runs_commands_and_replays_after_reconnect() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_link_runs_commands_and_replays_after_reconnect() {
+    let Some(_) = require() else { return };
     let (listener, url) = listen().await;
     let dir = tempfile::tempdir().unwrap();
-    let sup = Supervisor::new(
-        "local".into(),
-        vec![Arc::new(StubDriver)],
-        Journal::open_in_memory(1000).unwrap(),
-    );
+    let sup = common::sup();
 
     // First connection: hello, welcome, launch.
     let (s1, u1) = (sup.clone(), url.clone());
@@ -176,13 +174,13 @@ async fn link_runs_commands_and_replays_after_reconnect() {
         } => {
             assert_eq!(host_id, "local");
             assert_eq!(protocol, PROTOCOL_VERSION);
-            assert!(drivers.iter().any(|d| d.name == "stub"));
+            assert!(drivers.iter().any(|d| d.name == CLAUDE));
             assert!(live_seats.is_empty());
         }
         other => panic!("expected hello, got {other:?}"),
     }
     send(&mut ws, &ToHost::Welcome { resume_after: 0 }).await;
-    launch_and_see_running(&mut ws, &dir).await;
+    launch_and_see_running(&mut ws, dir.path()).await;
 
     // controld disappears without acking anything; the agent keeps running.
     drop(ws);
@@ -275,7 +273,7 @@ async fn a_wedged_send_does_not_stop_the_link_from_reading_stop() {
     send(&mut ws, &ToHost::Welcome { resume_after: 0 }).await;
 
     let seat = "dev.x@r";
-    command(&mut ws, "l", launch(seat, "blocking", &dir)).await;
+    command(&mut ws, "l", launch(seat, "blocking", dir.path())).await;
     loop {
         if let FromHost::CommandResult {
             command_id,
@@ -317,22 +315,19 @@ async fn a_wedged_send_does_not_stop_the_link_from_reading_stop() {
 }
 
 /// I8: a fresh journal behind controld's cursor fast-forwards, so the next event is
-/// numbered after resume_after instead of being dropped by controld as a duplicate.
+/// numbered after resume_after instead of being dropped by controld as a duplicate. The launch is
+/// of a folder that does not exist: it journals Launching and Attention, and starts no agent.
 #[tokio::test]
 async fn fresh_journal_fast_forwards_past_controlds_cursor() {
     let (listener, url) = listen().await;
-    let dir = tempfile::tempdir().unwrap();
-    let sup = Supervisor::new(
-        "local".into(),
-        vec![Arc::new(StubDriver)],
-        Journal::open_in_memory(1000).unwrap(),
-    );
+    let sup = common::sup();
     let s1 = sup.clone();
     let _link = tokio::spawn(async move { hostd::run_link(&url, "secret", &s1).await });
     let mut ws = accept(&listener).await;
     assert!(matches!(recv(&mut ws).await, FromHost::Hello { .. }));
     send(&mut ws, &ToHost::Welcome { resume_after: 50 }).await;
-    command(&mut ws, "c1", launch("dev.a@r", "stub", &dir)).await;
+    let missing = Path::new("/definitely/not/here");
+    command(&mut ws, "c1", launch("dev.a@r", CLAUDE, missing)).await;
     let mut seqs = Vec::new();
     while seqs.len() < 2 {
         if let FromHost::Event { event } = recv(&mut ws).await {
@@ -401,7 +396,7 @@ async fn a_silent_link_is_given_up_so_the_runner_can_reconnect() {
     });
     let sup = Supervisor::new(
         "dev-1".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         Journal::open_in_memory(100).unwrap(),
     );
     let keep = hostd::link::Keepalive {

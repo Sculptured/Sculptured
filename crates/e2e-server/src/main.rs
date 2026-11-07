@@ -4,12 +4,20 @@
 //!
 //! The binary is `$SCULPTURED_BIN` when set; otherwise `cargo build -p sculptured` runs and
 //! `${CARGO_TARGET_DIR:-target}/debug/sculptured` is used. `$RIG_E2E_PORT` picks another
-//! port (the Playwright config reads the same variable), so two runs can share a machine.
+//! port (the Playwright config reads the same variable), so two runs can share a machine; the
+//! ports of the person's own Sculptured (4410, 4420) are refused.
+//!
+//! Claude Code agents are real: serve gets `--claude-program` (`$RIG_E2E_CLAUDE`, else `claude` on
+//! `PATH` or in `~/.local/bin`) and `CLAUDE_CONFIG_DIR` (as set, else the real `~/.claude`), so the
+//! CLI is signed in as the person while `HOME` stays throwaway. Specs that start agents are live
+//! and opt in with `RIG_E2E_LIVE=1`; they work in a folder inside the throwaway home (`GET
+//! /api/folders` gives its path; `POST /api/folders` makes one).
 //!
 //! Serve runs with `--question-timeout-secs 8`: questions expire in 8 s, long enough for a
 //! Playwright test to answer one first and short enough to see an expiry.
 //!
-//! Codex agents run on `fake-codex` (`$RIG_E2E_FAKE_CODEX`, else built with cargo).
+//! Codex agents run on `fake-codex` (`$RIG_E2E_FAKE_CODEX`, else built with cargo), which replays
+//! recorded Codex output.
 //!
 //! Community goes through `fake-community` (`$RIG_E2E_FAKE_COMMUNITY`, else built with cargo), a
 //! stub Sculptured server on `$RIG_E2E_COMMUNITY_PORT` (default 14411); serve gets
@@ -20,23 +28,27 @@ use std::process::{Command, ExitCode};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use e2e_server::Session;
+use e2e_server::{Session, usable_port};
 
-const DEFAULT_PORT: &str = "14410";
-const DEFAULT_COMMUNITY_PORT: &str = "14411";
+const DEFAULT_PORT: u16 = 14410;
+const DEFAULT_COMMUNITY_PORT: u16 = 14411;
 
-fn port() -> String {
-    std::env::var("RIG_E2E_PORT")
-        .ok()
-        .filter(|p| p.parse::<u16>().is_ok())
-        .unwrap_or_else(|| DEFAULT_PORT.to_string())
+/// `$<var>` when set (refused when it is not a port e2e may use), else `default`.
+fn port_from(var: &str, default: u16) -> Result<String, String> {
+    match std::env::var(var) {
+        Err(_) => Ok(default.to_string()),
+        Ok(v) => usable_port(&v)
+            .map(|p| p.to_string())
+            .ok_or_else(|| format!("{var}={v} is not a port e2e may use (4410 and 4420 are the person's own Sculptured)")),
+    }
 }
 
-fn community_port() -> String {
-    std::env::var("RIG_E2E_COMMUNITY_PORT")
-        .ok()
-        .filter(|p| p.parse::<u16>().is_ok())
-        .unwrap_or_else(|| DEFAULT_COMMUNITY_PORT.to_string())
+fn port() -> Result<String, String> {
+    port_from("RIG_E2E_PORT", DEFAULT_PORT)
+}
+
+fn community_port() -> Result<String, String> {
+    port_from("RIG_E2E_COMMUNITY_PORT", DEFAULT_COMMUNITY_PORT)
 }
 
 static STOP: AtomicBool = AtomicBool::new(false);
@@ -129,7 +141,7 @@ fn fixture_bin(root: &Path, name: &str, env: &str) -> Result<PathBuf, String> {
 /// Starts the stub Sculptured server and waits until it answers; returns its origin.
 fn start_stub(session: &mut Session, root: &Path) -> Result<String, String> {
     let bin = fixture_bin(root, "fake-community", "RIG_E2E_FAKE_COMMUNITY")?;
-    let port = community_port();
+    let port = community_port()?;
     let child = Command::new(&bin)
         .args(["--port", &port])
         .stdout(std::process::Stdio::null())
@@ -164,16 +176,49 @@ fn build_web(root: &Path, dist: &Path) -> Result<(), String> {
     )
 }
 
+/// Lets serve's agents run the person's `claude`, signed in through `CLAUDE_CONFIG_DIR`, while
+/// `HOME` is the throwaway one. Call after the serve arguments.
+fn real_claude(cmd: &mut Command) {
+    let real_home = std::env::var_os("HOME").map(PathBuf::from);
+    let config = e2e_server::claude_config_dir(
+        std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(),
+        real_home.as_deref(),
+    );
+    let claude = e2e_server::find_claude(
+        std::env::var_os("RIG_E2E_CLAUDE").as_deref(),
+        std::env::var_os("PATH").as_deref(),
+        real_home.as_deref(),
+    );
+    cmd.env_remove("CLAUDE_CONFIG_DIR");
+    if let Some(dir) = &config {
+        cmd.env("CLAUDE_CONFIG_DIR", dir);
+    }
+    if let Some(c) = &claude {
+        cmd.arg("--claude-program").arg(c);
+    }
+    match (&claude, &config) {
+        (Some(c), Some(d)) => eprintln!(
+            "e2e-server: Claude Code agents run {} with the setup in {}",
+            c.display(),
+            d.display()
+        ),
+        _ => eprintln!(
+            "e2e-server: no claude CLI or Claude Code setup found; live specs (RIG_E2E_LIVE=1) cannot start agents"
+        ),
+    }
+}
+
 fn serve(session: &mut Session) -> Result<ExitCode, String> {
+    let port = port()?;
     let root = workspace();
     let dist = session.web_dist();
     build_web(&root, &dist)?;
     let bin = binary(&root)?;
     let codex = fixture_bin(&root, "fake-codex", "RIG_E2E_FAKE_CODEX")?;
     let community = start_stub(session, &root)?;
-    let port = port();
-    let child = Command::new(&bin)
-        .env("HOME", session.home())
+    let mut cmd = Command::new(&bin);
+    cmd.env("HOME", session.home())
+        .env_remove("SCULPTURED_DATA_DIR")
         .args(["serve", "--port", &port, "--data-dir"])
         .arg(session.data_dir())
         .arg("--web-dir")
@@ -182,7 +227,9 @@ fn serve(session: &mut Session) -> Result<ExitCode, String> {
         .arg("--codex-program")
         .arg(&codex)
         .arg("--community-origin")
-        .arg(&community)
+        .arg(&community);
+    real_claude(&mut cmd);
+    let child = cmd
         .spawn()
         .map_err(|e| format!("start {}: {e}", bin.display()))?;
     eprintln!(

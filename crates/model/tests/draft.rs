@@ -10,7 +10,7 @@ fn builder() -> DraftAgent {
         id: "builder".into(),
         group_id: None,
         name: "Builder".into(),
-        kind: AgentKind::Practice,
+        kind: AgentKind::Codex,
         job: "Build it".into(),
         folder: None,
         x: 40,
@@ -84,7 +84,7 @@ fn draft() -> TeamDraft {
 fn draft_wire_shape_round_trips() {
     let d = draft();
     let v = serde_json::to_value(&d).unwrap();
-    assert_eq!(v["agents"][0]["kind"], "practice");
+    assert_eq!(v["agents"][0]["kind"], "codex");
     assert_eq!(
         v["agents"][0]["advanced"],
         json!({ "model": null, "permission": "unrestricted", "resume": "resume-if-possible" })
@@ -93,6 +93,16 @@ fn draft_wire_shape_round_trips() {
     assert_eq!(v["connections"][0]["kind"], "hands-work-to");
     assert_eq!(v["revision"], 3);
     assert_eq!(serde_json::from_value::<TeamDraft>(v).unwrap(), d);
+}
+
+#[test]
+fn an_agent_kind_without_a_real_model_is_refused() {
+    let mut v = serde_json::to_value(draft()).unwrap();
+    v["agents"][0]["kind"] = json!("practice");
+    let err = serde_json::from_value::<TeamDraft>(v)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains(model::REAL_MODEL_REQUIRED), "{err}");
 }
 
 #[test]

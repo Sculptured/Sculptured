@@ -3,6 +3,54 @@ mod common;
 use common::m2::{Served, rid};
 
 use serde_json::json;
+
+/// A one-agent team recorded as started, its agent running when `running` (no model runs here);
+/// returns its id.
+async fn recorded_team(s: &Served, running: bool) -> String {
+    static HOST_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = crate::common::m2::chain(s, "Solo", &[("claude", "Claude", "")], &[]).await;
+    let draft = s.st.store.lock().unwrap().draft(&id).unwrap().unwrap();
+    let rig = rigspec::from_draft(&draft).unwrap().rig;
+    let mut store = s.st.store.lock().unwrap();
+    let desired = if running {
+        model::Desired::Running
+    } else {
+        model::Desired::Stopped
+    };
+    store
+        .upsert_rig(
+            &rig,
+            &controld::store::RigSource::Team {
+                id: id.clone(),
+                revision: draft.revision,
+            },
+            desired,
+        )
+        .unwrap();
+    let lifecycle = if running {
+        model::SeatLifecycle::Running
+    } else {
+        model::SeatLifecycle::Stopped
+    };
+    store
+        .ingest(
+            "local",
+            host_proto::HostEvent {
+                host_seq: HOST_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+                at_ms: 1,
+                actor: model::Actor::System("hostd".into()),
+                subject: model::Subject::Seat(rig.seats[0].id.clone()),
+                provenance: model::Provenance::ProtocolObserved,
+                body: model::EventBody::SeatLifecycleChanged {
+                    lifecycle,
+                    reason: None,
+                },
+            },
+        )
+        .unwrap();
+    id
+}
+
 #[tokio::test]
 async fn hide_trash_restore_are_persistent_and_do_not_remove_drafts() {
     let s = crate::common::m2::serve().await;
@@ -69,8 +117,8 @@ async fn hide_trash_restore_are_persistent_and_do_not_remove_drafts() {
 }
 #[tokio::test]
 async fn running_agents_can_be_hidden_but_cannot_be_trashed_or_stopped_implicitly() {
-    let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
+    let s = crate::common::m2::serve().await;
+    let id = recorded_team(&s, true).await;
     let endpoint = format!("/api/project-visibility/{id}");
     assert_eq!(
         crate::common::m2::call(&s.router, "PUT", &endpoint, json!({"status":"hidden"}))
@@ -157,10 +205,9 @@ fn rows_of(s: &Served, team: &str) -> Vec<(&'static str, i64)> {
 
 #[tokio::test]
 async fn a_trashed_project_can_be_deleted_forever_and_nothing_else_is_touched() {
-    let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_team(&s, "solo").await;
-    let other = crate::common::m2::practice_team(&s, "solo").await;
-    crate::common::m2::stop_team(&s, &id).await;
+    let s = crate::common::m2::serve().await;
+    let id = recorded_team(&s, false).await;
+    let other = recorded_team(&s, true).await;
     let endpoint = format!("/api/project-visibility/{id}");
     let (status, result) = crate::common::m2::call(&s.router, "DELETE", &endpoint, json!({})).await;
     assert_eq!(

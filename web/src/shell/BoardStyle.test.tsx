@@ -69,7 +69,7 @@ describe('Board style: Cards | Logos', () => {
     setBoardStyle('logos');
     const { unmount } = render(<LiveGraph rig="r" compiled={compiledRig()} agents={rows(working)} onOpen={() => {}} onAnswer={() => {}} now={0} />);
     const a = node(/^a — working/), b = node(/^b — idle/);
-    expect(a).toHaveClass('is-logo', 'logo-working', 'logo-animated', 'v-practice');
+    expect(a).toHaveClass('is-logo', 'logo-working', 'logo-animated', 'v-claude');
     expect(b).toHaveClass('is-logo');
     expect(b).not.toHaveClass('logo-working');
     expect(b).not.toHaveClass('logo-animated');

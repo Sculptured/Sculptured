@@ -60,19 +60,18 @@ afterEach(() => {
 });
 
 describe('New team: Start from…', () => {
-  it('an empty home shows the gallery; a template creates the team and opens its board (Practice is not offered)', async () => {
+  it('an empty home shows the gallery; a template creates the team and opens its board', async () => {
     fakeTeam(teamRecord({ draft: teamDraft({ id: 'builder-and-reviewer', name: 'Builder and Reviewer' }) }));
     vi.mocked(api.listTeams).mockResolvedValue([]);
     vi.mocked(api.createTeam).mockImplementation(async () => teamRecord({ draft: teamDraft({ id: 'builder-and-reviewer', name: 'Builder and Reviewer' }) }));
     renderAt('/');
     const gallery = await screen.findByRole('region', { name: 'New project' });
     expect(within(gallery).getByRole('radio', { name: /Claude/ })).toBeChecked();
-    expect(within(gallery).queryByRole('radio', { name: /Practice/ })).toBeNull();
     const tpl = await within(gallery).findByRole('button', { name: 'Builder → Reviewer' });
     expect(tpl).toHaveAccessibleDescription(/One agent builds, then hands the work to a second agent to review\. 2 agents · Claude/);
     expect(openRigWords(document.querySelector<HTMLElement>('.app')!)).toEqual([]);
     await userEvent.setup().click(tpl);
-    expect(api.createTeam).toHaveBeenCalledWith('builder-reviewer', false, null, expect.any(String));
+    expect(api.createTeam).toHaveBeenCalledWith('builder-reviewer', null, expect.any(String));
     await waitFor(() => expect(where()).toBe('/p/builder-and-reviewer/board?mode=design'));
     expect(await screen.findByRole('button', { name: /^Builder — / })).toBeInTheDocument();
   });
@@ -86,7 +85,7 @@ describe('New team: Start from…', () => {
     expect(await within(gallery).findByRole('button', { name: 'Solo agent' })).toHaveAccessibleDescription(/1 agent · Claude/);
     await user.type(within(gallery).getByRole('textbox', { name: 'Name' }), 'Docs crew');
     await user.click(within(gallery).getByRole('button', { name: 'Solo agent' }));
-    expect(api.createTeam).toHaveBeenCalledWith('solo', false, 'Docs crew', expect.any(String));
+    expect(api.createTeam).toHaveBeenCalledWith('solo', 'Docs crew', expect.any(String));
     expect(await within(gallery).findByRole('alert')).toHaveTextContent('Could not create the team: That template is not available.');
   });
 
@@ -287,6 +286,16 @@ describe('A team that could not be loaded', () => {
   });
 });
 
+/** Claude agents ask before they start: confirms the Start question. */
+async function confirmStart(user = userEvent.setup()) {
+  const confirm = await waitFor(() => {
+    const el = document.querySelector<HTMLElement>('.start-confirm');
+    if (!el) throw new Error('no start confirmation yet');
+    return el;
+  });
+  await user.click(within(confirm).getByRole('button', { name: 'Start team' }));
+}
+
 describe('Start team → Live', () => {
   it('saves first, starts with the saved revision, and opens the Live board with draft names and the warnings', async () => {
     fakeTeam();
@@ -307,6 +316,7 @@ describe('Start team → Live', () => {
     await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Maker');
     // Start team is in the project bar on every page, here the agent's Setup.
     await user.click(screen.getByRole('button', { name: 'Start team' }));
+    await confirmStart(user);
     await waitFor(() => expect(where()).toBe('/p/t/board?mode=run'));
     expect(order).toEqual(['save 1', 'start 2']);
     await waitFor(() => expect(streamFor('t')).toBeDefined());
@@ -398,6 +408,7 @@ describe('After Sculptured restarts', () => {
     expect(within(note).getByText(REASON)).toHaveAttribute('data-raw-evidence');
     expect(openRigWords(document.querySelector<HTMLElement>('.app')!)).toEqual([]);
     await userEvent.setup().click(screen.getByRole('button', { name: 'Start team' }));
+    await confirmStart();
     await waitFor(() => expect(api.startTeam).toHaveBeenCalledWith('t', 3, expect.any(String), false, false));
   });
 
@@ -409,6 +420,7 @@ describe('After Sculptured restarts', () => {
     await waitFor(() => expect(streamFor('t')).toBeDefined());
     act(() => streamFor('t').emit('snapshot', lost()));
     await userEvent.setup().click(screen.getByRole('button', { name: 'Start team' }));
+    await confirmStart();
     const alert = await screen.findByRole('alertdialog', { name: 'The team could not start' });
     expect(alert).toHaveTextContent('1 thing to fix');
     expect(alert).toHaveTextContent("Builder's folder is outside your home folder");
@@ -424,6 +436,7 @@ describe('After Sculptured restarts', () => {
     act(() => streamFor('t').emit('snapshot', lost()));
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Start team' }));
+    await confirmStart(user);
     const held = await screen.findByRole('alertdialog', { name: 'Your plan is near its limit' });
     expect(held).toHaveTextContent('Codex plan is at 100%');
     await user.click(within(held).getByRole('button', { name: 'Start anyway' }));
@@ -431,7 +444,7 @@ describe('After Sculptured restarts', () => {
   });
 
   it("Start checks the team's computer first: a signed-out Claude Code is signed in from the dialog, then the team starts", async () => {
-    const draft = teamDraft({ agents: [draftAgent('builder', { kind: 'claude' }), draftAgent('reviewer', { kind: 'practice', x: 300 })] });
+    const draft = teamDraft({ agents: [draftAgent('builder', { kind: 'claude' }), draftAgent('reviewer', { kind: 'claude', x: 300 })] });
     started(teamRecord({ started_revision: 1, live: false, draft }));
     const cli = (signed_in: boolean) => [{ name: 'claude', installed: true, version: '2.1', signed_in, account: null, detail: '' }, { name: 'codex', installed: false, version: null, signed_in: null, account: null, detail: '' }];
     const clis = vi.spyOn(api, 'clis').mockResolvedValue(cli(false));

@@ -2,7 +2,6 @@ mod common;
 
 use common::m2::{Served, TOKEN};
 use serde_json::json;
-use std::sync::Arc;
 
 /// A connected computer allowing `<tmp>/proj`, answering ops; returns (tmp, its proj folder).
 async fn computer(s: &Served) -> (tempfile::TempDir, std::path::PathBuf, hostd::Supervisor) {
@@ -20,7 +19,7 @@ async fn computer(s: &Served) -> (tempfile::TempDir, std::path::PathBuf, hostd::
     };
     let sup = hostd::Supervisor::new(
         "dev-1".into(),
-        vec![Arc::new(drivers::stub::StubDriver)],
+        vec![],
         hostd::Journal::open_in_memory(1000).unwrap(),
     )
     .restricted(pol)
@@ -80,7 +79,7 @@ async fn hosted_folders_git_and_clis_run_on_the_teams_computer() {
         &s.router,
         "POST",
         "/api/teams",
-        Some(json!({"request_id": "r1", "template": "solo", "practice": true})),
+        Some(json!({"request_id": "r1", "template": "solo"})),
     )
     .await;
     let mut draft = rec["draft"].clone();
@@ -170,7 +169,7 @@ async fn a_hosted_check_runs_on_the_computer_and_reports_pass_or_fail() {
         &s.router,
         "POST",
         "/api/teams",
-        Some(json!({"request_id": "r1", "template": "solo", "practice": true})),
+        Some(json!({"request_id": "r1", "template": "solo"})),
     )
     .await;
     let mut draft = rec["draft"].clone();
@@ -185,33 +184,26 @@ async fn a_hosted_check_runs_on_the_computer_and_reports_pass_or_fail() {
     )
     .await;
     assert_eq!(status.as_u16(), 200, "{body}");
-    let (status, body) = crate::common::m2::signed(
-        &s.router,
-        "POST",
-        &format!("/api/teams/{id}/start"),
-        Some(json!({"request_id": "r3"})),
-    )
-    .await;
-    assert_eq!(status.as_u16(), 200, "{body}");
-    let seat =
-        s.st.store
-            .lock()
-            .unwrap()
-            .rig_snapshot(&id)
-            .unwrap()
-            .unwrap()
-            .seats[0]
-            .id
-            .clone();
-    crate::common::wait_for("running on the computer", || {
-        s.st.store
-            .lock()
-            .unwrap()
-            .seat(&seat)
-            .unwrap()
-            .is_some_and(|v| v.cwd.is_some())
-    })
-    .await;
+    // The agent as recorded when it started in the team's folder on the computer (no model runs here).
+    let saved = s.st.store.lock().unwrap().draft(&id).unwrap().unwrap();
+    let rig = rigspec::from_draft(&saved).unwrap().rig;
+    let seat = rig.seats[0].id.clone();
+    {
+        let mut store = s.st.store.lock().unwrap();
+        store
+            .upsert_rig(
+                &rig,
+                &controld::store::RigSource::Team {
+                    id: id.clone(),
+                    revision: saved.revision,
+                },
+                model::Desired::Running,
+            )
+            .unwrap();
+        store
+            .set_seat_cwd(&seat, &proj.display().to_string())
+            .unwrap();
+    }
     let check = || {
         s.st.store
             .lock()
@@ -259,7 +251,7 @@ async fn hosted_teams_with_own_copies_ask_the_computer_for_one_instead_of_making
         &s.router,
         "POST",
         "/api/teams",
-        Some(json!({"request_id": "r1", "template": "solo", "practice": true})),
+        Some(json!({"request_id": "r1", "template": "solo"})),
     )
     .await;
     let id = rec["draft"]["id"].as_str().unwrap().to_string();
@@ -280,7 +272,7 @@ async fn hosted_teams_with_own_copies_ask_the_computer_for_one_instead_of_making
         .expect("asks for an own copy");
     assert_eq!(own.team, id);
     assert!(
-        controld::launch::own_copy_for(&s.st, &id, &seat, rigspec::Runtime::Stub).is_none(),
-        "Practice agents need no copy"
+        controld::launch::own_copy_for(&s.st, &id, &seat, rigspec::Runtime::Terminal).is_none(),
+        "a plain terminal needs no copy"
     );
 }

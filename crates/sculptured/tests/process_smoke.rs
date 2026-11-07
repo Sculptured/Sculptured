@@ -1,4 +1,8 @@
-//! Starts the real binary (controld + spawned hostd) and drives a stub rig over HTTP.
+//! Starts the real binary (controld + spawned hostd) on a throwaway data dir, `HOME` and port, and
+//! drives it over HTTP; the rig test runs real Claude Code agents on haiku (live, ignored by default).
+//! Nothing here can reach `~/.sculptured` or the default ports: every serve gets `--data-dir`,
+//! `--port 0` and its own `HOME`, and only `CLAUDE_CONFIG_DIR` points at the person's Claude Code
+//! setup, so a live agent is signed in.
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader};
 use std::os::unix::process::CommandExt;
@@ -14,10 +18,40 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
-      - { id: b, agent_ref: "local:b", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, model: haiku, cwd: "." }
+      - { id: b, agent_ref: "local:b", profile: default, runtime: claude-code, model: haiku, cwd: "." }
     edges: [{ kind: delegates_to, from: a, to: b }]
 "#;
+
+/// The ports a person's own Sculptured uses; no test may touch them.
+const THEIR_PORTS: [u16; 2] = [4410, 4420];
+
+fn on_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
+    })
+}
+
+/// The `claude` CLI, or None (with the reason printed) when this machine cannot run live tests.
+fn require() -> Option<PathBuf> {
+    let found = on_path("claude");
+    if found.is_none() {
+        eprintln!(
+            "skipped: the claude CLI is not on PATH; live tests need it installed and signed in"
+        );
+    }
+    found
+}
+
+/// The person's Claude Code setup (`$CLAUDE_CONFIG_DIR`, else `~/.claude`), when there is one.
+fn claude_config_dir() -> Option<PathBuf> {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".claude")))
+        .filter(|d| d.is_dir())
+}
 
 /// A running `sculptured serve`. On drop, kills serve's process group and the hostd
 /// recorded in `{data}/host-local/hostd.pid` (hostd runs in its own session).
@@ -26,6 +60,7 @@ struct Serve {
     data: PathBuf,
     base: String,
     boot: Duration,
+    _home: tempfile::TempDir,
 }
 
 impl Serve {
@@ -34,8 +69,17 @@ impl Serve {
     }
 
     fn start_with(data: &Path, port: u16, extra: &[&str]) -> Serve {
+        assert!(!THEIR_PORTS.contains(&port), "port {port} is not for tests");
+        let home = tempfile::tempdir().unwrap();
         let started = Instant::now();
-        let mut child = Command::new(env!("CARGO_BIN_EXE_sculptured"))
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_sculptured"));
+        cmd.env("HOME", home.path())
+            .env_remove("SCULPTURED_DATA_DIR")
+            .env_remove("CLAUDE_CONFIG_DIR");
+        if let Some(dir) = claude_config_dir() {
+            cmd.env("CLAUDE_CONFIG_DIR", dir);
+        }
+        let mut child = cmd
             .args([
                 "serve",
                 "--port",
@@ -56,6 +100,7 @@ impl Serve {
             boot: Duration::ZERO,
             data: data.to_path_buf(),
             child,
+            _home: home,
         };
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
@@ -72,6 +117,16 @@ impl Serve {
             .expect("listening line")
             .to_string();
         serve.boot = started.elapsed();
+        let port = serve
+            .base
+            .rsplit(':')
+            .next()
+            .and_then(|p| p.parse::<u16>().ok());
+        assert!(
+            port.is_some_and(|p| !THEIR_PORTS.contains(&p)),
+            "serve listens on {}",
+            serve.base
+        );
         serve
     }
 
@@ -153,8 +208,12 @@ fn wait_gone(data: &Path) {
     }
 }
 
-async fn poll(what: &str, mut f: impl AsyncFnMut() -> bool) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+async fn poll(what: &str, f: impl AsyncFnMut() -> bool) {
+    poll_for(what, Duration::from_secs(20), f).await;
+}
+
+async fn poll_for(what: &str, wait: Duration, mut f: impl AsyncFnMut() -> bool) {
+    let deadline = tokio::time::Instant::now() + wait;
     loop {
         if f().await {
             return;
@@ -167,14 +226,21 @@ async fn poll(what: &str, mut f: impl AsyncFnMut() -> bool) {
     }
 }
 
+/// Live: two Claude Code agents on haiku, working in a throwaway folder.
 #[tokio::test(flavor = "multi_thread")]
-async fn serve_boots_messages_and_stops_a_stub_rig() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_serve_boots_messages_and_stops_a_rig() {
+    let Some(claude) = require() else { return };
     let data = tempfile::tempdir().unwrap();
     let specs = tempfile::tempdir().unwrap();
     let spec_path = specs.path().join("smoke.yaml");
     std::fs::write(&spec_path, SPEC).unwrap();
 
-    let serve = Serve::start(data.path(), 0);
+    let serve = Serve::start_with(
+        data.path(),
+        0,
+        &["--claude-program", claude.to_str().unwrap()],
+    );
     let base = serve.base.clone();
     let http = client();
 
@@ -205,14 +271,14 @@ async fn serve_boots_messages_and_stops_a_stub_rig() {
             .map(|s| s["lifecycle"].as_str().unwrap().to_string())
             .collect::<Vec<_>>()
     };
-    poll("both seats running", async || {
+    poll_for("both seats running", Duration::from_secs(60), async || {
         lifecycles(http.clone(), base.clone()).await == ["running", "running"]
     })
     .await;
 
     let sent: Value = http
         .post(format!("{base}/api/seats/dev.a@smoke/send"))
-        .json(&json!({ "request_id": "send-1", "text": "hello", "intent": "inform", "interrupt": false }))
+        .json(&json!({ "request_id": "send-1", "text": "Reply with the single word OK and nothing else.", "intent": "inform", "interrupt": false }))
         .send()
         .await
         .unwrap()
@@ -220,7 +286,7 @@ async fn serve_boots_messages_and_stops_a_stub_rig() {
         .await
         .unwrap();
     assert!(sent["message_id"].is_string(), "{sent}");
-    poll("stub reply", async || {
+    poll_for("the agent's reply", Duration::from_secs(240), async || {
         let events: Value = http
             .get(format!(
                 "{base}/api/seats/dev.a@smoke/events?after=0&limit=500"
@@ -232,7 +298,8 @@ async fn serve_boots_messages_and_stops_a_stub_rig() {
             .await
             .unwrap();
         events.as_array().unwrap().iter().any(|e| {
-            e["body"]["type"] == "agent-text" && e["body"]["text"] == "stub received: hello"
+            e["body"]["type"] == "agent-text"
+                && e["body"]["text"].as_str().is_some_and(|t| !t.is_empty())
         })
     })
     .await;
@@ -244,7 +311,7 @@ async fn serve_boots_messages_and_stops_a_stub_rig() {
         .await
         .unwrap();
     assert!(stop.status().is_success());
-    poll("both seats stopped", async || {
+    poll_for("both seats stopped", Duration::from_secs(60), async || {
         lifecycles(http.clone(), base.clone()).await == ["stopped", "stopped"]
     })
     .await;

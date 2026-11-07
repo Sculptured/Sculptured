@@ -45,9 +45,9 @@ fn opts() -> Value {
 const WITH_TESTER: &str = "madl: draft
 system: { id: whatever, name: Pair }
 agents:
-  - { id: a, name: Alpha, runtime: x-sculptured-practice, instructions: Plan the work in numbered steps. }
-  - { id: b, name: Beta, runtime: x-sculptured-practice, instructions: build }
-  - { id: tester, name: Tester, runtime: x-sculptured-practice, instructions: Run the tests and report failures. }
+  - { id: a, name: Alpha, runtime: claude-code, instructions: Plan the work in numbered steps. }
+  - { id: b, name: Beta, runtime: claude-code, instructions: build }
+  - { id: tester, name: Tester, runtime: claude-code, instructions: Run the tests and report failures. }
 connections:
   - { id: c-a-b, from: a, to: b, kind: handoff }
   - { from: b, to: tester, kind: handoff }
@@ -69,7 +69,7 @@ async fn ask(s: &Served, team: &str, body: Value) -> Value {
 async fn a_proposal_changes_nothing_saved_and_keeps_cards_where_they_were() {
     let d = tempfile::tempdir().unwrap();
     let s = served(d.path()).await;
-    let team = crate::common::m2::practice_chain(
+    let team = crate::common::m2::chain(
         &s,
         "Pair",
         &[("a", "Alpha", "plan"), ("b", "Beta", "build")],
@@ -136,7 +136,7 @@ async fn a_proposal_changes_nothing_saved_and_keeps_cards_where_they_were() {
 async fn iterating_starts_from_the_proposal_and_carries_the_conversation() {
     let d = tempfile::tempdir().unwrap();
     let s = served(d.path()).await;
-    let team = crate::common::m2::practice_chain(
+    let team = crate::common::m2::chain(
         &s,
         "Pair",
         &[("a", "Alpha", "plan"), ("b", "Beta", "build")],
@@ -181,7 +181,7 @@ async fn iterating_starts_from_the_proposal_and_carries_the_conversation() {
 async fn an_invalid_answer_goes_back_once_with_what_was_wrong() {
     let d = tempfile::tempdir().unwrap();
     let s = served(d.path()).await;
-    let team = crate::common::m2::practice_chain(
+    let team = crate::common::m2::chain(
         &s,
         "Pair",
         &[("a", "Alpha", "plan"), ("b", "Beta", "build")],
@@ -213,7 +213,7 @@ async fn an_invalid_answer_goes_back_once_with_what_was_wrong() {
 async fn asking_needs_a_request() {
     let d = tempfile::tempdir().unwrap();
     let s = served(d.path()).await;
-    let team = crate::common::m2::practice_chain(&s, "Pair", &[("a", "Alpha", "plan")], &[]).await;
+    let team = crate::common::m2::chain(&s, "Pair", &[("a", "Alpha", "plan")], &[]).await;
     let (status, body) = crate::common::m2::call(
         &s.router,
         "POST",
@@ -228,7 +228,7 @@ async fn asking_needs_a_request() {
 async fn a_proposal_keeps_the_saved_budget_and_agent_limits() {
     let d = tempfile::tempdir().unwrap();
     let s = served(d.path()).await;
-    let team = crate::common::m2::practice_chain(
+    let team = crate::common::m2::chain(
         &s,
         "Pair",
         &[("a", "Alpha", "plan"), ("b", "Beta", "build")],

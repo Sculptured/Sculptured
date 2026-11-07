@@ -1,17 +1,25 @@
 //! Pause and resume, for one agent and for a whole team: a paused agent stops at its next safe point
-//! and keeps its session, and Resume continues that session (Practice agents, no model is called).
+//! and keeps its session, and Resume continues that session. Live: the agents run on the real Claude
+//! Code CLI (they get no job; a pause asks for one short wrap-up turn).
 mod common;
+#[path = "common/live_controls.rs"]
+mod live_controls;
 use axum::http::StatusCode;
 use common::lifecycle;
-use common::m2::{connect_stub, rid, seat, start_team};
+use common::m2::{rid, seat, start_team};
 use common::pausing::*;
+use live_controls::{wait_lifecycle, wait_paused};
 use model::SeatLifecycle;
 use serde_json::{Value, json};
 
 #[tokio::test]
-async fn pause_agent_then_resume_continues_session() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_pause_agent_then_resume_continues_session() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
+    let _runner = common::live::connect(&s).await;
     let id = team(&s, "pause-one", &["a", "b"]).await;
     start_team(&s, &id).await;
     let (a, b) = (seat(&id, "a"), seat(&id, "b"));
@@ -39,9 +47,13 @@ async fn pause_agent_then_resume_continues_session() {
 }
 
 #[tokio::test]
-async fn team_pause_affects_all_live_agents_and_skips_stopped() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_team_pause_affects_all_live_agents_and_skips_stopped() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
+    let _runner = common::live::connect(&s).await;
     let (id, [a, b, c]) = three_with_c_stopped(&s, "pause-all").await;
 
     let request = rid();
@@ -67,9 +79,13 @@ async fn team_pause_affects_all_live_agents_and_skips_stopped() {
 }
 
 #[tokio::test]
-async fn team_resume_restarts_paused() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_team_resume_restarts_paused() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
+    let _runner = common::live::connect(&s).await;
     let (id, [a, b, c]) = three_with_c_stopped(&s, "resume-all").await;
     ok(team_action(&s, &id, "pause", &rid()).await);
     wait_paused(&s, &[&a, &b]).await;
@@ -90,9 +106,8 @@ async fn team_resume_restarts_paused() {
 }
 
 #[tokio::test]
-async fn pause_when_nothing_running_is_empty_result_not_error() {
+async fn pause_when_never_started_is_empty_result_not_error() {
     let s = common::m2::serve().await;
-    let _runner = connect_stub(&s).await;
     let never = team(&s, "never-started", &["a"]).await;
     for action in ["pause", "resume"] {
         let body = ok(team_action(&s, &never, action, &rid()).await);
@@ -102,7 +117,18 @@ async fn pause_when_nothing_running_is_empty_result_not_error() {
             "{action}"
         );
     }
+    let (status, body) = team_action(&s, "no-such-team", "pause", &rid()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+}
 
+#[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_pause_when_every_agent_stopped_is_empty_result_not_error() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let s = common::m2::serve().await;
+    let _runner = common::live::connect(&s).await;
     let id = team(&s, "all-stopped", &["a", "b"]).await;
     start_team(&s, &id).await;
     let (a, b) = (seat(&id, "a"), seat(&id, "b"));
@@ -113,7 +139,4 @@ async fn pause_when_nothing_running_is_empty_result_not_error() {
         assert!(affected(&body).is_empty(), "{action}: {body}");
         assert_eq!(skipped(&body).len(), 2, "{action}: {body}");
     }
-
-    let (status, body) = team_action(&s, "no-such-team", "pause", &rid()).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
 }

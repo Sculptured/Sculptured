@@ -1,6 +1,5 @@
 mod common;
 
-use std::sync::Arc;
 use std::time::Duration;
 
 #[tokio::test]
@@ -18,7 +17,7 @@ async fn an_op_sent_to_a_computer_runs_there_and_returns_its_value() {
     let _laptop = crate::common::m2::connect_with_ops(
         &s,
         "dev-1",
-        vec![Arc::new(drivers::stub::StubDriver)],
+        vec![],
         hostd::ops::OpsHost { context: cx },
     )
     .await;

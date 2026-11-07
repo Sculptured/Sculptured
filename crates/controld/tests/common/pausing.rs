@@ -1,15 +1,15 @@
-//! Helpers for the pause and resume tests: Practice teams, control calls and what they answered.
-use super::m2::{Served, call, get, practice_chain, rid, seat, start_team};
+//! Helpers for the pause and resume tests: teams, control calls and what they answered.
+use super::m2::{Served, call, chain, get, rid, seat, start_team};
 use super::{lifecycle, wait_for};
 use axum::http::StatusCode;
 use controld::store::ControlMode;
 use model::{EventBody, SeatLifecycle, TenureCause};
 use serde_json::{Value, json};
 
-/// A Practice team of `agents` (no links), not started.
+/// A team of Claude `agents` (no links), not started.
 pub async fn team(s: &Served, name: &str, agents: &[&str]) -> String {
     let agents: Vec<(&str, &str, &str)> = agents.iter().map(|a| (*a, *a, "")).collect();
-    practice_chain(s, name, &agents, &[]).await
+    chain(s, name, &agents, &[]).await
 }
 
 pub async fn control(s: &Served, seat: &str, mode: &str) -> (StatusCode, Value) {

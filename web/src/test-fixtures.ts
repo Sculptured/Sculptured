@@ -45,7 +45,7 @@ export function seatSpec(member: string): CompiledSeat {
     id: `dev.${member}@r`,
     pod: 'dev',
     member,
-    runtime: 'stub',
+    runtime: 'claude-code',
     cwd: '.',
     agent_ref: `local:agents/${member}`,
     profile: 'default',
@@ -80,14 +80,14 @@ export function seatView(member: string, over: Partial<SeatView> = {}): SeatView
     rig: 'r',
     pod: 'dev',
     member,
-    runtime: 'stub',
+    runtime: 'claude-code',
     label: null,
     host: 'local',
     lifecycle: 'running',
     lifecycle_reason: null,
     activity: 'idle',
     tenure: 1,
-    native_session_id: `stub-dev.${member}@r`,
+    native_session_id: `session-dev.${member}@r`,
     caps: {
       interrupt: true,
       questions: false,
@@ -137,7 +137,7 @@ export function draftAgent(id: string, over: Partial<DraftAgent> = {}): DraftAge
     id,
     group_id: null,
     name: id[0].toUpperCase() + id.slice(1),
-    kind: 'practice',
+    kind: 'claude',
     job: '',
     folder: null,
     x: 40,
@@ -147,7 +147,7 @@ export function draftAgent(id: string, over: Partial<DraftAgent> = {}): DraftAge
   };
 }
 
-/** Team `t`: Builder (40,40) hands work to Reviewer (300,40), both Practice agents. */
+/** Team `t`: Builder (40,40) hands work to Reviewer (300,40), both Claude agents. */
 export function teamDraft(over: Partial<TeamDraft> = {}): TeamDraft {
   return {
     id: 't',

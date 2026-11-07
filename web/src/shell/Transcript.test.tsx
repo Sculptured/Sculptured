@@ -368,7 +368,7 @@ describe('Transcript meta, folded', () => {
     ev(2, { type: 'tenure-ended', tenure: 1, exit_code: 0, signal: null, stderr_tail: '' }),
     ev(3, { type: 'seat-lifecycle-changed', lifecycle: 'stopped', reason: null }),
     ev(4, { type: 'seat-lifecycle-changed', lifecycle: 'launching', reason: null }),
-    ev(5, { type: 'tenure-started', tenure: 2, cause: 'fresh', driver: 'stub', native_session_id: null, caps: {} as never }),
+    ev(5, { type: 'tenure-started', tenure: 2, cause: 'fresh', driver: 'claude', native_session_id: null, caps: {} as never }),
     ev(6, { type: 'seat-lifecycle-changed', lifecycle: 'running', reason: null }),
   ];
 
@@ -385,7 +385,7 @@ describe('Transcript meta, folded', () => {
     await userEvent.setup().click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(chain).toBeVisible();
-    expect(chain).toHaveTextContent('Stopping › Session #1 ended · exit 0 › Stopped › Launching › Session #2 started · new conversation · Practice agent › Running');
+    expect(chain).toHaveTextContent('Stopping › Session #1 ended · exit 0 › Stopped › Launching › Session #2 started · new conversation · Claude › Running');
   });
 
   it('says what a chain did in a few words', () => {

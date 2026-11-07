@@ -1,24 +1,38 @@
 import { expect, test, type Page } from '@playwright/test';
+import { copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { liveOnly, TURN_MS, turnsEnded, workFolder } from './fixtures/live';
+
+/**
+ * A team started from a team file, live (see fixtures/live.ts): the file's agents are real Claude Code
+ * on haiku. The file is copied into a fresh work folder under the e2e server's HOME first, so its
+ * agents (cwd ".") work only there.
+ */
+
+liveOnly();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => path.join(here, 'fixtures', name);
 
 async function boot(page: Page, file: string, rig: string) {
+  const folder = await workFolder(page.request, `${rig}-${Date.now()}`);
+  const copy = path.join(folder, file);
+  await copyFile(fixture(file), copy);
   await page.goto('/new');
   // The expert start-from-a-file form is under Advanced on the New project page.
   const advanced = page.locator('details.gallery-advanced');
   await advanced.locator('summary').click();
   await expect(advanced).toHaveAttribute('open', '');
   const form = advanced.getByRole('form', { name: 'Start a team from a file' });
-  await form.getByLabel('Team file').fill(fixture(file));
+  await form.getByLabel('Team file').fill(copy);
   await form.getByRole('button', { name: 'Start team' }).click();
   await expect(page).toHaveURL(new RegExp(`/p/${rig}/board$`));
 }
 
 test('desktop: start a team, message an agent and stop it', async ({ page }, info) => {
   test.skip(info.project.name !== 'desktop', 'desktop flow');
+  test.setTimeout(TURN_MS + 60_000);
   await boot(page, 'e2e-desktop.yaml', 'e2e-desktop');
 
   const boxA = page.getByRole('button', { name: /^a — / });
@@ -29,7 +43,7 @@ test('desktop: start a team, message an agent and stop it', async ({ page }, inf
 
   // Ruling 31: a long lifecycle reason must stay inside its box (real-browser layout check).
   const boxC = page.getByRole('button', { name: /^c — needs you/ });
-  await expect(boxC).toBeVisible();
+  await expect(boxC).toBeVisible({ timeout: 30_000 });
   const reason = boxC.locator('.reason');
   await expect(reason).toContainText('working directory does not exist');
   const cb = (await page.locator('.agent-box', { has: boxC }).boundingBox())!;
@@ -52,11 +66,14 @@ test('desktop: start a team, message an agent and stop it', async ({ page }, inf
   await expect(page).toHaveURL(/\/p\/e2e-desktop\/board$/);
   await boxA.click();
   await expect(page.getByRole('heading', { level: 1, name: 'a', exact: true })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Message' }).fill('hello');
+  const turns = await turnsEnded(page.request, 'dev.a@e2e-desktop');
+  await page.getByRole('textbox', { name: 'Message' }).fill('Reply with the single word OK and nothing else.');
   await page.getByRole('textbox', { name: 'Message' }).press('Enter');
   const convo = page.getByRole('list', { name: 'Conversation' });
-  await expect(convo.getByText('stub received: hello')).toBeVisible();
-  await expect(convo.getByText('read', { exact: true })).toBeVisible();
+  await expect(convo.getByText('Reply with the single word OK and nothing else.')).toBeVisible();
+  await expect(convo.getByText('read', { exact: true })).toBeVisible({ timeout: TURN_MS });
+  // The agent answered: its turn ended.
+  await expect.poll(() => turnsEnded(page.request, 'dev.a@e2e-desktop'), { timeout: TURN_MS }).toBeGreaterThan(turns);
 
   // Controls are on the agent's Activity tab.
   await page.getByRole('link', { name: 'Activity' }).click();
@@ -65,6 +82,7 @@ test('desktop: start a team, message an agent and stop it', async ({ page }, inf
   await page.getByRole('button', { name: 'Confirm stop agent' }).click();
   await page.getByRole('link', { name: 'Agents' }).click();
   await expect(page.getByRole('row', { name: /a .*stopped/ })).toBeVisible();
+  await page.request.post('/api/rigs/e2e-desktop/stop', { data: { request_id: `stop-e2e-desktop-${Date.now()}` } });
 });
 
 test('mobile: list view shows agents and connections, tap opens the agent', async ({ page }, info) => {
@@ -80,4 +98,5 @@ test('mobile: list view shows agents and connections, tap opens the agent', asyn
   await rowA.tap();
   await expect(page.getByRole('heading', { level: 1, name: 'a', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();
+  await page.request.post('/api/rigs/e2e-mobile/stop', { data: { request_id: `stop-e2e-mobile-${Date.now()}` } });
 });

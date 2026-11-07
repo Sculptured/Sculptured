@@ -9,7 +9,7 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, cwd: "." }
 "#;
 
 /// The schema an M1 build wrote (user_version 1).
@@ -123,7 +123,7 @@ fn a_fix_wave_store_at_version_2_migrates_its_spec_path_rigs() {
         .unwrap();
         c.execute(
             "INSERT INTO seats (id, rig, ord, pod, member, runtime, lifecycle, activity, lifecycle_provenance)
-             VALUES ('dev.a@r', 'r', 0, 'dev', 'a', 'stub', 'stopped', 'idle', 'heuristic')",
+             VALUES ('dev.a@r', 'r', 0, 'dev', 'a', 'claude-code', 'stopped', 'idle', 'heuristic')",
             [],
         )
         .unwrap();
@@ -256,7 +256,7 @@ fn m1_and_v3_stores_gain_the_drafts_table() {
             "{label}: the old schema has no drafts"
         );
         let mut s = Store::open(&path).unwrap();
-        let draft = rigspec::templates::template("solo", "solo-agent", "Solo agent", true).unwrap();
+        let draft = rigspec::templates::template("solo", "solo-agent", "Solo agent").unwrap();
         s.insert_draft(&draft).unwrap();
         drop(s);
         assert!(has_table(&path, "drafts"), "{label}");
@@ -290,7 +290,7 @@ fn a_store_downgraded_to_m1_and_upgraded_again_still_opens_with_its_teams() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("c.sqlite");
     let rig = rigspec::compile(SPEC).unwrap();
-    let draft = rigspec::templates::template("solo", "solo-agent", "Solo agent", true).unwrap();
+    let draft = rigspec::templates::template("solo", "solo-agent", "Solo agent").unwrap();
     {
         let mut s = Store::open(&path).unwrap();
         s.upsert_rig(
@@ -342,7 +342,7 @@ fn a_v3_store_downgraded_to_m1_skips_only_the_rigs_migration() {
     m1_build_opens(&path);
     assert!(!has_table(&path, "drafts"));
     let mut s = Store::open(&path).expect("opens");
-    let draft = rigspec::templates::template("solo", "solo-agent", "Solo agent", true).unwrap();
+    let draft = rigspec::templates::template("solo", "solo-agent", "Solo agent").unwrap();
     s.insert_draft(&draft).unwrap();
     drop(s);
     assert!(has_table(&path, "drafts"));

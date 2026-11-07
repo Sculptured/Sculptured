@@ -100,7 +100,7 @@ fn budgets_and_agent_limits_round_trip_through_madl() {
 
 /// The textbook template's workflow, with check and person stages, a panel, escalation and positions.
 fn workflow_team() -> model::TeamDraft {
-    let mut team = rigspec::textbook::template("book", "Book", true);
+    let mut team = rigspec::textbook::template("book", "Book");
     let w = team.workflow.as_mut().unwrap();
     let first = w.stages[0].id.clone();
     w.stages[0]
@@ -373,7 +373,7 @@ fn an_invalid_madl_file_is_refused_with_its_errors() {
 #[tokio::test]
 async fn the_api_exports_madl_json_and_imports_it_as_a_new_team() {
     let s = crate::common::m2::serve().await;
-    let id = crate::common::m2::practice_chain(
+    let id = crate::common::m2::chain(
         &s,
         "Exported",
         &[("a", "Alpha", "plan"), ("b", "Beta", "build")],
@@ -551,4 +551,40 @@ fn a_team_file_exported_before_madl_still_imports() {
         ),
         (true, Some(30))
     );
+}
+
+/// A MADL agent on a scripted, model-less runtime is refused at import, pointing at its runtime.
+#[tokio::test]
+async fn importing_an_agent_without_a_real_model_is_refused() {
+    let s = crate::common::m2::serve().await;
+    let text = "madl: draft
+system: { id: s, name: S }
+agents:
+  - { id: a, name: Alpha, runtime: x-sculptured-practice, instructions: plan }
+";
+    let (status, refused) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        "/api/teams/import-madl",
+        json!({ "request_id": rid(), "text": text }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{refused}");
+    assert_eq!(refused["error"]["code"], "madl_invalid", "{refused}");
+    let at_runtime: Vec<&serde_json::Value> = refused["error"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["path"] == "/agents/0/runtime")
+        .collect();
+    assert_eq!(at_runtime.len(), 1, "{refused}");
+    assert!(
+        at_runtime[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains(model::REAL_MODEL_REQUIRED),
+        "{refused}"
+    );
+    let (_, list) = crate::common::m2::get(&s.router, "/api/teams").await;
+    assert_eq!(list, json!([]), "nothing was imported");
 }

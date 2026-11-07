@@ -53,12 +53,29 @@ async fn call(
     )
 }
 
-async fn create(router: &Router, request_id: &str, template: &str, practice: bool) -> Value {
+async fn create(router: &Router, request_id: &str, template: &str) -> Value {
     let (status, body) = call(
         router,
         "POST",
         "/api/teams",
-        Some(json!({ "request_id": request_id, "template": template, "practice": practice })),
+        Some(json!({ "request_id": request_id, "template": template })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body
+}
+
+/// Saves the team of `record` with `folder` as its folder, so every agent has one; returns the saved record.
+async fn save_in(router: &Router, record: &Value, folder: &std::path::Path) -> Value {
+    let mut d = draft_of(record);
+    d.folder = Some(folder.display().to_string());
+    let (status, body) = call(
+        router,
+        "PUT",
+        &format!("/api/teams/{}", d.id),
+        Some(
+            json!({ "request_id": format!("folder-{}", d.id), "revision": d.revision, "draft": d }),
+        ),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -79,22 +96,30 @@ fn draft_of(record: &Value) -> TeamDraft {
 }
 
 #[tokio::test]
-async fn create_from_a_template_with_practice_agents_and_list_it() {
+async fn create_from_a_template_and_list_it() {
     let (_st, router, _home) = setup();
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let rec = create(&router, "t1", "builder-reviewer").await;
     assert_eq!(rec["draft"]["id"], "builder-and-reviewer");
     assert_eq!(rec["draft"]["name"], "Builder and Reviewer");
-    assert_eq!(rec["draft"]["agents"][0]["kind"], "practice");
+    assert_eq!(rec["draft"]["agents"][0]["kind"], "claude");
     assert_eq!(rec["live"], false);
     assert_eq!(rec["started_revision"], Value::Null);
-    assert!(messages(&rec).is_empty(), "{:?}", messages(&rec));
+    assert!(
+        rec["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|i| i["code"] == "folder-missing"),
+        "only folders are left to choose: {:?}",
+        messages(&rec)
+    );
 
     assert_eq!(
-        create(&router, "t1", "builder-reviewer", true).await,
+        create(&router, "t1", "builder-reviewer").await,
         rec,
         "same request_id replays"
     );
-    let second = create(&router, "t2", "builder-reviewer", true).await;
+    let second = create(&router, "t2", "builder-reviewer").await;
     assert_eq!(second["draft"]["id"], "builder-and-reviewer-2");
 
     let (status, list) = call(&router, "GET", "/api/teams", None).await;
@@ -110,9 +135,9 @@ async fn create_from_a_template_with_practice_agents_and_list_it() {
 }
 
 #[tokio::test]
-async fn without_practice_a_template_reports_folders_in_plain_words_and_codex_needs_no_warning() {
+async fn a_template_reports_folders_in_plain_words_and_codex_needs_no_warning() {
     let (_st, router, _home) = setup();
-    let rec = create(&router, "t1", "builder-reviewer", false).await;
+    let rec = create(&router, "t1", "builder-reviewer").await;
     let m = messages(&rec);
     assert!(
         m.contains(&"Builder needs a folder to work in".to_string()),
@@ -154,7 +179,7 @@ async fn unknown_template_and_missing_request_id_are_400() {
 #[tokio::test]
 async fn put_saves_with_a_revision_and_a_stale_revision_is_409() {
     let (_st, router, _home) = setup();
-    let rec = create(&router, "t1", "solo", true).await;
+    let rec = create(&router, "t1", "solo").await;
     let mut d = draft_of(&rec);
     assert_eq!(d.revision, 0);
     d.name = "Renamed".into();
@@ -204,7 +229,7 @@ async fn put_saves_with_a_revision_and_a_stale_revision_is_409() {
 #[tokio::test]
 async fn put_returns_live_issues_for_the_saved_draft() {
     let (_st, router, home) = setup();
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let rec = create(&router, "t1", "builder-reviewer").await;
     let mut d = draft_of(&rec);
     let gone = home.path().join("gone");
     d.agents[0].folder = Some(gone.display().to_string());
@@ -242,8 +267,13 @@ async fn put_returns_live_issues_for_the_saved_draft() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
 async fn renaming_a_running_team_is_allowed_but_adding_an_agent_is_409() {
-    let (st, router, _home) = setup();
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let (st, router, home) = setup();
+    let rec = save_in(
+        &router,
+        &create(&router, "t1", "builder-reviewer").await,
+        home.path(),
+    )
+    .await;
     let mut d = draft_of(&rec);
     let rig = rigspec::from_draft(&d).unwrap().rig;
     st.store
@@ -253,7 +283,7 @@ async fn renaming_a_running_team_is_allowed_but_adding_an_agent_is_409() {
             &rig,
             &RigSource::Team {
                 id: d.id.clone(),
-                revision: 0,
+                revision: 1,
             },
             Desired::Running,
         )
@@ -278,7 +308,7 @@ async fn renaming_a_running_team_is_allowed_but_adding_an_agent_is_409() {
         .unwrap();
     let (_, now) = call(&router, "GET", "/api/teams/builder-and-reviewer", None).await;
     assert_eq!(now["live"], true);
-    assert_eq!(now["started_revision"], 0);
+    assert_eq!(now["started_revision"], 1);
 
     d.name = "Renamed while running".into();
     d.agents[0].name = "Lead builder".into();
@@ -288,7 +318,7 @@ async fn renaming_a_running_team_is_allowed_but_adding_an_agent_is_409() {
         &router,
         "PUT",
         "/api/teams/builder-and-reviewer",
-        Some(json!({ "request_id": "p1", "revision": 0, "draft": d })),
+        Some(json!({ "request_id": "p1", "revision": 1, "draft": d })),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{saved}");
@@ -302,7 +332,7 @@ async fn renaming_a_running_team_is_allowed_but_adding_an_agent_is_409() {
         &router,
         "PUT",
         "/api/teams/builder-and-reviewer",
-        Some(json!({ "request_id": "p2", "revision": 1, "draft": grown })),
+        Some(json!({ "request_id": "p2", "revision": 2, "draft": grown })),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
@@ -311,8 +341,13 @@ async fn renaming_a_running_team_is_allowed_but_adding_an_agent_is_409() {
 
 #[tokio::test]
 async fn validate_checks_an_unsaved_draft_without_a_request_id() {
-    let (_st, router, _home) = setup();
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let (_st, router, home) = setup();
+    let rec = save_in(
+        &router,
+        &create(&router, "t1", "builder-reviewer").await,
+        home.path(),
+    )
+    .await;
     let mut d = draft_of(&rec);
     d.connections[0].to = "builder".into();
     let (status, issues) = call(
@@ -339,13 +374,18 @@ async fn validate_checks_an_unsaved_draft_without_a_request_id() {
 
 #[tokio::test]
 async fn spec_returns_yaml_with_the_layout_comment() {
-    let (_st, router, _home) = setup();
-    create(&router, "t1", "builder-reviewer", true).await;
+    let (_st, router, home) = setup();
+    save_in(
+        &router,
+        &create(&router, "t1", "builder-reviewer").await,
+        home.path(),
+    )
+    .await;
     let (status, spec) = call(&router, "GET", "/api/teams/builder-and-reviewer/spec", None).await;
     assert_eq!(status, StatusCode::OK);
     let yaml = spec["yaml"].as_str().unwrap();
     assert!(
-        yaml.contains("name: builder-and-reviewer") && yaml.contains("runtime: stub"),
+        yaml.contains("name: builder-and-reviewer") && yaml.contains("runtime: claude-code"),
         "{yaml}"
     );
     assert!(yaml.contains("# sculptured: "), "{yaml}");
@@ -389,7 +429,7 @@ async fn import_creates_a_team_and_lists_dropped_parts() {
 #[tokio::test]
 async fn team_ids_avoid_existing_rig_names_and_reserved_paths() {
     let (st, router, _home) = setup();
-    let rig = rigspec::compile("version: \"0.2\"\nname: new-team\npods:\n  - id: p\n    label: P\n    members:\n      - { id: a, agent_ref: \"local:a\", profile: default, runtime: stub, cwd: \".\" }\n").unwrap();
+    let rig = rigspec::compile("version: \"0.2\"\nname: new-team\npods:\n  - id: p\n    label: P\n    members:\n      - { id: a, agent_ref: \"local:a\", profile: default, runtime: claude-code, cwd: \".\" }\n").unwrap();
     st.store
         .lock()
         .unwrap()
@@ -402,7 +442,7 @@ async fn team_ids_avoid_existing_rig_names_and_reserved_paths() {
         )
         .unwrap();
     assert_eq!(
-        create(&router, "b1", "blank", true).await["draft"]["id"],
+        create(&router, "b1", "blank").await["draft"]["id"],
         "new-team-2"
     );
     let (status, body) = call(
@@ -494,7 +534,7 @@ async fn agent_folders_outside_home_are_refused_without_saying_whether_they_exis
     let outside = tempfile::tempdir().unwrap();
     std::fs::write(outside.path().join("a-file"), "x").unwrap();
     std::os::unix::fs::symlink(outside.path(), home.path().join("escape")).unwrap();
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let rec = create(&router, "t1", "builder-reviewer").await;
     let base = draft_of(&rec);
     let places = [
         outside.path().to_path_buf(),
@@ -537,7 +577,7 @@ async fn agent_folders_outside_home_are_refused_without_saying_whether_they_exis
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
 async fn agent_folders_inside_home_report_missing_files_and_unreadable() {
     let (_st, router, home) = setup();
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let rec = create(&router, "t1", "builder-reviewer").await;
     let mut d = draft_of(&rec);
     std::fs::write(home.path().join("a-file"), "x").unwrap();
     d.agents[0].folder = Some(home.path().join("gone").display().to_string());
@@ -603,9 +643,10 @@ async fn start_checks_folders_again() {
     std::fs::create_dir(home.path().join("work")).unwrap();
     let link = home.path().join("link");
     std::os::unix::fs::symlink(home.path().join("work"), &link).unwrap();
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let rec = create(&router, "t1", "builder-reviewer").await;
     let mut d = draft_of(&rec);
     d.agents[0].folder = Some(link.display().to_string());
+    d.agents[1].folder = Some(home.path().join("work").display().to_string());
     let (status, saved) = call(
         &router,
         "PUT",
@@ -637,26 +678,15 @@ async fn start_checks_folders_again() {
     );
 }
 
-/// With no known home folder, a Practice agent without a folder has nowhere to run,
-/// and no agent's folder can be checked against home.
+/// With no known home folder, no agent's folder can be checked against home.
 #[tokio::test]
-async fn an_unknown_home_is_an_issue_for_agents_that_need_it() {
+async fn an_unknown_home_means_no_agent_folder_can_be_checked() {
     let (mut st, _router, home) = setup();
     st.home = None;
     let router = controld::app(st, None);
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
-    assert_eq!(
-        issues_with(&rec["issues"], "home-unknown"),
-        [
-            (
-                "builder".to_string(),
-                "Your home folder is unknown, so Builder needs a folder".to_string()
-            ),
-            (
-                "reviewer".to_string(),
-                "Your home folder is unknown, so Reviewer needs a folder".to_string()
-            ),
-        ],
+    let rec = create(&router, "t1", "builder-reviewer").await;
+    assert!(
+        issues_with(&rec["issues"], "home-unknown").is_empty(),
         "{rec}"
     );
     let mut d = draft_of(&rec);
@@ -664,16 +694,18 @@ async fn an_unknown_home_is_an_issue_for_agents_that_need_it() {
     let issues = validate_with(&router, &d).await;
     assert_eq!(
         issues_with(&issues, "home-unknown"),
-        [
-            (
-                "builder".to_string(),
-                "Your home folder is unknown, so Builder's folder can't be checked".to_string()
-            ),
-            (
-                "reviewer".to_string(),
-                "Your home folder is unknown, so Reviewer needs a folder".to_string()
-            ),
-        ],
+        [(
+            "builder".to_string(),
+            "Your home folder is unknown, so Builder's folder can't be checked".to_string()
+        )],
+        "{issues}"
+    );
+    assert_eq!(
+        issues_with(&issues, "folder-missing"),
+        [(
+            "reviewer".to_string(),
+            "Reviewer needs a folder to work in".to_string()
+        )],
         "{issues}"
     );
 }
@@ -700,7 +732,7 @@ async fn put(
 #[tokio::test]
 async fn put_replays_the_same_request_id_and_saves_once() {
     let (_st, router, _home) = setup();
-    let mut d = draft_of(&create(&router, "t1", "solo", true).await);
+    let mut d = draft_of(&create(&router, "t1", "solo").await);
     d.name = "Renamed".into();
     let first = put(&router, "p1", 0, &d).await;
     assert_eq!(first.0, StatusCode::OK, "{}", first.1);
@@ -795,9 +827,9 @@ async fn teams_are_listed_newest_first() {
             .map(|t| t["id"].as_str().unwrap().to_string())
             .collect::<Vec<_>>()
     };
-    let older = draft_of(&create(&router, "t1", "blank", true).await);
+    let older = draft_of(&create(&router, "t1", "blank").await);
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    create(&router, "t2", "solo", true).await;
+    create(&router, "t2", "solo").await;
     let (_, list) = call(&router, "GET", "/api/teams", None).await;
     assert_eq!(
         ids(&list),
@@ -819,9 +851,10 @@ async fn teams_are_listed_newest_first() {
 /// not live and not started, and its structure can still change.
 #[tokio::test]
 async fn a_file_sourced_rig_with_the_team_id_is_not_the_team_live() {
-    let (st, router, _home) = setup();
-    let rec = create(&router, "t1", "solo", true).await;
+    let (st, router, home) = setup();
+    let rec = create(&router, "t1", "solo").await;
     let mut d = draft_of(&rec);
+    d.folder = Some(home.path().display().to_string());
     let rig = rigspec::from_draft(&d).unwrap().rig;
     st.store
         .lock()
@@ -887,7 +920,7 @@ async fn agent_folder_links_that_return_through_dot_dot_answer_alike() {
         .to_str()
         .unwrap()
         .to_string();
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let rec = create(&router, "t1", "builder-reviewer").await;
     let mut seen = Vec::new();
     for via in ["nosuchA", "realdir", "afile"] {
         let link = home.path().join(format!("dot-{via}"));
@@ -926,7 +959,7 @@ async fn agent_folders_under_a_home_reached_through_a_link_are_inside() {
     )
     .with_home(&raw);
     let router = controld::app(st, None);
-    let rec = create(&router, "t1", "builder-reviewer", true).await;
+    let rec = create(&router, "t1", "builder-reviewer").await;
     let mut d = draft_of(&rec);
     d.agents[0].folder = Some(raw.join("proj").display().to_string());
     d.agents[1].folder = Some(raw.display().to_string());
@@ -937,7 +970,7 @@ async fn agent_folders_under_a_home_reached_through_a_link_are_inside() {
 #[tokio::test]
 async fn project_folder_persists_and_inherited_paths_obey_home_boundaries() {
     let (_st, router, home) = setup();
-    let rec = create(&router, "folder-team", "builder-reviewer", false).await;
+    let rec = create(&router, "folder-team", "builder-reviewer").await;
     let mut d = draft_of(&rec);
     d.folder = Some(home.path().display().to_string());
     let uri = format!("/api/teams/{}", d.id);
@@ -981,8 +1014,7 @@ async fn project_folder_persists_and_inherited_paths_obey_home_boundaries() {
 #[tokio::test]
 async fn reusable_groups_are_versioned_library_records_not_projects() {
     let (_st, router, _home) = setup();
-    let mut draft =
-        rigspec::templates::template("builder-reviewer", "fragment", "Pair", true).unwrap();
+    let mut draft = rigspec::templates::template("builder-reviewer", "fragment", "Pair").unwrap();
     draft.groups.push(model::DraftGroup {
         id: "group".into(),
         label: "Pair".into(),
@@ -1046,8 +1078,7 @@ async fn reusable_groups_are_versioned_library_records_not_projects() {
 
 /// A Library copy of a Community block, as "Save to Library" makes it.
 fn community_copy(source: serde_json::Value) -> serde_json::Value {
-    let mut draft =
-        rigspec::templates::template("builder-reviewer", "fragment", "Pair", true).unwrap();
+    let mut draft = rigspec::templates::template("builder-reviewer", "fragment", "Pair").unwrap();
     draft.groups.push(model::DraftGroup {
         id: "group".into(),
         label: "Pair".into(),
@@ -1114,8 +1145,13 @@ async fn a_bad_community_source_is_refused() {
 
 #[tokio::test]
 async fn input_position_can_be_saved_while_running_without_changing_workflow_configuration() {
-    let (st, router, _home) = setup();
-    let rec = create(&router, "input-team", "textbook", true).await;
+    let (st, router, home) = setup();
+    let rec = save_in(
+        &router,
+        &create(&router, "input-team", "textbook").await,
+        home.path(),
+    )
+    .await;
     let mut d = draft_of(&rec);
     let rig = rigspec::from_draft(&d).unwrap().rig;
     st.store
@@ -1125,7 +1161,7 @@ async fn input_position_can_be_saved_while_running_without_changing_workflow_con
             &rig,
             &RigSource::Team {
                 id: d.id.clone(),
-                revision: 0,
+                revision: 1,
             },
             Desired::Running,
         )
@@ -1154,7 +1190,7 @@ async fn input_position_can_be_saved_while_running_without_changing_workflow_con
         &router,
         "PUT",
         &uri,
-        Some(json!({"request_id":"move-input","revision":0,"draft":d})),
+        Some(json!({"request_id":"move-input","revision":1,"draft":d})),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{saved}");
@@ -1168,8 +1204,54 @@ async fn input_position_can_be_saved_while_running_without_changing_workflow_con
         &router,
         "PUT",
         &uri,
-        Some(json!({"request_id":"change-input","revision":1,"draft":changed})),
+        Some(json!({"request_id":"change-input","revision":2,"draft":changed})),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
+}
+
+/// Every agent runs on a real model: asking for a team without one is refused.
+#[tokio::test]
+async fn a_team_without_a_real_model_is_refused() {
+    let (_st, router, _home) = setup();
+    let (status, body) = call(
+        &router,
+        "POST",
+        "/api/teams",
+        Some(json!({ "request_id": "t1", "template": "solo", "practice": true })),
+    )
+    .await;
+    assert_eq!(
+        (status, body["error"]["code"].as_str()),
+        (StatusCode::BAD_REQUEST, Some("real_model_required")),
+        "{body}"
+    );
+    let (_, list) = call(&router, "GET", "/api/teams", None).await;
+    assert_eq!(list, json!([]), "nothing was made");
+}
+
+/// A saved draft whose agent is not a real model is refused in plain words and not saved.
+#[tokio::test]
+async fn saving_an_agent_without_a_real_model_is_refused() {
+    let (_st, router, _home) = setup();
+    let rec = create(&router, "t1", "solo").await;
+    let mut draft = rec["draft"].clone();
+    draft["agents"][0]["kind"] = json!("practice");
+    let (status, body) = call(
+        &router,
+        "PUT",
+        "/api/teams/solo-agent",
+        Some(json!({ "request_id": "p1", "revision": 0, "draft": draft })),
+    )
+    .await;
+    assert!(status.is_client_error(), "{status}: {body}");
+    assert!(body.to_string().contains("real model"), "{status}: {body}");
+    let (_, now) = call(&router, "GET", "/api/teams/solo-agent", None).await;
+    assert_eq!(
+        (
+            now["draft"]["revision"].clone(),
+            now["draft"]["agents"][0]["kind"].clone()
+        ),
+        (json!(0), json!("claude"))
+    );
 }

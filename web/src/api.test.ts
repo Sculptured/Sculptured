@@ -143,9 +143,9 @@ describe('team api', () => {
 
   it('creates a team from a template, and imports one', async () => {
     const fetch = mockFetch(200, {});
-    await api.createTeam('blank', true, null, 'req-c');
+    await api.createTeam('blank', null, 'req-c');
     await api.importTeam('name: x', 'req-i');
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ request_id: 'req-c', template: 'blank', practice: true, name: null });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ request_id: 'req-c', template: 'blank', name: null });
     expect(fetch.mock.calls[1][0]).toBe('/api/teams/import');
     expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ request_id: 'req-i', yaml: 'name: x' });
   });

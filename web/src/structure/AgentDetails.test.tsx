@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { forgetViewports } from '../shell/viewport';
-import { teamRecord } from '../test-fixtures';
+import { draftAgent, teamDraft, teamRecord } from '../test-fixtures';
 import { saveTiming } from '../useTeamDraft';
 import { card, fakeTeam, renderAt, resetApi, where } from './harness';
 
@@ -119,7 +119,8 @@ describe('Agent page: Setup', () => {
 
 describe('Settings: default models', () => {
   it('switches every agent at once and sets the team Claude model, shown on the cards', async () => {
-    fakeTeam(teamRecord());
+    // Both start on Codex, so switching them all to Claude is a change.
+    fakeTeam(teamRecord({ draft: teamDraft({ agents: [draftAgent('builder', { kind: 'codex' }), draftAgent('reviewer', { kind: 'codex', x: 300 })] }) }));
     renderAt('/p/t/settings');
     const user = userEvent.setup();
     const models = await screen.findByRole('region', { name: 'Default models' });

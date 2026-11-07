@@ -1,8 +1,14 @@
-//! Shared setup for the seat-tools tests: a fake controld on the other end of a real host link, and a
-//! supervisor serving its socket with a running stub agent.
+//! Shared setup for hostd's tests: a fake controld on the other end of a real host link, and agents
+//! on the real Claude Code CLI with its cheapest model.
+//!
+//! A test that needs an agent is live: named `live_…`, marked `#[ignore = "live: …"]` (it needs
+//! `claude` installed and signed in), and it starts with `let Some(_) = common::require() else
+//! { return };`. Run them with `cargo test -p hostd --test <file> -- --ignored live_`. A live test
+//! asserts on what hostd records and enforces, never on the model's exact words.
 #![allow(dead_code)]
 use async_trait::async_trait;
-use drivers::stub::StubDriver;
+use drivers::claude::ClaudeStreamDriver;
+use drivers::codex::CodexAppServerDriver;
 use drivers::{Driver, DriverError, LaunchSpec, Session};
 use futures::{SinkExt, StreamExt};
 use host_proto::seat_tools::TOKEN_ENV;
@@ -12,9 +18,10 @@ use hostd::seat_tools::SocketLimits;
 use hostd::supervisor::SeatToolsHost;
 use hostd::{Journal, Supervisor};
 
+use host_proto::HostEvent;
 use model::{Caps, EventBody, Subject};
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
@@ -84,30 +91,192 @@ pub async fn ended<T>(call: tokio::task::JoinHandle<T>) -> T {
         .unwrap()
 }
 
-pub fn stub_sup() -> Supervisor {
+// ---- live agents ----
+
+/// The model every live Claude agent runs with: the cheapest one.
+pub const CLAUDE_MODEL: &str = "haiku";
+
+/// The real Claude Code driver's name, as a launch names it.
+pub const CLAUDE: &str = "claude-stream";
+
+/// How long a live wait lasts: a real model turn takes seconds to a minute or two.
+pub const WAIT: Duration = Duration::from_secs(240);
+
+fn on_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
+    })
+}
+
+/// The `claude` CLI, or None (with the reason printed) when this machine cannot run live tests.
+pub fn require() -> Option<PathBuf> {
+    let found = on_path("claude");
+    if found.is_none() {
+        eprintln!(
+            "skipped: the claude CLI is not on PATH; live tests need it installed and signed in"
+        );
+    }
+    found
+}
+
+/// The `codex` CLI, or None (with the reason printed).
+pub fn require_codex() -> Option<PathBuf> {
+    let found = on_path("codex");
+    if found.is_none() {
+        eprintln!(
+            "skipped: the codex CLI is not on PATH; live Codex tests need it installed and signed in"
+        );
+    }
+    found
+}
+
+/// The real Claude Code driver.
+pub fn claude() -> ClaudeStreamDriver {
+    ClaudeStreamDriver {
+        program: on_path("claude").unwrap_or_else(|| "claude".into()),
+    }
+}
+
+/// The real Codex driver; `native_questions` lets Codex ask its own approval questions.
+pub fn codex(native_questions: bool) -> CodexAppServerDriver {
+    CodexAppServerDriver {
+        program: on_path("codex").unwrap_or_else(|| "codex".into()),
+        native_questions,
+    }
+}
+
+/// A supervisor offering the real Claude Code CLI. Nothing runs until a test launches.
+pub fn sup() -> Supervisor {
     Supervisor::new(
         "local".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(claude())],
         Journal::open_in_memory(1000).unwrap(),
     )
 }
 
-/// Delegates to the stub but keeps the LaunchSpec it was given (for its token).
-pub struct Capture(pub Arc<Mutex<Option<LaunchSpec>>>);
+/// Launch parameters for an agent working in `cwd` on the cheapest Claude model.
+pub fn params(cwd: &Path) -> LaunchParams {
+    LaunchParams {
+        cwd: cwd.display().to_string(),
+        model: Some(CLAUDE_MODEL.into()),
+        ..Default::default()
+    }
+}
+
+/// A real driver that keeps the LaunchSpec it was given, and can hold launch until released. It
+/// changes nothing about the agent.
+#[derive(Clone)]
+pub struct Capture {
+    pub inner: Arc<dyn Driver>,
+    pub seen: Arc<Mutex<Option<LaunchSpec>>>,
+    pub hold: Option<Arc<tokio::sync::Notify>>,
+}
+impl Capture {
+    pub fn of(inner: Arc<dyn Driver>) -> Capture {
+        Capture {
+            inner,
+            seen: Arc::default(),
+            hold: None,
+        }
+    }
+    /// The real Claude Code driver, captured.
+    pub fn claude() -> Capture {
+        Capture::of(Arc::new(claude()))
+    }
+    /// The spec of the last launch.
+    pub fn spec(&self) -> LaunchSpec {
+        self.seen.lock().unwrap().clone().expect("launched")
+    }
+    /// The seat-tools token of the last launch.
+    pub fn token(&self) -> String {
+        token_in(&self.spec())
+    }
+}
 #[async_trait]
 impl Driver for Capture {
     fn name(&self) -> &'static str {
-        "stub"
+        self.inner.name()
     }
     fn capabilities(&self) -> Caps {
-        StubDriver.capabilities()
+        self.inner.capabilities()
     }
     async fn launch(&self, spec: LaunchSpec) -> Result<Box<dyn Session>, DriverError> {
-        *self.0.lock().unwrap() = Some(spec.clone());
-        StubDriver.launch(spec).await
+        *self.seen.lock().unwrap() = Some(spec.clone());
+        if let Some(h) = &self.hold {
+            h.notified().await;
+        }
+        self.inner.launch(spec).await
     }
     async fn resume(&self, spec: LaunchSpec, id: &str) -> Result<Box<dyn Session>, DriverError> {
-        StubDriver.resume(spec, id).await
+        *self.seen.lock().unwrap() = Some(spec.clone());
+        self.inner.resume(spec, id).await
+    }
+    async fn fork(&self, spec: LaunchSpec, id: &str) -> Result<Box<dyn Session>, DriverError> {
+        *self.seen.lock().unwrap() = Some(spec.clone());
+        self.inner.fork(spec, id).await
+    }
+    fn seat_tools_config_file(&self) -> bool {
+        self.inner.seat_tools_config_file()
+    }
+}
+
+/// The seat-tools token a launch was given.
+pub fn token_in(spec: &LaunchSpec) -> String {
+    spec.seat_tools
+        .as_ref()
+        .expect("seat tools")
+        .env
+        .iter()
+        .find(|(k, _)| k == TOKEN_ENV)
+        .expect("a token")
+        .1
+        .clone()
+}
+
+/// Collects event bodies until `pred` matches one, waiting up to `WAIT`.
+pub async fn until(
+    rx: &mut tokio::sync::broadcast::Receiver<HostEvent>,
+    pred: impl Fn(&EventBody) -> bool,
+) -> Vec<EventBody> {
+    let mut seen = Vec::new();
+    loop {
+        let ev = tokio::time::timeout(WAIT, rx.recv())
+            .await
+            .expect("event in time")
+            .expect("open");
+        let hit = pred(&ev.body);
+        seen.push(ev.body);
+        if hit {
+            return seen;
+        }
+    }
+}
+
+/// Kills the real CLI process of `seat`, as a crash would. Only a child of this test process is
+/// ever killed.
+pub fn crash(sup: &Supervisor, seat: &str) {
+    let pid = sup
+        .recorded_processes()
+        .into_iter()
+        .find(|(s, ..)| s == seat)
+        .map(|(_, pid, _)| pid)
+        .expect("the agent's process is on record");
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).expect("the agent runs");
+    let ppid: u32 = stat
+        .rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().nth(1))
+        .and_then(|p| p.parse().ok())
+        .expect("a parent pid");
+    assert_eq!(
+        ppid,
+        std::process::id(),
+        "only this test's own agent is killed"
+    );
+    // SAFETY: kill(2) on a child process this test started, verified just above.
+    unsafe {
+        libc::kill(pid as i32, libc::SIGKILL);
     }
 }
 
@@ -121,8 +290,9 @@ pub fn blocking_call(
     tokio::task::spawn_blocking(move || host_proto::seat_tools::call(&socket, &token, tool, args))
 }
 
-/// A supervisor serving its socket in `dir`, linked to a fake controld; the stub agent `dev.a@r` runs
-/// with Sculptured's tools. Returns its token too.
+/// A supervisor serving its socket in `dir`, linked to a fake controld; agent `dev.a@r` runs on the
+/// real Claude Code CLI with Sculptured's tools (no message is sent, so no model is called). Returns
+/// its token too.
 pub async fn tools_host(dir: &Path) -> (Supervisor, Ws, std::path::PathBuf, String) {
     tools_host_with(dir, false, SocketLimits::default()).await
 }
@@ -133,15 +303,19 @@ pub async fn tools_host_with(
     approve: bool,
     limits: SocketLimits,
 ) -> (Supervisor, Ws, std::path::PathBuf, String) {
+    assert!(
+        require().is_some(),
+        "these tests launch the real claude CLI (no message is sent to it)"
+    );
     let socket = dir.join("seat-tools.sock");
-    let seen = Arc::new(Mutex::new(None));
+    let capture = Capture::claude();
     let host = SeatToolsHost {
         socket: socket.clone(),
         shim: "/opt/sculptured".into(),
     };
     let sup = Supervisor::with_seat_tools(
         "local".into(),
-        vec![Arc::new(Capture(seen.clone()))],
+        vec![Arc::new(capture.clone())],
         Journal::open_in_memory(1000).unwrap(),
         Some(host),
     );
@@ -160,33 +334,20 @@ pub async fn tools_host_with(
     }
     let ws = linked(&sup).await;
     let params = LaunchParams {
-        cwd: dir.display().to_string(),
         seat_tools: Some(SeatToolsParams {
             approve,
             workflow: true,
         }),
-        ..Default::default()
+        ..params(dir)
     };
     sup.handle(HostCommand::Launch {
         seat: "dev.a@r".into(),
-        driver: "stub".into(),
+        driver: CLAUDE.into(),
         params,
     })
     .await
     .unwrap();
-    let token = seen
-        .lock()
-        .unwrap()
-        .clone()
-        .unwrap()
-        .seat_tools
-        .unwrap()
-        .env
-        .0
-        .into_iter()
-        .find(|(k, _)| k == TOKEN_ENV)
-        .unwrap()
-        .1;
+    let token = capture.token();
     (sup, ws, socket, token)
 }
 

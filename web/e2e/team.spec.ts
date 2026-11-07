@@ -1,26 +1,30 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
+import { confirmStart, liveOnly, liveTeam, OK_JOB, TURN_MS, turnsEnded } from './fixtures/live';
 
 /**
- * The demo path a new user walks, against the real binary, Practice agents only:
- * gallery → Structure edits → Start → Live → message an agent → Progress → Advanced
- * (View as spec, Export) → Stop. The server runs with a throwaway HOME holding only
- * projects/alpha and projects/beta (crates/e2e-server), so the folder picker never shows
- * the real home folder.
+ * The demo path a new user walks, against the real binary, with real Claude Code agents on haiku
+ * (live, see fixtures/live.ts): gallery → Structure edits → Start → Live → message an agent →
+ * Progress → Advanced (View as spec, Export) → Stop. The server runs with a throwaway HOME holding
+ * projects/alpha and projects/beta (crates/e2e-server), so the folder picker never shows the real
+ * home folder.
  */
 
+liveOnly();
+
 /**
- * The gallery offers the template; the team is then created through the API with Practice agents,
- * since the gallery only offers Claude and Codex and this test must never start a real model.
+ * The gallery offers the template; the team is then created through the API on haiku, with a
+ * project folder of its own and one-turn jobs, so the test is about the path, not the work.
  */
 async function newTeam(page: Page, request: APIRequestContext, template: string, name: string) {
   await page.goto('/new');
   const gallery = page.getByRole('region', { name: 'New project' });
   await expect(gallery.getByRole('button', { name: new RegExp(`^${template}`) })).toBeVisible();
   const t = ((await (await request.get('/api/team-templates')).json()) as { id: string; title: string }[]).find((x) => x.title === template)!;
-  const created = await request.post('/api/teams', { data: { request_id: `create-${name}`, template: t.id, practice: true, name } });
-  expect(created.ok()).toBe(true);
-  const id: string = (await created.json()).draft.id;
+  const { id } = await liveTeam(request, name, (draft, folder) => {
+    draft.folder = folder;
+    for (const a of draft.agents) a.job = OK_JOB;
+  }, t.id);
   await page.goto(`/p/${id}/board?mode=design`);
   await expect(page.getByRole('region', { name: 'Design board' })).toBeVisible();
   return id;
@@ -73,12 +77,13 @@ async function checkAdvanced(page: Page, scope: Locator, teamId: string, agent: 
 
 test('desktop: gallery → Structure edits → Start → Live → message → Progress → Advanced → Stop', async ({ page, request }, info) => {
   test.skip(info.project.name !== 'desktop', 'desktop flow');
+  test.setTimeout(3 * TURN_MS);
   const id = await newTeam(page, request, 'Builder → Reviewer', `E2E ${Date.now()}`);
 
   // Structure: rename, a Job, and a folder from the picker. The throwaway home holds only "projects".
   await page.getByRole('button', { name: /^Builder — / }).click();
   await page.getByRole('textbox', { name: 'Name' }).fill('Maker');
-  await page.getByRole('textbox', { name: 'Job' }).fill('tool:npm test');
+  await page.getByRole('textbox', { name: 'Job' }).fill(`Maker: ${OK_JOB}`);
   await page.getByRole('button', { name: 'Choose a folder for Maker' }).click();
   const picker = page.getByRole('dialog', { name: 'Choose a folder' });
   await expect(picker.getByRole('button', { name: 'Up' })).toBeDisabled();
@@ -95,8 +100,8 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
   await page.getByRole('button', { name: 'Board', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Design board' })).toBeVisible();
 
-  // Drag an agent in, then connect Reviewer ● → it. The palette offers only Claude and Codex,
-  // so the new Claude card is undone again before Start: this test never runs a real model.
+  // Drag an agent in, then connect Reviewer ● → it; both are undone again before Start, so only
+  // the two template agents run.
   const vp = (await page.getByTestId('structure-viewport').boundingBox())!;
   await drag(page, await centre(page.getByRole('button', { name: 'Add a Claude agent' })), { x: vp.x + vp.width * 0.5, y: vp.y + vp.height * 0.8 });
   await expect(page.getByRole('button', { name: /^Claude 1 — / })).toBeVisible();
@@ -110,16 +115,17 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
     for (const c of cards) expect(overlap(lb, c)).toBe(false);
     expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }
-  // Undo the connection and the Claude card: only the two Practice agents start.
+  // Undo the connection and the Claude card: only the two template agents start.
   await page.getByRole('button', { name: 'Undo' }).click();
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByRole('button', { name: /^Claude 1 — / })).toHaveCount(0);
   await expect(page.locator('.sb-card')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: /^(Maker|Reviewer) — Practice/ })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /^(Maker|Reviewer) — Claude/ })).toHaveCount(2);
   await saved(page);
 
-  // Start → Live.
+  // Start → Live (real agents ask first).
   await page.getByRole('button', { name: 'Start team' }).click();
+  await confirmStart(page);
   await expect(page).toHaveURL(new RegExp(`/p/${id}/board\\?mode=run$`));
   await expect(page.getByRole('button', { name: /^Maker — / })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Reviewer — / })).toBeVisible();
@@ -127,11 +133,14 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
   // Message an agent: its Job came first ("sent at start"), then what you send.
   await page.getByRole('button', { name: /^Maker — / }).click();
   const convo = page.getByRole('list', { name: 'Conversation' });
+  const maker = `team.builder@${id}`;
   await expect(convo.getByText('Job · sent at start')).toBeVisible();
-  await expect(convo.getByText('stub received: tool:npm test')).toBeVisible();
-  await page.getByRole('textbox', { name: 'Message' }).fill('hello');
+  await expect.poll(() => turnsEnded(request, maker), { timeout: TURN_MS }).toBeGreaterThan(0);
+  const turns = await turnsEnded(request, maker);
+  await page.getByRole('textbox', { name: 'Message' }).fill('Reply with the single word HELLO and nothing else.');
   await page.getByRole('button', { name: 'Send' }).click();
-  await expect(convo.getByText('stub received: hello')).toBeVisible();
+  await expect(convo.getByText('Reply with the single word HELLO and nothing else.')).toBeVisible();
+  await expect.poll(() => turnsEnded(request, maker), { timeout: TURN_MS }).toBeGreaterThan(turns);
   await page.keyboard.press('Escape');
 
   await checkRun(page, 'Maker');
@@ -155,15 +164,17 @@ test('desktop: gallery → Structure edits → Start → Live → message → Pr
 
 test('mobile: gallery → form edits → Start → list → message → Progress → Advanced → Stop', async ({ page, request }, info) => {
   test.skip(info.project.name !== 'mobile', 'mobile flow');
+  test.setTimeout(3 * TURN_MS);
   const id = await newTeam(page, request, 'Builder → Reviewer', `E2E phone ${Date.now()}`);
 
   // On a phone an agent is set up on its own one-column page.
   await page.getByRole('link', { name: 'Agents' }).tap();
   await page.getByRole('table').getByRole('link', { name: /^Builder/ }).tap();
-  await page.getByRole('region', { name: 'Setup' }).getByRole('textbox', { name: 'Job' }).fill('Write the change notes');
+  await page.getByRole('region', { name: 'Setup' }).getByRole('textbox', { name: 'Job' }).fill(`Builder: ${OK_JOB}`);
   await saved(page);
 
   await page.getByRole('button', { name: 'Start team' }).tap();
+  await confirmStart(page);
   await expect(page).toHaveURL(new RegExp(`/p/${id}/board\\?mode=run$`));
   await page.getByRole('link', { name: 'Agents' }).tap();
   await expect(page.getByText('Builder hands work to Reviewer')).toBeVisible();
@@ -171,10 +182,13 @@ test('mobile: gallery → form edits → Start → list → message → Progress
   await expect(row).toBeVisible();
   await row.tap();
   const convo = page.getByRole('list', { name: 'Conversation' });
-  await expect(convo.getByText('stub received: Write the change notes')).toBeVisible();
-  await page.getByRole('textbox', { name: 'Message' }).fill('hello from the phone');
+  const builder = `team.builder@${id}`;
+  await expect.poll(() => turnsEnded(request, builder), { timeout: TURN_MS }).toBeGreaterThan(0);
+  const turns = await turnsEnded(request, builder);
+  await page.getByRole('textbox', { name: 'Message' }).fill('Reply with the single word PHONE and nothing else.');
   await page.getByRole('button', { name: 'Send' }).tap();
-  await expect(convo.getByText('stub received: hello from the phone')).toBeVisible();
+  await expect(convo.getByText('Reply with the single word PHONE and nothing else.')).toBeVisible();
+  await expect.poll(() => turnsEnded(request, builder), { timeout: TURN_MS }).toBeGreaterThan(turns);
   await page.goBack();
 
   await checkRun(page, 'Builder');

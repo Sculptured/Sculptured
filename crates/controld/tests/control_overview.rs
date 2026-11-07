@@ -1,5 +1,5 @@
 //! Tests: the organisation overview (`GET /api/control/overview`) shows every team as a unit with its
-//! agents by state, its tool calls per minute and latest call, and its latest run's usage. Stub agents only.
+//! agents by state, its tool calls per minute and latest call, and its latest run's usage. The running team's agent is a live one (`common::live`).
 mod common;
 use serde_json::Value;
 
@@ -13,14 +13,32 @@ fn unit<'a>(v: &'a Value, id: &str) -> &'a Value {
 }
 
 #[tokio::test]
-async fn every_team_is_a_unit_with_its_state_and_key_figures() {
+async fn a_team_never_started_is_a_unit_counted_from_its_design() {
     let s = common::m2::serve().await;
-    common::m2::connect_stub(&s).await;
-    let idle = common::m2::practice_chain(&s, "Not started", &[("a", "A", "")], &[]).await;
-    let id = common::m2::practice_team(&s, "solo").await;
+    let idle = common::m2::chain(&s, "Not started", &[("a", "A", "")], &[]).await;
+    let (status, v) = common::m2::get(&s.router, "/api/control/overview").await;
+    assert_eq!(status.as_u16(), 200, "{v}");
+    never_started_unit(unit(&v, &idle));
+}
+
+#[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_every_team_is_a_unit_with_its_state_and_key_figures() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let s = common::m2::serve().await;
+    let _host = common::live::connect(&s).await;
+    let idle = common::m2::chain(&s, "Not started", &[("a", "A", "")], &[]).await;
+    let id = common::live::team(&s, "solo").await;
     let agent = common::m2::seat(&id, "claude");
-    common::m2::say(&s, &agent, "tool:echo checked").await;
-    common::wait_for("the call is recorded", || {
+    common::m2::say(
+        &s,
+        &agent,
+        "Use your Bash tool to run exactly: echo checked. Then reply OK.",
+    )
+    .await;
+    common::live::wait_for("the call is recorded", || {
         let v = controld::control_overview::read(&s.st, model::now_ms()).unwrap();
         v.teams
             .iter()
@@ -32,9 +50,10 @@ async fn every_team_is_a_unit_with_its_state_and_key_figures() {
     assert_eq!(status.as_u16(), 200, "{v}");
     running_unit(unit(&v, &id), &agent);
     never_started_unit(unit(&v, &idle));
+    common::m2::stop_team(&s, &id).await;
 }
 
-/// A running team: its agent counted as running, one call in its last minutes, that call as its latest.
+/// A running team: its agent counted as running, its calls in its last minutes, the latest one its agent's.
 fn running_unit(running: &Value, agent: &str) {
     assert_eq!(running["started"], true);
     assert_eq!(running["desired"], "running");
@@ -43,17 +62,18 @@ fn running_unit(running: &Value, agent: &str) {
         (Some(1), Some(1))
     );
     assert_eq!(running["actions_per_min"].as_array().unwrap().len(), 15);
-    assert_eq!(
+    assert!(
         running["actions_per_min"]
             .as_array()
             .unwrap()
             .iter()
             .map(|n| n.as_u64().unwrap())
-            .sum::<u64>(),
-        1
+            .sum::<u64>()
+            >= 1,
+        "{running}"
     );
     assert_eq!(running["last_action"]["seat"], agent);
-    assert_eq!(running["last_action"]["tool"], "Bash");
+    assert!(running["last_action"]["tool"].is_string(), "{running}");
     assert_eq!(running["failed"], 0);
 }
 

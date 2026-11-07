@@ -1,14 +1,14 @@
 //! hostd's Hello says what this build can do (`features`) and which seats are still starting, so a
 //! controld can refuse what an older hostd would get wrong and never mistake a starting seat for a
 //! running one.
-use async_trait::async_trait;
-use drivers::stub::StubDriver;
-use drivers::{Driver, DriverError, LaunchSpec, Session};
+mod common;
+
+use common::{CLAUDE, Capture};
 use futures::StreamExt;
-use host_proto::{FromHost, HostCommand, LaunchParams, features};
+use host_proto::{FromHost, HostCommand, features};
 use hostd::supervisor::SeatToolsHost;
 use hostd::{Journal, Supervisor};
-use model::Caps;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
@@ -16,25 +16,6 @@ use tokio::sync::Notify;
 use tokio_tungstenite::tungstenite::Message;
 
 const SEAT: &str = "dev.a@r";
-
-/// Holds every launch until released.
-struct Held(Arc<Notify>);
-#[async_trait]
-impl Driver for Held {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(&self, spec: LaunchSpec) -> Result<Box<dyn Session>, DriverError> {
-        self.0.notified().await;
-        StubDriver.launch(spec).await
-    }
-    async fn resume(&self, spec: LaunchSpec, id: &str) -> Result<Box<dyn Session>, DriverError> {
-        StubDriver.resume(spec, id).await
-    }
-}
 
 async fn hello_of(sup: &Supervisor) -> FromHost {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -61,7 +42,7 @@ async fn hello_of(sup: &Supervisor) -> FromHost {
 async fn hello_lists_features_and_seat_tools_only_when_offered() {
     let plain = Supervisor::new(
         "local".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         Journal::open_in_memory(100).unwrap(),
     );
     let FromHost::Hello { features: f, .. } = hello_of(&plain).await else {
@@ -87,7 +68,7 @@ async fn hello_lists_features_and_seat_tools_only_when_offered() {
     };
     let with = Supervisor::with_seat_tools(
         "local".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         Journal::open_in_memory(100).unwrap(),
         Some(host),
     );
@@ -97,24 +78,26 @@ async fn hello_lists_features_and_seat_tools_only_when_offered() {
     assert!(f.iter().any(|x| x == features::SEAT_TOOLS), "{f:?}");
 }
 
+/// The launch is held in the real Claude Code driver, then fails (its folder does not exist), so no
+/// agent starts.
 #[tokio::test]
 async fn hello_names_seats_that_are_still_launching() {
-    let dir = tempfile::tempdir().unwrap();
     let hold = Arc::new(Notify::new());
+    let driver = Capture {
+        hold: Some(hold.clone()),
+        ..Capture::claude()
+    };
     let sup = Supervisor::new(
         "local".into(),
-        vec![Arc::new(Held(hold.clone()))],
+        vec![Arc::new(driver)],
         Journal::open_in_memory(100).unwrap(),
     );
     let s2 = sup.clone();
-    let params = LaunchParams {
-        cwd: dir.path().display().to_string(),
-        ..Default::default()
-    };
+    let params = common::params(Path::new("/definitely/not/here"));
     let launch = tokio::spawn(async move {
         s2.handle(HostCommand::Launch {
             seat: SEAT.into(),
-            driver: "stub".into(),
+            driver: CLAUDE.into(),
             params,
         })
         .await
@@ -140,7 +123,7 @@ async fn hello_names_seats_that_are_still_launching() {
         (vec![SEAT.to_string()], vec![SEAT.to_string()])
     );
     hold.notify_one();
-    launch.await.unwrap().unwrap();
+    assert!(launch.await.unwrap().is_err());
     let FromHost::Hello {
         live_seats,
         launching_seats,
@@ -151,7 +134,8 @@ async fn hello_names_seats_that_are_still_launching() {
     };
     assert_eq!(
         (live_seats, launching_seats),
-        (vec![SEAT.to_string()], vec![])
+        (vec![], vec![]),
+        "a launch that failed leaves the seat in neither list"
     );
 }
 
@@ -170,7 +154,7 @@ async fn a_starting_hostd_sweeps_config_files_left_by_an_earlier_one() {
     };
     let _sup = Supervisor::with_seat_tools(
         "local".into(),
-        vec![Arc::new(StubDriver)],
+        vec![Arc::new(common::claude())],
         Journal::open_in_memory(100).unwrap(),
         Some(host),
     );

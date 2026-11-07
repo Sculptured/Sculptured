@@ -20,8 +20,8 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
-      - { id: b, agent_ref: "local:b", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, cwd: "." }
+      - { id: b, agent_ref: "local:b", profile: default, runtime: claude-code, cwd: "." }
     edges: [{ kind: delegates_to, from: a, to: b }]
 "#;
 
@@ -92,7 +92,7 @@ async fn invalid_spec_returns_422_with_diagnostic_paths() {
     let path = spec_file(
         &dir,
         &GOOD.replace(
-            "runtime: stub, cwd: \".\" }\n      - { id: b",
+            "runtime: claude-code, cwd: \".\" }\n      - { id: b",
             "runtime: gpt, cwd: \".\" }\n      - { id: b",
         ),
     );
@@ -677,7 +677,7 @@ async fn one_stream_for_every_team_sends_a_snapshot_when_a_team_starts_and_resta
     // Without a host the seats end in attention (not live), so the team can start again.
     // A restart with a changed spec sends the new shape as a fresh snapshot.
     let one_agent = GOOD
-        .replace("      - { id: b, agent_ref: \"local:b\", profile: default, runtime: stub, cwd: \".\" }\n", "")
+        .replace("      - { id: b, agent_ref: \"local:b\", profile: default, runtime: claude-code, cwd: \".\" }\n", "")
         .replace("    edges: [{ kind: delegates_to, from: a, to: b }]\n", "");
     let path = named_spec(&dir, "r", &one_agent);
     let (status, v) = call(

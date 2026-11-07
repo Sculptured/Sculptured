@@ -1,18 +1,65 @@
 //! Runs the real `sculptured` binary for the Playwright end-to-end tests, on a throwaway
 //! data dir and a throwaway `HOME`, and cleans up after itself.
 //!
+//! Agents are real: Claude Code agents run the person's own `claude` CLI, signed in through
+//! `CLAUDE_CONFIG_DIR` (their real Claude Code setup), since the throwaway `HOME` has none. Nothing
+//! else of the real home is used: `~/.sculptured` and the ports of the person's own Sculptured
+//! ([`RESERVED_PORTS`]) are never touched.
+//!
 //! `sculptured serve` spawns `sculptured hostd` in its own session, so hostd outlives serve
 //! and is not reached by a signal to serve's process group. [`Session::shutdown`] (also run on
 //! drop) stops serve, then stops hostd by the pid it recorded, and only if that pid is still a
 //! `sculptured` process started on this session's data dir. Dropping the session removes the
 //! throwaway directory, so a failed build, a signal or a panic never leaves it behind.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::time::{Duration, Instant};
 
-/// The folders the throwaway home holds: the folder picker shows these and nothing else.
+/// The folders the throwaway home holds: the folder picker shows these and nothing else. Agents
+/// work here, or in a folder a test makes inside the home (`POST /api/folders`).
 pub const HOME_FOLDERS: [&str; 2] = ["projects/alpha", "projects/beta"];
+
+/// The ports of the person's own Sculptured (serve and its desktop app): e2e never uses them.
+pub const RESERVED_PORTS: [u16; 2] = [4410, 4420];
+
+/// `text` as a port e2e may use: a number that is not one of [`RESERVED_PORTS`].
+#[must_use]
+pub fn usable_port(text: &str) -> Option<u16> {
+    text.parse::<u16>()
+        .ok()
+        .filter(|p| *p != 0 && !RESERVED_PORTS.contains(p))
+}
+
+/// The Claude Code setup agents sign in with: `CLAUDE_CONFIG_DIR` as given, else `.claude` in the
+/// person's real home, when that folder exists.
+#[must_use]
+pub fn claude_config_dir(given: Option<&OsStr>, real_home: Option<&Path>) -> Option<PathBuf> {
+    given
+        .filter(|g| !g.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| real_home.map(|h| h.join(".claude")))
+        .filter(|d| d.is_dir())
+}
+
+/// The `claude` CLI: `given` (`$RIG_E2E_CLAUDE`) when set, else the first on `path`, else
+/// `~/.local/bin/claude` in the person's real home (the throwaway `HOME` hides that fallback).
+#[must_use]
+pub fn find_claude(
+    given: Option<&OsStr>,
+    path: Option<&OsStr>,
+    real_home: Option<&Path>,
+) -> Option<PathBuf> {
+    if let Some(g) = given.filter(|g| !g.is_empty()) {
+        return Some(PathBuf::from(g)).filter(|p| p.is_file());
+    }
+    path.into_iter()
+        .flat_map(std::env::split_paths)
+        .chain(real_home.map(|h| h.join(".local/bin")))
+        .map(|d| d.join("claude"))
+        .find(|p| p.is_file())
+}
 
 pub struct Session {
     tmp: Option<tempfile::TempDir>,

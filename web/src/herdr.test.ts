@@ -100,7 +100,8 @@ describe('words', () => {
   it('marks vendors', () => {
     expect(vendor('claude-code')).toMatchObject({ mark: '✳', name: 'Claude' });
     expect(vendor('codex')).toMatchObject({ mark: '◈', name: 'Codex' });
-    expect(vendor('stub')).toMatchObject({ mark: '◇', name: 'Practice' });
+    // A runtime this build does not know gets the neutral look, not a crash.
+    expect(vendor('mystery' as never)).toMatchObject({ name: 'other', cls: 'v-other' });
   });
 
   it('never shows an agent claim as verified', () => {

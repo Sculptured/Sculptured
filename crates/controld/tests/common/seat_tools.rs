@@ -2,13 +2,11 @@
 //! made directly as controld makes them for a host's `SeatTool` frame.
 
 use super::m2::Served;
-use drivers::stub::StubDriver;
 use host_proto::ToHost;
 use hostd::supervisor::{SeatToolsHost, Supervisor};
 
 use model::{Actor, EventBody, Provenance, QuestionPrompt, QuestionSource, Subject};
 use serde_json::{Value, json};
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
@@ -17,7 +15,8 @@ use tokio::task::JoinHandle;
 /// hanging the suite.
 pub const CALL_WAIT: Duration = Duration::from_secs(15);
 
-/// A served controld with a host whose agents have their tools on a real socket.
+/// A served controld with a live host (the real CLIs, `super::live`) whose agents have their tools on
+/// a real socket.
 pub async fn with_tools() -> (Served, Supervisor, tempfile::TempDir) {
     let s = crate::common::m2::serve().await;
     let dir = tempfile::tempdir().unwrap();
@@ -26,7 +25,7 @@ pub async fn with_tools() -> (Served, Supervisor, tempfile::TempDir) {
         socket: socket.clone(),
         shim: "/unused/sculptured".into(),
     };
-    let sup = crate::common::m2::connect(&s, vec![Arc::new(StubDriver)], Some(host)).await;
+    let sup = crate::common::m2::connect(&s, crate::common::live::drivers(), Some(host)).await;
     tokio::spawn(hostd::seat_tools::serve_socket(sup.clone(), socket.clone()));
     crate::common::wait_for("the socket", || socket.exists()).await;
     (s, sup, dir)

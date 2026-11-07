@@ -33,7 +33,7 @@ describe('deployment feed words', () => {
 
   it('a failure is keyed by its session: the start before it, the one before the first start, or now', () => {
     const failed = (seq: number) => ev(seq, { type: 'seat-lifecycle-changed', lifecycle: 'failed', reason: 'x' });
-    const started = (seq: number, tenure: number) => ev(seq, { type: 'tenure-started', tenure, cause: 'fresh', driver: 'stub', native_session_id: null, caps: seatView('a').caps! });
+    const started = (seq: number, tenure: number) => ev(seq, { type: 'tenure-started', tenure, cause: 'fresh', driver: 'claude', native_session_id: null, caps: seatView('a').caps! });
     const keys = (events: EventRecord[]) => feedFrom(events, ctx).filter((f) => f.alarm === 'failed').map((f) => f.alarmKey);
     expect(keys([started(1, 2), failed(2)])).toEqual(['dev.a@r:2']);
     expect(keys([failed(1), started(2, 3), failed(3)])).toEqual(['dev.a@r:2', 'dev.a@r:3']);

@@ -14,7 +14,7 @@ test('an agent switched to OpenCode keeps its open model, and Start asks for Ope
   const made = await request.post('/api/folders', { data: { request_id: `mk-${stamp}`, parent: home, name: `opencode-${stamp}` } });
   expect(made.ok()).toBe(true);
   const folder = (await made.json()).path as string;
-  const created = await request.post('/api/teams', { data: { request_id: `create-${stamp}`, template: 'blank', practice: false, name: `Open models ${stamp}` } });
+  const created = await request.post('/api/teams', { data: { request_id: `create-${stamp}`, template: 'blank', name: `Open models ${stamp}` } });
   expect(created.ok()).toBe(true);
   const draft = (await created.json()).draft;
   draft.agents = [{ id: 'writer', group_id: null, name: 'Writer', kind: 'claude', job: 'Write the page.', folder, x: 60, y: 80 }];

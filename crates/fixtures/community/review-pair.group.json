@@ -7,8 +7,8 @@
     "name": "Review pair",
     "groups": [{ "id": "g", "label": "Review pair", "x": 40, "y": 60, "w": 520, "h": 260 }],
     "agents": [
-      { "id": "a", "group_id": "g", "name": "Writer", "kind": "practice", "job": "Write a short draft of what was asked.", "folder": null, "x": 80, "y": 120 },
-      { "id": "b", "group_id": "g", "name": "Reviewer", "kind": "practice", "job": "Review the draft and list what to change.", "folder": null, "x": 320, "y": 120 }
+      { "id": "a", "group_id": "g", "name": "Writer", "kind": "claude", "job": "Write a short draft of what was asked.", "folder": null, "x": 80, "y": 120 },
+      { "id": "b", "group_id": "g", "name": "Reviewer", "kind": "claude", "job": "Review the draft and list what to change.", "folder": null, "x": 320, "y": 120 }
     ],
     "connections": [{ "id": "a-to-b", "from": "a", "to": "b", "kind": "hands-work-to" }],
     "revision": 0

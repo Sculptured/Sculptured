@@ -7,12 +7,27 @@ use model::{EventBody, SeatActivity};
 use serde_json::json;
 
 #[tokio::test]
-async fn team_status_is_one_short_line_per_agent() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_team_status_is_one_short_line_per_agent() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let (s, _sup, _dir) = crate::common::seat_tools::with_tools().await;
-    let id = crate::common::m2::practice_chain(
+    let id = crate::common::m2::chain(
         &s,
         "status",
-        &[("a", "Planner", "Plan the work"), ("b", "Builder", "hang")],
+        &[
+            (
+                "a",
+                "Planner",
+                "Reply with the single word OK and nothing else.",
+            ),
+            (
+                "b",
+                "Builder",
+                "Use your Bash tool to run exactly: sleep 600",
+            ),
+        ],
         &[],
     )
     .await;
@@ -26,7 +41,7 @@ async fn team_status_is_one_short_line_per_agent() {
             .unwrap()
             .is_some_and(|v| v.activity == SeatActivity::Working)
     };
-    crate::common::wait_for("b working", || {
+    crate::common::live::wait_for("b working and a's turn over", || {
         working(&b)
             && crate::common::m2::events(&s.st, &a)
                 .iter()
@@ -44,4 +59,5 @@ async fn team_status_is_one_short_line_per_agent() {
     );
     assert!(!text.contains('{'), "plain lines, not escaped JSON: {text}");
     assert!(text.len() < 300, "{} chars: {text}", text.len());
+    crate::common::m2::stop_team(&s, &id).await;
 }

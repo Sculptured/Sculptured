@@ -1,18 +1,25 @@
+//! Which computer a team and each of its agents run on. The live tests launch the real Claude Code CLI
+//! (agents get no job, so no model is asked anything); the others never launch an agent.
 mod common;
+#[path = "common/live_controls.rs"]
+mod live_controls;
 
+use common::live;
 use common::m2::{TOKEN, rid, seat};
 use model::SeatLifecycle;
 use serde_json::json;
 use std::sync::Arc;
 
 #[tokio::test]
-async fn a_team_runs_on_its_chosen_computer() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_team_runs_on_its_chosen_computer() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve().await;
-    let _local = crate::common::m2::connect_stub(&s).await;
-    let _laptop =
-        crate::common::m2::connect_as(&s, "dev-laptop", vec![Arc::new(drivers::stub::StubDriver)])
-            .await;
-    let id = crate::common::m2::practice_chain(&s, "chain", &[("a", "A", "Job")], &[]).await;
+    let _local = live::connect(&s).await;
+    let _laptop = crate::common::m2::connect_as(&s, "dev-laptop", live::drivers()).await;
+    let id = crate::common::m2::chain(&s, "chain", &[("a", "A", "")], &[]).await;
     let (status, _) = crate::common::m2::call(&s.router, "PUT", &format!("/api/teams/{id}/settings"), json!({"request_id": rid(), "settings": {"posture": null, "question_timeout_min": null, "own_copies": false, "host": "dev-laptop"}})).await;
     assert_eq!(status.as_u16(), 200);
     crate::common::m2::start_team(&s, &id).await;
@@ -45,8 +52,8 @@ async fn a_team_runs_on_its_chosen_computer() {
 #[tokio::test]
 async fn a_team_whose_computer_is_offline_does_not_start_and_says_which() {
     let s = crate::common::m2::serve().await;
-    let _local = crate::common::m2::connect_stub(&s).await;
-    let id = crate::common::m2::practice_chain(&s, "chain", &[("a", "A", "Job")], &[]).await;
+    let _local = live::connect(&s).await;
+    let id = crate::common::m2::chain(&s, "chain", &[("a", "A", "")], &[]).await;
     crate::common::m2::call(&s.router, "PUT", &format!("/api/teams/{id}/settings"), json!({"request_id": rid(), "settings": {"posture": null, "question_timeout_min": null, "own_copies": false, "host": "dev-gone"}})).await;
     let (status, body) = crate::common::m2::call(
         &s.router,
@@ -111,7 +118,7 @@ async fn each_computer_reports_its_folders_access_and_capabilities() {
     };
     let sup = hostd::Supervisor::new(
         "dev-1".into(),
-        vec![Arc::new(drivers::stub::StubDriver)],
+        live::drivers(),
         hostd::Journal::open_in_memory(1000).unwrap(),
     )
     .restricted(pol)
@@ -139,19 +146,15 @@ fn settings_with(agent_hosts: serde_json::Value) -> serde_json::Value {
 }
 
 #[tokio::test]
-async fn an_agent_runs_on_its_own_computer_and_the_rest_on_the_teams() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_an_agent_runs_on_its_own_computer_and_the_rest_on_the_teams() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve().await;
-    let _local = crate::common::m2::connect_stub(&s).await;
-    let _cluster =
-        crate::common::m2::connect_as(&s, "hpc-login", vec![Arc::new(drivers::stub::StubDriver)])
-            .await;
-    let id = crate::common::m2::practice_chain(
-        &s,
-        "split",
-        &[("a", "A", "Plan"), ("b", "B", "Run the jobs")],
-        &[],
-    )
-    .await;
+    let _local = live::connect(&s).await;
+    let _cluster = crate::common::m2::connect_as(&s, "hpc-login", live::drivers()).await;
+    let id = crate::common::m2::chain(&s, "split", &[("a", "A", ""), ("b", "B", "")], &[]).await;
     let (status, body) = crate::common::m2::call(
         &s.router,
         "PUT",
@@ -188,11 +191,11 @@ async fn an_agent_runs_on_its_own_computer_and_the_rest_on_the_teams() {
 #[tokio::test]
 async fn an_agent_whose_computer_is_offline_stops_the_start_and_is_named() {
     let s = crate::common::m2::serve().await;
-    let _local = crate::common::m2::connect_stub(&s).await;
-    let id = crate::common::m2::practice_chain(
+    let _local = live::connect(&s).await;
+    let id = crate::common::m2::chain(
         &s,
         "split",
-        &[("a", "A", "Plan"), ("b", "Cluster runner", "Run the jobs")],
+        &[("a", "A", ""), ("b", "Cluster runner", "")],
         &[],
     )
     .await;
@@ -254,29 +257,36 @@ async fn hosted_an_agent_without_a_folder_works_in_its_computers_own_folder() {
 }
 
 #[tokio::test]
-async fn hosted_an_agent_on_its_own_computer_starts_in_its_own_folder_not_the_teams() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_hosted_an_agent_on_its_own_computer_starts_in_its_own_folder_not_the_teams() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve_hosted().await;
-    let _laptop =
-        crate::common::m2::connect_as(&s, "laptop", vec![Arc::new(drivers::stub::StubDriver)])
-            .await;
-    let _hpc =
-        crate::common::m2::connect_as(&s, "hpc-login", vec![Arc::new(drivers::stub::StubDriver)])
-            .await;
+    // Each computer runs only in its own allowed folders, all inside this test's temp folder.
+    let (project, cluster, run) = (
+        s.home.path().join("project"),
+        s.home.path().join("cluster"),
+        s.home.path().join("run"),
+    );
+    let _laptop = live_controls::computer(&s, "laptop", &[&project]).await;
+    let _hpc = live_controls::computer(&s, "hpc-login", &[&cluster, &run]).await;
+    let (project, run) = (
+        project.to_string_lossy().into_owned(),
+        run.to_string_lossy().into_owned(),
+    );
     let (_, rec) = crate::common::m2::signed(
         &s.router,
         "POST",
         "/api/teams",
-        Some(json!({"request_id": rid(), "template": "blank", "practice": true, "name": "sites"})),
+        Some(json!({"request_id": rid(), "template": "blank", "name": "sites"})),
     )
     .await;
     let mut draft = rec["draft"].clone();
-    draft["folder"] = json!("/home/me/project");
-    let agent = |id: &str, folder: Option<&str>| json!({"id": id, "group_id": null, "name": id, "kind": "practice", "job": "Work", "folder": folder, "x": 40, "y": 40});
-    draft["agents"] = json!([
-        agent("a", None),
-        agent("b", None),
-        agent("c", Some("/scratch/me/run"))
-    ]);
+    draft["folder"] = json!(project);
+    draft["models"] = json!({ "claude": live::CLAUDE_MODEL });
+    let agent = |id: &str, folder: Option<&str>| json!({"id": id, "group_id": null, "name": id, "kind": "claude", "job": "", "folder": folder, "x": 40, "y": 40});
+    draft["agents"] = json!([agent("a", None), agent("b", None), agent("c", Some(&run))]);
     let id = draft["id"].as_str().unwrap().to_string();
     let (status, saved) = crate::common::m2::signed(
         &s.router,
@@ -330,7 +340,7 @@ async fn hosted_an_agent_on_its_own_computer_starts_in_its_own_folder_not_the_te
     };
     assert_eq!(
         cwd("a"),
-        "/home/me/project",
+        project,
         "the team's computer uses the project folder"
     );
     assert_eq!(
@@ -338,31 +348,30 @@ async fn hosted_an_agent_on_its_own_computer_starts_in_its_own_folder_not_the_te
         ".",
         "another computer: its own folder there, not the project's path"
     );
-    assert_eq!(
-        cwd("c"),
-        "/scratch/me/run",
-        "a folder chosen for the agent is kept"
-    );
+    assert_eq!(cwd("c"), run, "a folder chosen for the agent is kept");
 }
 
 #[tokio::test]
-async fn hosted_a_team_whose_agents_all_have_their_own_computers_needs_no_team_computer() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_hosted_a_team_whose_agents_all_have_their_own_computers_needs_no_team_computer() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve_hosted().await;
-    let _desk =
-        crate::common::m2::connect_as(&s, "desk", vec![Arc::new(drivers::stub::StubDriver)]).await;
-    let _hpc =
-        crate::common::m2::connect_as(&s, "hpc-login", vec![Arc::new(drivers::stub::StubDriver)])
-            .await;
+    // Each computer runs only in its own allowed folder, inside this test's temp folder.
+    let _desk = live_controls::computer(&s, "desk", &[&s.home.path().join("desk")]).await;
+    let _hpc = live_controls::computer(&s, "hpc-login", &[&s.home.path().join("hpc")]).await;
     let (_, rec) = crate::common::m2::signed(
         &s.router,
         "POST",
         "/api/teams",
-        Some(json!({"request_id": rid(), "template": "blank", "practice": true, "name": "spread"})),
+        Some(json!({"request_id": rid(), "template": "blank", "name": "spread"})),
     )
     .await;
     let mut draft = rec["draft"].clone();
-    draft["agents"] = json!([{"id": "a", "group_id": null, "name": "A", "kind": "practice", "job": "Work", "folder": null, "x": 40, "y": 40},
-                             {"id": "b", "group_id": null, "name": "B", "kind": "practice", "job": "Work", "folder": null, "x": 300, "y": 40}]);
+    draft["models"] = json!({ "claude": live::CLAUDE_MODEL });
+    draft["agents"] = json!([{"id": "a", "group_id": null, "name": "A", "kind": "claude", "job": "", "folder": null, "x": 40, "y": 40},
+                             {"id": "b", "group_id": null, "name": "B", "kind": "claude", "job": "", "folder": null, "x": 300, "y": 40}]);
     let id = draft["id"].as_str().unwrap().to_string();
     crate::common::m2::signed(
         &s.router,
@@ -405,10 +414,9 @@ async fn hosted_a_team_whose_agents_all_have_their_own_computers_needs_no_team_c
 #[tokio::test]
 async fn a_new_team_runs_on_the_computer_you_chose_last_until_you_choose_otherwise() {
     let s = crate::common::m2::serve().await;
-    let _local = crate::common::m2::connect_stub(&s).await;
-    let _desk =
-        crate::common::m2::connect_as(&s, "desk", vec![Arc::new(drivers::stub::StubDriver)]).await;
-    let first = crate::common::m2::practice_chain(&s, "first", &[("a", "A", "Job")], &[]).await;
+    let _local = live::connect(&s).await;
+    let _desk = crate::common::m2::connect_as(&s, "desk", live::drivers()).await;
+    let first = crate::common::m2::chain(&s, "first", &[("a", "A", "")], &[]).await;
     let chosen = |host: serde_json::Value| json!({"request_id": rid(), "settings": {"posture": null, "question_timeout_min": null, "own_copies": false, "host": host}});
     assert_eq!(
         crate::common::m2::call(
@@ -422,7 +430,7 @@ async fn a_new_team_runs_on_the_computer_you_chose_last_until_you_choose_otherwi
         .as_u16(),
         200
     );
-    let second = crate::common::m2::practice_chain(&s, "second", &[("a", "A", "Job")], &[]).await;
+    let second = crate::common::m2::chain(&s, "second", &[("a", "A", "")], &[]).await;
     assert_eq!(
         crate::common::m2::get(&s.router, &format!("/api/teams/{second}/settings"))
             .await

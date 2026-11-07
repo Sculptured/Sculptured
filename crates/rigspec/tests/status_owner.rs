@@ -2,7 +2,7 @@
 use rigspec::templates::template;
 
 fn owner(id: &str) -> Option<String> {
-    template(id, "t", "T", false)
+    template(id, "t", "T")
         .unwrap()
         .status_owner()
         .map(|a| a.id.clone())
@@ -24,7 +24,7 @@ fn a_workflow_s_collector_writes_it() {
 
 #[test]
 fn the_agent_chosen_for_it_writes_it() {
-    let mut d = template("builder-reviewer", "t", "T", false).unwrap();
+    let mut d = template("builder-reviewer", "t", "T").unwrap();
     d.agents[0].advanced.writes_status = true;
     assert_eq!(d.status_owner().map(|a| a.id.as_str()), Some("builder"));
     let json = serde_json::to_value(&d).unwrap();

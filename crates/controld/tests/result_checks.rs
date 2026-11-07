@@ -1,27 +1,34 @@
 //! Result checks as a gate between agents: a buyer's result must carry a JSON block whose price is at
 //! most 5000 and whose part number is filled in before its work reaches the approver. A failing result is
 //! not handed on; the failures go back to the buyer (up to three times), then it is stuck until a
-//! passing result comes. Practice agents echo what they are sent, so the job's JSON is the result's.
+//! passing result comes. Live: the agents run on the real Claude Code CLI, told exactly what to reply.
 mod common;
 use axum::http::StatusCode;
-use common::m2::{
-    call, connect_stub, get, messages_by, practice_chain, rid, say, seat, start_team,
-};
+use common::m2::{call, chain, get, messages_by, rid, say, seat, start_team};
 use model::{EventBody, EventRecord};
 use serde_json::json;
 
+/// A reply the buyer is told to give, word for word, to every message.
+fn block(price: &str) -> String {
+    format!("```json\n{{\"part_number\": \"SP-118\", \"price\": {price}}}\n```")
+}
+
+/// The buyer's job: always reply with `block(price)`, whatever it is told.
 fn job(price: u32) -> String {
-    format!("Find the bearing.\n```json\n{{\"part_number\": \"SP-118\", \"price\": {price}}}\n```")
+    format!(
+        "To this message and to every later message, whatever it says, reply with exactly the following and nothing else:\n{}",
+        block(&price.to_string())
+    )
 }
 
 /// Buyer hands work to Approver; the buyer's result is checked. Started.
 async fn buying(s: &common::m2::Served, price: u32) -> String {
-    let id = practice_chain(
+    let id = chain(
         s,
         "Buying",
         &[
             ("buyer", "Buyer", &job(price)),
-            ("approver", "Approver", "Approve the purchase."),
+            ("approver", "Approver", "Reply with one short sentence."),
         ],
         &[("buyer", "approver")],
     )
@@ -57,12 +64,16 @@ fn stuck(s: &common::m2::Served, seat: &str) -> Option<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_failing_result_goes_back_three_times_then_waits_and_a_passing_one_is_handed_on() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_failing_result_goes_back_three_times_then_waits_and_a_passing_one_is_handed_on() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _sup = connect_stub(&s).await;
+    let _sup = common::live::connect(&s).await;
     let id = buying(&s, 7300).await;
     let (buyer, approver) = (seat(&id, "buyer"), seat(&id, "approver"));
-    common::wait_for("four failed checks", || checks(&s, &buyer).len() == 4).await;
+    common::live::wait_for("four failed checks", || checks(&s, &buyer).len() == 4).await;
     let all = checks(&s, &buyer);
     let EventBody::ResultChecked {
         passed,
@@ -75,7 +86,11 @@ async fn a_failing_result_goes_back_three_times_then_waits_and_a_passing_one_is_
     };
     assert!(!passed);
     assert!(*bounced);
-    assert_eq!(results[1].words, "price is 7300, at most 5000");
+    assert!(
+        results[1].words.ends_with("at most 5000"),
+        "{}",
+        results[1].words
+    );
     let bounced: Vec<bool> = all
         .iter()
         .map(|e| matches!(e.body, EventBody::ResultChecked { bounced: true, .. }))
@@ -84,12 +99,11 @@ async fn a_failing_result_goes_back_three_times_then_waits_and_a_passing_one_is_
     let back = messages_by(&s.st, &buyer, "result-check");
     assert_eq!(back.len(), 3);
     assert!(
-        back[0].2.contains("✗ price is 7300, at most 5000")
-            && back[0].2.contains("`price`: a number at most 5000"),
+        back[0].2.contains("✗ price is") && back[0].2.contains("`price`: a number at most 5000"),
         "{}",
         back[0].2
     );
-    common::wait_for("stuck", || stuck(&s, &buyer).is_some()).await;
+    common::live::wait_for("stuck", || stuck(&s, &buyer).is_some()).await;
     assert_eq!(
         stuck(&s, &buyer).unwrap(),
         "Buyer's work did not finish (its result did not pass its checks)"
@@ -99,13 +113,12 @@ async fn a_failing_result_goes_back_three_times_then_waits_and_a_passing_one_is_
         "nothing reached the approver"
     );
 
-    say(
-        &s,
-        &buyer,
-        "Found a cheaper one.\n```json\n{\"part_number\": \"SP-118\", \"price\": \"$4,200\"}\n```",
-    )
-    .await;
-    common::wait_for("handed on", || {
+    let cheaper = format!(
+        "A cheaper one was found. From now on reply with exactly the following and nothing else:\n{}",
+        block("\"$4,200\"")
+    );
+    say(&s, &buyer, &cheaper).await;
+    common::live::wait_for("handed on", || {
         !messages_by(&s.st, &approver, "handoff").is_empty()
     })
     .await;
@@ -121,17 +134,21 @@ async fn a_failing_result_goes_back_three_times_then_waits_and_a_passing_one_is_
     assert!(
         messages_by(&s.st, &approver, "handoff")[0]
             .2
-            .contains("$4,200")
+            .contains("--- Buyer's result ---")
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_passing_result_is_recorded_and_handed_on() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_passing_result_is_recorded_and_handed_on() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = common::m2::serve().await;
-    let _sup = connect_stub(&s).await;
+    let _sup = common::live::connect(&s).await;
     let id = buying(&s, 4200).await;
     let (buyer, approver) = (seat(&id, "buyer"), seat(&id, "approver"));
-    common::wait_for("handed on", || {
+    common::live::wait_for("handed on", || {
         !messages_by(&s.st, &approver, "handoff").is_empty()
     })
     .await;

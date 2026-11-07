@@ -87,7 +87,7 @@ it('First project creates a Claude team, opens its board with the tour, and the 
   );
   const user = userEvent.setup();
   await user.click(await screen.findByRole('button', { name: 'Create the first project' }));
-  await waitFor(() => expect(created[0]).toMatchObject({ template: 'builder-reviewer', practice: false }));
+  await waitFor(() => expect(created[0]).toMatchObject({ template: 'builder-reviewer' }));
   expect(await screen.findByRole('dialog', { name: TOUR_TIPS[0].title })).toBeInTheDocument();
   expect(screen.getByText('Builder card')).toBeInTheDocument();
   for (let i = 0; i < TOUR_TIPS.length - 1; i++) await user.click(screen.getByRole('button', { name: 'Next' }));

@@ -15,8 +15,8 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
-      - { id: b, agent_ref: "local:b", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, cwd: "." }
+      - { id: b, agent_ref: "local:b", profile: default, runtime: claude-code, cwd: "." }
     edges: [{ kind: delegates_to, from: a, to: b }]
 "#;
 
@@ -27,7 +27,7 @@ pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:a", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:a", profile: default, runtime: claude-code, cwd: "." }
 "#;
 
 const A: &str = "dev.a@r";
@@ -100,7 +100,7 @@ fn ingest_projects_the_seat_view() {
             EventBody::TenureStarted {
                 tenure: 1,
                 cause: TenureCause::Fresh,
-                driver: "stub".into(),
+                driver: "claude-stream".into(),
                 native_session_id: Some("n1".into()),
                 caps: Caps {
                     interrupt: true,
@@ -526,7 +526,7 @@ fn tenure_end_and_start_clear_turn_and_tool() {
             EventBody::TenureStarted {
                 tenure: 2,
                 cause: TenureCause::Fresh,
-                driver: "stub".into(),
+                driver: "claude-stream".into(),
                 native_session_id: None,
                 caps: Caps::default(),
             },
@@ -953,7 +953,7 @@ fn opens_a_store_created_before_the_added_columns() {
                 state TEXT NOT NULL, turn_id TEXT, at_ms INTEGER NOT NULL);
              CREATE TABLE receipts (request_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, status INTEGER NOT NULL, body TEXT NOT NULL);
              INSERT INTO seats (id, rig, ord, pod, member, runtime, lifecycle, activity)
-                VALUES ('dev.a@r', 'r', 0, 'dev', 'a', 'stub', 'running', 'idle');
+                VALUES ('dev.a@r', 'r', 0, 'dev', 'a', 'claude-code', 'running', 'idle');
              PRAGMA user_version = 1;",
         )
         .unwrap();

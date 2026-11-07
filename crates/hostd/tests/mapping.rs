@@ -11,7 +11,7 @@ use serde_json::json;
 fn ctx(ready: bool) -> PumpCtx {
     PumpCtx {
         tenure: 1,
-        driver: "stub".into(),
+        driver: "claude-stream".into(),
         caps: Caps::default(),
         ready,
         cause: TenureCause::Fresh,
@@ -77,7 +77,7 @@ fn session_ready_starts_tenure_running_idle() {
             EventBody::TenureStarted {
                 tenure: 1,
                 cause: TenureCause::Fresh,
-                driver: "stub".into(),
+                driver: "claude-stream".into(),
                 native_session_id: Some("n1".into()),
                 caps: Caps::default(),
             },

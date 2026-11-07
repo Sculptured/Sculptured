@@ -1,10 +1,12 @@
+# Live (see live.ts): rig.spec.ts copies this file into a work folder under the e2e server's HOME,
+# so cwd "." is that folder. Agents a and b are real Claude Code on haiku.
 version: "0.2"
 name: e2e-mobile
 pods:
   - id: dev
     label: Dev
     members:
-      - { id: a, agent_ref: "local:agents/a", profile: default, runtime: stub, cwd: "." }
-      - { id: b, agent_ref: "local:agents/b", profile: default, runtime: stub, cwd: "." }
+      - { id: a, agent_ref: "local:agents/a", profile: default, runtime: claude-code, model: haiku, cwd: "." }
+      - { id: b, agent_ref: "local:agents/b", profile: default, runtime: claude-code, model: haiku, cwd: "." }
     edges:
       - { kind: delegates_to, from: a, to: b }

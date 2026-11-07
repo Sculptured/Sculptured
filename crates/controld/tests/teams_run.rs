@@ -1,3 +1,6 @@
+//! Starting and stopping teams. What needs no running agent (validation, conflicts, claims, an
+//! agent runner that is not connected) is checked directly; what needs agents to run is a live test
+//! on the real Claude Code CLI (`common::live`), asserting on what Sculptured records.
 mod common;
 
 use axum::Router;
@@ -7,8 +10,6 @@ use common::lifecycle;
 use controld::AppState;
 use controld::reconciler::{HANDOFF_ACTOR, TEAM_START_ACTOR};
 use controld::store::Store;
-use drivers::Driver;
-use drivers::stub::StubDriver;
 use hostd::journal::Journal;
 use hostd::supervisor::Supervisor;
 use http_body_util::BodyExt;
@@ -18,7 +19,8 @@ use std::sync::Arc;
 use tower::ServiceExt;
 
 const TOKEN: &str = "test-token";
-const BUILDER_JOB: &str = "Build the change you are given";
+/// Every Job in these tests: a tiny, cheap turn.
+const OK_JOB: &str = "Reply with the single word OK and nothing else.";
 
 /// Serves controld on an ephemeral port for hostd, and returns a router for direct calls.
 async fn serve(home: &std::path::Path) -> (AppState, Router, String) {
@@ -39,19 +41,18 @@ async fn serve(home: &std::path::Path) -> (AppState, Router, String) {
     )
 }
 
+/// A host with the real CLIs (`common::live::drivers`).
 async fn connect_host(st: &AppState, url: String) {
-    connect_host_with(st, url, Arc::new(StubDriver)).await;
-}
-
-async fn connect_host_with(st: &AppState, url: String, driver: Arc<dyn Driver>) {
-    let drivers: Vec<Arc<dyn Driver>> = vec![driver];
     let sup = Supervisor::new(
         "local".into(),
-        drivers,
+        common::live::drivers(),
         Journal::open_in_memory(10_000).unwrap(),
     );
     tokio::spawn(async move { hostd::link::run_link(&url, TOKEN, &sup).await });
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
+    crate::common::wait_for("host connected", || {
+        st.hosts.has_driver("local", "claude-stream")
+    })
+    .await;
 }
 
 async fn call(router: &Router, method: &str, uri: &str, body: Value) -> (StatusCode, Value) {
@@ -71,16 +72,53 @@ async fn call(router: &Router, method: &str, uri: &str, body: Value) -> (StatusC
     )
 }
 
-async fn practice_team(router: &Router, practice: bool) -> String {
+/// A builder-reviewer team as the template makes it: its agents have no folder, so it cannot start.
+async fn team(router: &Router) -> String {
     let (status, rec) = call(
         router,
         "POST",
         "/api/teams",
-        json!({ "request_id": "create", "template": "builder-reviewer", "practice": practice }),
+        json!({ "request_id": uuid::Uuid::new_v4().to_string(), "template": "builder-reviewer" }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{rec}");
     rec["draft"]["id"].as_str().unwrap().to_string()
+}
+
+/// A builder-reviewer team that can start (revision 1): every agent works in `<home>/work`, Claude
+/// agents on the cheapest model, each with a tiny Job.
+async fn ready_team(router: &Router, home: &std::path::Path) -> String {
+    ready_team_with(router, home, "claude", OK_JOB).await
+}
+
+/// `ready_team`, with the builder of kind `builder_kind` given `builder_job`.
+async fn ready_team_with(
+    router: &Router,
+    home: &std::path::Path,
+    builder_kind: &str,
+    builder_job: &str,
+) -> String {
+    let id = team(router).await;
+    let work = home.join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let mut draft = draft_json(router, &id).await;
+    draft["folder"] = json!(work.display().to_string());
+    draft["models"] = json!({ "claude": common::live::CLAUDE_MODEL });
+    for a in draft["agents"].as_array_mut().unwrap() {
+        let builder = a["id"] == "builder";
+        a["kind"] = json!(if builder { builder_kind } else { "claude" });
+        a["job"] = json!(if builder { builder_job } else { OK_JOB });
+        a["folder"] = json!(work.display().to_string());
+    }
+    let (status, body) = call(
+        router,
+        "PUT",
+        &format!("/api/teams/{id}"),
+        json!({ "request_id": uuid::Uuid::new_v4().to_string(), "revision": 0, "draft": draft }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    id
 }
 
 fn events(st: &AppState, seat: &str) -> Vec<EventRecord> {
@@ -107,7 +145,7 @@ fn messages_by(st: &AppState, seat: &str, actor: &str) -> Vec<(String, String)> 
         .filter_map(|e| match e.body {
             EventBody::MessageQueued {
                 message_id, text, ..
-            } => Some((message_id, text)),
+            } => Some((message_id, common::work_message(&text))),
             _ => None,
         })
         .collect()
@@ -118,12 +156,16 @@ fn consumed(st: &AppState, seat: &str, message: &str) -> bool {
 }
 
 #[tokio::test]
-async fn start_delivers_each_job_as_a_first_message_sent_at_start() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_start_delivers_each_job_as_a_first_message_sent_at_start() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     connect_host(&st, url).await;
-    let id = practice_team(&router, true).await;
-    let start = json!({ "request_id": "s1", "revision": 0 });
+    let id = ready_team(&router, home.path()).await;
+    let start = json!({ "request_id": "s1", "revision": 1 });
     let (status, body) = call(
         &router,
         "POST",
@@ -137,7 +179,7 @@ async fn start_delivers_each_job_as_a_first_message_sent_at_start() {
     let builder = format!("team.builder@{id}");
     let reviewer = format!("team.reviewer@{id}");
     // The builder hands work to the reviewer, so the reviewer's Job comes with that handoff.
-    crate::common::wait_for(
+    common::live::wait_for(
         "the builder's job and the reviewer's handoff consumed",
         || {
             job_messages(&st, &builder)
@@ -153,14 +195,19 @@ async fn start_delivers_each_job_as_a_first_message_sent_at_start() {
         job_messages(&st, &reviewer).is_empty(),
         "no Job at start for an agent that is handed work"
     );
+    let handed = &handoff_messages(&st, &reviewer)[0].1;
     assert!(
-        handoff_messages(&st, &reviewer)[0]
-            .1
-            .starts_with("Handed over by Builder\n\nReview what Builder hands you.")
+        handed.starts_with(&format!("Handed over by Builder\n\n{OK_JOB}")),
+        "{handed}"
     );
     let (_, text) = &job_messages(&st, &builder)[0];
-    assert!(text.starts_with(BUILDER_JOB), "{text}");
-    assert!(events(&st, &builder).iter().any(|e| matches!(&e.body, EventBody::AgentText { text, .. } if text.starts_with("stub received: Build the change"))));
+    assert!(text.starts_with(OK_JOB), "{text}");
+    assert!(
+        events(&st, &builder)
+            .iter()
+            .any(|e| matches!(e.body, EventBody::AgentText { .. })),
+        "the builder answered its Job"
+    );
 
     assert_eq!(
         call(&router, "POST", &format!("/api/teams/{id}/start"), start).await,
@@ -184,11 +231,15 @@ async fn start_delivers_each_job_as_a_first_message_sent_at_start() {
 }
 
 #[tokio::test]
-async fn restarting_a_stopped_team_delivers_jobs_again() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_restarting_a_stopped_team_delivers_jobs_again() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     connect_host(&st, url).await;
-    let id = practice_team(&router, true).await;
+    let id = ready_team(&router, home.path()).await;
     let builder = format!("team.builder@{id}");
     let (status, _) = call(
         &router,
@@ -198,13 +249,13 @@ async fn restarting_a_stopped_team_delivers_jobs_again() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    crate::common::wait_for("first job consumed", || {
+    common::live::wait_for("first job consumed", || {
         job_messages(&st, &builder)
             .first()
             .is_some_and(|(m, _)| consumed(&st, &builder, m))
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
 
     let (status, body) = call(
         &router,
@@ -218,7 +269,7 @@ async fn restarting_a_stopped_team_delivers_jobs_again() {
         body["failed"].is_array(),
         "stop reports the agents it could not stop: {body}"
     );
-    crate::common::wait_for("stopped", || {
+    common::live::wait_for("stopped", || {
         crate::common::lifecycle(&st, &builder) == Some(SeatLifecycle::Stopped)
     })
     .await;
@@ -231,7 +282,7 @@ async fn restarting_a_stopped_team_delivers_jobs_again() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("second job consumed", || {
+    common::live::wait_for("second job consumed", || {
         let jobs = job_messages(&st, &builder);
         jobs.len() == 2 && consumed(&st, &builder, &jobs[1].0)
     })
@@ -248,7 +299,7 @@ async fn restarting_a_stopped_team_delivers_jobs_again() {
 async fn an_agent_that_cannot_start_gets_its_job_recorded_as_not_sent() {
     let home = tempfile::tempdir().unwrap();
     let (st, router, _url) = serve(home.path()).await;
-    let id = practice_team(&router, true).await;
+    let id = ready_team(&router, home.path()).await;
     let (status, _) = call(
         &router,
         "POST",
@@ -258,7 +309,7 @@ async fn an_agent_that_cannot_start_gets_its_job_recorded_as_not_sent() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let builder = format!("team.builder@{id}");
-    crate::common::wait_for("job recorded as not sent", || {
+    common::live::wait_for("job recorded as not sent", || {
         events(&st, &builder).iter().any(|e| {
             matches!(&e.body, EventBody::MessageFailed { reason, .. } if reason.starts_with("not sent: the agent did not start (Sculptured's agent runner is not connected)"))
         })
@@ -271,7 +322,7 @@ async fn an_agent_that_cannot_start_gets_its_job_recorded_as_not_sent() {
 async fn start_refuses_invalid_teams_stale_revisions_and_stop_needs_a_start() {
     let home = tempfile::tempdir().unwrap();
     let (_st, router, _url) = serve(home.path()).await;
-    let id = practice_team(&router, false).await;
+    let id = team(&router).await;
     let (status, body) = call(
         &router,
         "POST",
@@ -327,94 +378,18 @@ fn the_team_start_actor_serializes_as_the_web_expects() {
     );
 }
 
-/// Stub driver that records the folder each agent is launched in.
-struct CwdRecordingStub(Arc<std::sync::Mutex<Vec<(String, std::path::PathBuf)>>>);
-
-#[async_trait::async_trait]
-impl Driver for CwdRecordingStub {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(
-        &self,
-        spec: drivers::LaunchSpec,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        self.0
-            .lock()
-            .unwrap()
-            .push((spec.seat.to_string(), spec.cwd.clone()));
-        StubDriver.launch(spec).await
-    }
-    async fn resume(
-        &self,
-        spec: drivers::LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        StubDriver.resume(spec, native_id).await
-    }
-}
-
-/// A Practice agent without a folder compiles to `cwd: "."`, which `resolve_cwd` joins to
-/// the `spec_dir` that start passes: the home folder, not `/` or the server's own folder.
-#[tokio::test]
-async fn a_practice_agent_without_a_folder_runs_in_the_home_folder() {
-    let home = tempfile::tempdir().unwrap();
-    let (st, router, url) = serve(home.path()).await;
-    let launched = Arc::new(std::sync::Mutex::new(Vec::new()));
-    connect_host_with(&st, url, Arc::new(CwdRecordingStub(launched.clone()))).await;
-    let id = practice_team(&router, true).await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/teams/{id}/start"),
-        json!({ "request_id": "s1" }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("both agents launched", || {
-        launched.lock().unwrap().len() == 2
-    })
-    .await;
-    let home_dir = home.path().canonicalize().unwrap();
-    for (seat, cwd) in launched.lock().unwrap().iter() {
-        assert_eq!(
-            cwd.canonicalize().unwrap(),
-            home_dir,
-            "{seat} ran in {}",
-            cwd.display()
-        );
-    }
-}
-
 /// An empty or blank Job is a real state ("no first message"), not a missing one: that
 /// agent starts and gets no message at all, neither an empty one nor a "not sent" record.
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn an_agent_with_an_empty_job_gets_no_first_message() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_an_agent_with_an_empty_job_gets_no_first_message() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     connect_host(&st, url).await;
-    let id = practice_team(&router, true).await;
-    let (_, rec) = call(&router, "GET", &format!("/api/teams/{id}"), Value::Null).await;
-    let mut draft = rec["draft"].clone();
-    let matching_items = draft["agents"].as_array_mut().unwrap();
-    for a in matching_items {
-        if a["id"] == "builder" {
-            a["job"] = json!("  \n ");
-        }
-    }
-    let (status, body) = call(
-        &router,
-        "PUT",
-        &format!("/api/teams/{id}"),
-        json!({ "request_id": "p1", "revision": 0, "draft": draft }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-
+    let id = ready_team_with(&router, home.path(), "claude", "  \n ").await;
     let (status, body) = call(
         &router,
         "POST",
@@ -427,7 +402,7 @@ async fn an_agent_with_an_empty_job_gets_no_first_message() {
     let reviewer = format!("team.reviewer@{id}");
     // The builder has nothing to do until someone writes to it (that first message is its
     // work): the reviewer waits for it.
-    crate::common::wait_for("the reviewer waits for the builder", || {
+    common::live::wait_for("the reviewer waits for the builder", || {
         let view = st.store.lock().unwrap().seat(&reviewer).unwrap().unwrap();
         crate::common::lifecycle(&st, &reviewer) == Some(SeatLifecycle::Running)
             && view.waiting_for == Some(vec![builder.clone()])
@@ -457,11 +432,15 @@ async fn an_agent_with_an_empty_job_gets_no_first_message() {
 /// follows `stopped` as "stopped unexpectedly", so an operator stop must journal
 /// stopping → tenure-ended → stopped.
 #[tokio::test]
-async fn an_operator_stop_ends_the_session_before_recording_stopped() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_an_operator_stop_ends_the_session_before_recording_stopped() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     connect_host(&st, url).await;
-    let id = practice_team(&router, true).await;
+    let id = ready_team(&router, home.path()).await;
     let builder = format!("team.builder@{id}");
     let (status, _) = call(
         &router,
@@ -471,13 +450,13 @@ async fn an_operator_stop_ends_the_session_before_recording_stopped() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    crate::common::wait_for("job consumed", || {
+    common::live::wait_for("job consumed", || {
         job_messages(&st, &builder)
             .first()
             .is_some_and(|(m, _)| consumed(&st, &builder, m))
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     let before_stop = st.store.lock().unwrap().last_seq().unwrap();
 
     let (status, body) = call(
@@ -488,7 +467,7 @@ async fn an_operator_stop_ends_the_session_before_recording_stopped() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("stopped", || {
+    common::live::wait_for("stopped", || {
         lifecycle(&st, &builder) == Some(SeatLifecycle::Stopped)
     })
     .await;
@@ -531,7 +510,7 @@ fn with_builder_folder(mut draft: Value, folder: &std::path::Path) -> Value {
 async fn a_stale_structural_save_on_a_live_team_is_a_draft_conflict() {
     let home = tempfile::tempdir().unwrap();
     let (st, router, _url) = serve(home.path()).await;
-    let id = practice_team(&router, true).await;
+    let id = team(&router).await;
     let draft = with_builder_folder(draft_json(&router, &id).await, home.path());
     let _starting = st.try_begin_boot(&id).expect("claim is free");
 
@@ -569,11 +548,8 @@ async fn a_structural_save_racing_a_start_never_lands_on_the_started_team() {
     let home = tempfile::tempdir().unwrap();
     let (_st, router, _url) = serve(home.path()).await;
     for i in 0..60 {
-        let (status, rec) =
-            call(&router, "POST", "/api/teams", json!({ "request_id": format!("c{i}"), "template": "builder-reviewer", "practice": true })).await;
-        assert_eq!(status, StatusCode::OK, "{rec}");
-        let id = rec["draft"]["id"].as_str().unwrap().to_string();
-        let draft = with_builder_folder(rec["draft"].clone(), home.path());
+        let id = ready_team(&router, home.path()).await;
+        let draft = with_builder_folder(draft_json(&router, &id).await, home.path());
         let gate = Arc::new(tokio::sync::Barrier::new(2));
         let (r1, g1, i1) = (router.clone(), gate.clone(), id.clone());
         let start = tokio::spawn(async move {
@@ -593,7 +569,7 @@ async fn a_structural_save_racing_a_start_never_lands_on_the_started_team() {
                 &r2,
                 "PUT",
                 &format!("/api/teams/{i2}"),
-                json!({ "request_id": format!("p-{i2}"), "revision": 0, "draft": draft }),
+                json!({ "request_id": format!("p-{i2}"), "revision": 1, "draft": draft }),
             )
             .await
         });
@@ -624,7 +600,7 @@ async fn a_structural_save_racing_a_start_never_lands_on_the_started_team() {
 async fn start_claims_the_team_before_reading_its_draft() {
     let home = tempfile::tempdir().unwrap();
     let (st, router, _url) = serve(home.path()).await;
-    let id = practice_team(&router, false).await;
+    let id = team(&router).await;
     let starting = st.try_begin_boot(&id).expect("claim is free");
     let (status, body) = call(
         &router,
@@ -656,36 +632,6 @@ async fn start_claims_the_team_before_reading_its_draft() {
 
 // ---- Task 9 review, fix round 1 ----
 
-/// Stub driver whose builder takes a while to launch, so a stop can land while the
-/// first launch layer is still starting and the reviewer (layer 2) is still planned.
-struct SlowBuilderStub;
-
-#[async_trait::async_trait]
-impl Driver for SlowBuilderStub {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(
-        &self,
-        spec: drivers::LaunchSpec,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        if spec.seat.to_string().starts_with("team.builder@") {
-            tokio::time::sleep(std::time::Duration::from_millis(700)).await;
-        }
-        StubDriver.launch(spec).await
-    }
-    async fn resume(
-        &self,
-        spec: drivers::LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        StubDriver.resume(spec, native_id).await
-    }
-}
-
 fn failed_reason(st: &AppState, seat: &str, message: &str) -> Option<String> {
     events(st, seat).into_iter().find_map(|e| match e.body {
         EventBody::MessageFailed { message_id, reason } if message_id == message => Some(reason),
@@ -696,14 +642,22 @@ fn failed_reason(st: &AppState, seat: &str, message: &str) -> Option<String> {
 /// Stopping a team ends the wait of every Job not yet sent: the Job is recorded as not
 /// sent because the team was stopped, and a quick restart sends it once, not twice.
 /// The team's own Stop refuses while the team is starting (`team_starting`), so the stop
-/// mid-boot goes through the rig route, which still allows it.
+/// mid-boot goes through the rig route, which still allows it. The builder is a Codex agent: its
+/// launch waits for the real app-server's handshake, so the stop lands while it is still starting.
 #[tokio::test]
+#[ignore = "live: real codex and claude CLIs; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn a_stop_before_an_agent_starts_ends_its_job_wait_and_a_restart_sends_the_job_once() {
+async fn live_a_stop_before_an_agent_starts_ends_its_job_wait_and_a_restart_sends_the_job_once() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let Some(_) = common::live::require_codex() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
-    connect_host_with(&st, url, Arc::new(SlowBuilderStub)).await;
-    let id = practice_team(&router, true).await;
+    connect_host(&st, url).await;
+    let id = ready_team_with(&router, home.path(), "codex", OK_JOB).await;
     let (builder, reviewer) = (format!("team.builder@{id}"), format!("team.reviewer@{id}"));
     let (status, body) = call(
         &router,
@@ -733,7 +687,7 @@ async fn a_stop_before_an_agent_starts_ends_its_job_wait_and_a_restart_sends_the
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the first boot to end with nothing running", || {
+    common::live::wait_for("the first boot to end with nothing running", || {
         !st.is_booting(&id)
             && [&builder, &reviewer]
                 .iter()
@@ -755,13 +709,13 @@ async fn a_stop_before_an_agent_starts_ends_its_job_wait_and_a_restart_sends_the
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     // The builder (slow to launch) was still starting at the stop, so its Job waited.
-    crate::common::wait_for("the builder's job consumed after the restart", || {
+    common::live::wait_for("the builder's job consumed after the restart", || {
         job_messages(&st, &builder)
             .iter()
             .any(|(m, _)| consumed(&st, &builder, m))
     })
     .await;
-    crate::common::wait_for("the reviewer's handoff consumed after the restart", || {
+    common::live::wait_for("the reviewer's handoff consumed after the restart", || {
         handoff_messages(&st, &reviewer)
             .iter()
             .any(|(m, _)| consumed(&st, &reviewer, m))
@@ -809,7 +763,7 @@ async fn a_start_claiming_between_a_saves_check_and_write_reads_the_saved_draft(
         &router,
         "POST",
         "/api/teams",
-        json!({ "request_id": "create", "template": "builder-reviewer", "practice": true, "name": "Seam team" }),
+        json!({ "request_id": "create", "template": "builder-reviewer", "name": "Seam team" }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{rec}");
@@ -879,13 +833,21 @@ async fn a_start_claiming_between_a_saves_check_and_write_reads_the_saved_draft(
 }
 
 /// A newer start of the same team (a second RigBooted) also ends the wait: the Job it
-/// queued is the one to send, so the older Job is recorded as not sent.
+/// queued is the one to send, so the older Job is recorded as not sent. The builder is a Codex agent,
+/// still starting (the real app-server's handshake) when the newer start lands.
 #[tokio::test]
-async fn a_newer_start_ends_the_job_wait_of_the_older_one() {
+#[ignore = "live: real codex and claude CLIs; run with --ignored"]
+async fn live_a_newer_start_ends_the_job_wait_of_the_older_one() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let Some(_) = common::live::require_codex() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
-    connect_host_with(&st, url, Arc::new(SlowBuilderStub)).await;
-    let id = practice_team(&router, true).await;
+    connect_host(&st, url).await;
+    let id = ready_team_with(&router, home.path(), "codex", OK_JOB).await;
     let builder = format!("team.builder@{id}");
     let (status, body) = call(
         &router,
@@ -905,14 +867,14 @@ async fn a_newer_start_ends_the_job_wait_of_the_older_one() {
         },
     )
     .unwrap();
-    crate::common::wait_for("the older Job recorded as not sent", || {
+    common::live::wait_for("the older Job recorded as not sent", || {
         job_messages(&st, &builder).iter().any(|(m, _)| {
             failed_reason(&st, &builder, m).as_deref()
                 == Some("not sent: the team was started again before this agent started")
         })
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     let (status, body) = call(
         &router,
         "POST",
@@ -940,11 +902,15 @@ fn rig_desired_changes(st: &AppState, id: &str) -> usize {
 /// restart's Job delivery), so it is refused with 409 `team_starting` and records nothing.
 /// The held claim stands for a boot in flight, so the test does not depend on timing.
 #[tokio::test]
-async fn stopping_a_team_that_is_still_starting_is_refused_and_records_nothing() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_stopping_a_team_that_is_still_starting_is_refused_and_records_nothing() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     connect_host(&st, url).await;
-    let id = practice_team(&router, true).await;
+    let id = ready_team(&router, home.path()).await;
     let builder = format!("team.builder@{id}");
     let (status, body) = call(
         &router,
@@ -954,8 +920,8 @@ async fn stopping_a_team_that_is_still_starting_is_refused_and_records_nothing()
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
-    crate::common::wait_for("builder running", || {
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("builder running", || {
         crate::common::lifecycle(&st, &builder) == Some(SeatLifecycle::Running)
     })
     .await;
@@ -1003,7 +969,7 @@ async fn stopping_a_team_that_is_still_starting_is_refused_and_records_nothing()
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(!st.is_booting(&id), "a stop releases what it holds");
-    crate::common::wait_for("stopped", || {
+    common::live::wait_for("stopped", || {
         crate::common::lifecycle(&st, &builder) == Some(SeatLifecycle::Stopped)
     })
     .await;
@@ -1025,7 +991,10 @@ async fn import_parses_and_compiles_without_holding_the_store_lock() {
             seen.lock().unwrap().push(hook_st.store.try_lock().is_ok());
         }
     }));
-    let yaml = "version: \"0.2\"\nname: lock-probe\npods:\n  - id: p\n    label: P\n    members:\n      - { id: a, agent_ref: \"local:a\", profile: default, runtime: stub, cwd: \".\" }\n";
+    let yaml = format!(
+        "version: \"0.2\"\nname: lock-probe\npods:\n  - id: p\n    label: P\n    members:\n      - {{ id: a, agent_ref: \"local:a\", profile: default, runtime: claude-code, cwd: \"{}\" }}\n",
+        home.path().display()
+    );
     let (status, body) = call(
         &router,
         "POST",
@@ -1045,11 +1014,11 @@ async fn import_parses_and_compiles_without_holding_the_store_lock() {
 
 // ---- Backend hardening item 8: a restart of Sculptured's host ----
 
+/// Sculptured's agent runner with the real CLIs (`common::live::drivers`).
 fn spawn_hostd(url: String) -> tokio::task::JoinHandle<()> {
-    let drivers: Vec<Arc<dyn Driver>> = vec![Arc::new(StubDriver)];
     let sup = Supervisor::new(
         "local".into(),
-        drivers,
+        common::live::drivers(),
         Journal::open_in_memory(10_000).unwrap(),
     );
     tokio::spawn(async move {
@@ -1057,19 +1026,26 @@ fn spawn_hostd(url: String) -> tokio::task::JoinHandle<()> {
     })
 }
 
-/// hostd has no graceful shutdown, and Practice agents run inside it, so a restart (a
+/// hostd has no graceful shutdown and the agents' CLIs are its children, so a restart (a
 /// reboot, or stopping and starting `sculptured serve`) ends every agent. The spec
 /// relaunches nothing without an operator decision (restore-on-boot is M2), so each
 /// agent needs attention, with a plain reason that says what happened and what to do.
 /// Start is that decision: it relaunches the team and sends each Job again.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn after_a_host_restart_agents_say_why_and_start_runs_the_team_again() {
+async fn live_after_a_host_restart_agents_say_why_and_start_runs_the_team_again() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     let hostd = spawn_hostd(url.clone());
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
-    let id = practice_team(&router, true).await;
+    crate::common::wait_for("host connected", || {
+        st.hosts.has_driver("local", "claude-stream")
+    })
+    .await;
+    let id = ready_team(&router, home.path()).await;
     let seats = [format!("team.builder@{id}"), format!("team.reviewer@{id}")];
     let (status, body) = call(
         &router,
@@ -1087,24 +1063,24 @@ async fn after_a_host_restart_agents_say_why_and_start_runs_the_team_again() {
             job_messages(&st, s)
         }
     };
-    crate::common::wait_for("both first messages consumed", || {
+    common::live::wait_for("both first messages consumed", || {
         seats
             .iter()
             .all(|s| first(s).first().is_some_and(|(m, _)| consumed(&st, s, m)))
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
 
     // hostd goes away with its agents, and a fresh one (nothing running) comes back.
     hostd.abort();
-    crate::common::wait_for("agents stale", || {
+    common::live::wait_for("agents stale", || {
         seats
             .iter()
             .all(|s| crate::common::lifecycle(&st, s) == Some(SeatLifecycle::Stale))
     })
     .await;
     let _hostd2 = spawn_hostd(url);
-    crate::common::wait_for("agents need attention", || {
+    common::live::wait_for("agents need attention", || {
         seats
             .iter()
             .all(|s| crate::common::lifecycle(&st, s) == Some(SeatLifecycle::Attention))
@@ -1141,7 +1117,7 @@ async fn after_a_host_restart_agents_say_why_and_start_runs_the_team_again() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for(
+    common::live::wait_for(
         "both agents run again with their first message sent again",
         || {
             seats.iter().all(|s| {
@@ -1168,9 +1144,10 @@ async fn after_a_host_restart_agents_say_why_and_start_runs_the_team_again() {
 async fn a_spec_file_cannot_take_a_drafted_teams_id_and_the_team_still_starts() {
     let home = tempfile::tempdir().unwrap();
     let (_st, router, _url) = serve(home.path()).await;
-    let id = practice_team(&router, true).await;
+    let id = ready_team(&router, home.path()).await;
     let yaml = format!(
-        "version: \"0.2\"\nname: {id}\npods:\n  - id: dev\n    label: Dev\n    members:\n      - {{ id: a, agent_ref: \"local:a\", profile: default, runtime: stub, cwd: \".\" }}\n"
+        "version: \"0.2\"\nname: {id}\npods:\n  - id: dev\n    label: Dev\n    members:\n      - {{ id: a, agent_ref: \"local:a\", profile: default, runtime: claude-code, cwd: \"{}\" }}\n",
+        home.path().display()
     );
     let spec = home.path().join("taker.yaml");
     std::fs::write(&spec, yaml).unwrap();
@@ -1194,7 +1171,7 @@ async fn a_spec_file_cannot_take_a_drafted_teams_id_and_the_team_still_starts() 
         &router,
         "POST",
         &format!("/api/teams/{id}/start"),
-        json!({ "request_id": "s1", "revision": 0 }),
+        json!({ "request_id": "s1", "revision": 1 }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -1202,11 +1179,15 @@ async fn a_spec_file_cannot_take_a_drafted_teams_id_and_the_team_still_starts() 
 }
 
 #[tokio::test]
-async fn stop_reconciles_a_live_projection_when_the_runner_has_no_process() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_stop_reconciles_a_live_projection_when_the_runner_has_no_process() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     connect_host(&st, url).await;
-    let id = practice_team(&router, true).await;
+    let id = ready_team(&router, home.path()).await;
     let builder = format!("team.builder@{id}");
     call(
         &router,
@@ -1215,7 +1196,7 @@ async fn stop_reconciles_a_live_projection_when_the_runner_has_no_process() {
         json!({"request_id":"start"}),
     )
     .await;
-    crate::common::wait_for("boot finished", || {
+    common::live::wait_for("boot finished", || {
         !st.is_booting(&id)
             && crate::common::lifecycle(&st, &builder) == Some(SeatLifecycle::Running)
     })
@@ -1227,7 +1208,7 @@ async fn stop_reconciles_a_live_projection_when_the_runner_has_no_process() {
         json!({"request_id":"stop"}),
     )
     .await;
-    crate::common::wait_for("stopped", || {
+    common::live::wait_for("stopped", || {
         crate::common::lifecycle(&st, &builder) == Some(SeatLifecycle::Stopped)
     })
     .await;
@@ -1264,12 +1245,19 @@ async fn stop_reconciles_a_live_projection_when_the_runner_has_no_process() {
 /// Decision 1 (restore): after a host restart a started team asks once, and Resume continues each
 /// agent's own session (the same native session id) instead of starting over.
 #[tokio::test]
-async fn after_a_host_restart_the_team_resumes_each_agents_own_session() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_after_a_host_restart_the_team_resumes_each_agents_own_session() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     let hostd = spawn_hostd(url.clone());
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
-    let id = practice_team(&router, true).await;
+    crate::common::wait_for("host connected", || {
+        st.hosts.has_driver("local", "claude-stream")
+    })
+    .await;
+    let id = ready_team(&router, home.path()).await;
     let seats = [format!("team.builder@{id}"), format!("team.reviewer@{id}")];
     let (status, body) = call(
         &router,
@@ -1279,28 +1267,29 @@ async fn after_a_host_restart_the_team_resumes_each_agents_own_session() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("both run", || {
-        seats
-            .iter()
-            .all(|s| crate::common::lifecycle(&st, s) == Some(SeatLifecycle::Running))
+    let view = |s: &String| st.store.lock().unwrap().seat(s).unwrap().unwrap();
+    common::live::wait_for("both run with a session", || {
+        seats.iter().all(|s| {
+            crate::common::lifecycle(&st, s) == Some(SeatLifecycle::Running)
+                && view(s).native_session_id.is_some()
+        })
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
-    let view = |s: &String| st.store.lock().unwrap().seat(s).unwrap().unwrap();
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     let sessions: Vec<_> = seats
         .iter()
         .map(|s| view(s).native_session_id.expect("session id"))
         .collect();
 
     hostd.abort();
-    crate::common::wait_for("agents stale", || {
+    common::live::wait_for("agents stale", || {
         seats
             .iter()
             .all(|s| crate::common::lifecycle(&st, s) == Some(SeatLifecycle::Stale))
     })
     .await;
     let _hostd2 = spawn_hostd(url);
-    crate::common::wait_for("offers", || {
+    common::live::wait_for("offers", || {
         seats
             .iter()
             .all(|s| view(s).restore_offer.is_some_and(|o| o.can_resume))
@@ -1333,12 +1322,19 @@ async fn after_a_host_restart_the_team_resumes_each_agents_own_session() {
 /// fresh starts a new session, and one set to restart from a checkpoint (Sculptured has none) keeps
 /// waiting for its own decision.
 #[tokio::test]
-async fn the_teams_resume_answer_follows_each_agents_restart_setting() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_the_teams_resume_answer_follows_each_agents_restart_setting() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
     let hostd = spawn_hostd(url.clone());
-    crate::common::wait_for("host connected", || st.hosts.has_driver("local", "stub")).await;
-    let id = practice_team(&router, true).await;
+    crate::common::wait_for("host connected", || {
+        st.hosts.has_driver("local", "claude-stream")
+    })
+    .await;
+    let id = ready_team(&router, home.path()).await;
     let (_, rec) = call(&router, "GET", &format!("/api/teams/{id}"), Value::Null).await;
     let mut draft = rec["draft"].clone();
     let matching_items = draft["agents"].as_array_mut().unwrap();
@@ -1366,24 +1362,24 @@ async fn the_teams_resume_answer_follows_each_agents_restart_setting() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("both run", || {
+    common::live::wait_for("both run", || {
         [&builder, &reviewer]
             .iter()
             .all(|s| crate::common::lifecycle(&st, s) == Some(SeatLifecycle::Running))
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     let view = |s: &String| st.store.lock().unwrap().seat(s).unwrap().unwrap();
 
     hostd.abort();
-    crate::common::wait_for("agents stale", || {
+    common::live::wait_for("agents stale", || {
         [&builder, &reviewer]
             .iter()
             .all(|s| crate::common::lifecycle(&st, s) == Some(SeatLifecycle::Stale))
     })
     .await;
     let _hostd2 = spawn_hostd(url);
-    crate::common::wait_for("offers", || {
+    common::live::wait_for("offers", || {
         [&builder, &reviewer]
             .iter()
             .all(|s| view(s).restore_offer.is_some_and(|o| o.can_resume))

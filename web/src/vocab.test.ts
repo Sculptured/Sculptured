@@ -25,8 +25,8 @@ describe('vocab', () => {
     expect(labelNames(rig)).toEqual({ 'dev.a@r': 'Builder' });
   });
 
-  it('calls the stub a Practice agent and counts in words', () => {
-    expect(RUNTIME_LABEL.stub).toBe('Practice agent');
+  it('names runtimes and counts in words', () => {
+    expect(RUNTIME_LABEL['claude-code']).toBe('Claude');
     expect(WORDS.teamCounts(1, 3)).toBe('1 of 3 agents running');
     expect(WORDS.needAttention(1)).toBe('1 needs attention');
     expect(WORDS.needAttention(2)).toBe('2 need attention');

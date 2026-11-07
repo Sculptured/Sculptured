@@ -26,7 +26,7 @@ describe('Agent page', () => {
     vi.mocked(api.latestSeatEvents).mockResolvedValue([
       ev(1, { type: 'message-queued', message_id: 'm1', intent: 'inform', text: 'hello' }),
       ev(2, { type: 'message-consumed', message_id: 'm1', turn_id: 't1' }),
-      ev(3, { type: 'agent-text', turn_id: 't1', text: 'stub received: hello' }),
+      ev(3, { type: 'agent-text', turn_id: 't1', text: 'Hello, ready.' }),
       ev(4, { type: 'unrecognized', raw: { type: 'mystery' } }),
     ]);
   });
@@ -35,7 +35,7 @@ describe('Agent page', () => {
   it('has four tabs, Conversation first; raw events wait one step back on Activity', async () => {
     renderAt('/rig/r/agent/dev.a%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
-    await screen.findByText('stub received: hello');
+    await screen.findByText('Hello, ready.');
     const tabs = screen.getByRole('navigation', { name: 'Agent pages' });
     expect(within(tabs).getAllByRole('link').map((l) => l.textContent)).toEqual(['Conversation', 'Setup', 'Activity', 'Questions']);
     expect(within(tabs).getByRole('link', { name: 'Conversation' })).toHaveAttribute('aria-current', 'page');
@@ -56,7 +56,7 @@ describe('Agent page', () => {
     renderAt('/rig/r/agent/dev.a%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
     const convo = await screen.findByRole('list', { name: 'Conversation' });
-    expect(await screen.findByText('stub received: hello')).toBeInTheDocument();
+    expect(await screen.findByText('Hello, ready.')).toBeInTheDocument();
     // Delivery states read queued → delivered → read.
     expect(convo).toHaveTextContent('read');
     expect(convo).toHaveTextContent(/unrecognized event/i);
@@ -75,7 +75,7 @@ describe('Agent page', () => {
     expect(screen.getByRole('link', { name: 'Activity' })).toHaveAttribute('aria-current', 'page');
     const process = await screen.findByRole('region', { name: 'Process' });
     const user = userEvent.setup();
-    await user.click(await within(process).findByRole('button', { name: /stub received: hello/ }));
+    await user.click(await within(process).findByRole('button', { name: /Hello, ready./ }));
     // The Transcript tab opens at that reply, highlighted, with a way back.
     expect(screen.getByRole('link', { name: 'Conversation' })).toHaveAttribute('aria-current', 'page');
     await vi.waitFor(() => expect(document.querySelector('[data-item-key="a-3"]')).toHaveClass('flash'));
@@ -125,7 +125,7 @@ describe('Agent page', () => {
     expect(chat).toHaveTextContent(`Reason: ${reason}`);
     const el = within(chat).getByText(reason).parentElement!;
     expect(el).not.toHaveClass('clamp');
-    expect(await screen.findByText('stub received: hello')).toBeInTheDocument();
+    expect(await screen.findByText('Hello, ready.')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('link', { name: 'Activity' }));
     expect(screen.getByRole('region', { name: 'Activity' })).toHaveTextContent('tokens unknown');
   });
@@ -143,7 +143,7 @@ describe('Agent page', () => {
     let finishB!: (v: ReturnType<typeof ev>[]) => void;
     renderAt('/rig/r/agent/dev.a%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot({ seats: [seatView('a', { current_turn: 't1' }), seatView('b')] })));
-    await screen.findByText('stub received: hello');
+    await screen.findByText('Hello, ready.');
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Message'), 'draft for a');
     await user.click(screen.getByRole('link', { name: 'Activity' }));
@@ -157,7 +157,7 @@ describe('Agent page', () => {
     await user.click(screen.getByRole('link', { name: 'Conversation' }));
     expect(screen.getByRole('region', { name: 'Agent b' })).toBeInTheDocument();
     expect(screen.getByLabelText('Message')).toHaveValue('');
-    expect(screen.queryByText('stub received: hello')).not.toBeInTheDocument();
+    expect(screen.queryByText('Hello, ready.')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Loading history');
     act(() => finishB([]));
     expect(await screen.findByText('No conversation yet.')).toBeInTheDocument();
@@ -226,7 +226,7 @@ describe('Agent page', () => {
   it('keeps details and controls on Activity, not on the conversation', async () => {
     renderAt('/rig/r/agent/dev.a%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
-    await screen.findByText('stub received: hello');
+    await screen.findByText('Hello, ready.');
     expect(screen.queryByRole('button', { name: 'Hard stop…' })).toBeNull();
     await userEvent.click(screen.getByRole('link', { name: 'Activity' }));
     const activity = screen.getByRole('region', { name: 'Activity' });
@@ -237,7 +237,7 @@ describe('Agent page', () => {
   it('expands the conversation to full screen from the message box, with its name, search and Exit full screen', async () => {
     renderAt('/rig/r/agent/dev.a%40r');
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot()));
-    await screen.findByText('stub received: hello');
+    await screen.findByText('Hello, ready.');
     const user = userEvent.setup();
     const field = screen.getByRole('textbox', { name: 'Message' });
     await user.type(field, 'Unsent draft');
@@ -245,7 +245,7 @@ describe('Agent page', () => {
     const full = screen.getByRole('dialog', { name: 'Full screen · a' });
     expect(within(full).getByRole('heading', { name: 'a' })).toBeInTheDocument();
     // The transcript and the draft are the same ones, and the search came along.
-    expect(within(full).getByText('stub received: hello')).toBeInTheDocument();
+    expect(within(full).getByText('Hello, ready.')).toBeInTheDocument();
     expect(within(full).getByRole('textbox', { name: 'Message' })).toBe(field);
     expect(within(full).getByRole('button', { name: 'Search transcript' })).toBeInTheDocument();
     const exit = within(full).getByRole('button', { name: 'Exit full screen' });

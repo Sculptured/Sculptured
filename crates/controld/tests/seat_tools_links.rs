@@ -1,6 +1,8 @@
 //! A seat-tool question whose host connection closes while controld runs (the computer slept, its
 //! network changed): the runner keeps the agent's call and sends it again when it reconnects, so the
 //! question stays open. An answer that cannot reach the call is recorded as not delivered.
+#[path = "common/asking.rs"]
+mod asking;
 mod common;
 
 use common::m2::Served;
@@ -17,12 +19,6 @@ fn answer_failed(s: &Served, seat: &str, id: &str) -> Option<String> {
             } if question_id == id => Some(reason),
             _ => None,
         })
-}
-
-/// A running Practice agent (its host has no tool socket: these tests call the tools directly).
-async fn agent(s: &Served) -> String {
-    crate::common::m2::connect_stub(s).await;
-    crate::common::m2::seat(&crate::common::m2::practice_team(s, "solo").await, "claude")
 }
 
 /// The question stays open, still waiting for its answer.
@@ -45,9 +41,9 @@ async fn a_dropped_host_connection_keeps_the_question_open() {
 /// out. controld records the answer as failed and withdraws the question.
 #[tokio::test]
 async fn an_answer_whose_reply_cannot_go_out_is_recorded_as_failed() {
-    let s = crate::common::m2::serve().await;
-    let agent = agent(&s).await;
-    let (call, link, q) = crate::common::seat_tools::which(&s, &agent).await;
+    let s = asking::recorded_agents().await;
+    let agent = asking::A;
+    let (call, link, q) = crate::common::seat_tools::which(&s, agent).await;
     controld::questions::answer(
         &s.st,
         &q,
@@ -60,13 +56,13 @@ async fn an_answer_whose_reply_cannot_go_out_is_recorded_as_failed() {
     // Closed before the waiting call runs again to send its reply.
     drop(link);
     crate::common::seat_tools::ended(call).await;
-    let reason = answer_failed(&s, &agent, &q).expect("the lost answer is recorded");
+    let reason = answer_failed(&s, agent, &q).expect("the lost answer is recorded");
     assert!(
         reason.contains("could not pass the answer on to the agent"),
         "{reason}"
     );
     assert_eq!(
-        crate::common::seat_tools::question_view(&s, &agent, &q).await["state"],
+        crate::common::seat_tools::question_view(&s, agent, &q).await["state"],
         "withdrawn"
     );
 }

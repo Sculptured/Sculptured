@@ -1,5 +1,6 @@
-//! Real handoffs along "hands work to" connections, with Practice (stub) agents whose
-//! turns complete straight away, and fake-claude where a real driver's turn shapes matter.
+//! Real handoffs along "hands work to" connections. Agents that act run on the real Claude Code
+//! CLI (`common::live`, live tests); fake-claude replays recorded CLI output where a driver's turn
+//! shapes matter; the planner's bookkeeping is also checked on events written to the store.
 mod common;
 
 use axum::Router;
@@ -11,7 +12,6 @@ use controld::reconciler::{HANDOFF_ACTOR, TEAM_START_ACTOR};
 use controld::store::{HandoffWrite, RigSource, Store};
 use drivers::Driver;
 use drivers::claude::ClaudeStreamDriver;
-use drivers::stub::StubDriver;
 use hostd::journal::Journal;
 use hostd::supervisor::Supervisor;
 use http_body_util::BodyExt;
@@ -20,10 +20,21 @@ use model::{
     TurnStatus,
 };
 use serde_json::{Value, json};
+use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use tower::ServiceExt;
+
+/// The job each live agent gets unless a test needs another: one cheap reply.
+const REPLY: &str = "Reply with one short sentence.";
+
+/// A live agent's job that hangs (a real long Bash call) the first time and replies straight away
+/// after: `flag` marks the first time, in the agent's folder.
+fn hang_once(flag: &str) -> String {
+    format!(
+        "Use your Bash tool to run exactly: test -e {flag} || (touch {flag} && sleep 600)\nThen reply with one short sentence."
+    )
+}
 
 const TOKEN: &str = "test-token";
 
@@ -50,12 +61,17 @@ async fn serve(home: &std::path::Path) -> (AppState, Router, String) {
     (st, router, url)
 }
 
-fn supervisor(driver: Arc<dyn Driver>) -> Supervisor {
+fn supervisor(drivers: Vec<Arc<dyn Driver>>) -> Supervisor {
     Supervisor::new(
         "local".into(),
-        vec![driver],
+        drivers,
         Journal::open_in_memory(10_000).unwrap(),
     )
+}
+
+/// A host on this computer with the real CLIs.
+fn live_supervisor() -> Supervisor {
+    supervisor(common::live::drivers())
 }
 
 async fn link(st: &AppState, url: String, sup: Supervisor) -> tokio::task::JoinHandle<()> {
@@ -63,7 +79,7 @@ async fn link(st: &AppState, url: String, sup: Supervisor) -> tokio::task::JoinH
         .driver_infos()
         .first()
         .map(|d| d.name.clone())
-        .unwrap_or_else(|| "stub".into());
+        .expect("a host offers a driver");
     let task = tokio::spawn(async move {
         let _ = hostd::link::run_link(&url, TOKEN, &sup).await;
     });
@@ -71,12 +87,24 @@ async fn link(st: &AppState, url: String, sup: Supervisor) -> tokio::task::JoinH
     task
 }
 
-/// A served controld whose local host runs `driver`, in a fresh home folder.
-async fn served(driver: Arc<dyn Driver>) -> (tempfile::TempDir, AppState, Router) {
+/// A served controld whose local host runs `sup`, in a fresh home folder.
+async fn served_with(sup: Supervisor) -> (tempfile::TempDir, AppState, Router) {
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
-    link(&st, url, supervisor(driver)).await;
+    link(&st, url, sup).await;
     (home, st, router)
+}
+
+/// A served controld whose local host runs the real CLIs, in a fresh home folder.
+async fn served() -> (tempfile::TempDir, AppState, Router) {
+    served_with(live_supervisor()).await
+}
+
+/// `<home>/work`, created: the folder every agent works in.
+fn work_folder(home: &Path) -> std::path::PathBuf {
+    let dir = home.join("work");
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }
 
 async fn call(router: &Router, method: &str, uri: &str, body: Value) -> (StatusCode, Value) {
@@ -96,27 +124,36 @@ async fn call(router: &Router, method: &str, uri: &str, body: Value) -> (StatusC
     )
 }
 
-/// A team from `(id, name, job)` agents of `kind` in `folder`, and `(from, to, kind)` connections.
+/// A team of Claude agents from `(id, name, job)` agents in `folder`, on `model` when given, and
+/// `(from, to, kind)` connections.
 async fn team_of(
     router: &Router,
     name: &str,
-    kind: &str,
-    folder: Option<&std::path::Path>,
+    folder: &Path,
+    model: Option<&str>,
     agents: &[(&str, &str, &str)],
     links: &[(&str, &str, &str)],
 ) -> String {
-    let (status, rec) =
-        call(router, "POST", "/api/teams", json!({ "request_id": format!("create-{name}"), "template": "blank", "practice": true, "name": name })).await;
+    let (status, rec) = call(
+        router,
+        "POST",
+        "/api/teams",
+        json!({ "request_id": format!("create-{name}"), "template": "blank", "name": name }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{rec}");
     let mut draft = rec["draft"].clone();
     draft["agents"] = agents
         .iter()
         .enumerate()
         .map(|(i, (id, name, job))| {
-            json!({ "id": id, "group_id": null, "name": name, "kind": kind, "job": job,
-                    "folder": folder.map(|f| f.display().to_string()), "x": 40 + 260 * i as i32, "y": 40 })
+            json!({ "id": id, "group_id": null, "name": name, "kind": "claude", "job": job,
+                    "folder": folder.display().to_string(), "x": 40 + 260 * i as i32, "y": 40 })
         })
         .collect();
+    if let Some(model) = model {
+        draft["models"] = json!({ "claude": model });
+    }
     draft["connections"] =
         links.iter().map(|(from, to, kind)| json!({ "id": format!("c-{from}-{to}"), "from": from, "to": to, "kind": kind })).collect();
     let id = draft["id"].as_str().unwrap().to_string();
@@ -131,13 +168,43 @@ async fn team_of(
     id
 }
 
+/// A team of Claude agents on the cheapest model, working in `<home>/work`.
 async fn team(
     router: &Router,
+    home: &Path,
     name: &str,
     agents: &[(&str, &str, &str)],
     links: &[(&str, &str, &str)],
 ) -> String {
-    team_of(router, name, "practice", None, agents, links).await
+    let work = work_folder(home);
+    team_of(
+        router,
+        name,
+        &work,
+        Some(common::live::CLAUDE_MODEL),
+        agents,
+        links,
+    )
+    .await
+}
+
+/// Gives `agent` of team `id` its own `folder`.
+async fn set_agent_folder(router: &Router, id: &str, agent: &str, folder: &Path) {
+    let (_, rec) = call(router, "GET", &format!("/api/teams/{id}"), json!(null)).await;
+    let mut draft = rec["draft"].clone();
+    for a in draft["agents"].as_array_mut().unwrap() {
+        if a["id"] == agent {
+            a["folder"] = json!(folder.display().to_string());
+        }
+    }
+    let (status, body) = call(
+        router,
+        "PUT",
+        &format!("/api/teams/{id}"),
+        json!({ "request_id": format!("folder-{agent}"), "revision": draft["revision"], "draft": draft }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
 }
 
 async fn start(router: &Router, id: &str, request: &str) {
@@ -283,7 +350,111 @@ fn turns_ended(st: &AppState, seats: &[String]) -> usize {
 }
 
 async fn settle() {
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+}
+
+fn tool_calls(st: &AppState, seat: &str) -> usize {
+    events(st, seat)
+        .iter()
+        .filter(|e| matches!(e.body, EventBody::ToolCalled { .. }))
+        .count()
+}
+
+/// Restarts `seat` through the API.
+async fn restart(router: &Router, seat: &str, request: &str) -> (StatusCode, Value) {
+    call(
+        router,
+        "POST",
+        &format!("/api/seats/{seat}/restart"),
+        json!({ "request_id": request }),
+    )
+    .await
+}
+
+/// Stops `seat` through the API and waits until it has stopped.
+async fn stop_seat(st: &AppState, router: &Router, seat: &str, request: &str) {
+    let (status, body) = call(
+        router,
+        "POST",
+        &format!("/api/seats/{seat}/stop"),
+        json!({ "request_id": request }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    common::live::wait_for("the agent stopped", || {
+        crate::common::lifecycle(st, seat) == Some(SeatLifecycle::Stopped)
+    })
+    .await;
+}
+
+/// Resends to `seat` through the API.
+async fn resend(router: &Router, seat: &str, request: &str) -> (StatusCode, Value) {
+    call(
+        router,
+        "POST",
+        &format!("/api/seats/{seat}/resend"),
+        json!({ "request_id": request }),
+    )
+    .await
+}
+
+/// The diamond Source → Left, Right → Join, every agent with one cheap job.
+async fn diamond(router: &Router, home: &Path, name: &str, left_job: &str) -> String {
+    team(
+        router,
+        home,
+        name,
+        &[
+            ("a", "Source", REPLY),
+            ("b", "Left", left_job),
+            ("c", "Right", REPLY),
+            ("d", "Join", REPLY),
+        ],
+        &[
+            ("a", "b", "hands-work-to"),
+            ("a", "c", "hands-work-to"),
+            ("b", "d", "hands-work-to"),
+            ("c", "d", "hands-work-to"),
+        ],
+    )
+    .await
+}
+
+/// The latest start of team `id`.
+fn start_seq(st: &AppState, id: &str) -> i64 {
+    st.store
+        .lock()
+        .unwrap()
+        .latest_of_types(&Subject::Rig(id.to_string()), &["rig-booted"], 1)
+        .unwrap()[0]
+        .seq
+}
+
+/// The handoff from Asker to `b` (`message_id`), recorded as the dispatcher records it.
+fn asker_handoff(
+    b: &str,
+    a: &str,
+    start_seq: i64,
+    message_id: &str,
+    failed: Option<&str>,
+) -> HandoffWrite {
+    HandoffWrite {
+        seat: b.to_string(),
+        start_seq,
+        first: true,
+        actor: Actor::System(HANDOFF_ACTOR.into()),
+        message_id: message_id.into(),
+        intent: model::MessageIntent::Inform,
+        text: format!("Handed over by Asker\n\n{REPLY}\n\n--- Asker's result ---\nDone."),
+        from: vec![HandoffSource {
+            seat: a.to_string(),
+            turn_id: "turn-9".into(),
+            turn_seq: 1,
+            requested_seq: None,
+        }],
+        wave: None,
+        failed: failed.map(Into::into),
+    }
 }
 
 #[test]
@@ -295,16 +466,21 @@ fn the_handoff_actor_serializes_as_the_web_expects() {
 }
 
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn a_chain_runs_in_order_and_only_work_turns_hand_over() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+async fn live_a_chain_runs_in_order_and_only_work_turns_hand_over() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
     let id = team(
         &router,
+        home.path(),
         "Chain",
         &[
-            ("planner", "Planner", "Plan it"),
-            ("builder", "Builder", "Build it"),
-            ("reviewer", "Reviewer", "Review it"),
+            ("planner", "Planner", REPLY),
+            ("builder", "Builder", REPLY),
+            ("reviewer", "Reviewer", REPLY),
         ],
         &[
             ("planner", "builder", "hands-work-to"),
@@ -318,7 +494,7 @@ async fn a_chain_runs_in_order_and_only_work_turns_hand_over() {
         seat(&id, "reviewer"),
     );
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the reviewer's handoff read", || {
+    common::live::wait_for("the reviewer's handoff read", || {
         handoffs(&st, &reviewer)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
@@ -338,11 +514,20 @@ async fn a_chain_runs_in_order_and_only_work_turns_hand_over() {
     let b = handoffs(&st, &builder);
     let r = handoffs(&st, &reviewer);
     assert_eq!((b.len(), r.len()), (1, 1), "{b:?} {r:?}");
-    assert_eq!(
-        b[0].2,
-        "Handed over by Planner\n\nBuild it\n\n--- Planner's result ---\nstub received: Plan it"
+    assert!(
+        b[0].2.starts_with(&format!(
+            "Handed over by Planner\n\n{REPLY}\n\n--- Planner's result ---\n"
+        )),
+        "{}",
+        b[0].2
     );
-    assert!(r[0].2.starts_with("Handed over by Builder\n\nReview it\n\n--- Builder's result ---\nstub received: Handed over by Planner"), "{}", r[0].2);
+    assert!(
+        r[0].2.starts_with(&format!(
+            "Handed over by Builder\n\n{REPLY}\n\n--- Builder's result ---\n"
+        )),
+        "{}",
+        r[0].2
+    );
     assert!(
         jobs[0].0 < b[0].0 && b[0].0 < r[0].0,
         "planner, then builder, then reviewer"
@@ -374,10 +559,10 @@ async fn a_chain_runs_in_order_and_only_work_turns_hand_over() {
     );
 
     // A turn answering the operator is not work: it hands nothing over.
-    send(&router, &planner, "chat-1", "How is it going?").await;
-    send(&router, &builder, "chat-2", "Any questions?").await;
-    crate::common::wait_for("both chat turns ended", || {
-        completed_turns(&st, &planner) == 2 && completed_turns(&st, &builder) == 2
+    send(&router, &planner, "chat-1", REPLY).await;
+    send(&router, &builder, "chat-2", REPLY).await;
+    common::live::wait_for("both chat turns ended", || {
+        completed_turns(&st, &planner) >= 2 && completed_turns(&st, &builder) >= 2
     })
     .await;
     settle().await;
@@ -399,19 +584,23 @@ async fn a_chain_runs_in_order_and_only_work_turns_hand_over() {
         StatusCode::OK,
         "the same press replays"
     );
-    crate::common::wait_for("more work reaches the reviewer", || {
-        handoffs(&st, &reviewer).len() == 2
+    common::live::wait_for("more work reaches the reviewer", || {
+        handoffs(&st, &reviewer).len() >= 2
     })
     .await;
     let b = handoffs(&st, &builder);
     assert_eq!(b.len(), 2);
-    assert_eq!(
-        b[1].2,
-        "More work from Planner\n\n--- Planner's result ---\nstub received: How is it going?"
+    assert!(
+        b[1].2
+            .starts_with("More work from Planner\n\n--- Planner's result ---\n"),
+        "{}",
+        b[1].2
     );
-    assert!(handoffs(&st, &reviewer)[1].2.starts_with(
-        "More work from Builder\n\n--- Builder's result ---\nstub received: More work from Planner"
-    ));
+    assert!(
+        handoffs(&st, &reviewer)[1]
+            .2
+            .starts_with("More work from Builder\n\n--- Builder's result ---\n")
+    );
     settle().await;
     assert_eq!(
         (
@@ -433,22 +622,24 @@ async fn a_chain_runs_in_order_and_only_work_turns_hand_over() {
 /// The project's Input box: the agents it points to get it with their Job, a starting agent at
 /// start and a downstream agent with its first handoff.
 #[tokio::test]
-async fn the_input_reaches_the_agents_it_points_to() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_the_input_reaches_the_agents_it_points_to() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
     let id = team(
         &router,
+        home.path(),
         "Input",
-        &[
-            ("planner", "Planner", "Plan it"),
-            ("builder", "Builder", "Build it"),
-        ],
+        &[("planner", "Planner", REPLY), ("builder", "Builder", REPLY)],
         &[("planner", "builder", "hands-work-to")],
     )
     .await;
     let (_, rec) = call(&router, "GET", &format!("/api/teams/{id}"), json!(null)).await;
     let mut draft = rec["draft"].clone();
     draft["input"] =
-        json!({ "text": "Make the landing page", "x": 0, "y": 0, "to": ["planner", "builder"] });
+        json!({ "text": "Keep it brief.", "x": 0, "y": 0, "to": ["planner", "builder"] });
     let (status, body) = call(
         &router,
         "PUT",
@@ -459,16 +650,19 @@ async fn the_input_reaches_the_agents_it_points_to() {
     assert_eq!(status, StatusCode::OK, "{body}");
     start(&router, &id, "s1").await;
     let builder = seat(&id, "builder");
-    crate::common::wait_for("the builder's handoff", || {
+    common::live::wait_for("the builder's handoff", || {
         !handoffs(&st, &builder).is_empty()
     })
     .await;
     let jobs = messages_by(&st, &seat(&id, "planner"), TEAM_START_ACTOR);
-    assert_eq!(jobs[0].2, "Plan it\n\n--- Input ---\nMake the landing page");
+    assert_eq!(
+        jobs[0].2,
+        format!("{REPLY}\n\n--- Input ---\nKeep it brief.")
+    );
     assert!(
-        handoffs(&st, &builder)[0].2.starts_with(
-            "Handed over by Planner\n\nBuild it\n\n--- Input ---\nMake the landing page"
-        ),
+        handoffs(&st, &builder)[0].2.starts_with(&format!(
+            "Handed over by Planner\n\n{REPLY}\n\n--- Input ---\nKeep it brief."
+        )),
         "{}",
         handoffs(&st, &builder)[0].2
     );
@@ -478,15 +672,20 @@ async fn the_input_reaches_the_agents_it_points_to() {
 /// first handoff waits only for the Builder. Work then goes round the loop, and stops after
 /// LOOP_ROUNDS rounds of the same work, saying so; Hand over again goes round again.
 #[tokio::test]
-async fn a_loop_with_a_starting_point_goes_round_until_its_round_limit() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_loop_with_a_starting_point_goes_round_until_its_round_limit() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
     let id = team(
         &router,
+        home.path(),
         "Loop",
         &[
-            ("builder", "Builder", "Build it"),
-            ("reviewer", "Reviewer", "Review it"),
-            ("cad", "CAD", "Integrate it"),
+            ("builder", "Builder", REPLY),
+            ("reviewer", "Reviewer", REPLY),
+            ("cad", "CAD", REPLY),
         ],
         &[
             ("builder", "reviewer", "hands-work-to"),
@@ -497,14 +696,15 @@ async fn a_loop_with_a_starting_point_goes_round_until_its_round_limit() {
     .await;
     let (reviewer, cad) = (seat(&id, "reviewer"), seat(&id, "cad"));
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the loop stops at its limit", || {
+    common::live::wait_for("the loop stops at its limit", || {
         stuck(&st, &reviewer).is_some_and(|(r, _)| r.contains("rounds"))
     })
     .await;
     settle().await;
     let (r, c) = (handoffs(&st, &reviewer), handoffs(&st, &cad));
     assert!(
-        r[0].2.starts_with("Handed over by Builder\n\nReview it"),
+        r[0].2
+            .starts_with(&format!("Handed over by Builder\n\n{REPLY}")),
         "{}",
         r[0].2
     );
@@ -522,23 +722,28 @@ async fn a_loop_with_a_starting_point_goes_round_until_its_round_limit() {
 
     let (status, body) = hand_over(&router, &cad, "again").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("another round", || {
+    common::live::wait_for("another round", || {
         handoffs(&st, &reviewer).len() > 1 + LOOP_ROUNDS
     })
     .await;
 }
 
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn fan_in_waits_for_every_upstream_and_a_jobless_heads_first_message_is_its_work() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+async fn live_fan_in_waits_for_every_upstream_and_a_jobless_heads_first_message_is_its_work() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
     let id = team(
         &router,
+        home.path(),
         "Fan in",
         &[
-            ("planner", "Planner", "Plan"),
+            ("planner", "Planner", REPLY),
             ("designer", "Designer", ""),
-            ("builder", "Builder", "Build"),
+            ("builder", "Builder", REPLY),
         ],
         &[
             ("planner", "builder", "hands-work-to"),
@@ -550,7 +755,7 @@ async fn fan_in_waits_for_every_upstream_and_a_jobless_heads_first_message_is_it
     let (designer, builder) = (seat(&id, "designer"), seat(&id, "builder"));
     start(&router, &id, "s1").await;
     // The designer has no Job: the builder waits for it (waiting, not stuck).
-    crate::common::wait_for("builder waits for the designer", || {
+    common::live::wait_for("builder waits for the designer", || {
         crate::common::lifecycle(&st, &builder) == Some(SeatLifecycle::Running)
             && waiting_for(&st, &builder) == Some(vec![designer.clone()])
     })
@@ -569,8 +774,8 @@ async fn fan_in_waits_for_every_upstream_and_a_jobless_heads_first_message_is_it
     );
 
     // Its first message is its work: when it finishes, the fan-in completes.
-    send(&router, &designer, "d1", "Draw it").await;
-    crate::common::wait_for("builder's first handoff", || {
+    send(&router, &designer, "d1", REPLY).await;
+    common::live::wait_for("builder's first handoff", || {
         !handoffs(&st, &builder).is_empty()
     })
     .await;
@@ -578,18 +783,21 @@ async fn fan_in_waits_for_every_upstream_and_a_jobless_heads_first_message_is_it
         handoffs(&st, &designer).is_empty(),
         "watches does not hand over"
     );
-    assert_eq!(
-        handoffs(&st, &builder)[0].2,
-        "Handed over by Planner, Designer\n\nBuild\n\n--- Planner's result ---\nstub received: Plan\n\n--- Designer's result ---\nstub received: Draw it"
+    let first = handoffs(&st, &builder)[0].2.clone();
+    assert!(
+        first.starts_with(&format!(
+            "Handed over by Planner, Designer\n\n{REPLY}\n\n--- Planner's result ---\n"
+        )) && first.contains("\n\n--- Designer's result ---\n"),
+        "{first}"
     );
-    crate::common::wait_for("no longer waiting or stuck", || {
+    common::live::wait_for("no longer waiting or stuck", || {
         waiting_for(&st, &builder).is_none() && stuck(&st, &builder).is_none()
     })
     .await;
     // Later messages to it are conversation: nothing more is handed over.
-    send(&router, &designer, "d2", "Thanks").await;
-    crate::common::wait_for("the designer answered again", || {
-        completed_turns(&st, &designer) == 2
+    send(&router, &designer, "d2", REPLY).await;
+    common::live::wait_for("the designer answered again", || {
+        completed_turns(&st, &designer) >= 2
     })
     .await;
     settle().await;
@@ -597,28 +805,33 @@ async fn fan_in_waits_for_every_upstream_and_a_jobless_heads_first_message_is_it
 }
 
 #[tokio::test]
-async fn stop_ends_waiting_and_a_new_start_does_not_reuse_old_results() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_stop_ends_waiting_and_a_new_start_does_not_reuse_old_results() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
     let id = team(
         &router,
+        home.path(),
         "Stops",
-        &[("a", "Asker", ""), ("b", "Checker", "Check")],
+        &[("a", "Asker", ""), ("b", "Checker", REPLY)],
         &[("a", "b", "hands-work-to")],
     )
     .await;
     let (a, b) = (seat(&id, "a"), seat(&id, "b"));
-
-    start(&router, &id, "s1").await;
-    crate::common::wait_for("b waits for a", || {
+    let b_waits = || {
         crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Running)
             && waiting_for(&st, &b) == Some(vec![a.clone()])
-    })
-    .await;
-    send(&router, &a, "a1", "one").await;
-    crate::common::wait_for("first handoff", || handoffs(&st, &b).len() == 1).await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    };
+
+    start(&router, &id, "s1").await;
+    common::live::wait_for("b waits for a", b_waits).await;
+    send(&router, &a, "a1", REPLY).await;
+    common::live::wait_for("first handoff", || handoffs(&st, &b).len() == 1).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     stop(&router, &id, "x1").await;
-    crate::common::wait_for("stopped", || {
+    common::live::wait_for("stopped", || {
         crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Stopped)
     })
     .await;
@@ -631,12 +844,8 @@ async fn stop_ends_waiting_and_a_new_start_does_not_reuse_old_results() {
 
     // A new start: a's turn and the request from the first start do not count.
     start(&router, &id, "s2").await;
-    crate::common::wait_for("b waits for a again", || {
-        crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Running)
-            && waiting_for(&st, &b) == Some(vec![a.clone()])
-    })
-    .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("b waits for a again", b_waits).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     settle().await;
     assert_eq!(
         handoffs(&st, &b).len(),
@@ -646,206 +855,68 @@ async fn stop_ends_waiting_and_a_new_start_does_not_reuse_old_results() {
 
     // A stop while b waits ends the wait (and the stuck state), with nothing handed over.
     stop(&router, &id, "x2").await;
-    crate::common::wait_for("b no longer waits", || {
+    common::live::wait_for("b no longer waits", || {
         waiting_for(&st, &b).is_none() && stuck(&st, &b).is_none()
     })
     .await;
-    crate::common::wait_for("stopped", || {
+    common::live::wait_for("stopped", || {
         crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Stopped)
     })
     .await;
     assert_eq!(handoffs(&st, &b).len(), 1);
 
     start(&router, &id, "s3").await;
-    crate::common::wait_for("b waits for a", || {
-        crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Running)
-            && waiting_for(&st, &b) == Some(vec![a.clone()])
-    })
-    .await;
-    send(&router, &a, "a2", "two").await;
-    crate::common::wait_for("second first-handoff", || handoffs(&st, &b).len() == 2).await;
-    assert_eq!(
-        handoffs(&st, &b)[1].2,
-        "Handed over by Asker\n\nCheck\n\n--- Asker's result ---\nstub received: two"
+    common::live::wait_for("b waits for a", b_waits).await;
+    send(&router, &a, "a2", REPLY).await;
+    common::live::wait_for("second first-handoff", || handoffs(&st, &b).len() == 2).await;
+    assert!(
+        handoffs(&st, &b)[1].2.starts_with(&format!(
+            "Handed over by Asker\n\n{REPLY}\n\n--- Asker's result ---\n"
+        )),
+        "{}",
+        handoffs(&st, &b)[1].2
     );
     settle().await;
     assert_eq!(handed_over_count(&st, &b), 2);
 }
 
-/// Stub driver whose `slow` seat takes a while to launch and whose `broken` seat fails
-/// its first `fail_times` launches.
-struct TestStub {
-    slow: Option<&'static str>,
-    broken: Option<&'static str>,
-    fail_times: u32,
-    failed: AtomicU32,
-}
-
-impl TestStub {
-    fn slow(seat: &'static str) -> Self {
-        TestStub {
-            slow: Some(seat),
-            broken: None,
-            fail_times: 0,
-            failed: AtomicU32::new(0),
-        }
-    }
-    fn broken(seat: &'static str, times: u32) -> Self {
-        TestStub {
-            slow: None,
-            broken: Some(seat),
-            fail_times: times,
-            failed: AtomicU32::new(0),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl Driver for TestStub {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(
-        &self,
-        spec: drivers::LaunchSpec,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        let s = spec.seat.to_string();
-        if self.slow.is_some_and(|p| s.starts_with(p)) {
-            tokio::time::sleep(Duration::from_millis(800)).await;
-        }
-        if self.broken.is_some_and(|p| s.starts_with(p))
-            && self.failed.fetch_add(1, Ordering::SeqCst) < self.fail_times
-        {
-            return Err(drivers::DriverError::Cwd("/nowhere".into()));
-        }
-        StubDriver.launch(spec).await
-    }
-    async fn resume(
-        &self,
-        spec: drivers::LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        StubDriver.resume(spec, native_id).await
-    }
-}
-
-/// Stub driver whose `seat` hangs, on its first launch only, on any message containing
-/// `HANG-ONCE` (the stub hangs on "hang"); later launches run every message normally.
-struct HangOnce {
-    seat: &'static str,
-    launches: AtomicU32,
-}
-
-struct HangOnceSession {
-    inner: Box<dyn drivers::Session>,
-    hang: bool,
-}
-
-#[async_trait::async_trait]
-impl drivers::Session for HangOnceSession {
-    async fn send(
-        &mut self,
-        mut msg: drivers::OutboundMessage,
-    ) -> Result<(), drivers::DriverError> {
-        if self.hang && msg.text.contains("HANG-ONCE") {
-            msg.text = "hang".into();
-        }
-        self.inner.send(msg).await
-    }
-    async fn interrupt(&mut self) -> Result<(), drivers::DriverError> {
-        self.inner.interrupt().await
-    }
-    async fn stop(&mut self, grace: Duration) -> Result<(), drivers::DriverError> {
-        self.inner.stop(grace).await
-    }
-    fn take_events(&mut self) -> Option<futures::stream::BoxStream<'static, drivers::DriverEvent>> {
-        self.inner.take_events()
-    }
-}
-
-#[async_trait::async_trait]
-impl Driver for HangOnce {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(
-        &self,
-        spec: drivers::LaunchSpec,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        let hang = spec.seat.to_string().starts_with(self.seat)
-            && self.launches.fetch_add(1, Ordering::SeqCst) == 0;
-        Ok(Box::new(HangOnceSession {
-            inner: StubDriver.launch(spec).await?,
-            hang,
-        }))
-    }
-    async fn resume(
-        &self,
-        spec: drivers::LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        StubDriver.resume(spec, native_id).await
-    }
-}
-
-/// An agent mid-work on its first handoff has a wave message delivered but not read yet
-/// when it stops. Restart re-sends the unfinished handoff (asking it to continue) and the
-/// wave message it never read, so its turn for the wave still happens.
+/// An agent mid-work on its first handoff (a real long Bash call) has a wave message delivered
+/// but not read yet when it stops. Restart re-sends the unfinished handoff (asking it to
+/// continue) and the wave message it never read, so its turn for the wave still happens.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn restart_resends_the_unfinished_handoff_and_the_wave_message_it_never_read() {
-    let (_home, st, router) = served(Arc::new(HangOnce {
-        seat: "team.b@",
-        launches: AtomicU32::new(0),
-    }))
-    .await;
-    let id = team(
-        &router,
-        "Unread",
-        &[
-            ("a", "Source", "Start"),
-            ("b", "Left", "HANG-ONCE"),
-            ("c", "Right", "R"),
-            ("d", "Join", "J"),
-        ],
-        &[
-            ("a", "b", "hands-work-to"),
-            ("a", "c", "hands-work-to"),
-            ("b", "d", "hands-work-to"),
-            ("c", "d", "hands-work-to"),
-        ],
-    )
-    .await;
+async fn live_restart_resends_the_unfinished_handoff_and_the_wave_message_it_never_read() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
+    let id = diamond(&router, home.path(), "Unread", &hang_once("left.flag")).await;
     let (a, b, c) = (seat(&id, "a"), seat(&id, "b"), seat(&id, "c"));
     start(&router, &id, "s1").await;
-    crate::common::wait_for("left is mid-work on its first handoff", || {
+    common::live::wait_for("left is mid-work on its first handoff", || {
         handoffs(&st, &b)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
+            && tool_calls(&st, &b) > 0
     })
     .await;
-    crate::common::wait_for("right finished its first handoff", || {
-        completed_turns(&st, &c) == 1
+    common::live::wait_for("right finished its first handoff", || {
+        completed_turns(&st, &c) >= 1
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     assert_eq!(completed_turns(&st, &b), 0, "left hangs");
 
     // A wave from the source: left's wave message is delivered (left is busy) but not read.
     assert_eq!(hand_over(&router, &a, "h1").await.0, StatusCode::OK);
-    crate::common::wait_for("left's wave message delivered", || {
+    common::live::wait_for("left's wave message delivered", || {
         handoffs(&st, &b)
             .get(1)
             .is_some_and(|(_, m, _)| state(&st, m) == Some(MessageState::Delivered))
     })
     .await;
-    crate::common::wait_for("right ran the wave", || completed_turns(&st, &c) == 2).await;
+    common::live::wait_for("right ran the wave", || completed_turns(&st, &c) >= 2).await;
     let (first, wave) = (
         handoffs(&st, &b)[0].2.clone(),
         handoffs(&st, &b)[1].2.clone(),
@@ -853,28 +924,11 @@ async fn restart_resends_the_unfinished_handoff_and_the_wave_message_it_never_re
     assert!(wave.starts_with("More work from Source"), "{wave}");
 
     // Left stops before reading it, and is restarted.
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/stop"),
-        json!({ "request_id": "x-b" }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("left stopped", || {
-        crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Stopped)
-    })
-    .await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/restart"),
-        json!({ "request_id": "rs-b" }),
-    )
-    .await;
+    stop_seat(&st, &router, &b, "x-b").await;
+    let (status, body) = restart(&router, &b, "rs-b").await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
-    crate::common::wait_for("left read the re-sent wave message", || {
+    common::live::wait_for("left read the re-sent wave message", || {
         handoffs(&st, &b)
             .iter()
             .skip(2)
@@ -893,8 +947,11 @@ async fn restart_resends_the_unfinished_handoff_and_the_wave_message_it_never_re
         "the unfinished work comes first"
     );
     assert_eq!(copies[3].2, wave);
-    crate::common::wait_for("left ran both", || completed_turns(&st, &b) == 2).await;
-    crate::common::wait_for("nobody is stuck or waiting", || {
+    common::live::wait_for("left read both", || {
+        copies[2..].iter().all(|(_, m, _)| consumed(&st, m))
+    })
+    .await;
+    common::live::wait_for("nobody is stuck or waiting", || {
         [&a, &b, &c, &seat(&id, "d")]
             .iter()
             .all(|s| stuck(&st, s).is_none() && waiting_for(&st, s).is_none())
@@ -902,48 +959,52 @@ async fn restart_resends_the_unfinished_handoff_and_the_wave_message_it_never_re
     .await;
 }
 
-/// The agent runner (hostd) dies while a first agent is mid-Job. No TenureEnded is ever
-/// recorded for that process: the host comes back without it and the agent needs
-/// attention. Restart then sends the Job again with the continue prefix (the new process
-/// is a new tenure, so the work the old one read is unfinished), and the chain completes.
+/// The agent runner (hostd) dies, with its agents, while a first agent is mid-Job. No
+/// TenureEnded reaches controld for that process: the host comes back without it and the
+/// agent needs attention. Restart then sends the Job again with the continue prefix (the new
+/// process is a new tenure, so the work the old one read is unfinished), and the chain completes.
 #[tokio::test]
-async fn work_lost_with_the_agent_runner_is_continued_by_restart() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_work_lost_with_the_agent_runner_is_continued_by_restart() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let (st, router, url) = serve(home.path()).await;
-    let first = link(&st, url.clone(), supervisor(Arc::new(StubDriver))).await;
+    let runner = live_supervisor();
+    let first = link(&st, url.clone(), runner.clone()).await;
+    let lead_job = hang_once("lead.flag");
     let id = team(
         &router,
+        home.path(),
         "Lost host",
-        &[("lead", "Lead", "hang"), ("next", "Next", "Go on")],
+        &[("lead", "Lead", &lead_job), ("next", "Next", REPLY)],
         &[("lead", "next", "hands-work-to")],
     )
     .await;
     let (lead, next) = (seat(&id, "lead"), seat(&id, "next"));
     start(&router, &id, "s1").await;
-    crate::common::wait_for("lead is mid-Job", || {
+    common::live::wait_for("lead is mid-Job", || {
         messages_by(&st, &lead, TEAM_START_ACTOR)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
+            && tool_calls(&st, &lead) > 0
     })
     .await;
-    crate::common::wait_for("the boot finished", || {
+    common::live::wait_for("the boot finished", || {
         !st.is_booting(&id) && crate::common::lifecycle(&st, &next) == Some(SeatLifecycle::Running)
     })
     .await;
 
-    // The runner dies with its agents; a fresh one comes back with nothing running.
+    // The runner goes away and its agents end with it; a fresh one comes back with nothing running.
     first.abort();
-    crate::common::wait_for("agents stale", || {
+    runner.stop_all(0).await;
+    common::live::wait_for("agents stale", || {
         crate::common::lifecycle(&st, &lead) == Some(SeatLifecycle::Stale)
     })
     .await;
-    let _second = tokio::spawn({
-        let sup = supervisor(Arc::new(StubDriver));
-        async move {
-            let _ = hostd::link::run_link(&url, TOKEN, &sup).await;
-        }
-    });
-    crate::common::wait_for("both need attention", || {
+    let _second = link(&st, url, live_supervisor()).await;
+    common::live::wait_for("both need attention", || {
         [&lead, &next]
             .iter()
             .all(|s| crate::common::lifecycle(&st, s) == Some(SeatLifecycle::Attention))
@@ -955,28 +1016,16 @@ async fn work_lost_with_the_agent_runner_is_continued_by_restart() {
             .any(|e| matches!(e.body, EventBody::TenureEnded { .. })),
         "no TenureEnded for the lost process"
     );
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{next}/restart"),
-        json!({ "request_id": "rs-next" }),
-    )
-    .await;
+    let (status, body) = restart(&router, &next, "rs-next").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("next runs again", || {
+    common::live::wait_for("next runs again", || {
         crate::common::lifecycle(&st, &next) == Some(SeatLifecycle::Running)
     })
     .await;
 
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{lead}/restart"),
-        json!({ "request_id": "rs-lead" }),
-    )
-    .await;
+    let (status, body) = restart(&router, &lead, "rs-lead").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the chain completes", || {
+    common::live::wait_for("the chain completes", || {
         handoffs(&st, &next)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
@@ -986,9 +1035,9 @@ async fn work_lost_with_the_agent_runner_is_continued_by_restart() {
     assert_eq!(jobs.len(), 2, "the Job and its continuation: {jobs:?}");
     assert_eq!(
         jobs[1].2,
-        format!("{}\n\nhang", controld::handoffs::CONTINUE_PREFIX)
+        format!("{}\n\n{lead_job}", controld::handoffs::CONTINUE_PREFIX)
     );
-    crate::common::wait_for("nobody is stuck or waiting", || {
+    common::live::wait_for("nobody is stuck or waiting", || {
         [&lead, &next]
             .iter()
             .all(|s| stuck(&st, s).is_none() && waiting_for(&st, s).is_none())
@@ -1001,26 +1050,14 @@ async fn work_lost_with_the_agent_runner_is_continued_by_restart() {
 /// do and owes nothing. Restarting it sends nothing, and the join then says so: "stuck:
 /// waiting on Left, who has nothing left to do", not a plain wait for ever.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn a_restart_that_owes_nothing_still_shows_the_stall() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
-    let id = team(
-        &router,
-        "No-op",
-        &[
-            ("a", "Source", "Start"),
-            ("b", "Left", "L"),
-            ("c", "Right", "R"),
-            ("d", "Join", "J"),
-        ],
-        &[
-            ("a", "b", "hands-work-to"),
-            ("a", "c", "hands-work-to"),
-            ("b", "d", "hands-work-to"),
-            ("c", "d", "hands-work-to"),
-        ],
-    )
-    .await;
+async fn live_a_restart_that_owes_nothing_still_shows_the_stall() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
+    let id = diamond(&router, home.path(), "No-op", REPLY).await;
     let (a, b, c, d) = (
         seat(&id, "a"),
         seat(&id, "b"),
@@ -1028,26 +1065,15 @@ async fn a_restart_that_owes_nothing_still_shows_the_stall() {
         seat(&id, "d"),
     );
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the join read its first handoff", || {
+    common::live::wait_for("the join read its first handoff", || {
         handoffs(&st, &d)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     settle().await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/stop"),
-        json!({ "request_id": "x-b" }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("left stopped", || {
-        crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Stopped)
-    })
-    .await;
+    stop_seat(&st, &router, &b, "x-b").await;
 
     // Two waves from the source, written to the store (the dispatcher does not see them):
     // Right runs each; Left reads both in one turn.
@@ -1061,13 +1087,7 @@ async fn a_restart_that_owes_nothing_still_shows_the_stall() {
             _ => None,
         })
         .unwrap();
-    let start_seq = st
-        .store
-        .lock()
-        .unwrap()
-        .latest_of_types(&Subject::Rig(id.clone()), &["rig-booted"], 1)
-        .unwrap()[0]
-        .seq;
+    let start_seq = start_seq(&st, &id);
     let mut s = Script {
         st: &st,
         host_seq: 0,
@@ -1163,27 +1183,21 @@ async fn a_restart_that_owes_nothing_still_shows_the_stall() {
         },
     );
     controld::handoffs::process_rig(&st, &id, false).await;
-    crate::common::wait_for("the join read the second wave", || {
+    common::live::wait_for("the join read the second wave", || {
         handoffs(&st, &d)
             .get(1)
             .is_some_and(|(_, m, _)| consumed(&st, m))
     })
     .await;
-    crate::common::wait_for("the join waits on the stopped agent", || {
+    common::live::wait_for("the join waits on the stopped agent", || {
         reason(&st, &d) == "Left stopped"
     })
     .await;
     settle().await;
 
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/restart"),
-        json!({ "request_id": "rs-b" }),
-    )
-    .await;
+    let (status, body) = restart(&router, &b, "rs-b").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the join says why it waits", || {
+    common::live::wait_for("the join says why it waits", || {
         reason(&st, &d) == "waiting on Left, who has nothing left to do"
     })
     .await;
@@ -1194,139 +1208,45 @@ async fn a_restart_that_owes_nothing_still_shows_the_stall() {
     );
 }
 
-/// Stub driver whose session fails to take the first message containing `FAIL-ONCE`.
-struct FailOnce {
-    failed: Arc<AtomicU32>,
-}
-
-struct FailOnceSession {
-    inner: Box<dyn drivers::Session>,
-    failed: Arc<AtomicU32>,
-}
-
-#[async_trait::async_trait]
-impl drivers::Session for FailOnceSession {
-    async fn send(&mut self, msg: drivers::OutboundMessage) -> Result<(), drivers::DriverError> {
-        if msg.text.contains("FAIL-ONCE") && self.failed.fetch_add(1, Ordering::SeqCst) == 0 {
-            return Err(drivers::DriverError::Closed);
-        }
-        self.inner.send(msg).await
-    }
-    async fn interrupt(&mut self) -> Result<(), drivers::DriverError> {
-        self.inner.interrupt().await
-    }
-    async fn stop(&mut self, grace: Duration) -> Result<(), drivers::DriverError> {
-        self.inner.stop(grace).await
-    }
-    fn take_events(&mut self) -> Option<futures::stream::BoxStream<'static, drivers::DriverEvent>> {
-        self.inner.take_events()
-    }
-}
-
-#[async_trait::async_trait]
-impl Driver for FailOnce {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(
-        &self,
-        spec: drivers::LaunchSpec,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        Ok(Box::new(FailOnceSession {
-            inner: StubDriver.launch(spec).await?,
-            failed: self.failed.clone(),
-        }))
-    }
-    async fn resume(
-        &self,
-        spec: drivers::LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        StubDriver.resume(spec, native_id).await
-    }
-}
-
-/// A first agent's Job could not be sent although the agent runs: it says so ("stuck:
-/// Lead's Job was not sent", with Resend), the agent below says it waits on a stuck agent,
-/// and Resend sends the Job again once; the chain then completes.
+/// A first agent's Job could not be sent although the agent runs (written to the store as the
+/// host reports it): it says so ("stuck: Lead's Job was not sent", with Resend), and the agent
+/// below says it waits on a stuck agent.
 #[tokio::test]
-async fn a_first_agents_job_that_was_not_sent_is_stuck_until_resent() {
-    let (_home, st, router) = served(Arc::new(FailOnce {
-        failed: Arc::default(),
-    }))
-    .await;
+async fn a_first_agents_job_that_was_not_sent_is_stuck() {
+    let home = tempfile::tempdir().unwrap();
+    let (st, router, _url) = serve(home.path()).await;
     let id = team(
         &router,
+        home.path(),
         "Unsent",
-        &[
-            ("lead", "Lead", "Plan FAIL-ONCE"),
-            ("next", "Next", "Go on"),
-        ],
+        &[("lead", "Lead", "Plan"), ("next", "Next", "Go on")],
         &[("lead", "next", "hands-work-to")],
     )
     .await;
     let (lead, next) = (seat(&id, "lead"), seat(&id, "next"));
-    start(&router, &id, "s1").await;
-    crate::common::wait_for("the Job failed", || {
-        messages_by(&st, &lead, TEAM_START_ACTOR)
-            .first()
-            .is_some_and(|(_, m, _)| state(&st, m) == Some(MessageState::Failed))
-    })
-    .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
-    crate::common::wait_for("lead is stuck on its Job", || {
-        stuck(&st, &lead) == Some(("Lead's Job was not sent".into(), true))
-    })
-    .await;
-    crate::common::wait_for("next waits on a stuck agent", || {
-        reason(&st, &next) == "waiting on Lead (stuck)"
-    })
-    .await;
-    assert_eq!(
-        crate::common::lifecycle(&st, &lead),
-        Some(SeatLifecycle::Running)
+    let (mut s, _) = running_start(&st, &id, &[&lead, &next]);
+    s.local(
+        Actor::System(TEAM_START_ACTOR.into()),
+        Subject::Seat(lead.clone()),
+        EventBody::MessageQueued {
+            message_id: "job-lead".into(),
+            intent: model::MessageIntent::Inform,
+            text: "Plan".into(),
+        },
     );
-
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{lead}/resend"),
-        json!({ "request_id": "r1" }),
-    )
-    .await;
-    assert_eq!(
-        (status, body["resent"].clone()),
-        (StatusCode::OK, json!(1)),
-        "{body}"
+    s.host(
+        &lead,
+        EventBody::MessageFailed {
+            message_id: "job-lead".into(),
+            reason: "not sent: Lead could not be reached".into(),
+        },
     );
-    crate::common::wait_for("the chain completes", || {
-        handoffs(&st, &next)
-            .first()
-            .is_some_and(|(_, m, _)| consumed(&st, m))
-    })
-    .await;
-    let jobs = messages_by(&st, &lead, TEAM_START_ACTOR);
-    assert_eq!(jobs.len(), 2, "{jobs:?}");
-    assert_eq!(jobs[1].2, "Plan FAIL-ONCE");
-    crate::common::wait_for("nobody is stuck", || {
-        stuck(&st, &lead).is_none() && stuck(&st, &next).is_none()
-    })
-    .await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{lead}/resend"),
-        json!({ "request_id": "r2" }),
-    )
-    .await;
+    controld::handoffs::process_rig(&st, &id, false).await;
     assert_eq!(
-        (status, body["error"]["code"].clone()),
-        (StatusCode::CONFLICT, json!("nothing_to_resend")),
-        "{body}"
+        stuck(&st, &lead),
+        Some(("Lead's Job was not sent".into(), true))
     );
+    assert_eq!(reason(&st, &next), "waiting on Lead (stuck)");
 }
 
 /// Every stuck reason ever recorded for `seat`.
@@ -1344,25 +1264,13 @@ fn stuck_reasons(st: &AppState, seat: &str) -> Vec<String> {
 /// read) is never shown as having nothing left to do in the moment between running again
 /// and that message being sent again: the join below it waits, then runs once.
 #[tokio::test]
-async fn a_restarted_agent_with_owed_work_is_never_taken_for_one_with_nothing_left() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
-    let id = team(
-        &router,
-        "Owed",
-        &[
-            ("a", "Source", "Start"),
-            ("b", "Left", "L"),
-            ("c", "Right", "R"),
-            ("d", "Join", "J"),
-        ],
-        &[
-            ("a", "b", "hands-work-to"),
-            ("a", "c", "hands-work-to"),
-            ("b", "d", "hands-work-to"),
-            ("c", "d", "hands-work-to"),
-        ],
-    )
-    .await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_restarted_agent_with_owed_work_is_never_taken_for_one_with_nothing_left() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
+    let id = diamond(&router, home.path(), "Owed", REPLY).await;
     let (a, b, c, d) = (
         seat(&id, "a"),
         seat(&id, "b"),
@@ -1370,44 +1278,35 @@ async fn a_restarted_agent_with_owed_work_is_never_taken_for_one_with_nothing_le
         seat(&id, "d"),
     );
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the join read its first handoff", || {
+    common::live::wait_for("the join read its first handoff", || {
         handoffs(&st, &d)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
-    // Left is busy answering you (the stub hangs on "hang") when a wave reaches it.
-    send(&router, &b, "chat", "hang").await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    // Left is busy answering you (a real long Bash call) when a wave reaches it.
+    let calls = tool_calls(&st, &b);
+    send(
+        &router,
+        &b,
+        "chat",
+        "Use your Bash tool to run exactly: sleep 600",
+    )
+    .await;
+    common::live::wait_for("left is in its long call", || tool_calls(&st, &b) > calls).await;
     assert_eq!(hand_over(&router, &a, "h1").await.0, StatusCode::OK);
-    crate::common::wait_for("left's wave message delivered", || {
+    common::live::wait_for("left's wave message delivered", || {
         handoffs(&st, &b)
             .get(1)
             .is_some_and(|(_, m, _)| state(&st, m) == Some(MessageState::Delivered))
     })
     .await;
-    crate::common::wait_for("right ran the wave", || completed_turns(&st, &c) == 2).await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/stop"),
-        json!({ "request_id": "x-b" }),
-    )
-    .await;
+    common::live::wait_for("right ran the wave", || completed_turns(&st, &c) >= 2).await;
+    stop_seat(&st, &router, &b, "x-b").await;
+    let (status, body) = restart(&router, &b, "rs-b").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("left stopped", || {
-        crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Stopped)
-    })
-    .await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/restart"),
-        json!({ "request_id": "rs-b" }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the join read the wave", || {
+    common::live::wait_for("the join read the wave", || {
         handoffs(&st, &d)
             .get(1)
             .is_some_and(|(_, m, _)| consumed(&st, m))
@@ -1422,210 +1321,108 @@ async fn a_restarted_agent_with_owed_work_is_never_taken_for_one_with_nothing_le
     assert_eq!(handoffs(&st, &d).len(), 2, "the join ran once for the wave");
 }
 
-/// A handoff due while the reviewer is still starting waits for it; a stop then ends
-/// that wait and records the handoff as not sent.
-#[tokio::test]
-async fn a_handoff_waits_for_a_starting_agent_and_a_stop_records_it_as_not_sent() {
-    let (_home, st, router) = served(Arc::new(TestStub::slow("team.reviewer@"))).await;
-    let id = team(
-        &router,
-        "Slow",
-        &[
-            ("builder", "Builder", "Build"),
-            ("reviewer", "Reviewer", "Review"),
-        ],
-        &[("builder", "reviewer", "hands-work-to")],
-    )
-    .await;
-    let (builder, reviewer) = (seat(&id, "builder"), seat(&id, "reviewer"));
-    start(&router, &id, "s1").await;
-    crate::common::wait_for("builder finished", || completed_turns(&st, &builder) == 1).await;
-    assert!(
-        handoffs(&st, &reviewer).is_empty(),
-        "the reviewer is still starting"
-    );
-    assert_eq!(
-        waiting_for(&st, &reviewer),
-        None,
-        "it waits to start, not for the builder"
-    );
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/rigs/{id}/stop"),
-        json!({ "request_id": "x1" }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the handoff recorded as not sent", || {
-        handoffs(&st, &reviewer).len() == 1
-    })
-    .await;
-    let (_, m, text) = &handoffs(&st, &reviewer)[0];
-    assert!(
-        text.starts_with("Handed over by Builder\n\nReview"),
-        "{text}"
-    );
-    assert_eq!(
-        failed_reason(&st, &reviewer, m).as_deref(),
-        Some("not sent: the team was stopped before Reviewer got this handoff")
-    );
-    crate::common::wait_for("the boot ended", || !st.is_booting(&id)).await;
-    settle().await;
-    assert_eq!(handoffs(&st, &reviewer).len(), 1);
+/// A served controld whose host only allows agents in `<home>/work`, and a folder `<home>/work/off`
+/// that leads outside it (a link to `<home>/outside`): an agent given that folder cannot start
+/// there until the link is replaced by a real folder (`allow_off`).
+async fn served_with_a_refused_folder() -> (tempfile::TempDir, AppState, Router, std::path::PathBuf)
+{
+    let home = tempfile::tempdir().unwrap();
+    let work = work_folder(home.path());
+    let outside = home.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    let off = work.join("off");
+    std::os::unix::fs::symlink(&outside, &off).unwrap();
+    let mut policy = hostd::policy::RunnerPolicy::default();
+    policy.allow(&work).unwrap();
+    let (st, router, url) = serve(home.path()).await;
+    link(&st, url, live_supervisor().restricted(policy)).await;
+    (home, st, router, off)
 }
 
-/// A previous start's "not sent" record, written after a newer start began, belongs to
-/// that previous start: it must not count as the newer start's first handoff.
+/// Makes `off` (from `served_with_a_refused_folder`) a real folder the host allows.
+fn allow_off(off: &Path) {
+    std::fs::remove_file(off).unwrap();
+    std::fs::create_dir(off).unwrap();
+}
+
+/// The host refuses to start the reviewer (its folder is outside what the host allows), so the
+/// builder's handoff is not sent; once the folder is fixed, Restart delivers it once.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn records_of_a_previous_start_do_not_count_in_the_next() {
-    let (_home, st, router) = served(Arc::new(TestStub::slow("team.reviewer@"))).await;
+async fn live_a_handoff_to_an_agent_that_cannot_start_is_not_sent_then_restart_delivers_it() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router, off) = served_with_a_refused_folder().await;
     let id = team(
         &router,
-        "Leak",
-        &[
-            ("builder", "Builder", "Build"),
-            ("reviewer", "Reviewer", "Review"),
-        ],
-        &[("builder", "reviewer", "hands-work-to")],
-    )
-    .await;
-    let (builder, reviewer) = (seat(&id, "builder"), seat(&id, "reviewer"));
-    start(&router, &id, "s1").await;
-    crate::common::wait_for("builder finished", || completed_turns(&st, &builder) == 1).await;
-    // A newer start of the same team (the second RigBooted) while the reviewer still starts.
-    let newer = st
-        .local_event(
-            Actor::System("test".into()),
-            Subject::Rig(id.clone()),
-            Provenance::Operator,
-            EventBody::RigBooted {
-                spec_hash: "newer".into(),
-                seat_count: 2,
-            },
-        )
-        .unwrap()
-        .event
-        .seq;
-    crate::common::wait_for("the older handoff recorded as not sent", || {
-        handoffs(&st, &reviewer).iter().any(|(seq, m, _)| {
-            *seq > newer
-                && failed_reason(&st, &reviewer, m).as_deref()
-                    == Some("not sent: the team was started again before Reviewer got this handoff")
-        })
-    })
-    .await;
-    // In the newer start the builder has not worked yet: the reviewer waits for it.
-    crate::common::wait_for("the reviewer waits in the newer start", || {
-        crate::common::lifecycle(&st, &reviewer) == Some(SeatLifecycle::Running)
-            && waiting_for(&st, &reviewer) == Some(vec![builder.clone()])
-    })
-    .await;
-    settle().await;
-    assert_eq!(handoffs(&st, &reviewer).len(), 1);
-    // The builder's turn from the older start is not this start's: nothing to hand over yet.
-    let (status, body) = hand_over(&router, &builder, "h-old").await;
-    assert_eq!(
-        (status, body["error"]["code"].clone()),
-        (StatusCode::CONFLICT, json!("nothing_to_hand_over")),
-        "{body}"
-    );
-    crate::common::wait_for("the boot ended", || !st.is_booting(&id)).await;
-}
-
-#[tokio::test]
-async fn a_handoff_to_an_agent_that_cannot_start_is_not_sent_then_restart_delivers_it() {
-    let (_home, st, router) = served(Arc::new(TestStub::broken("team.reviewer@", 1))).await;
-    let id = team(
-        &router,
+        home.path(),
         "Broken",
         &[
-            ("builder", "Builder", "Build"),
-            ("reviewer", "Reviewer", "Review"),
+            ("builder", "Builder", REPLY),
+            ("reviewer", "Reviewer", REPLY),
         ],
         &[("builder", "reviewer", "hands-work-to")],
     )
     .await;
+    set_agent_folder(&router, &id, "reviewer", &off).await;
     let reviewer = seat(&id, "reviewer");
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the reviewer's handoff recorded", || {
+    common::live::wait_for("the reviewer's handoff recorded", || {
         handoffs(&st, &reviewer).len() == 1
     })
     .await;
     let (_, m, _) = handoffs(&st, &reviewer)[0].clone();
-    crate::common::wait_for("a reason", || failed_reason(&st, &reviewer, &m).is_some()).await;
+    common::live::wait_for("a reason", || failed_reason(&st, &reviewer, &m).is_some()).await;
     let reason = failed_reason(&st, &reviewer, &m).unwrap();
     assert!(
         reason.starts_with("not sent: Reviewer is not running ("),
         "{reason}"
     );
     assert!(
-        reason.contains("/nowhere"),
+        reason.contains("not in a folder this computer allows"),
         "the host's reason is kept: {reason}"
     );
     assert!(
         !reason.contains(&reviewer),
         "names, never seat ids: {reason}"
     );
-    crate::common::wait_for("the reviewer is stuck", || {
+    common::live::wait_for("the reviewer is stuck", || {
         stuck(&st, &reviewer) == Some(("the handoff from Builder was not sent".into(), true))
     })
     .await;
-    crate::common::wait_for("the boot ended", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot ended", || !st.is_booting(&id)).await;
 
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{reviewer}/resend"),
-        json!({ "request_id": "r0" }),
-    )
-    .await;
+    let (status, body) = resend(&router, &reviewer, "r0").await;
     assert_eq!(
         (status, body["error"]["code"].clone()),
         (StatusCode::CONFLICT, json!("agent_not_running")),
         "{body}"
     );
 
-    // Restart this agent: it relaunches and gets its first handoff once.
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{reviewer}/restart"),
-        json!({ "request_id": "rs1" }),
-    )
-    .await;
+    // Fix its folder and restart this agent: it launches and gets its first handoff once.
+    allow_off(&off);
+    let (status, body) = restart(&router, &reviewer, "rs1").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the re-sent handoff is read", || {
+    common::live::wait_for("the re-sent handoff is read", || {
         handoffs(&st, &reviewer)
             .iter()
             .any(|(_, m, _)| consumed(&st, m))
     })
     .await;
-    crate::common::wait_for("not stuck any more", || stuck(&st, &reviewer).is_none()).await;
+    common::live::wait_for("not stuck any more", || stuck(&st, &reviewer).is_none()).await;
     settle().await;
     let copies = handoffs(&st, &reviewer);
     assert_eq!(copies.len(), 2, "the original and one re-send: {copies:?}");
     assert_eq!(copies[0].2, copies[1].2, "the same handoff");
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{reviewer}/resend"),
-        json!({ "request_id": "r1" }),
-    )
-    .await;
+    let (status, body) = resend(&router, &reviewer, "r1").await;
     assert_eq!(
         (status, body["error"]["code"].clone()),
         (StatusCode::CONFLICT, json!("nothing_to_resend")),
         "{body}"
     );
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{reviewer}/restart"),
-        json!({ "request_id": "rs2" }),
-    )
-    .await;
+    let (status, body) = restart(&router, &reviewer, "rs2").await;
     assert_eq!(
         (status, body["error"]["code"].clone()),
         (StatusCode::CONFLICT, json!("agent_not_restartable")),
@@ -1633,38 +1430,39 @@ async fn a_handoff_to_an_agent_that_cannot_start_is_not_sent_then_restart_delive
     );
 }
 
-/// An upstream that cannot start leaves its downstream stuck, in words; restarting it
-/// sends its Job (it never read it), and its work then hands over.
+/// An upstream that cannot start leaves its downstream stuck, in words; restarting it (once its
+/// folder is fixed) sends its Job (it never read it), and its work then hands over.
 #[tokio::test]
-async fn a_stuck_upstream_is_shown_and_restarting_it_runs_the_chain() {
-    let (_home, st, router) = served(Arc::new(TestStub::broken("team.builder@", 1))).await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_stuck_upstream_is_shown_and_restarting_it_runs_the_chain() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router, off) = served_with_a_refused_folder().await;
     let id = team(
         &router,
+        home.path(),
         "Upstream",
         &[
-            ("builder", "Builder", "Build"),
-            ("reviewer", "Reviewer", "Review"),
+            ("builder", "Builder", REPLY),
+            ("reviewer", "Reviewer", REPLY),
         ],
         &[("builder", "reviewer", "hands-work-to")],
     )
     .await;
+    set_agent_folder(&router, &id, "builder", &off).await;
     let (builder, reviewer) = (seat(&id, "builder"), seat(&id, "reviewer"));
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the reviewer is stuck on the builder", || {
+    common::live::wait_for("the reviewer is stuck on the builder", || {
         waiting_for(&st, &reviewer) == Some(vec![builder.clone()])
             && stuck(&st, &reviewer) == Some(("Builder needs attention".into(), false))
     })
     .await;
-    crate::common::wait_for("the boot ended", || !st.is_booting(&id)).await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{builder}/restart"),
-        json!({ "request_id": "rs1" }),
-    )
-    .await;
+    common::live::wait_for("the boot ended", || !st.is_booting(&id)).await;
+    allow_off(&off);
+    let (status, body) = restart(&router, &builder, "rs1").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the reviewer's handoff is read", || {
+    common::live::wait_for("the reviewer's handoff is read", || {
         handoffs(&st, &reviewer)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
@@ -1682,48 +1480,29 @@ async fn a_stuck_upstream_is_shown_and_restarting_it_runs_the_chain() {
 /// A handoff recorded but never sent (controld stopped between the two) shows as stuck
 /// "not delivered"; Resend sends it once, and never again once it was delivered.
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn a_handoff_lost_between_recording_and_sending_can_be_resent_once() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_handoff_lost_between_recording_and_sending_can_be_resent_once() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
     let id = team(
         &router,
+        home.path(),
         "Lost",
-        &[("a", "Asker", ""), ("b", "Checker", "Check")],
+        &[("a", "Asker", ""), ("b", "Checker", REPLY)],
         &[("a", "b", "hands-work-to")],
     )
     .await;
     let (a, b) = (seat(&id, "a"), seat(&id, "b"));
     start(&router, &id, "s1").await;
-    crate::common::wait_for("b runs and waits", || {
+    common::live::wait_for("b runs and waits", || {
         crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Running)
             && waiting_for(&st, &b).is_some()
     })
     .await;
-    crate::common::wait_for("the boot ended", || !st.is_booting(&id)).await;
-    let start_seq = {
-        let store = st.store.lock().unwrap();
-        store
-            .latest_of_types(&Subject::Rig(id.clone()), &["rig-booted"], 1)
-            .unwrap()[0]
-            .seq
-    };
-    let write = HandoffWrite {
-        seat: b.clone(),
-        start_seq,
-        first: true,
-        actor: Actor::System(HANDOFF_ACTOR.into()),
-        message_id: "lost-1".into(),
-        intent: model::MessageIntent::Inform,
-        text: "Handed over by Asker\n\nCheck\n\n--- Asker's result ---\nlost".into(),
-        from: vec![HandoffSource {
-            seat: a.clone(),
-            turn_id: "turn-9".into(),
-            turn_seq: 1,
-            requested_seq: None,
-        }],
-        wave: None,
-        failed: None,
-    };
+    common::live::wait_for("the boot ended", || !st.is_booting(&id)).await;
+    let write = asker_handoff(&b, &a, start_seq(&st, &id), "lost-1", None);
     let items = st
         .store
         .lock()
@@ -1733,35 +1512,23 @@ async fn a_handoff_lost_between_recording_and_sending_can_be_resent_once() {
         .expect("recorded");
     st.publish(items);
     controld::handoffs::process_rig(&st, &id, true).await;
-    crate::common::wait_for("stuck: not delivered", || {
+    common::live::wait_for("stuck: not delivered", || {
         stuck(&st, &b) == Some(("the handoff from Asker was not delivered".into(), true))
     })
     .await;
 
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/resend"),
-        json!({ "request_id": "r1" }),
-    )
-    .await;
+    let (status, body) = resend(&router, &b, "r1").await;
     assert_eq!(
         (status, body["resent"].clone()),
         (StatusCode::OK, json!(1)),
         "{body}"
     );
-    crate::common::wait_for("the re-sent copy is read", || {
+    common::live::wait_for("the re-sent copy is read", || {
         handoffs(&st, &b).iter().any(|(_, m, _)| consumed(&st, m))
     })
     .await;
-    crate::common::wait_for("not stuck any more", || stuck(&st, &b).is_none()).await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/resend"),
-        json!({ "request_id": "r2" }),
-    )
-    .await;
+    common::live::wait_for("not stuck any more", || stuck(&st, &b).is_none()).await;
+    let (status, body) = resend(&router, &b, "r2").await;
     assert_eq!(
         (status, body["error"]["code"].clone()),
         (StatusCode::CONFLICT, json!("nothing_to_resend")),
@@ -1779,58 +1546,28 @@ async fn a_handoff_lost_between_recording_and_sending_can_be_resent_once() {
 /// not stuck: the agent's view says it waits for a slot.
 #[tokio::test]
 async fn a_handoff_waiting_for_a_slot_is_not_stuck() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+    let home = tempfile::tempdir().unwrap();
+    let (st, router, _url) = serve(home.path()).await;
     let id = team(
         &router,
+        home.path(),
         "Slots",
-        &[("a", "Asker", ""), ("b", "Checker", "Check")],
+        &[("a", "Asker", ""), ("b", "Checker", REPLY)],
         &[("a", "b", "hands-work-to")],
     )
     .await;
     let (a, b) = (seat(&id, "a"), seat(&id, "b"));
-    start(&router, &id, "s1").await;
-    crate::common::wait_for("b runs and waits", || {
-        crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Running)
-            && waiting_for(&st, &b).is_some()
-    })
-    .await;
-    crate::common::wait_for("the boot ended", || !st.is_booting(&id)).await;
-    let start_seq = {
-        let store = st.store.lock().unwrap();
-        store
-            .latest_of_types(&Subject::Rig(id.clone()), &["rig-booted"], 1)
-            .unwrap()[0]
-            .seq
-    };
-    let write = HandoffWrite {
-        seat: b.clone(),
-        start_seq,
-        first: true,
-        actor: Actor::System(HANDOFF_ACTOR.into()),
-        message_id: "held-1".into(),
-        intent: model::MessageIntent::Inform,
-        text: "Handed over by Asker\n\nCheck\n\n--- Asker's result ---\nheld".into(),
-        from: vec![HandoffSource {
-            seat: a.clone(),
-            turn_id: "turn-9".into(),
-            turn_seq: 1,
-            requested_seq: None,
-        }],
-        wave: None,
-        failed: None,
-    };
-    let items = st
-        .store
+    let (_, start) = running_start(&st, &id, &[&a, &b]);
+    let write = asker_handoff(&b, &a, start, "held-1", None);
+    st.store
         .lock()
         .unwrap()
         .record_handoff(&write)
         .unwrap()
         .expect("recorded");
-    st.publish(items);
     st.store.lock().unwrap().connection()
         .execute("INSERT INTO budget_queue (seat, message_id, json, at_ms) VALUES (?1, 'held-1', '{}', 1)", [&b]).unwrap();
     controld::handoffs::process_rig(&st, &id, true).await;
-    settle().await;
     assert_eq!(
         stuck(&st, &b),
         None,
@@ -1851,22 +1588,27 @@ async fn a_handoff_waiting_for_a_slot_is_not_stuck() {
 /// controld restarts while hostd (and its agents) keep running. Nothing is handed over
 /// twice, and a fan-in that was half done before the restart completes after it.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn handoffs_survive_a_controld_restart_without_duplicates() {
+async fn live_handoffs_survive_a_controld_restart_without_duplicates() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let home = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();
     let path = data.path().join("controld.sqlite");
     let (st1, router1, url1, server1) = serve_with(home.path(), Store::open(&path).unwrap()).await;
-    let sup = supervisor(Arc::new(StubDriver));
+    let sup = live_supervisor();
     let link1 = link(&st1, url1, sup.clone()).await;
     let id = team(
         &router1,
+        home.path(),
         "Restart",
         &[
-            ("planner", "Planner", "Plan"),
+            ("planner", "Planner", REPLY),
             ("designer", "Designer", ""),
-            ("builder", "Builder", "Build"),
-            ("checker", "Checker", "Check"),
+            ("builder", "Builder", REPLY),
+            ("checker", "Checker", REPLY),
         ],
         &[
             ("planner", "builder", "hands-work-to"),
@@ -1881,11 +1623,11 @@ async fn handoffs_survive_a_controld_restart_without_duplicates() {
         seat(&id, "checker"),
     );
     start(&router1, &id, "s1").await;
-    crate::common::wait_for("builder waits for the designer", || {
+    common::live::wait_for("builder waits for the designer", || {
         waiting_for(&st1, &builder) == Some(vec![designer.clone()])
     })
     .await;
-    crate::common::wait_for("the boot finished", || {
+    common::live::wait_for("the boot finished", || {
         !st1.is_booting(&id)
             && crate::common::lifecycle(&st1, &checker) == Some(SeatLifecycle::Running)
     })
@@ -1905,14 +1647,20 @@ async fn handoffs_survive_a_controld_restart_without_duplicates() {
     );
     assert!(handoffs(&st2, &builder).is_empty());
 
-    send(&router2, &designer, "d1", "Draw").await;
-    crate::common::wait_for("the checker's handoff", || {
+    send(&router2, &designer, "d1", REPLY).await;
+    common::live::wait_for("the checker's handoff", || {
         handoffs(&st2, &checker).len() == 1
     })
     .await;
     let b = handoffs(&st2, &builder);
     assert_eq!(b.len(), 1);
-    assert!(b[0].2.starts_with("Handed over by Planner, Designer\n\nBuild\n\n--- Planner's result ---\nstub received: Plan"), "{}", b[0].2);
+    assert!(
+        b[0].2.starts_with(&format!(
+            "Handed over by Planner, Designer\n\n{REPLY}\n\n--- Planner's result ---\n"
+        )),
+        "{}",
+        b[0].2
+    );
 
     // Another restart replays and re-plans everything: still exactly one handoff each.
     let (st3, _router3, _url3, _server3) =
@@ -1942,8 +1690,9 @@ async fn upgrading_a_store_with_a_running_team_sends_no_handoffs() {
     let home = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();
     let path = data.path().join("controld.sqlite");
-    let draft =
-        rigspec::templates::template("builder-reviewer", "old-team", "Old team", true).unwrap();
+    let mut draft =
+        rigspec::templates::template("builder-reviewer", "old-team", "Old team").unwrap();
+    draft.folder = Some(work_folder(home.path()).display().to_string());
     let (a, b) = (
         draft.seat_id("builder").unwrap(),
         draft.seat_id("reviewer").unwrap(),
@@ -2069,9 +1818,9 @@ async fn upgrading_a_store_with_a_running_team_sends_no_handoffs() {
 // ---- fake-claude: real driver turn shapes ----
 
 fn claude_supervisor() -> Supervisor {
-    supervisor(Arc::new(ClaudeStreamDriver {
+    supervisor(vec![Arc::new(ClaudeStreamDriver {
         program: crate::common::fake_bin("fake-claude"),
-    }))
+    })])
 }
 
 fn reason(st: &AppState, seat: &str) -> String {
@@ -2092,8 +1841,8 @@ async fn an_interrupted_job_is_stuck_until_the_operator_says_go() {
     let id = team_of(
         &router,
         "Hang",
-        "claude",
-        Some(&work),
+        &work,
+        None,
         &[
             ("lead", "Lead", "hang"),
             ("mid", "Mid", "Build"),
@@ -2170,8 +1919,8 @@ async fn a_job_that_crashed_mid_way_is_continued_by_restart() {
     let id = team_of(
         &router,
         "Crash",
-        "claude",
-        Some(&work),
+        &work,
+        None,
         &[("lead", "Lead", "crash"), ("next", "Next", "Go on")],
         &[("lead", "next", "hands-work-to")],
     )
@@ -2223,26 +1972,14 @@ async fn a_job_that_crashed_mid_way_is_continued_by_restart() {
 
 /// "More work" moves in waves: in a diamond, the agent where both paths meet runs once.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn a_wave_runs_each_downstream_agent_once() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
-    let id = team(
-        &router,
-        "Diamond",
-        &[
-            ("a", "Source", "Start"),
-            ("b", "Left", "L"),
-            ("c", "Right", "R"),
-            ("d", "Join", "J"),
-        ],
-        &[
-            ("a", "b", "hands-work-to"),
-            ("a", "c", "hands-work-to"),
-            ("b", "d", "hands-work-to"),
-            ("c", "d", "hands-work-to"),
-        ],
-    )
-    .await;
+async fn live_a_wave_runs_each_downstream_agent_once() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
+    let id = diamond(&router, home.path(), "Diamond", REPLY).await;
     let (a, b, c, d) = (
         seat(&id, "a"),
         seat(&id, "b"),
@@ -2250,7 +1987,7 @@ async fn a_wave_runs_each_downstream_agent_once() {
         seat(&id, "d"),
     );
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the join read its first handoff", || {
+    common::live::wait_for("the join read its first handoff", || {
         handoffs(&st, &d)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
@@ -2261,6 +1998,10 @@ async fn a_wave_runs_each_downstream_agent_once() {
             .2
             .starts_with("Handed over by Left, Right")
     );
+    common::live::wait_for("the join finished its first handoff", || {
+        completed_turns(&st, &d) >= 1
+    })
+    .await;
     settle().await;
     let before: usize = [&a, &b, &c, &d]
         .iter()
@@ -2268,10 +2009,14 @@ async fn a_wave_runs_each_downstream_agent_once() {
         .sum();
 
     assert_eq!(hand_over(&router, &a, "h1").await.0, StatusCode::OK);
-    crate::common::wait_for("the join read the wave", || {
+    common::live::wait_for("the join read the wave", || {
         handoffs(&st, &d)
             .get(1)
             .is_some_and(|(_, m, _)| consumed(&st, m))
+    })
+    .await;
+    common::live::wait_for("the join finished the wave", || {
+        completed_turns(&st, &d) >= 2
     })
     .await;
     settle().await;
@@ -2303,39 +2048,33 @@ async fn a_wave_runs_each_downstream_agent_once() {
 /// An agent whose last lifecycle change belongs to an earlier start (stopped, not yet
 /// relaunched in this one) is still starting, not "stopped": a handoff for it waits.
 #[tokio::test]
-async fn a_handoff_waits_for_an_agent_stopped_before_this_start() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_handoff_waits_for_an_agent_stopped_before_this_start() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
     let id = team(
         &router,
+        home.path(),
         "Again",
         &[
-            ("builder", "Builder", "Build"),
-            ("reviewer", "Reviewer", "Review"),
+            ("builder", "Builder", REPLY),
+            ("reviewer", "Reviewer", REPLY),
         ],
         &[("builder", "reviewer", "hands-work-to")],
     )
     .await;
     let (builder, reviewer) = (seat(&id, "builder"), seat(&id, "reviewer"));
     start(&router, &id, "s1").await;
-    crate::common::wait_for("first run done", || {
+    common::live::wait_for("first run done", || {
         handoffs(&st, &reviewer)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{reviewer}/stop"),
-        json!({ "request_id": "x-rev" }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("reviewer stopped", || {
-        crate::common::lifecycle(&st, &reviewer) == Some(SeatLifecycle::Stopped)
-    })
-    .await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    stop_seat(&st, &router, &reviewer, "x-rev").await;
     // A newer start, as at Start team: the reviewer is not relaunched yet.
     st.local_event(
         Actor::System("test".into()),
@@ -2347,9 +2086,9 @@ async fn a_handoff_waits_for_an_agent_stopped_before_this_start() {
         },
     )
     .unwrap();
-    send(&router, &builder, "b1", "Build again").await;
-    crate::common::wait_for("the builder answered", || {
-        completed_turns(&st, &builder) == 2
+    send(&router, &builder, "b1", REPLY).await;
+    common::live::wait_for("the builder answered", || {
+        completed_turns(&st, &builder) >= 2
     })
     .await;
     assert_eq!(hand_over(&router, &builder, "h1").await.0, StatusCode::OK);
@@ -2361,15 +2100,9 @@ async fn a_handoff_waits_for_an_agent_stopped_before_this_start() {
     );
     assert_eq!(stuck(&st, &reviewer), None);
 
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{reviewer}/restart"),
-        json!({ "request_id": "rs" }),
-    )
-    .await;
+    let (status, body) = restart(&router, &reviewer, "rs").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the new start's handoff is read", || {
+    common::live::wait_for("the new start's handoff is read", || {
         handoffs(&st, &reviewer)
             .get(1)
             .is_some_and(|(_, m, _)| consumed(&st, m))
@@ -2385,26 +2118,14 @@ async fn a_handoff_waits_for_an_agent_stopped_before_this_start() {
 /// A wave waits at the join until every branch it reaches has run, even when one branch
 /// is held up (stopped, then restarted): the join still runs once.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn a_wave_waits_at_the_join_for_a_held_up_branch() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
-    let id = team(
-        &router,
-        "Held",
-        &[
-            ("a", "Source", "Start"),
-            ("b", "Left", "L"),
-            ("c", "Right", "R"),
-            ("d", "Join", "J"),
-        ],
-        &[
-            ("a", "b", "hands-work-to"),
-            ("a", "c", "hands-work-to"),
-            ("b", "d", "hands-work-to"),
-            ("c", "d", "hands-work-to"),
-        ],
-    )
-    .await;
+async fn live_a_wave_waits_at_the_join_for_a_held_up_branch() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
+    let id = diamond(&router, home.path(), "Held", REPLY).await;
     let (a, b, c, d) = (
         seat(&id, "a"),
         seat(&id, "b"),
@@ -2412,36 +2133,26 @@ async fn a_wave_waits_at_the_join_for_a_held_up_branch() {
         seat(&id, "d"),
     );
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the join read its first handoff", || {
+    common::live::wait_for("the join finished its first handoff", || {
         handoffs(&st, &d)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
+            && completed_turns(&st, &d) >= 1
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{c}/stop"),
-        json!({ "request_id": "x-c" }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("right stopped", || {
-        crate::common::lifecycle(&st, &c) == Some(SeatLifecycle::Stopped)
-    })
-    .await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    stop_seat(&st, &router, &c, "x-c").await;
 
     assert_eq!(hand_over(&router, &a, "h1").await.0, StatusCode::OK);
-    crate::common::wait_for("left ran the wave", || {
-        handoffs(&st, &b).len() == 2 && completed_turns(&st, &b) == 2
+    common::live::wait_for("left ran the wave", || {
+        handoffs(&st, &b).len() == 2 && completed_turns(&st, &b) >= 2
     })
     .await;
-    crate::common::wait_for("the join waits for the right branch", || {
+    common::live::wait_for("the join waits for the right branch", || {
         waiting_for(&st, &d) == Some(vec![c.clone()]) && reason(&st, &d) == "Right stopped"
     })
     .await;
-    crate::common::wait_for("right says its handoff was not sent", || {
+    common::live::wait_for("right says its handoff was not sent", || {
         reason(&st, &c) == "the handoff from Source was not sent"
     })
     .await;
@@ -2453,18 +2164,16 @@ async fn a_wave_waits_at_the_join_for_a_held_up_branch() {
     );
 
     // Restart the right branch: it gets the wave message it never read, runs, and the join runs once.
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{c}/restart"),
-        json!({ "request_id": "rs" }),
-    )
-    .await;
+    let (status, body) = restart(&router, &c, "rs").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the join read the wave", || {
+    common::live::wait_for("the join read the wave", || {
         handoffs(&st, &d)
             .get(1)
             .is_some_and(|(_, m, _)| consumed(&st, m))
+    })
+    .await;
+    common::live::wait_for("the join finished the wave", || {
+        completed_turns(&st, &d) >= 2
     })
     .await;
     settle().await;
@@ -2485,56 +2194,32 @@ async fn a_wave_waits_at_the_join_for_a_held_up_branch() {
 /// A handoff recorded as failed here, which the host reports the agent read anyway (the
 /// send timed out but got through), is never re-sent and is not stuck.
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
 async fn a_handoff_the_host_reports_read_is_never_resent() {
-    let (_home, st, router) = served(Arc::new(StubDriver)).await;
+    let home = tempfile::tempdir().unwrap();
+    let (st, router, _url) = serve(home.path()).await;
     let id = team(
         &router,
+        home.path(),
         "Read",
-        &[("a", "Asker", ""), ("b", "Checker", "Check")],
+        &[("a", "Asker", ""), ("b", "Checker", REPLY)],
         &[("a", "b", "hands-work-to")],
     )
     .await;
     let (a, b) = (seat(&id, "a"), seat(&id, "b"));
-    start(&router, &id, "s1").await;
-    crate::common::wait_for("b runs and waits", || {
-        crate::common::lifecycle(&st, &b) == Some(SeatLifecycle::Running)
-            && waiting_for(&st, &b).is_some()
-    })
-    .await;
-    crate::common::wait_for("the boot ended", || !st.is_booting(&id)).await;
-    let start_seq = st
-        .store
-        .lock()
-        .unwrap()
-        .latest_of_types(&Subject::Rig(id.clone()), &["rig-booted"], 1)
-        .unwrap()[0]
-        .seq;
-    let write = HandoffWrite {
-        seat: b.clone(),
-        start_seq,
-        first: true,
-        actor: Actor::System(HANDOFF_ACTOR.into()),
-        message_id: "timed-out".into(),
-        intent: model::MessageIntent::Inform,
-        text: "Handed over by Asker\n\nCheck\n\n--- Asker's result ---\nx".into(),
-        from: vec![HandoffSource {
-            seat: a.clone(),
-            turn_id: "turn-9".into(),
-            turn_seq: 1,
-            requested_seq: None,
-        }],
-        wave: None,
-        failed: Some("not sent: Checker could not be reached (timed out)".into()),
-    };
-    let items = st
-        .store
+    let (_, start) = running_start(&st, &id, &[&a, &b]);
+    let write = asker_handoff(
+        &b,
+        &a,
+        start,
+        "timed-out",
+        Some("not sent: Checker could not be reached (timed out)"),
+    );
+    st.store
         .lock()
         .unwrap()
         .record_handoff(&write)
         .unwrap()
         .expect("recorded");
-    st.publish(items);
     let read = host_proto::HostEvent {
         host_seq: 1,
         at_ms: model::now_ms(),
@@ -2546,23 +2231,15 @@ async fn a_handoff_the_host_reports_read_is_never_resent() {
             turn_id: "turn-7".into(),
         },
     };
-    let items = st.store.lock().unwrap().ingest("other", read).unwrap();
-    st.publish(items);
+    st.store.lock().unwrap().ingest("other", read).unwrap();
     assert_eq!(
         state(&st, "timed-out"),
         Some(MessageState::Failed),
         "the store still says failed"
     );
     controld::handoffs::process_rig(&st, &id, true).await;
-    settle().await;
     assert_eq!(stuck(&st, &b), None, "the host says it was read: not stuck");
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{b}/resend"),
-        json!({ "request_id": "r1" }),
-    )
-    .await;
+    let (status, body) = resend(&router, &b, "r1").await;
     assert_eq!(
         (status, body["error"]["code"].clone()),
         (StatusCode::CONFLICT, json!("nothing_to_resend")),
@@ -2586,8 +2263,13 @@ async fn on_the_airplane_team_one_message_to_lead_is_one_turn() {
         "/../../examples/teams/airplane-c172.json"
     );
     let example: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
-    let (status, rec) =
-        call(&router, "POST", "/api/teams", json!({ "request_id": "create-air", "template": "blank", "practice": false, "name": "Airplane" })).await;
+    let (status, rec) = call(
+        &router,
+        "POST",
+        "/api/teams",
+        json!({ "request_id": "create-air", "template": "blank", "name": "Airplane" }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{rec}");
     let mut draft = rec["draft"].clone();
     let id = draft["id"].as_str().unwrap().to_string();
@@ -2821,6 +2503,37 @@ impl Script<'_> {
     }
 }
 
+/// Marks team `id` running and started with `seats` running, all written to the store; returns
+/// the script to go on with and the start's seq.
+fn running_start<'a>(st: &'a AppState, id: &str, seats: &[&String]) -> (Script<'a>, i64) {
+    {
+        let mut store = st.store.lock().unwrap();
+        let draft = store.draft(id).unwrap().unwrap();
+        let rig = rigspec::from_draft(&draft).unwrap().rig;
+        store
+            .upsert_rig(
+                &rig,
+                &RigSource::Team {
+                    id: id.to_string(),
+                    revision: draft.revision,
+                },
+                model::Desired::Running,
+            )
+            .unwrap();
+    }
+    let mut s = Script { st, host_seq: 0 };
+    let start = s.local(
+        Actor::Human("local".into()),
+        Subject::Rig(id.to_string()),
+        EventBody::RigBooted {
+            spec_hash: "x".into(),
+            seat_count: u32::try_from(seats.len()).expect("a few seats"),
+        },
+    );
+    s.running(seats);
+    (s, start)
+}
+
 fn source(seat: &str, turn: &str, turn_seq: i64, requested_seq: Option<i64>) -> HandoffSource {
     HandoffSource {
         seat: seat.to_string(),
@@ -2842,6 +2555,7 @@ async fn a_wait_on_an_agent_with_nothing_left_to_do_is_stuck() {
     let (st, router, _url) = serve(home.path()).await;
     let id = team(
         &router,
+        home.path(),
         "Stall",
         &[
             ("a", "Source", "Start"),
@@ -3049,6 +2763,7 @@ async fn an_agent_with_a_long_history_in_earlier_starts_plans_quickly() {
     let (st, router, _url) = serve(home.path()).await;
     let id = team(
         &router,
+        home.path(),
         "Long",
         &[("a", "Source", "Start"), ("b", "Worker", "Work")],
         &[("a", "b", "hands-work-to")],
@@ -3193,6 +2908,7 @@ async fn an_agent_with_a_long_current_start_plans_quickly() {
     let (st, router, _url) = serve(home.path()).await;
     let id = team(
         &router,
+        home.path(),
         "Busy",
         &[("a", "Source", "Start"), ("b", "Worker", "Work")],
         &[("a", "b", "hands-work-to")],

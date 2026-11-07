@@ -1,53 +1,23 @@
 //! The computer running a team's agents drops off mid-run (Wi-Fi change, sleep, a server deploy) and
 //! comes back. Nothing the agents were doing is lost: their calls wait, answers wait, and Stop is
-//! carried out on reconnect.
+//! carried out on reconnect. Live: the agents run on the real Claude Code CLI on haiku.
 mod common;
+#[path = "common/live_controls.rs"]
+mod live_controls;
 
-use common::m2::{Served, TOKEN};
-use drivers::stub::StubDriver;
-use hostd::journal::Journal;
-use hostd::supervisor::Supervisor;
+use common::m2::Served;
+use live_controls::Runner;
 
 use model::{Answer, EventBody, SeatLifecycle};
 use serde_json::json;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::task::JoinHandle;
 
-/// This machine's runner, with a link that the test can cut and bring back.
-struct Runner {
-    sup: Supervisor,
-    link: JoinHandle<()>,
-}
-
-impl Runner {
-    async fn connect(s: &Served) -> Runner {
-        let sup = Supervisor::new(
-            "local".into(),
-            vec![Arc::new(StubDriver)],
-            Journal::open_in_memory(10_000).unwrap(),
-        );
-        let link = Runner::link(s, &sup).await;
-        Runner { sup, link }
-    }
-
-    async fn link(s: &Served, sup: &Supervisor) -> JoinHandle<()> {
-        let (url, sup) = (s.url.clone(), sup.clone());
-        let link = tokio::spawn(async move {
-            let _ = hostd::run_link(&url, TOKEN, &sup).await;
-        });
-        crate::common::wait_for("computer connected", || s.st.hosts.is_connected("local")).await;
-        link
-    }
-
-    async fn drop_link(&self, s: &Served) {
-        self.link.abort();
-        crate::common::wait_for("computer gone", || !s.st.hosts.is_connected("local")).await;
-    }
-
-    async fn reconnect(&mut self, s: &Served) {
-        self.link = Runner::link(s, &self.sup).await;
-    }
+/// A started team of one live agent with no job; returns (team, its seat).
+async fn one_agent(s: &Served) -> (String, String) {
+    let team = common::pausing::team(s, "solo", &["lead"]).await;
+    crate::common::m2::start_team(s, &team).await;
+    let agent = crate::common::m2::seat(&team, "lead");
+    (team, agent)
 }
 
 fn questions_raised(s: &Served, seat: &str) -> usize {
@@ -58,20 +28,22 @@ fn questions_raised(s: &Served, seat: &str) -> usize {
 }
 
 #[tokio::test]
-async fn a_question_answered_while_the_computer_is_offline_reaches_the_agent_when_it_returns() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_question_answered_while_the_computer_is_offline_reaches_the_agent_when_it_returns()
+{
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve().await;
-    let mut runner = Runner::connect(&s).await;
-    let agent = crate::common::m2::seat(
-        &crate::common::m2::practice_team(&s, "solo").await,
-        "claude",
-    );
-    let sup = runner.sup.clone();
-    let a = agent.clone();
-    let call = tokio::spawn(async move {
-        sup.tool_call(&a, "request_input", json!({ "question": "Which colour?" }))
-            .await
-    });
-    let raised = crate::common::m2::wait_event(&s.st, &agent, "a question", |b| {
+    let mut runner = Runner::with_tools(&s).await;
+    let (_, agent) = one_agent(&s).await;
+    crate::common::m2::say(
+        &s,
+        &agent,
+        "Use your request_input tool (Sculptured's) once, with the question exactly: Which colour? Then reply with the answer you got and nothing else.",
+    )
+    .await;
+    let raised = crate::common::live::wait_event(&s.st, &agent, "a question", |b| {
         matches!(b, EventBody::QuestionRaised { .. })
     })
     .await;
@@ -95,15 +67,16 @@ async fn a_question_answered_while_the_computer_is_offline_reaches_the_agent_whe
     )
     .await
     .expect("answering never needs the computer");
-    assert!(!call.is_finished(), "the agent is still waiting");
+    let answered = |b: &EventBody| matches!(b, EventBody::ToolResulted { output, .. } if output.contains("Green"));
+    assert!(
+        !crate::common::m2::events(&s.st, &agent)
+            .iter()
+            .any(|e| answered(&e.body)),
+        "the agent is still waiting"
+    );
 
     runner.reconnect(&s).await;
-    let got = tokio::time::timeout(Duration::from_secs(10), call)
-        .await
-        .expect("the answer arrives")
-        .unwrap()
-        .unwrap();
-    assert!(got.to_string().contains("Green"), "{got}");
+    crate::common::live::wait_event(&s.st, &agent, "the answer reaches the agent", answered).await;
     assert_eq!(
         questions_raised(&s, &agent),
         1,
@@ -112,11 +85,14 @@ async fn a_question_answered_while_the_computer_is_offline_reaches_the_agent_whe
 }
 
 #[tokio::test]
-async fn stopping_a_team_while_its_computer_is_offline_works_and_happens_when_it_returns() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_stopping_a_team_while_its_computer_is_offline_works_and_happens_when_it_returns() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve().await;
     let mut runner = Runner::connect(&s).await;
-    let team = crate::common::m2::practice_team(&s, "solo").await;
-    let agent = crate::common::m2::seat(&team, "claude");
+    let (team, agent) = one_agent(&s).await;
     runner.drop_link(&s).await;
     crate::common::m2::stop_team(&s, &team).await;
     // A computer that may never come back cannot hold the stop open: it is done here at once.
@@ -163,23 +139,21 @@ async fn stopping_a_team_while_its_computer_is_offline_works_and_happens_when_it
 }
 
 #[tokio::test]
-async fn a_team_started_during_a_brief_drop_launches_once_the_computer_is_back() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_team_started_during_a_brief_drop_launches_once_the_computer_is_back() {
+    let Some(_) = crate::common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve().await;
     let mut runner = Runner::connect(&s).await;
-    let team = crate::common::m2::practice_chain(
-        &s,
-        "Pair",
-        &[("a", "A", "first"), ("b", "B", "second")],
-        &[],
-    )
-    .await;
+    let team = common::pausing::team(&s, "Pair", &["a", "b"]).await;
     runner.drop_link(&s).await;
     let back = {
         let s_url = s.url.clone();
         let sup = runner.sup.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(500)).await;
-            let _ = hostd::run_link(&s_url, TOKEN, &sup).await;
+            let _ = hostd::run_link(&s_url, crate::common::m2::TOKEN, &sup).await;
         })
     };
     crate::common::m2::start_team(&s, &team).await;

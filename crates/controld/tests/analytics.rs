@@ -70,12 +70,26 @@ async fn names(seen: &Seen, want: &[&str]) -> Vec<String> {
     );
 }
 
+/// Starts team `id` and stops it once its boot is over. No computer is connected, so no agent
+/// runs: what is reported comes from the start, the stop and what was recorded.
+async fn start_and_stop(s: &Served, id: &str) {
+    let (status, body) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        &format!("/api/teams/{id}/start"),
+        json!({ "request_id": rid() }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    crate::common::wait_for("boot finished", || !s.st.is_booting(id)).await;
+    crate::common::m2::stop_team(s, id).await;
+}
+
 #[tokio::test]
 async fn a_hosted_team_reports_its_shape_start_stop_and_run_without_names() {
     let (url, seen) = fake_gateway().await;
     let s = hosted_with_analytics(&url).await;
-    let _host = crate::common::m2::connect_stub(&s).await;
-    let id = crate::common::m2::practice_chain(
+    let id = crate::common::m2::chain(
         &s,
         "Top Secret Plan",
         &[("a", "Agent Alpha", "launch codes")],
@@ -93,8 +107,7 @@ async fn a_hosted_team_reports_its_shape_start_stop_and_run_without_names() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::m2::start_team(&s, &id).await;
-    crate::common::m2::stop_team(&s, &id).await;
+    start_and_stop(&s, &id).await;
     let got = names(
         &seen,
         &[
@@ -144,7 +157,7 @@ async fn a_hosted_team_reports_its_shape_start_stop_and_run_without_names() {
         .1
         .clone();
     assert_eq!(started["props"]["agents"], 1);
-    assert_eq!(started["props"]["runtimes"], json!(["stub"]));
+    assert_eq!(started["props"]["runtimes"], json!(["claude-code"]));
     assert_eq!(started["props"]["shape"]["checks"], true);
 }
 
@@ -153,10 +166,8 @@ async fn local_mode_sends_nothing() {
     let (url, seen) = fake_gateway().await;
     let _ = url;
     let s = crate::common::m2::serve().await;
-    let _host = crate::common::m2::connect_stub(&s).await;
-    let id = crate::common::m2::practice_chain(&s, "Plain", &[("a", "A", "job")], &[]).await;
-    crate::common::m2::start_team(&s, &id).await;
-    crate::common::m2::stop_team(&s, &id).await;
+    let id = crate::common::m2::chain(&s, "Plain", &[("a", "A", "job")], &[]).await;
+    start_and_stop(&s, &id).await;
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     assert!(seen.lock().unwrap().is_empty());
 }
@@ -165,7 +176,7 @@ async fn local_mode_sends_nothing() {
 async fn saves_are_reported_at_most_once_per_ten_minutes() {
     let (url, seen) = fake_gateway().await;
     let s = hosted_with_analytics(&url).await;
-    let id = crate::common::m2::practice_chain(&s, "Saved", &[("a", "A", "job")], &[]).await;
+    let id = crate::common::m2::chain(&s, "Saved", &[("a", "A", "job")], &[]).await;
     for name in ["One", "Two", "Three"] {
         let (_, rec) = crate::common::m2::get(&s.router, &format!("/api/teams/{id}")).await;
         let mut draft = rec["draft"].clone();

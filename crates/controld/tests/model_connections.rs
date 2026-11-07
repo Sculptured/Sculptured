@@ -1,12 +1,13 @@
 //! Model connections: a hosted Claude agent with a connection gets its keys from the gateway at
-//! launch, in its process environment only. A failed read keeps it from starting, in plain words; the
-//! keys are never stored or recorded; local mode ignores connections. Fake gateway and stub CLI only.
+//! launch, in its launch environment only. A failed read keeps it from starting, in plain words; the
+//! keys are never stored or recorded; local mode ignores connections. A stand-in gateway only, and no
+//! model runs: what is checked is what Sculptured would launch with (`launch_params_with_connection`,
+//! what every launch path sends) and what it records. The computer's Claude Code and OpenCode drivers
+//! are the real ones with no CLI installed, so a launch that does go ahead fails on the computer.
 mod common;
 use axum::http::{HeaderMap, StatusCode};
 use common::m2::*;
-use common::{lifecycle, wait_for};
-use drivers::Driver;
-use drivers::stub::StubDriver;
+use common::wait_for;
 use model::{EventBody, SeatLifecycle};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -55,75 +56,20 @@ async fn fake_gateway() -> (String, Asked) {
     (url, asked)
 }
 
-type Seen = Arc<Mutex<Vec<(String, Vec<(String, String)>)>>>;
-
-/// Runs as Claude Code (`claude-stream`) or OpenCode (`opencode-acp`) but is the stub underneath; keeps
-/// each launch's environment, and its model in `models`.
-struct RecordingClaude(Seen);
-struct RecordingOpencode(Seen, Arc<Mutex<Vec<Option<String>>>>);
-
-#[async_trait::async_trait]
-impl Driver for RecordingOpencode {
-    fn name(&self) -> &'static str {
-        "opencode-acp"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(
-        &self,
-        mut spec: drivers::LaunchSpec,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        self.0
-            .lock()
-            .unwrap()
-            .push((spec.seat.to_string(), spec.env.0.clone()));
-        self.1.lock().unwrap().push(spec.model.take());
-        StubDriver.launch(spec).await
-    }
-    async fn resume(
-        &self,
-        spec: drivers::LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        StubDriver.resume(spec, native_id).await
-    }
+/// The real Claude Code and OpenCode drivers, pointed at CLIs this computer does not have.
+fn uninstalled_drivers() -> Vec<Arc<dyn drivers::Driver>> {
+    vec![
+        Arc::new(drivers::claude::ClaudeStreamDriver {
+            program: "/no/such/claude".into(),
+        }),
+        Arc::new(drivers::opencode::OpencodeAcpDriver {
+            program: "/no/such/opencode".into(),
+        }),
+    ]
 }
 
-#[async_trait::async_trait]
-impl Driver for RecordingClaude {
-    fn name(&self) -> &'static str {
-        "claude-stream"
-    }
-    fn capabilities(&self) -> model::Caps {
-        StubDriver.capabilities()
-    }
-    async fn launch(
-        &self,
-        spec: drivers::LaunchSpec,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        self.0
-            .lock()
-            .unwrap()
-            .push((spec.seat.to_string(), spec.env.0.clone()));
-        StubDriver.launch(spec).await
-    }
-    async fn resume(
-        &self,
-        spec: drivers::LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        self.0
-            .lock()
-            .unwrap()
-            .push((spec.seat.to_string(), spec.env.0.clone()));
-        StubDriver.resume(spec, native_id).await
-    }
-}
-
-/// A hosted controld that reads model connections from the gateway at `url`, with a computer
-/// "laptop" whose Claude Code records what it was launched with.
-async fn hosted_with_gateway(url: &str) -> (Served, Seen, hostd::supervisor::Supervisor) {
+/// A hosted controld that reads model connections from the gateway at `url`, with a computer "laptop".
+async fn hosted_with_gateway(url: &str) -> (Served, hostd::supervisor::Supervisor) {
     let mut s = serve_hosted().await;
     s.st = s.st.clone().with_gateway(controld::gateway::Gateway::new(
         url.to_string(),
@@ -131,16 +77,64 @@ async fn hosted_with_gateway(url: &str) -> (Served, Seen, hostd::supervisor::Sup
         Arc::new(SECRET.to_vec()),
     ));
     s.router = controld::app(s.st.clone(), None);
-    let seen: Seen = Default::default();
-    let laptop = connect_as(&s, "laptop", vec![Arc::new(RecordingClaude(seen.clone()))]).await;
-    (s, seen, laptop)
+    let laptop = connect_as(&s, "laptop", uninstalled_drivers()).await;
+    (s, laptop)
 }
 
-/// A real folder on the computer (the stub runs in it).
+/// A real folder on the computer.
 fn folder(s: &Served) -> String {
     let dir = s.home.path().join("project");
     std::fs::create_dir_all(&dir).unwrap();
     dir.display().to_string()
+}
+
+/// What team `id`'s first agent would be launched with on `host`, connection included.
+async fn launch_params(
+    s: &Served,
+    id: &str,
+    host: &str,
+) -> Result<host_proto::LaunchParams, String> {
+    let draft = s.st.store.lock().unwrap().draft(id).unwrap().unwrap();
+    let rig = rigspec::from_draft(&draft).unwrap().rig;
+    controld::launch::launch_params_with_connection(&s.st, host, id, &rig.seats[0], s.home.path())
+        .await
+}
+
+/// Starts team `id` (hosted, signed).
+async fn start_signed(s: &Served, id: &str) {
+    let (status, body) = signed(
+        &s.router,
+        "POST",
+        &format!("/api/teams/{id}/start"),
+        Some(json!({ "request_id": rid() })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+/// Whether `seat` ever began a session (a launch that went ahead).
+fn launched(s: &Served, seat: &str) -> bool {
+    events(&s.st, seat)
+        .iter()
+        .any(|e| matches!(e.body, EventBody::TenureStarted { .. }))
+}
+
+/// The reason of `seat`'s latest move to `lifecycle`, waiting for one.
+async fn reason_for(s: &Served, seat: &str, lifecycle: SeatLifecycle) -> String {
+    let find = || {
+        events(&s.st, seat)
+            .into_iter()
+            .filter_map(|e| match e.body {
+                EventBody::SeatLifecycleChanged {
+                    lifecycle: l,
+                    reason,
+                } if l == lifecycle => Some(reason.unwrap_or_default()),
+                _ => None,
+            })
+            .last()
+    };
+    wait_for("the agent's lifecycle", || find().is_some()).await;
+    find().unwrap()
 }
 
 /// A team with one Claude agent "Writer" using `connection`; returns its id.
@@ -223,35 +217,20 @@ fn whole_store(s: &Served) -> String {
 async fn a_hosted_claude_agent_with_a_connection_gets_its_key_in_its_environment_and_nowhere_else()
 {
     let (url, asked) = fake_gateway().await;
-    let (s, seen, _laptop) = hosted_with_gateway(&url).await;
+    let (s, _laptop) = hosted_with_gateway(&url).await;
     let id = claude_team(&s, true, &folder(&s), Some("conn-1")).await;
-    let (status, body) = signed(
-        &s.router,
-        "POST",
-        &format!("/api/teams/{id}/start"),
-        Some(json!({ "request_id": rid() })),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
     let w = seat(&id, "w");
-    wait_for("the agent runs", || {
-        lifecycle(&s.st, &w) == Some(SeatLifecycle::Running)
-    })
-    .await;
+    // A real start: the key is read once, sent with the launch, and the launch fails on the computer.
+    start_signed(&s, &id).await;
+    reason_for(&s, &w, SeatLifecycle::Attention).await;
     assert_eq!(
         asked.lock().unwrap().clone(),
         ["conn-1"],
         "read once, for its own connection, with a signed request"
     );
-    let launches = seen.lock().unwrap().clone();
+    let params = launch_params(&s, &id, "laptop").await.unwrap();
     assert_eq!(
-        launches.len(),
-        1,
-        "{:?}",
-        launches.iter().map(|(s, _)| s).collect::<Vec<_>>()
-    );
-    assert_eq!(
-        launches[0].1,
+        params.env.0,
         vec![("ANTHROPIC_API_KEY".to_string(), KEY.to_string())],
         "the key is in the agent's environment"
     );
@@ -276,46 +255,17 @@ async fn a_hosted_claude_agent_with_a_connection_gets_its_key_in_its_environment
 async fn a_hosted_opencode_agent_with_an_openrouter_connection_gets_the_key_as_openrouter_api_key()
 {
     let (url, asked) = fake_gateway().await;
-    let mut s = serve_hosted().await;
-    s.st = s.st.clone().with_gateway(controld::gateway::Gateway::new(
-        url,
-        USER.to_string(),
-        Arc::new(SECRET.to_vec()),
-    ));
-    s.router = controld::app(s.st.clone(), None);
-    let (seen, models): (Seen, _) = Default::default();
-    let _laptop = connect_as(
-        &s,
-        "laptop",
-        vec![Arc::new(RecordingOpencode(
-            seen.clone(),
-            Arc::clone(&models),
-        ))],
-    )
-    .await;
+    let (s, _laptop) = hosted_with_gateway(&url).await;
     let id = team_of(&s, true, &folder(&s), Some("conn-or"), "opencode").await;
-    let (status, body) = signed(
-        &s.router,
-        "POST",
-        &format!("/api/teams/{id}/start"),
-        Some(json!({ "request_id": rid() })),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    let w = seat(&id, "w");
-    wait_for("the agent runs", || {
-        lifecycle(&s.st, &w) == Some(SeatLifecycle::Running)
-    })
-    .await;
+    let params = launch_params(&s, &id, "laptop").await.unwrap();
     assert_eq!(asked.lock().unwrap().clone(), ["conn-or"]);
-    let launches = seen.lock().unwrap().clone();
     assert_eq!(
-        launches[0].1,
+        params.env.0,
         vec![("OPENROUTER_API_KEY".to_string(), OR_KEY.to_string())],
         "only the key, under the name OpenCode reads"
     );
     assert_eq!(
-        models.lock().unwrap()[0].as_deref(),
+        params.model.as_deref(),
         Some("openrouter/deepseek/deepseek-chat-v3.1")
     );
     assert!(
@@ -327,29 +277,9 @@ async fn a_hosted_opencode_agent_with_an_openrouter_connection_gets_the_key_as_o
 #[tokio::test]
 async fn an_opencode_agent_with_an_anthropic_key_connection_does_not_start_and_says_why() {
     let (url, _asked) = fake_gateway().await;
-    let mut s = serve_hosted().await;
-    s.st = s.st.clone().with_gateway(controld::gateway::Gateway::new(
-        url,
-        USER.to_string(),
-        Arc::new(SECRET.to_vec()),
-    ));
-    s.router = controld::app(s.st.clone(), None);
-    let (seen, models): (Seen, _) = Default::default();
-    let _laptop = connect_as(
-        &s,
-        "laptop",
-        vec![Arc::new(RecordingOpencode(seen.clone(), models))],
-    )
-    .await;
+    let (s, _laptop) = hosted_with_gateway(&url).await;
     let id = team_of(&s, true, &folder(&s), Some("conn-1"), "opencode").await;
-    let (status, body) = signed(
-        &s.router,
-        "POST",
-        &format!("/api/teams/{id}/start"),
-        Some(json!({ "request_id": rid() })),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
+    start_signed(&s, &id).await;
     let w = seat(&id, "w");
     wait_for("the launch is refused in plain words", || {
         events(&s.st, &w).iter().any(|e| {
@@ -359,39 +289,18 @@ async fn an_opencode_agent_with_an_anthropic_key_connection_does_not_start_and_s
         })
     })
     .await;
-    assert!(seen.lock().unwrap().is_empty(), "never launched");
+    assert!(!launched(&s, &w), "never launched");
 }
 
 #[tokio::test]
 async fn a_connection_that_cannot_be_read_keeps_the_agent_from_starting_and_says_why() {
     let (url, _asked) = fake_gateway().await;
-    let (s, seen, _laptop) = hosted_with_gateway(&url).await;
+    let (s, _laptop) = hosted_with_gateway(&url).await;
     let id = claude_team(&s, true, &folder(&s), Some("conn-gone")).await;
-    let (status, body) = signed(
-        &s.router,
-        "POST",
-        &format!("/api/teams/{id}/start"),
-        Some(json!({ "request_id": rid() })),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
+    start_signed(&s, &id).await;
     let w = seat(&id, "w");
-    wait_for("the agent needs attention", || {
-        lifecycle(&s.st, &w) == Some(SeatLifecycle::Attention)
-    })
-    .await;
-    assert!(seen.lock().unwrap().is_empty(), "it never launched");
-    let reason = events(&s.st, &w)
-        .into_iter()
-        .filter_map(|e| match e.body {
-            EventBody::SeatLifecycleChanged {
-                lifecycle: SeatLifecycle::Attention,
-                reason,
-            } => reason,
-            _ => None,
-        })
-        .last()
-        .unwrap();
+    let reason = reason_for(&s, &w, SeatLifecycle::Attention).await;
+    assert!(!launched(&s, &w), "it never launched");
     assert!(
         reason.starts_with("Couldn't read the model connection for Writer: "),
         "{reason}"
@@ -405,35 +314,23 @@ async fn a_connection_that_cannot_be_read_keeps_the_agent_from_starting_and_says
 #[tokio::test]
 async fn a_hosted_agent_without_a_connection_uses_its_computers_own_sign_in() {
     let (url, asked) = fake_gateway().await;
-    let (s, seen, _laptop) = hosted_with_gateway(&url).await;
+    let (s, _laptop) = hosted_with_gateway(&url).await;
     let id = claude_team(&s, true, &folder(&s), None).await;
-    signed(
-        &s.router,
-        "POST",
-        &format!("/api/teams/{id}/start"),
-        Some(json!({ "request_id": rid() })),
-    )
-    .await;
-    wait_for("the agent runs", || {
-        lifecycle(&s.st, &seat(&id, "w")) == Some(SeatLifecycle::Running)
-    })
-    .await;
+    let params = launch_params(&s, &id, "laptop").await.unwrap();
     assert!(asked.lock().unwrap().is_empty(), "nothing to read");
-    assert!(seen.lock().unwrap()[0].1.is_empty());
+    assert!(params.env.0.is_empty());
 }
 
 #[tokio::test]
 async fn sculptured_on_your_own_computer_ignores_model_connections() {
     let s = serve().await;
-    let seen: Seen = Default::default();
-    let _runner = connect(&s, vec![Arc::new(RecordingClaude(seen.clone()))], None).await;
     let dir = tempfile::tempdir_in(s.home.path()).unwrap();
     let id = claude_team(&s, false, &dir.path().display().to_string(), Some("conn-1")).await;
-    start_team(&s, &id).await;
-    let launches = seen.lock().unwrap().clone();
-    assert_eq!(launches.len(), 1);
+    let params = launch_params(&s, &id, controld::hosts::LOCAL_HOST)
+        .await
+        .unwrap();
     assert!(
-        launches[0].1.is_empty(),
+        params.env.0.is_empty(),
         "local mode: the computer's own sign-in, no keys from anywhere"
     );
 }

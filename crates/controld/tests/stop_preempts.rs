@@ -1,103 +1,58 @@
 //! Safety stops never wait for a team action: Stop everything now, and an agent's hard stop, go ahead
-//! while Resume all holds the team's claim, and Resume all leaves the stopped agents stopped
-//! (Practice agents whose session resume waits at a gate the test opens; no model is called).
+//! while Resume all holds the team's claim, and Resume all leaves the stopped agents stopped. Live: the
+//! agents run on the real Claude Code CLI (no job; a pause asks for one short wrap-up). Resume all is
+//! held mid-way for real: the computer's link drops just before it, so it waits for the computer to
+//! come back (as it does after a Wi-Fi change) while the test stops agents.
 mod common;
+#[path = "common/live_controls.rs"]
+mod live_controls;
 use axum::http::StatusCode;
-use common::m2::{Served, call, connect, rid, seat, start_team};
+use common::m2::{Served, call, rid, seat, start_team};
 use common::pausing::*;
 use controld::store::ControlMode;
-use model::{Caps, SeatLifecycle};
+use live_controls::{Runner, wait_lifecycle, wait_paused};
+use model::SeatLifecycle;
 use serde_json::{Value, json};
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Semaphore;
 
-/// The Practice driver, except that resuming a session waits for a permit of `gate`.
-struct Gated {
-    gate: Arc<Semaphore>,
-}
-
-#[async_trait::async_trait]
-impl drivers::Driver for Gated {
-    fn name(&self) -> &'static str {
-        "stub"
-    }
-    fn capabilities(&self) -> Caps {
-        drivers::stub::StubDriver.capabilities()
-    }
-    async fn launch(
-        &self,
-        spec: drivers::LaunchSpec,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        drivers::stub::StubDriver.launch(spec).await
-    }
-    async fn resume(
-        &self,
-        spec: drivers::LaunchSpec,
-        native_id: &str,
-    ) -> Result<Box<dyn drivers::Session>, drivers::DriverError> {
-        self.gate
-            .acquire()
-            .await
-            .expect("the gate stays open")
-            .forget();
-        drivers::stub::StubDriver.resume(spec, native_id).await
-    }
-}
-
-/// A started team of `agents`, all paused, with a runner whose session resumes wait at the gate.
+/// A started live team of `agents`, all paused.
 async fn paused_team(name: &str, agents: &[&str]) -> (Served, Paused) {
     let s = common::m2::serve().await;
-    let gate = Arc::new(Semaphore::new(0));
-    let driver = Gated { gate: gate.clone() };
-    let runner = connect(&s, vec![Arc::new(driver)], None).await;
+    let runner = Runner::connect(&s).await;
     let id = team(&s, name, agents).await;
     start_team(&s, &id).await;
     let seats: Vec<String> = agents.iter().map(|a| seat(&id, a)).collect();
     ok(team_action(&s, &id, "pause", &rid()).await);
     wait_paused(&s, &seats.iter().collect::<Vec<_>>()).await;
-    let paused = Paused {
-        _runner: runner,
-        gate,
-        id,
-        seats,
-    };
+    let paused = Paused { runner, id, seats };
     (s, paused)
 }
 
 struct Paused {
-    _runner: hostd::supervisor::Supervisor,
-    gate: Arc<Semaphore>,
+    runner: Runner,
     id: String,
     seats: Vec<String>,
 }
 
-/// Starts Resume all in the background, and waits until it holds the claim with an agent starting.
+/// Drops the computer's link, then starts Resume all in the background; returns it once it holds the
+/// claim with an agent starting (its pause cleared, its relaunch waiting for the computer), and that
+/// agent.
 async fn resume_all_in_flight(
     s: &Served,
-    id: &str,
-) -> tokio::task::JoinHandle<(StatusCode, Value)> {
-    let (router, uri) = (s.router.clone(), format!("/api/teams/{id}/resume"));
+    p: &Paused,
+) -> (tokio::task::JoinHandle<(StatusCode, Value)>, String) {
+    p.runner.drop_link(s).await;
+    let (router, uri) = (s.router.clone(), format!("/api/teams/{}/resume", p.id));
     let resume =
         tokio::spawn(
             async move { call(&router, "POST", &uri, json!({ "request_id": rid() })).await },
         );
+    let starting = || p.seats.iter().find(|x| control_of(s, x).is_none()).cloned();
     common::wait_for("an agent resuming", || {
-        s.st.team_action_running(id)
-            && s.st
-                .store
-                .lock()
-                .unwrap()
-                .rig_snapshot(id)
-                .unwrap()
-                .is_some_and(|snap| {
-                    snap.seats
-                        .iter()
-                        .any(|v| v.lifecycle == SeatLifecycle::Launching)
-                })
+        s.st.team_action_running(&p.id) && starting().is_some()
     })
     .await;
-    resume
+    (resume, starting().unwrap())
 }
 
 async fn stop_now(s: &Served, id: &str) -> (StatusCode, Value) {
@@ -115,7 +70,7 @@ fn control_of(s: &Served, seat: &str) -> Option<ControlMode> {
 /// No agent of `seats` runs, now or a moment later (nothing started after the stop).
 async fn stays_stopped(s: &Served, seats: &[String]) {
     wait_lifecycle(s, &seats.iter().collect::<Vec<_>>(), SeatLifecycle::Stopped).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
     for x in seats {
         assert_eq!(
             common::lifecycle(&s.st, x),
@@ -126,13 +81,21 @@ async fn stays_stopped(s: &Served, seats: &[String]) {
 }
 
 #[tokio::test]
-async fn stop_everything_now_goes_ahead_during_resume_all_and_nothing_resumes_after_it() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_stop_everything_now_goes_ahead_during_resume_all_and_nothing_resumes_after_it() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let (s, p) = paused_team("preempt-team", &["a", "b"]).await;
-    let (gate, id, seats) = (&p.gate, &p.id, &p.seats);
-    let resume = resume_all_in_flight(&s, id).await;
+    let (resume, _) = resume_all_in_flight(&s, &p).await;
+    let Paused {
+        mut runner,
+        id,
+        seats,
+    } = p;
 
-    ok(stop_now(&s, id).await);
-    gate.add_permits(10);
+    ok(stop_now(&s, &id).await);
+    runner.reconnect(&s).await;
     let body = ok(resume.await.unwrap());
 
     assert_eq!(
@@ -146,8 +109,8 @@ async fn stop_everything_now_goes_ahead_during_resume_all_and_nothing_resumes_af
         assert_eq!(code, "already_stopping", "{seat}: {reason}");
         assert!(reason.contains("stopped meanwhile"), "{reason}");
     }
-    stays_stopped(&s, seats).await;
-    // The one that was starting is stopped for good; the other is still paused, its session kept.
+    stays_stopped(&s, &seats).await;
+    // Both are stopped for good: Stop everything now records a hard stop for each.
     let modes: Vec<_> = seats.iter().map(|x| control_of(&s, x)).collect();
     assert!(modes.contains(&Some(ControlMode::Hard)), "{modes:?}");
     assert!(
@@ -157,29 +120,27 @@ async fn stop_everything_now_goes_ahead_during_resume_all_and_nothing_resumes_af
         "{modes:?}"
     );
     assert!(
-        !s.st.team_action_running(id),
+        !s.st.team_action_running(&id),
         "Resume all let go of the team"
     );
 }
 
 #[tokio::test]
-async fn an_agents_hard_stop_goes_ahead_during_resume_all_and_only_it_stays_stopped() {
-    let (s, p) = paused_team("preempt-agent", &["a", "b"]).await;
-    let (gate, id, seats) = (&p.gate, &p.id, &p.seats);
-    let resume = resume_all_in_flight(&s, id).await;
-    let starting = seats
-        .iter()
-        .find(|x| common::lifecycle(&s.st, x) == Some(SeatLifecycle::Launching))
-        .unwrap()
-        .clone();
-    let other = seats.iter().find(|x| **x != starting).unwrap().clone();
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_an_agents_hard_stop_goes_ahead_during_resume_all_and_only_it_stays_stopped() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (s, mut p) = paused_team("preempt-agent", &["a", "b"]).await;
+    let (resume, starting) = resume_all_in_flight(&s, &p).await;
+    let other = p.seats.iter().find(|x| **x != starting).unwrap().clone();
 
     let stop = control(&s, &starting, "hard");
     let (status, body) = tokio::time::timeout(Duration::from_secs(5), stop)
         .await
         .expect("an agent's hard stop does not wait for Resume all");
     assert_eq!(status, StatusCode::OK, "{body}");
-    gate.add_permits(10);
+    p.runner.reconnect(&s).await;
     let body = ok(resume.await.unwrap());
 
     assert_eq!(
@@ -192,20 +153,26 @@ async fn an_agents_hard_stop_goes_ahead_during_resume_all_and_only_it_stays_stop
     wait_lifecycle(&s, &[&other], SeatLifecycle::Running).await;
 }
 
+/// While a team action holds the team (here the claim is taken directly, as Resume all takes it), a
+/// second one is refused in plain words.
 #[tokio::test]
 async fn another_team_action_is_refused_in_plain_words_while_one_runs() {
-    let (s, p) = paused_team("preempt-busy", &["a", "b"]).await;
-    let (gate, id, seats) = (&p.gate, &p.id, &p.seats);
-    let resume = resume_all_in_flight(&s, id).await;
-    let (status, body) = team_action(&s, id, "pause", &rid()).await;
-    assert_eq!(status, StatusCode::CONFLICT, "{body}");
-    assert_eq!(body["error"]["code"], "team_busy", "{body}");
-    gate.add_permits(10);
-    ok(resume.await.unwrap());
-    wait_lifecycle(
-        &s,
-        &seats.iter().collect::<Vec<_>>(),
-        SeatLifecycle::Running,
-    )
-    .await;
+    let s = common::m2::serve().await;
+    let id = team(&s, "preempt-busy", &["a", "b"]).await;
+    let held = s.st.try_begin_team_action(&id, s.st.stop_count());
+    assert!(held.is_some(), "the team is free");
+    for action in ["pause", "resume"] {
+        let (status, body) = team_action(&s, &id, action, &rid()).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{action}: {body}");
+        assert_eq!(body["error"]["code"], "team_busy", "{action}: {body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .is_some_and(|m| m.starts_with("Another team action is running")),
+            "{body}"
+        );
+    }
+    drop(held);
+    let body = ok(team_action(&s, &id, "pause", &rid()).await);
+    assert!(affected(&body).is_empty(), "free again: {body}");
 }
