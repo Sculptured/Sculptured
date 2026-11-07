@@ -60,6 +60,25 @@ async fn served_with(base: Option<&str>) -> common::m2::Served {
 }
 
 #[tokio::test]
+async fn suite_links_open_the_configured_arena() {
+    use tower::ServiceExt;
+    let s = served_with(Some("http://127.0.0.1:14555")).await;
+    let request = axum::http::Request::builder()
+        .uri("/api/arena/suite-page/suite-1")
+        .header(header::HOST, "test")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let response = s.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), 307);
+    assert_eq!(
+        response.headers()[header::LOCATION],
+        "http://127.0.0.1:14555/suites/suite-1"
+    );
+    let (status, _) = common::m2::get(&s.router, "/api/arena/suite-page/a%2Fb").await;
+    assert_eq!(status, 404);
+}
+
+#[tokio::test]
 async fn forwards_paths_queries_and_bodies_to_arenad() {
     let s = served_with(Some(&stub_arenad().await)).await;
     let (st, v) = common::m2::get(&s.router, "/api/arena/health").await;

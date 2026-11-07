@@ -13,6 +13,36 @@ import { DRAFT_ONLY, mockProgress } from './fixtures/progress-api';
  */
 
 const SHOTS = process.env.LAYOUT_SHOTS;
+
+for (const width of [1440, 390]) {
+  test(`Control room suite reports at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const answers: Record<string, unknown> = {
+        '/api/control/overview': { at_ms: Date.now(), teams: [] },
+        '/api/arena/runs': [],
+        '/api/arena/suites': [{ id: 's1', name: 'Retail safety', team: { name: 'Support team' }, tasks: ['a', 'b'], repeats: 2, status: 'finished', runs: 4, ended: 4, passed: 3 }],
+        '/api/arena/suites/s1': { summary: { runs: 4, ended: 4, pass_rate: 0.75, safety_violations: 1 } },
+      };
+      await route.fulfill({ status: path in answers ? 200 : 404, json: answers[path] ?? {} });
+    });
+    await page.goto('/control');
+    if (width === 390) await page.getByRole('combobox', { name: 'Pane', exact: true }).selectOption({ label: 'Test suites' });
+    const tab = page.getByRole('tab', { name: /Test suites/ });
+    if (await tab.isVisible()) await tab.click();
+    const table = page.getByRole('table', { name: 'Test suites' });
+    await expect(table).toBeVisible();
+    await expect(table).toContainText('75%');
+    await expect(table).toContainText('4 / 4');
+    const safety = await table.locator('td').last().boundingBox();
+    expect(safety!.x + safety!.width).toBeLessThanOrEqual(width);
+    await expect(table.getByRole('link', { name: 'Retail safety' })).toHaveAttribute('href', '/api/arena/suite-page/s1');
+    await noPageScrollX(page);
+    await shot(page, `control-suites-${width}`);
+  });
+}
+
 const WIDTHS = [
   { w: 1440, h: 900 },
   { w: 900, h: 900 },

@@ -81,29 +81,4 @@ export function ArenaRunsPane() {
   );
 }
 
-export const SUITES_MISSING = 'Test suites are not available in this Arena yet. They show here, scenario by scenario, once Arena has suites.';
-
-export function SuitesPane() {
-  const { suites } = useOrg();
-  if (!suites) return <p className="ctl-empty">Reading Arena's test suites…</p>;
-  if ('missing' in suites) return <p className="ctl-empty">○ {SUITES_MISSING}</p>;
-  if ('error' in suites) return <p className="ctl-empty">Arena's test suites could not be read: {suites.error}</p>;
-  if (suites.rows.length === 0) return <p className="ctl-empty">No test suites yet.</p>;
-  return (
-    <table className="ctl-table" aria-label="Test suites">
-      <thead><tr><th scope="col">Suite</th><th scope="col">Team</th><th scope="col">Status</th><th scope="col" className="ctl-num">Scenarios × repeats</th><th scope="col" className="ctl-num">Pass rate</th><th scope="col" className="ctl-num">Safety violations</th></tr></thead>
-      <tbody>
-        {suites.rows.map((s) => (
-          <tr key={s.id} className={s.safety_violations ? 'is-abnormal' : undefined}>
-            <td className="ctl-mono">{s.name ?? s.id}</td>
-            <td>{s.team ?? 'unknown'}</td>
-            <td>{s.status ?? 'unknown'}</td>
-            <td className="ctl-num">{s.tasks != null && s.repeats != null ? `${s.tasks} × ${s.repeats}` : 'unknown'}</td>
-            <td className="ctl-num">{s.pass_rate != null ? `${Math.round(s.pass_rate * 100)}%` : 'unknown'}</td>
-            <td className={`ctl-num${s.safety_violations ? ' pl-abn' : ''}`}>{s.safety_violations ?? 'unknown'}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
+export { SuitesPane, SUITES_MISSING } from './SuitesPane';

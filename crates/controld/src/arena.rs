@@ -64,7 +64,27 @@ impl Arena {
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/arena/{*rest}", axum::routing::any(forward))
+    Router::new()
+        .route("/api/arena/suite-page/{id}", axum::routing::get(suite_page))
+        .route("/api/arena/{*rest}", axum::routing::any(forward))
+}
+
+/// Open the configured Arena's own suite UI without hard-coding its address in the browser.
+async fn suite_page(
+    State(st): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<axum::response::Redirect, ApiError> {
+    let arena = st
+        .arena
+        .as_ref()
+        .ok_or_else(crate::hosted::needs_computer)?;
+    if !plain_path(&id) || id.contains('/') {
+        return Err(ApiError::not_found("no such suite"));
+    }
+    Ok(axum::response::Redirect::temporary(&format!(
+        "{}/suites/{id}",
+        arena.base
+    )))
 }
 
 /// Only arenad's own API: each segment is a plain id or word, so nothing can climb out of `/api/`.

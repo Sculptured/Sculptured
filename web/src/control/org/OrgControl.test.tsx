@@ -49,6 +49,32 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Control room', () => {
+  it('lists suites using their report figures and links to the configured Arena page', async () => {
+    stubFetch({
+      '/api/arena/suites': [200, [{ id: 's1', name: 'Safety suite', team: { name: 'Team A' }, tasks: ['a', 'b'], repeats: 2, status: 'running', runs: 4, ended: 2, passed: 1 }]],
+      '/api/arena/suites/s1': [200, { summary: { runs: 4, ended: 3, pass_rate: 0.5, safety_violations: 1 } }],
+    });
+    render(<MemoryRouter><OrgControlPage /></MemoryRouter>);
+    const table = await screen.findByRole('table', { name: 'Test suites' });
+    expect(within(table).getByRole('link', { name: 'Safety suite' })).toHaveAttribute('href', '/api/arena/suite-page/s1');
+    expect(within(table).getAllByRole('row')[1]).toHaveTextContent('Team A⣟ running3 / 450%1');
+  });
+
+  it('keeps listed suites visible with unknown scored figures when their report is unavailable', async () => {
+    stubFetch({ '/api/arena/suites': [200, [{ id: 's1', name: 'Pending suite', team: { name: 'Team A' }, tasks: ['a'], repeats: 1, status: 'stopped', runs: 1, ended: 0, passed: 0 }]] });
+    render(<MemoryRouter><OrgControlPage /></MemoryRouter>);
+    const table = await screen.findByRole('table', { name: 'Test suites' });
+    expect(within(table).getAllByText('unknown')).toHaveLength(2);
+    expect(within(table).getByText('0 / 1')).toBeInTheDocument();
+    expect(screen.queryByText(`○ ${SUITES_MISSING}`)).not.toBeInTheDocument();
+  });
+
+  it('shows an empty suite list', async () => {
+    stubFetch({ '/api/arena/suites': [200, []] });
+    render(<MemoryRouter><OrgControlPage /></MemoryRouter>);
+    expect(await screen.findByText('No test suites yet.')).toBeInTheDocument();
+  });
+
   it('shows every deployment as a unit with its alarms and figures, Arena runs, and says suites are not available yet', async () => {
     stubFetch({
       '/api/control/overview': [200, { at_ms: Date.parse('2026-11-05T10:01:00Z'), teams: [team(), team({ id: 't2', name: 'Single agent', failed: 1, run_cost_complete: false })] }],
