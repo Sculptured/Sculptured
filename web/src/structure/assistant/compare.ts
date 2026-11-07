@@ -38,8 +38,13 @@ function agentDetails(was: DraftAgent, now: DraftAgent, groupName: (id: string |
   if (was.advanced.model !== now.advanced.model) out.push(`model: ${was.advanced.model ?? 'default'} → ${now.advanced.model ?? 'default'}`);
   if (was.group_id !== now.group_id) out.push(`group: ${groupName(was.group_id)} → ${groupName(now.group_id)}`);
   if (was.folder !== now.folder) out.push('folder');
-  if (was.advanced.check !== now.advanced.check) out.push('check');
-  if (was.advanced.token_limit?.tokens !== now.advanced.token_limit?.tokens) out.push('token limit');
+  return [...out, ...checkAndLimitChanges(was.advanced, now.advanced)];
+}
+
+function checkAndLimitChanges(was: DraftAgent['advanced'], now: DraftAgent['advanced']): string[] {
+  const out: string[] = [];
+  if (was.check !== now.check) out.push('check');
+  if (was.token_limit?.tokens !== now.token_limit?.tokens) out.push('token limit');
   return out;
 }
 
