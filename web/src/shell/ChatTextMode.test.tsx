@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
 import { ChatTextMode, ChatTextModeButton } from './ChatTextMode';
-import { Composer, useAgentControls } from './AgentControls';
+import { useAgentControls } from './AgentControls';
+import { Composer } from './Composer';
 import { seatView } from '../test-fixtures';
 import { api } from '../api';
 

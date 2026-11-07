@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../api';
 import type { RefObject } from 'react';
-import { AgentActions, Composer, useAgentControls } from './AgentControls';
+import { AgentActions, useAgentControls } from './AgentControls';
+import { Composer } from './Composer';
 import { seatView } from '../test-fixtures';
 import type { SeatView } from '../generated/SeatView';
 
