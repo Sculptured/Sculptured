@@ -18,30 +18,29 @@ type Action = { rig: string | null; msg: StreamMsg } | { connected: boolean } | 
 function teamsReduce(all: All, a: Action): All {
   // Many events at once: one new state, so one redraw.
   if ('batch' in a) return a.batch.reduce(teamsReduce, all);
-  if ('connected' in a) {
-    let changed = all.connected !== a.connected;
-    const teams: Teams = {};
-    for (const [rig, t] of Object.entries(all.teams)) {
-      teams[rig] = t.connected === a.connected ? t : { ...t, connected: a.connected };
-      changed ||= teams[rig] !== t;
-    }
-    return changed ? { connected: a.connected, teams } : all;
-  }
+  if ('connected' in a) return mapTeams(all, (t) => t.connected === a.connected ? t : { ...t, connected: a.connected }, a.connected);
   // A host event concerns every team (an events-lost gap counts for each).
   if (a.rig === null) {
-    let changed = false;
-    const teams: Teams = {};
-    for (const [rig, t] of Object.entries(all.teams)) {
+    return mapTeams(all, (t) => {
       const state = reduce(t.state, a.msg);
-      teams[rig] = state === t.state ? t : { ...t, state };
-      changed ||= state !== t.state;
-    }
-    return changed ? { ...all, teams } : all;
+      return state === t.state ? t : { ...t, state };
+    });
   }
   const prev = all.teams[a.rig] ?? { state: emptyState, connected: all.connected };
   // A team's own snapshot means it is connected, even before the stream is ready.
   const connected = prev.connected || a.msg.kind === 'snapshot';
   return { ...all, teams: { ...all.teams, [a.rig]: { state: reduce(prev.state, a.msg), connected } } };
+}
+
+/** Preserve identities when a broadcast leaves every team unchanged. */
+function mapTeams(all: All, update: (team: TeamStream) => TeamStream, connected = all.connected): All {
+  let changed = all.connected !== connected;
+  const teams: Teams = {};
+  for (const [rig, team] of Object.entries(all.teams)) {
+    teams[rig] = update(team);
+    changed ||= teams[rig] !== team;
+  }
+  return changed ? { connected, teams } : all;
 }
 
 /** How often the team list is refreshed, to find teams started elsewhere. */
@@ -181,14 +180,19 @@ export function activityBySeat(teams: Teams, hist: Record<string, EventRecord[]>
     for (const s of t.state.snapshot?.rig.seats ?? []) {
       const feed = t.state.feed[s.id] ?? NONE;
       const h = hist[s.id] ?? NONE;
-      const hit = cache.get(s.id);
-      const activity = hit && hit.feed === feed && hit.h === h ? hit.activity : activityFor(feed, h);
-      if (activity !== hit?.activity) cache.set(s.id, { feed, h, activity });
+      const activity = cachedActivity(cache, s.id, feed, h);
       out[s.id] = activity;
       changed ||= previous[s.id] !== activity;
     }
   }
   return changed || Object.keys(previous).length !== Object.keys(out).length ? out : previous;
+}
+
+function cachedActivity(cache: Map<string, Cached>, id: string, feed: EventRecord[], h: EventRecord[]): AgentActivity {
+  const hit = cache.get(id);
+  const activity = hit && hit.feed === feed && hit.h === h ? hit.activity : activityFor(feed, h);
+  if (activity !== hit?.activity) cache.set(id, { feed, h, activity });
+  return activity;
 }
 
 const NONE: EventRecord[] = [];
