@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { APPEARANCE_CHANGED, APPEARANCE_KEY, DEFAULT_APPEARANCE, FONTS, LOOKS, MODES, applyAppearance, readAppearance, saveAppearance, type Appearance, type ColorMode, type Look } from '../appearance';
 import { Btn } from './ui';
@@ -7,26 +7,15 @@ const OPEN_EVENT = 'sculptured:appearance';
 /** Opens the Appearance dialog from elsewhere (the command palette). */
 export const openAppearance = () => window.dispatchEvent(new Event(OPEN_EVENT));
 
-/** The Appearance dialog, and its "Aa" button unless `trigger` is false (the app menu opens it then). */
-export function AppearanceControl({ trigger: showTrigger = true }: { trigger?: boolean } = {}) {
+/** The saved appearance, applied as it changes and kept in step with other tabs and the command palette. */
+function useAppearance() {
   const [value, setValue] = useState(readAppearance);
-  const [open, setOpen] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const dialog = useRef<HTMLDivElement>(null);
-  const close = () => { setOpen(false); trigger.current?.focus(); };
   const update = (patch: Partial<Appearance>) => {
     const next = { ...value, ...patch };
     setValue(next);
     saveAppearance(next);
   };
-  useEffect(() => {
-    applyAppearance(value);
-  }, [value]);
-  useEffect(() => {
-    const show = () => setOpen(true);
-    window.addEventListener(OPEN_EVENT, show);
-    return () => window.removeEventListener(OPEN_EVENT, show);
-  }, []);
+  useEffect(() => { applyAppearance(value); }, [value]);
   useEffect(() => {
     const sync = (e: StorageEvent) => { if (e.key === APPEARANCE_KEY || e.key === null) setValue(readAppearance()); };
     // The command palette saves through appearance.ts; follow it so the dialog never shows a stale choice.
@@ -35,31 +24,56 @@ export function AppearanceControl({ trigger: showTrigger = true }: { trigger?: b
     window.addEventListener(APPEARANCE_CHANGED, changed);
     return () => { window.removeEventListener('storage', sync); window.removeEventListener(APPEARANCE_CHANGED, changed); };
   }, []);
+  return { value, update };
+}
+
+/** Keep app-wide navigation and execution shortcuts out of the dialog; Escape closes it; Tab stays inside it. */
+function dialogKeys(dialog: RefObject<HTMLDivElement | null>, close: () => void) {
+  return (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab') e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Tab') trapTab(e, dialog.current!);
+  };
+}
+
+function trapTab(e: KeyboardEvent, root: HTMLElement) {
+  const controls = [...root.querySelectorAll<HTMLElement>('*')].filter(el => el.matches('button, select, input') && !el.hasAttribute('disabled'));
+  const first = controls[0], last = controls[controls.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+type DialogProps = { value: Appearance; update: (patch: Partial<Appearance>) => void; close: () => void };
+
+function AppearanceDialog({ value, update, close }: DialogProps) {
+  const dialog = useRef<HTMLDivElement>(null);
+  useEffect(() => { dialog.current?.querySelector<HTMLButtonElement>('button')?.focus(); }, []);
+  return createPortal(
+    <div className="overlay appearance-overlay" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}>
+      <div className="panel appearance-dialog" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="appearance-title" onKeyDown={dialogKeys(dialog, close)}>
+        <div className="panel-bar"><h2 id="appearance-title" className="panel-title">Appearance</h2><span className="panel-rule" /><Btn variant="ghost" icon="x" iconOnly aria-label="Close appearance" onClick={close} /></div>
+        <AppearanceBody value={value} update={update} />
+        <div className="appearance-foot"><Btn variant="ghost" onClick={() => update(DEFAULT_APPEARANCE)}>Reset defaults</Btn><Btn variant="primary" onClick={close}>Done</Btn></div>
+      </div>
+    </div>, document.body);
+}
+
+/** The Appearance dialog, and its "Aa" button unless `trigger` is false (the app menu opens it then). */
+export function AppearanceControl({ trigger: showTrigger = true }: { trigger?: boolean } = {}) {
+  const { value, update } = useAppearance();
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const close = () => { setOpen(false); trigger.current?.focus(); };
   useEffect(() => {
-    if (open) dialog.current?.querySelector<HTMLButtonElement>('button')?.focus();
-  }, [open]);
+    const show = () => setOpen(true);
+    window.addEventListener(OPEN_EVENT, show);
+    return () => window.removeEventListener(OPEN_EVENT, show);
+  }, []);
   return <>
     {showTrigger && <Btn ref={trigger} variant="ghost" className="appearance-trigger" aria-label="Appearance" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)} tip="Look, font and text size">
       <span aria-hidden="true">Aa</span>
     </Btn>}
-    {open && createPortal(
-      <div className="overlay appearance-overlay" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}>
-        <div className="panel appearance-dialog" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="appearance-title" onKeyDown={e => {
-          // Keep app-wide navigation and execution shortcuts out of this dialog.
-          if (e.key !== 'Tab') e.stopPropagation();
-          if (e.key === 'Escape') { e.preventDefault(); close(); }
-          if (e.key === 'Tab') {
-            const controls = [...dialog.current!.querySelectorAll<HTMLElement>('*')].filter(el => el.matches('button, select, input') && !el.hasAttribute('disabled'));
-            const first = controls[0], last = controls[controls.length - 1];
-            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-          }
-        }}>
-          <div className="panel-bar"><h2 id="appearance-title" className="panel-title">Appearance</h2><span className="panel-rule" /><Btn variant="ghost" icon="x" iconOnly aria-label="Close appearance" onClick={close} /></div>
-          <AppearanceBody value={value} update={update} />
-          <div className="appearance-foot"><Btn variant="ghost" onClick={() => update(DEFAULT_APPEARANCE)}>Reset defaults</Btn><Btn variant="primary" onClick={close}>Done</Btn></div>
-        </div>
-      </div>, document.body)}
+    {open && <AppearanceDialog value={value} update={update} close={close} />}
   </>;
 }
 

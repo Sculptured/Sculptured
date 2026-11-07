@@ -61,6 +61,50 @@ export function SignInAlert() {
   return <span className="tone-amber tb-alert" data-tip={said}><span aria-hidden="true">▲</span><span className="sr-only"> {said}</span></span>;
 }
 
+const nameOf = (cli: string) => LABEL[cli] ?? cli;
+
+function WindowLine({ w, now }: { w: PlanWindow; now: number }) {
+  return (
+    <li className={tone(w.used_percent)}>
+      {WINDOW[w.name] ?? w.name.replace(/_/g, ' ')}: {w.used_percent === null ? 'unknown' : `${Math.round(w.used_percent)}% used`}
+      {w.resets_at !== null && <span className="muted"> · resets in {span(w.resets_at * 1000 - now)}</span>}
+      {w.used_percent !== null && w.used_percent >= HOLD && <> · new work held</>}
+    </li>
+  );
+}
+
+function PlanWindows({ cli, u, now }: { cli: string; u: PlanUsageView | undefined; now: number }) {
+  const ws = live(u, now);
+  return (
+    <ul className="plan-windows" aria-label={`${nameOf(cli)} plan usage`}>
+      {!u && <li className="muted">Plan usage unknown: no {nameOf(cli)} session has reported it yet.</li>}
+      {ws.map((w) => <WindowLine key={w.name} w={w} now={now} />)}
+      {u && ws.length === 0 && <li className="muted">Every reported window has reset since; waiting for a new report.</li>}
+      {u?.usage.credits && <li>Credits: {u.usage.credits} (use past the limit spends them)</li>}
+      {u && (
+        <li className="muted">
+          Reported by the CLI {span(now - u.observed_ms)} ago
+          {u.source === 'codex-session-files' ? ' (Codex session files; counts use outside Sculptured)' : ' in an agent session'}
+        </li>
+      )}
+    </ul>
+  );
+}
+
+function CliRow({ c, started, usage, now, signIn }: { c: CliStatus; started: LoginStarted | undefined; usage: PlanUsageView[]; now: number; signIn: (name: string) => void }) {
+  const unsigned = c.signed_in !== true;
+  return (
+    <li>
+      <strong>{nameOf(c.name)}</strong>: {word(c)}
+      {c.version && <span className="muted"> · {c.version}</span>}
+      {c.installed && unsigned && <>{' '}<Btn size="sm" onClick={() => signIn(c.name)}>Sign in</Btn></>}
+      {started && unsigned && <CliSignInSteps cli={c.name} started={started} />}
+      {!c.installed && <CliInstall cli={c.name} />}
+      <PlanWindows cli={c.name} u={usage.find((x) => x.usage.provider === c.name)} now={now} />
+    </li>
+  );
+}
+
 /** Whether this computer's Claude Code and Codex CLIs are signed in and how much of each plan is used
  *  (as the CLIs report it), with sign-in from the browser. The CLI runs its own sign-in (it opens the
  *  system browser); Sculptured stores no credentials. Shown on the Account and usage page. */
@@ -82,42 +126,7 @@ export function CliAccounts() {
   return (
     <div className="cli-accounts" data-ready={clis.every((c) => c.signed_in === true)}>
       <ul aria-label="Agent accounts">
-        {clis.map((c) => {
-          const u = usage.find((x) => x.usage.provider === c.name);
-          const ws = live(u, now);
-          return (
-            <li key={c.name}>
-              <strong>{LABEL[c.name] ?? c.name}</strong>: {word(c)}
-              {c.version && <span className="muted"> · {c.version}</span>}
-              {c.installed && c.signed_in !== true && (
-                <>
-                  {' '}
-                  <Btn size="sm" onClick={() => signIn(c.name)}>Sign in</Btn>
-                </>
-              )}
-              {started[c.name] && c.signed_in !== true && <CliSignInSteps cli={c.name} started={started[c.name]} />}
-              {!c.installed && <CliInstall cli={c.name} />}
-              <ul className="plan-windows" aria-label={`${LABEL[c.name] ?? c.name} plan usage`}>
-                {!u && <li className="muted">Plan usage unknown: no {LABEL[c.name] ?? c.name} session has reported it yet.</li>}
-                {ws.map((w) => (
-                  <li key={w.name} className={tone(w.used_percent)}>
-                    {WINDOW[w.name] ?? w.name.replace(/_/g, ' ')}: {w.used_percent === null ? 'unknown' : `${Math.round(w.used_percent)}% used`}
-                    {w.resets_at !== null && <span className="muted"> · resets in {span(w.resets_at * 1000 - now)}</span>}
-                    {w.used_percent !== null && w.used_percent >= HOLD && <> · new work held</>}
-                  </li>
-                ))}
-                {u && ws.length === 0 && <li className="muted">Every reported window has reset since; waiting for a new report.</li>}
-                {u?.usage.credits && <li>Credits: {u.usage.credits} (use past the limit spends them)</li>}
-                {u && (
-                  <li className="muted">
-                    Reported by the CLI {span(now - u.observed_ms)} ago
-                    {u.source === 'codex-session-files' ? ' (Codex session files; counts use outside Sculptured)' : ' in an agent session'}
-                  </li>
-                )}
-              </ul>
-            </li>
-          );
-        })}
+        {clis.map((c) => <CliRow key={c.name} c={c} started={started[c.name]} usage={usage} now={now} signIn={signIn} />)}
       </ul>
       {error && <p className="tone-red" role="alert">{error}</p>}
     </div>
