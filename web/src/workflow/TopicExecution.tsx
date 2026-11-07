@@ -26,6 +26,12 @@ function WaitFor({ task, run, deps, setDeps }: { task: WorkflowTask; run: Workfl
   return <fieldset><legend>Wait for topics</legend>{run.tasks.filter(t => t.input.id !== task.input.id).map(t => <label key={t.input.id}><input type="checkbox" checked={deps.includes(t.input.id)} onChange={e => setDeps(e.target.checked ? [...deps, t.input.id] : deps.filter(id => id !== t.input.id))} />{t.input.title}</label>)}</fieldset>;
 }
 
+function ExecutionNotes({ editable, error }: { editable: boolean; error: string }) {
+  return <>
+    {!editable && <small>Execution can only change before this topic receives its first assignment.</small>}{error && <DismissibleError>{error}</DismissibleError>}
+  </>;
+}
+
 export function TopicExecution({ task, run, active }: { task: WorkflowTask; run: WorkflowRun; active: boolean }) {
   const x = useTopicExecution(task, run);
   const editable = active && task.status === 'queued' && !task.assignment && task.history.length === 0;
@@ -39,6 +45,6 @@ export function TopicExecution({ task, run, active }: { task: WorkflowTask; run:
       {x.mode === 'dependent' && <WaitFor task={task} run={run} deps={x.deps} setDeps={x.setDeps} />}
       <button className="btn" disabled={x.mode === 'dependent' && !x.deps.length} onClick={() => void x.save()}>Save topic execution</button>
     </fieldset>
-    {!editable && <small>Execution can only change before this topic receives its first assignment.</small>}{x.error && <DismissibleError>{x.error}</DismissibleError>}
+    <ExecutionNotes editable={editable} error={x.error} />
   </section>;
 }

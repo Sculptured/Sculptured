@@ -37,19 +37,26 @@ function backTo(w: Workflow, id: string): string {
   return order.slice(0, Math.max(at, 0)).reverse().find((p) => Object.values(w.stages.find((s) => s.id === p)!.routes).includes(id)) ?? id;
 }
 
+type Builder = (s: WorkflowStage, base: WorkflowStage, forward: string | null, back: string | null, draft: TeamDraft) => WorkflowStage;
+
+const BUILDERS: Record<Exclude<StageType, 'agent'>, Builder> = {
+  check: (s, base, forward, back) => clean({ ...base, kind: 'check', command: s.command ?? 'npm test', timeout_s: s.timeout_s, routes: { passed: forward, failed: back } }),
+  human: (s, base, forward, back) => clean({ ...base, kind: 'human', prompt: s.prompt ?? 'Approve this item?', routes: { approve: forward, rework: back } }),
+  merge: (s, base, forward, back) => clean({ ...base, kind: 'merge', into: s.into, routes: { merged: forward, conflict: back } }),
+  panel: (s, base, forward, back, draft) => clean({ ...base, reviewers: s.reviewers?.length ? s.reviewers : eligible(draft).slice(0, 2), join: s.join, priority: s.priority, routes: { approved: forward, changes: back } }),
+};
+
+const asAgent: Builder = (s, base, _forward, _back, draft) =>
+  clean({ ...base, agent: s.agent || eligible(draft)[0] || '', workers: (s.kind ?? 'agent') === 'agent' && !s.reviewers?.length ? s.workers : undefined });
+
 /** The stage as `type`: that type's required fields filled with defaults, other types' fields cleared. Its
  *  first destination becomes the new type's way forward, so the design keeps its path; its way back never
  *  accepts the item. */
 export function asKind(s: WorkflowStage, type: StageType, draft: TeamDraft, back = backTo(draft.workflow!, s.id)): WorkflowStage {
   const forward = Object.values(s.routes).find((to) => to != null) ?? null;
   const base: WorkflowStage = { id: s.id, name: s.name, agent: '', routes: s.routes, max_rounds: s.max_rounds, on_limit: s.on_limit };
-  switch (type) {
-    case 'check': return clean({ ...base, kind: 'check', command: s.command ?? 'npm test', timeout_s: s.timeout_s, routes: { passed: forward, failed: back } });
-    case 'human': return clean({ ...base, kind: 'human', prompt: s.prompt ?? 'Approve this item?', routes: { approve: forward, rework: back } });
-    case 'merge': return clean({ ...base, kind: 'merge', into: s.into, routes: { merged: forward, conflict: back } });
-    case 'panel': return clean({ ...base, reviewers: s.reviewers?.length ? s.reviewers : eligible(draft).slice(0, 2), join: s.join, priority: s.priority, routes: { approved: forward, changes: back } });
-    default: return clean({ ...base, agent: s.agent || eligible(draft)[0] || '', workers: (s.kind ?? 'agent') === 'agent' && !s.reviewers?.length ? s.workers : undefined });
-  }
+  const build = type === 'agent' ? asAgent : BUILDERS[type] ?? asAgent;
+  return build(s, base, forward, back, draft);
 }
 
 /** A new stage of `type` after `from`: `from`'s first outcome now leads to it, and it leads where that went. */

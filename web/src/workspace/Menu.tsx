@@ -40,11 +40,17 @@ export function menuKeys(box: RefObject<HTMLElement | null>, nav: MenuNav) {
     const go = (n: number) => { e.preventDefault(); list[(n + list.length) % list.length]?.focus(); };
     const moves: Record<string, () => void> = { ArrowDown: () => go(at + 1), ArrowUp: () => go(at - 1), Home: () => go(0), End: () => go(list.length - 1) };
     if (moves[e.key] && list.length) return moves[e.key]();
-    if (e.key === 'ArrowRight' && nav.open && !nav.sub && document.activeElement?.hasAttribute('aria-haspopup')) { e.preventDefault(); nav.open(); }
-    else if (e.key === 'ArrowLeft' && nav.sub && nav.back) { e.preventDefault(); nav.back(); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (nav.sub && nav.back) nav.back(); else nav.dismiss(true); }
-    else if (e.key === 'Tab') nav.dismiss(false);
+    levelKey(e, nav);
   };
+}
+
+/** The keys that change menu level: → opens a submenu, ← or Esc goes back or closes, Tab leaves. */
+function levelKey(e: React.KeyboardEvent, nav: MenuNav) {
+  const inSub = nav.sub && nav.back;
+  if (e.key === 'ArrowRight' && nav.open && !nav.sub && document.activeElement?.hasAttribute('aria-haspopup')) { e.preventDefault(); nav.open(); }
+  else if (e.key === 'ArrowLeft' && inSub) { e.preventDefault(); nav.back!(); }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (inSub) nav.back!(); else nav.dismiss(true); }
+  else if (e.key === 'Tab') nav.dismiss(false);
 }
 
 /** A small popup menu of `role="menuitem"` buttons. Focuses its first enabled item when it opens. */

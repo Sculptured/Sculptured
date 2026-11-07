@@ -123,6 +123,16 @@ function useBodySlot(stack: Stack) {
   return slot;
 }
 
+type Extras = { stack: Stack; pane: PaneRef; type: ReturnType<ReturnType<typeof useWorkspace>['registry']['get']>; menu: boolean; editing: string | null; opener: RefObject<HTMLButtonElement | null>; close: (refocus: boolean) => void; setEditing: (id: string | null) => void };
+
+/** The pane's `⋯` menu and its inline settings, when open. */
+function StackExtras({ stack, pane, type, menu, editing, opener, close, setEditing }: Extras) {
+  return <>
+    {menu && <StackMenu stack={stack} pane={pane} opener={opener} close={close} edit={setEditing} />}
+    {type?.Settings && editing === pane.id && <SettingsPanel pane={pane} type={type} done={() => { setEditing(null); opener.current?.focus(); }} />}
+  </>;
+}
+
 /** One stack of tabbed panes: the tab strip with its `⋯` menu, inline settings, then the active body. */
 export function StackView({ stack }: { stack: Stack }) {
   const { registry, drag } = useWorkspace();
@@ -144,8 +154,7 @@ export function StackView({ stack }: { stack: Stack }) {
           <button ref={opener} type="button" className="ws-more" aria-label={`${titleOf(registry, pane)} options`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>⋯</button>
         )}
       </div>
-      {menu && pane && <StackMenu stack={stack} pane={pane} opener={opener} close={close} edit={setEditing} />}
-      {pane && type?.Settings && editing === pane.id && <SettingsPanel pane={pane} type={type} done={() => { setEditing(null); opener.current?.focus(); }} />}
+      {pane && <StackExtras stack={stack} pane={pane} type={type} menu={menu} editing={editing} opener={opener} close={close} setEditing={setEditing} />}
       {pane ? <div ref={slot} className="ws-body" /> : <p className="ws-empty">Empty. Use Add pane.</p>}
       {over && <DropOverlay zone={over} />}
     </section>

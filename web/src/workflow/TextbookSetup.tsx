@@ -26,6 +26,14 @@ function PreparedNote({ done }: { done: Done }) {
   return <div role="status"><p>{done.files} starter files prepared in <code>{done.folder}</code>.</p><p>In that folder, run:</p><pre>{done.commands.join('\n')}</pre><p>Add sources and teaching goals to Input, then start the team when ready. No source is preselected.</p></div>;
 }
 
+function SetupNotes({ folder, locked, done, error }: { folder: string | null | undefined; locked: boolean; done: Done | null; error: string }) {
+  return <>
+    {!folder && <p>Choose a project folder first.</p>}{locked && <p>Stop the team before preparing a folder.</p>}
+    {done && <PreparedNote done={done} />}
+    {error && <DismissibleError>{error}</DismissibleError>}
+  </>;
+}
+
 export function TextbookSetup({ draft, locked, edit }: { draft: TeamDraft; locked: boolean; edit?: (fn: (d: TeamDraft) => TeamDraft) => void }) {
   const { busy, error, done, prepare } = usePrepare(draft);
   const complete = done?.folder === draft.folder;
@@ -34,8 +42,6 @@ export function TextbookSetup({ draft, locked, edit }: { draft: TeamDraft; locke
     {edit && <ProjectFolder draft={draft} locked={locked || busy} edit={fn => { edit(d => { const result = fn(d); return 'draft' in result ? result.draft : result; }); return null; }} />}
     <p>Choose an empty project folder. Preparation adds the starter files; it does not run agents or choose a course. Existing textbook work stays in its current folder.</p>
     <button className="btn" disabled={locked || busy || !draft.folder || complete} onClick={() => void prepare()}>{busy ? 'Preparing…' : complete ? 'Starter prepared' : 'Prepare textbook folder'}</button>
-    {!draft.folder && <p>Choose a project folder first.</p>}{locked && <p>Stop the team before preparing a folder.</p>}
-    {complete && done && <PreparedNote done={done} />}
-    {error && <DismissibleError>{error}</DismissibleError>}
+    <SetupNotes folder={draft.folder} locked={locked} done={complete ? done : null} error={error} />
   </details>;
 }
