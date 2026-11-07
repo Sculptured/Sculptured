@@ -117,15 +117,17 @@ function KeyForm({ provider, onAdded }: { provider: ConnectionProvider; onAdded:
       <input id={`${ids}-name`} className="fld-input" value={name} placeholder={f.name} onChange={(e) => setName(e.target.value)} />
       <label className="fld-label" htmlFor={`${ids}-key`}>{f.keyLabel}</label>
       <input id={`${ids}-key`} className="fld-input" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => setKey(e.target.value)} />
-      {provider === 'openrouter' && (
-        <>
-          <label className="fld-label" htmlFor={`${ids}-model`}>Model</label>
-          <input id={`${ids}-model`} className="fld-input mono" value={model} placeholder={OPENROUTER_MODEL} spellCheck={false} aria-describedby={`${ids}-mhint`} onChange={(e) => setModel(e.target.value)} />
-          <p id={`${ids}-mhint`} className="fld-hint">Its name on OpenRouter, like {OPENROUTER_MODEL}. OpenCode runs it on the agent’s computer, which needs OpenCode installed.</p>
-        </>
-      )}
+      {provider === 'openrouter' && <OpenRouterModel ids={ids} model={model} setModel={setModel} />}
       {error && <p className="tone-red" role="alert">{error}</p>}
       <p><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save and check'}</button></p>
     </form>
   );
+}
+
+function OpenRouterModel({ ids, model, setModel }: { ids: string; model: string; setModel(value: string): void }) {
+  return <>
+    <label className="fld-label" htmlFor={`${ids}-model`}>Model</label>
+    <input id={`${ids}-model`} className="fld-input mono" value={model} placeholder={OPENROUTER_MODEL} spellCheck={false} aria-describedby={`${ids}-mhint`} onChange={(e) => setModel(e.target.value)} />
+    <p id={`${ids}-mhint`} className="fld-hint">Its name on OpenRouter, like {OPENROUTER_MODEL}. OpenCode runs it on the agent’s computer, which needs OpenCode installed.</p>
+  </>;
 }
