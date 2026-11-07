@@ -35,6 +35,11 @@ export const CHECK_LANE = 'check';
 
 const keysOf = (v: unknown): string[] => (Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : []);
 
+function toolStep(p: Record<string, unknown>): Pick<Step, 'kind' | 'label' | 'failed' | 'snapshot'> {
+  const wrote = keysOf(p.writes).length > 0 && p.error == null;
+  return { kind: wrote ? 'write' : 'read', label: typeof p.name === 'string' ? p.name : 'tool', failed: p.error != null, snapshot: savedParts(p).length > 0 };
+}
+
 function stepOf(e: Event): Pick<Step, 'kind' | 'label' | 'failed' | 'snapshot'> {
   const p = (e.payload ?? {}) as Record<string, unknown>;
   switch (e.kind) {
@@ -43,17 +48,15 @@ function stepOf(e: Event): Pick<Step, 'kind' | 'label' | 'failed' | 'snapshot'> 
     case 'model_call': return { kind: 'model', label: 'Model call', failed: false, snapshot: false };
     case 'handoff': return { kind: 'handoff', label: 'Hands work on', failed: false, snapshot: false };
     case 'check': return { kind: 'check', label: p.passed ? 'Check passed' : 'Check failed', failed: !p.passed, snapshot: false };
-    case 'tool_call': {
-      const wrote = keysOf(p.writes).length > 0 && p.error == null;
-      return {
-        kind: wrote ? 'write' : 'read',
-        label: typeof p.name === 'string' ? p.name : 'tool',
-        failed: p.error != null,
-        snapshot: savedParts(p).length > 0,
-      };
-    }
+    case 'tool_call': return toolStep(p);
     default: return { kind: 'start', label: e.kind, failed: false, snapshot: false };
   }
+}
+
+/** The lane an event belongs to: the check lane, or its agent's (made on first sight). */
+function laneFor(e: Event, checks: Step[], byAgent: Map<string, Step[]>): Step[] {
+  if (e.kind === 'check' || e.agent == null) return checks;
+  return byAgent.get(e.agent) ?? byAgent.set(e.agent, []).get(e.agent)!;
 }
 
 /**
@@ -70,7 +73,7 @@ export function layout(events: Event[], team: Team, startSeq: number | null = nu
   const checks: Step[] = [];
   let last = 0;
   for (const e of sorted) {
-    const lane = e.kind === 'check' || e.agent == null ? checks : (byAgent.get(e.agent) ?? byAgent.set(e.agent, []).get(e.agent)!);
+    const lane = laneFor(e, checks, byAgent);
     const prev = lane.length ? lane[lane.length - 1].to : e.kind === 'check' ? last : at(e);
     const to = Math.max(at(e), prev);
     lane.push({ seq: e.seq, ...stepOf(e), from: prev, to, inherited: startSeq != null && e.seq < startSeq });
@@ -130,40 +133,52 @@ export interface Summary {
   steps: number;
 }
 
+type Tally = { tokens: number; cost: number | null; ended: number; sources: string[]; written: Set<string>; steps: number };
+
+const COUNTED = new Set(['tool_call', 'model_call', 'handoff']);
+
+/** Add one agent's end report to the totals: tokens, dollars (null once any agent has none) and where the cost came from. */
+function tallyEnd(t: Tally, p: Record<string, unknown>) {
+  t.ended++;
+  t.tokens += typeof p.tokens === 'number' ? p.tokens : 0;
+  t.cost = t.cost != null && typeof p.cost_usd === 'number' ? t.cost + p.cost_usd : null;
+  if (typeof p.cost_source === 'string' && !t.sources.includes(p.cost_source)) t.sources.push(p.cost_source);
+}
+
+function tallyEvents(events: Event[], from: number): Tally {
+  const t: Tally = { tokens: 0, cost: 0, ended: 0, sources: [], written: new Set(), steps: 0 };
+  for (const e of events) {
+    if (e.seq < from) continue;
+    const p = (e.payload ?? {}) as Record<string, unknown>;
+    if (COUNTED.has(e.kind)) t.steps++;
+    if (e.kind === 'tool_call' && p.error == null) keysOf(p.writes).forEach((k) => t.written.add(k));
+    if (e.kind === 'agent_end') tallyEnd(t, p);
+  }
+  return t;
+}
+
+/** How long the branch has run, in seconds; null while its start or end is unknown. */
+function secondsOf(branch: Pick<Branch, 'created_at' | 'ended_at' | 'status'>, now: number) {
+  const start = Date.parse(branch.created_at);
+  const live = !branch.ended_at && branch.status === 'running';
+  const end = branch.ended_at ? Date.parse(branch.ended_at) : live ? now : NaN;
+  return { live, seconds: Number.isNaN(start) || Number.isNaN(end) ? null : (end - start) / 1000 };
+}
+
 /** Same arithmetic as arenad's compare: this branch's own events only (seq >= start_seq). */
 export function summarize(
   branch: Pick<Branch, 'start_seq' | 'created_at' | 'ended_at' | 'status'>,
   events: Event[],
   now: number = Date.now(),
 ): Summary {
-  const from = branch.start_seq ?? 0;
-  let tokens = 0;
-  let cost: number | null = 0;
-  let ended = 0;
-  const sources: string[] = [];
-  const written = new Set<string>();
-  let steps = 0;
-  for (const e of events) {
-    if (e.seq < from) continue;
-    const p = (e.payload ?? {}) as Record<string, unknown>;
-    if (e.kind === 'tool_call' || e.kind === 'model_call' || e.kind === 'handoff') steps++;
-    if (e.kind === 'tool_call' && p.error == null) keysOf(p.writes).forEach((k) => written.add(k));
-    if (e.kind !== 'agent_end') continue;
-    ended++;
-    tokens += typeof p.tokens === 'number' ? p.tokens : 0;
-    cost = cost != null && typeof p.cost_usd === 'number' ? cost + p.cost_usd : null;
-    if (typeof p.cost_source === 'string' && !sources.includes(p.cost_source)) sources.push(p.cost_source);
-  }
-  const start = Date.parse(branch.created_at);
-  const live = !branch.ended_at && branch.status === 'running';
-  const end = branch.ended_at ? Date.parse(branch.ended_at) : live ? now : NaN;
-  const seconds = Number.isNaN(start) || Number.isNaN(end) ? null : (end - start) / 1000;
+  const t = tallyEvents(events, branch.start_seq ?? 0);
+  const { live, seconds } = secondsOf(branch, now);
   return {
-    seconds, live, tokens,
-    cost_usd: ended === 0 ? null : cost,
-    cost_source: sources.length === 0 ? null : sources.length === 1 ? sources[0] : 'mixed',
-    rows_written: written.size,
-    steps,
+    seconds, live, tokens: t.tokens,
+    cost_usd: t.ended === 0 ? null : t.cost,
+    cost_source: t.sources.length === 0 ? null : t.sources.length === 1 ? t.sources[0] : 'mixed',
+    rows_written: t.written.size,
+    steps: t.steps,
   };
 }
 
@@ -193,6 +208,17 @@ export function branchNames(branches: Pick<Branch, 'id' | 'parent_id' | 'created
   return new Map(sorted.map((b) => [b.id, b.parent_id == null ? 'Original' : `Rerun ${++n}`]));
 }
 
+/** One agent's real changes: its instructions, its model, its kind. */
+function changeOf(a: AgentSpec, e: Change): Change {
+  const c: Change = {};
+  if (e.prompt != null && e.prompt.trim() !== a.prompt.trim()) c.prompt = e.prompt.trim();
+  const kindChanged = e.kind != null && e.kind !== (a.kind as AgentKind);
+  const m = e.model?.trim();
+  if (m != null && m !== (a.model ?? '') && (m !== '' || !kindChanged)) c.model = m;
+  if (kindChanged) c.kind = e.kind;
+  return c;
+}
+
 /**
  * Only fields that really changed. Prompts compare trimmed. A cleared model that was set is sent as ""
  * (explicit clear); blank on an unset model is no change. A mode change resets the model in arenad,
@@ -201,14 +227,7 @@ export function branchNames(branches: Pick<Branch, 'id' | 'parent_id' | 'created
 export function changedFields(agents: AgentSpec[], edits: Record<string, Change>): Record<string, Change> {
   const out: Record<string, Change> = {};
   for (const a of agents) {
-    const e = edits[a.id];
-    if (!e) continue;
-    const c: Change = {};
-    if (e.prompt != null && e.prompt.trim() !== a.prompt.trim()) c.prompt = e.prompt.trim();
-    const kindChanged = e.kind != null && e.kind !== (a.kind as AgentKind);
-    const m = e.model?.trim();
-    if (m != null && m !== (a.model ?? '') && (m !== '' || !kindChanged)) c.model = m;
-    if (kindChanged) c.kind = e.kind;
+    const c = edits[a.id] ? changeOf(a, edits[a.id]) : {};
     if (Object.keys(c).length) out[a.id] = c;
   }
   return out;

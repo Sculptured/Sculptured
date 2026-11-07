@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { arena } from './api';
-import { branchNames, costSource, diffHunks, dollars, jsonDiff } from './model';
+import { branchNames, costSource, diffHunks, dollars, jsonDiff, type StepKind } from './model';
 import { ARENA_PATH, runPath } from './paths';
 import { APPROXIMATE_NOTE, isApproximate, notComparedLine } from './restore';
 import { ApproximateMark, ErrorNote, StatusPill, pretty } from './shared';
@@ -27,17 +27,40 @@ function Metric({ label, a, b, fmt, lowerIsBetter = true }: { label: string; a: 
   );
 }
 
+const STEP_KIND: Record<string, StepKind> = { model_call: 'model', handoff: 'handoff', check: 'check', agent_end: 'end' };
+
+/** What a step is called in the list: a tool call reads or writes; the others have a word of their own. */
+function kindOfStep(ev: Event, p: Record<string, unknown>): StepKind {
+  if (ev.kind !== 'tool_call') return STEP_KIND[ev.kind] ?? 'start';
+  return Array.isArray(p.writes) && p.writes.length && p.error == null ? 'write' : 'read';
+}
+
+function endNote(p: Record<string, unknown>) {
+  return <p className="muted">{p.ok ? 'Finished' : 'Stopped with an error'}{typeof p.tokens === 'number' ? ` · ${p.tokens.toLocaleString()} tokens` : ''}{typeof p.seconds === 'number' ? ` · ${p.seconds.toFixed(1)} s` : ''}</p>;
+}
+
+/** The step's own detail: what the tool was given, the handoff note, or the model's reply. */
+function stepDetail(ev: Event, p: Record<string, unknown>): unknown {
+  if (ev.kind === 'tool_call') return p.args;
+  if (ev.kind === 'handoff') return p.note;
+  if (ev.kind !== 'model_call') return p;
+  return (p.response as { choices?: { message?: unknown }[] } | undefined)?.choices?.[0]?.message ?? p.response;
+}
+
+function StepBody({ ev, p }: { ev: Event; p: Record<string, unknown> }) {
+  if (ev.kind === 'agent_end') return endNote(p);
+  if (ev.kind === 'check') return <p className="muted">{p.passed ? '✓ The final world matches what the task expects.' : '✕ The final world does not match what the task expects.'}</p>;
+  return <pre className="tst-json">{pretty(stepDetail(ev, p))}</pre>;
+}
+
 function stepLine(ev: Event | undefined) {
   if (!ev) return <span className="muted">No step here: this branch had already ended.</span>;
   const p = (ev.payload ?? {}) as Record<string, unknown>;
-  const kind = ev.kind === 'tool_call' ? ((Array.isArray(p.writes) && p.writes.length && p.error == null) ? 'write' : 'read')
-    : ev.kind === 'model_call' ? 'model' : ev.kind === 'handoff' ? 'handoff' : ev.kind === 'check' ? 'check' : ev.kind === 'agent_end' ? 'end' : 'start';
+  const kind = kindOfStep(ev, p);
   return (
     <>
       <div><span aria-hidden="true">{KIND[kind].glyph}</span> <strong className="mono">{typeof p.name === 'string' ? p.name : KIND[kind].word}</strong> <span className="muted tst-small">step {ev.seq} · {ev.agent ?? 'check'}</span></div>
-      {ev.kind === 'agent_end' ? <p className="muted">{p.ok ? 'Finished' : 'Stopped with an error'}{typeof p.tokens === 'number' ? ` · ${p.tokens.toLocaleString()} tokens` : ''}{typeof p.seconds === 'number' ? ` · ${p.seconds.toFixed(1)} s` : ''}</p>
-        : ev.kind === 'check' ? <p className="muted">{p.passed ? '✓ The final world matches what the task expects.' : '✕ The final world does not match what the task expects.'}</p>
-        : <pre className="tst-json">{pretty(ev.kind === 'tool_call' ? p.args : ev.kind === 'handoff' ? p.note : ev.kind === 'model_call' ? (p.response as { choices?: { message?: unknown }[] } | undefined)?.choices?.[0]?.message ?? p.response : p)}</pre>}
+      <StepBody ev={ev} p={p} />
     </>
   );
 }
