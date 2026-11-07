@@ -75,17 +75,20 @@ export function agentState(seat: (Pick<SeatView, 'lifecycle' | 'activity'> & Par
         case 'working':
           return S.working;
         case 'idle':
-          // Its next message is held for a free slot: that is why it is idle, not a stuck handoff.
-          if (seat.slot_wait) return S.slot;
-          // Idle because its handoffs cannot go on by themselves: say so.
-          if (seat.handoff_stuck) return S.stuck;
-          return done ? S.done : S.idle;
+          return idleState(seat, done);
         default:
           return seat.handoff_stuck ? S.stuck : S.unknown;
       }
     default:
       return S[seat.lifecycle];
   }
+}
+
+function idleState(seat: Partial<Pick<SeatView, 'slot_wait' | 'handoff_stuck'>>, done: boolean): AgentState {
+  // A queued message waiting for capacity takes precedence over a stuck handoff.
+  if (seat.slot_wait) return S.slot;
+  if (seat.handoff_stuck) return S.stuck;
+  return done ? S.done : S.idle;
 }
 
 export function blockRank(key: StateKey): number {
