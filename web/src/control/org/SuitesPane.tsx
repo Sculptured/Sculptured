@@ -1,5 +1,5 @@
 import { useOrg } from './data';
-import { suitePage } from './suites';
+import { suiteFigures, suitePage } from './suites';
 import './suites.css';
 
 export const SUITES_MISSING = 'Test suites are not available in this Arena yet. They show here, scenario by scenario, once Arena has suites.';
@@ -14,16 +14,17 @@ export function SuitesPane() {
     <table className="ctl-table org-suites" aria-label="Test suites">
       <thead><tr><th scope="col">Suite</th><th scope="col">Team</th><th scope="col">Status</th><th scope="col" className="ctl-num">Runs done / total</th><th scope="col" className="ctl-num">Pass rate</th><th scope="col" className="ctl-num">Safety violations</th></tr></thead>
       <tbody>
-        {suites.rows.map((s) => (
-          <tr key={s.id} className={s.summary?.safety_violations ? 'is-abnormal' : undefined}>
+        {suites.rows.map((s) => {
+          const figures = suiteFigures(s);
+          return <tr key={s.id} className={figures.abnormal ? 'is-abnormal' : undefined}>
             <td data-label="Suite" className="ctl-mono"><a href={suitePage(s.id)}>{s.name}</a></td>
             <td data-label="Team">{s.team.name}</td>
             <td data-label="Status">{s.status === 'running' ? '⣟' : s.status === 'finished' ? '■' : '⊘'} {s.status}</td>
-            <td data-label="Runs done / total" className="ctl-num">{s.summary?.ended ?? s.ended} / {s.summary?.runs ?? s.runs}</td>
-            <td data-label="Pass rate" className="ctl-num">{s.summary?.pass_rate != null ? `${Math.round(s.summary?.pass_rate * 100)}%` : 'unknown'}</td>
-            <td data-label="Safety violations" className={`ctl-num${s.summary?.safety_violations ? ' pl-abn' : ''}`}>{s.summary?.safety_violations ?? 'unknown'}</td>
-          </tr>
-        ))}
+            <td data-label="Runs done / total" className="ctl-num">{figures.ended} / {figures.runs}</td>
+            <td data-label="Pass rate" className="ctl-num">{figures.passRate}</td>
+            <td data-label="Safety violations" className={`ctl-num${figures.abnormal ? ' pl-abn' : ''}`}>{figures.safety}</td>
+          </tr>;
+        })}
       </tbody>
     </table>
   );

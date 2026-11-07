@@ -32,3 +32,15 @@ export async function readSuites(): Promise<Suites> {
 
 /** The server redirects to its configured Arena's suite page. */
 export const suitePage = (id: string) => `/api/arena/suite-page/${encodeURIComponent(id)}`;
+
+/** Report figures take precedence; absence is never treated as a passing score. */
+export function suiteFigures(suite: SuiteRow) {
+  const report = suite.summary;
+  return {
+    ended: report?.ended ?? suite.ended,
+    runs: report?.runs ?? suite.runs,
+    passRate: report?.pass_rate != null ? `${Math.round(report.pass_rate * 100)}%` : 'unknown',
+    safety: report?.safety_violations ?? 'unknown',
+    abnormal: !!report?.safety_violations,
+  };
+}
