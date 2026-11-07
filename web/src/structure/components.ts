@@ -89,29 +89,47 @@ function remoteProblems(c: Component): string[] {
   return out;
 }
 
+type Rule = (c: Component, team: Component[]) => string | false | undefined;
+
+const KINDS = Object.keys(KIND_LABEL);
+const runsProgram = (c: Component) => c.kind === 'mcp' || c.kind === 'tool-hook';
+const PROGRAM_NAME = /^[A-Za-z0-9_+-][A-Za-z0-9._+-]{0,79}$/;
+const PLUGIN_NAME = /^[A-Za-z0-9_-][A-Za-z0-9._-]*@[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+const tooLong = (v: string | undefined, max: number) => (v ?? '').length > max;
+const pluginMisnamed = (c: Component) => !PLUGIN_NAME.test(c.plugin ?? '') || tooLong(c.plugin, 120);
+
+/** Its id, name, kind, description and install steps. */
+const IDENTITY: Rule[] = [
+  (c) => !kebab(c.id ?? '', 40) && 'The id must be 1–40 lowercase letters, digits and hyphens.',
+  (c) => BUILTIN.some((b) => b.id === c.id) && `"${c.id}" is a built-in component's id; give yours another one.`,
+  (c, team) => team.some((t) => t.id === c.id) && `This team already has a component "${c.id}".`,
+  (c) => (!c.name?.trim() || c.name.length > 60) && 'It needs a name of at most 60 characters.',
+  (c) => !KINDS.includes(c.kind) && `kind is one of ${KINDS.map((k) => `"${k}"`).join(', ')}.`,
+  (c) => (tooLong(c.description, 500) || tooLong(c.install, 500)) && 'The description and install steps are at most 500 characters.',
+  (c) => c.kind !== 'skills' && !c.install?.trim() && 'Say how to set it up on a computer (the install steps).',
+];
+
+/** The program it runs, if any, and what runs it. */
+const PROGRAM: Rule[] = [
+  (c) => runsProgram(c) && !PROGRAM_NAME.test(c.program ?? '') && 'The program must be a plain program name such as kin-mcp, with no folder.',
+  (c) => !runsProgram(c) && !!(c.program || c.args?.length) && 'Only an MCP server on the computer or a tool hook runs a program.',
+  (c) => (c.kind === 'tool-hook' || c.kind === 'claude-plugin') && !c.claude_only && 'Tool hooks and Claude plugins work only for Claude Code agents; set claude_only.',
+  (c) => (c.args ?? []).length > 32 && 'At most 32 arguments.',
+];
+
+/** Skill packs, Claude plugins and the homepage. */
+const PACKAGE: Rule[] = [
+  (c) => (c.kind === 'skills') !== Boolean(c.skills?.length) && 'A skill pack carries one or more skills, and only it does.',
+  (c) => (c.skills ?? []).length > 20 && 'At most 20 skills in one pack.',
+  (c) => ((c.kind === 'claude-plugin') !== Boolean(c.plugin) || (!!c.plugin && pluginMisnamed(c))) && 'A Claude plugin is named as name@marketplace, as `claude plugin install` takes it.',
+  (c) => !!c.homepage && !/^https?:\/\//.test(c.homepage) && 'The homepage must be a web address.',
+];
+
+const check = (rules: Rule[], c: Component, team: Component[]) => rules.map((r) => r(c, team)).filter((m): m is string => typeof m === 'string');
+
 /** What is wrong with a manifest, in plain words (the same rules as the server's). */
 export function componentProblems(c: Component, team: Component[] = []): string[] {
-  const out: string[] = [];
-  const kinds = Object.keys(KIND_LABEL);
-  if (!kebab(c.id ?? '', 40)) out.push('The id must be 1–40 lowercase letters, digits and hyphens.');
-  if (BUILTIN.some((b) => b.id === c.id)) out.push(`"${c.id}" is a built-in component's id; give yours another one.`);
-  if (team.some((t) => t.id === c.id)) out.push(`This team already has a component "${c.id}".`);
-  if (!c.name?.trim() || c.name.length > 60) out.push('It needs a name of at most 60 characters.');
-  if (!kinds.includes(c.kind)) out.push(`kind is one of ${kinds.map((k) => `"${k}"`).join(', ')}.`);
-  if ((c.description ?? '').length > 500 || (c.install ?? '').length > 500) out.push('The description and install steps are at most 500 characters.');
-  if (c.kind !== 'skills' && !c.install?.trim()) out.push('Say how to set it up on a computer (the install steps).');
-  const runsProgram = c.kind === 'mcp' || c.kind === 'tool-hook';
-  if (runsProgram && !/^[A-Za-z0-9_+-][A-Za-z0-9._+-]{0,79}$/.test(c.program ?? '')) out.push('The program must be a plain program name such as kin-mcp, with no folder.');
-  if (!runsProgram && (c.program || c.args?.length)) out.push('Only an MCP server on the computer or a tool hook runs a program.');
-  if ((c.kind === 'tool-hook' || c.kind === 'claude-plugin') && !c.claude_only) out.push('Tool hooks and Claude plugins work only for Claude Code agents; set claude_only.');
-  if ((c.args ?? []).length > 32) out.push('At most 32 arguments.');
-  out.push(...remoteProblems(c));
-  if ((c.kind === 'skills') !== Boolean(c.skills?.length)) out.push('A skill pack carries one or more skills, and only it does.');
-  if ((c.skills ?? []).length > 20) out.push('At most 20 skills in one pack.');
-  const pluginOk = /^[A-Za-z0-9_-][A-Za-z0-9._-]*@[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(c.plugin ?? '') && (c.plugin ?? '').length <= 120;
-  if ((c.kind === 'claude-plugin') !== Boolean(c.plugin) || (c.plugin && !pluginOk)) out.push('A Claude plugin is named as name@marketplace, as `claude plugin install` takes it.');
-  if (c.homepage && !/^https?:\/\//.test(c.homepage)) out.push('The homepage must be a web address.');
-  return [...new Set(out)];
+  return [...new Set([...check(IDENTITY, c, team), ...check(PROGRAM, c, team), ...remoteProblems(c), ...check(PACKAGE, c, team)])];
 }
 
 /** A manifest from pasted or loaded JSON, or why it is not one. */

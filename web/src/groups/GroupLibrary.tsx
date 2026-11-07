@@ -8,7 +8,7 @@ import { api } from '../api';
 import { errorText } from '../errors';
 import type { GroupBlock } from '../generated/GroupBlock';
 import { Btn, Icon } from '../shell/ui';
-import { TemplatePreview } from '../structure/TemplateGallery';
+import { TemplatePreview } from '../structure/TemplatePreview';
 import { emptyBlock } from './blocks';
 import { GroupEditor } from './GroupEditor';
 import './groups.css';

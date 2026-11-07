@@ -4,6 +4,7 @@ import { SaveGroupButton } from '../groups/SaveGroupButton';
 import { useId, useState, type ReactNode } from 'react';
 import type { ConnectionKind } from '../generated/ConnectionKind';
 import type { DraftIssue } from '../generated/DraftIssue';
+import type { DraftAgent } from '../generated/DraftAgent';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { vendor } from '../herdr';
 import { reconnect, removeElement, renameGroup, setConnectionKind, type Selection } from '../draft/edits';
@@ -125,7 +126,45 @@ export function AgentPanel({ draft, agentId, issues, edit, locked, onSelect }: A
   );
 }
 
-export function GroupPanel({ draft, groupId, issues, edit, locked, onSelect, librarySave = true }: { librarySave?: boolean; draft: TeamDraft; groupId: string; issues: DraftIssue[]; edit: Edit; locked: boolean; onSelect: (s: Selection | null) => void }) {
+type PanelProps = { draft: TeamDraft; issues: DraftIssue[]; edit: Edit; locked: boolean; onSelect: (s: Selection | null) => void };
+type Draft = TeamDraft;
+
+function GroupMembers({ members, onSelect }: { members: DraftAgent[]; onSelect: (s: Selection | null) => void }) {
+  return (
+    <Field label={`Agents (${members.length})`}>
+      <ul className="conn-list">
+        {members.map((a) => (
+          <li key={a.id}>
+            <button type="button" className="link" onClick={() => onSelect({ kind: 'agent', id: a.id })}>
+              <VendorMark v={kindVendor(a.kind)} size="xs" /> {a.name || 'Unnamed agent'}
+            </button>
+          </li>
+        ))}
+        {members.length === 0 && <li className="muted">No agents yet. Drag one in, or use Move to group… on an agent.</li>}
+      </ul>
+    </Field>
+  );
+}
+
+function DeleteGroup({ g, members, reason, edit, onSelect }: { g: Draft['groups'][number]; members: DraftAgent[]; reason: string | null; edit: Edit; onSelect: (s: Selection | null) => void }) {
+  const ids = useId();
+  return (
+    <div className="fld-actions">
+      <Btn danger icon="trash" disabled={!!reason} aria-describedby={reason ? `${ids}-del` : undefined} onClick={() => {
+        if (!edit((d) => removeElement(d, { kind: 'group', id: g.id }))) onSelect(null);
+      }}>
+        Delete group{members.length > 0 ? ` & ${members.length} agents` : ''}
+      </Btn>
+      {reason && (
+        <span id={`${ids}-del`} className="reason">
+          {reason}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function GroupPanel({ draft, groupId, issues, edit, locked, onSelect, librarySave = true }: PanelProps & { librarySave?: boolean; groupId: string }) {
   const ids = useId();
   const g = draft.groups.find((x) => x.id === groupId)!;
   const members = draft.agents.filter((a) => groupOf(a) === g.id);
@@ -148,36 +187,43 @@ export function GroupPanel({ draft, groupId, issues, edit, locked, onSelect, lib
       <Field label="Name" htmlFor={`${ids}-name`}>
         <input id={`${ids}-name`} className="fld-input" value={g.label} spellCheck={false} onChange={(e) => edit((d) => renameGroup(d, g.id, e.target.value), `group:${g.id}`)} />
       </Field>
-      <Field label={`Agents (${members.length})`}>
-        <ul className="conn-list">
-          {members.map((a) => (
-            <li key={a.id}>
-              <button type="button" className="link" onClick={() => onSelect({ kind: 'agent', id: a.id })}>
-                <VendorMark v={kindVendor(a.kind)} size="xs" /> {a.name || 'Unnamed agent'}
-              </button>
-            </li>
-          ))}
-          {members.length === 0 && <li className="muted">No agents yet. Drag one in, or use Move to group… on an agent.</li>}
-        </ul>
-      </Field>
-      <div className="fld-actions">
-        <Btn danger icon="trash" disabled={!!delReason} aria-describedby={delReason ? `${ids}-del` : undefined} onClick={() => {
-          if (!edit((d) => removeElement(d, { kind: 'group', id: g.id }))) onSelect(null);
-        }}>
-          Delete group{members.length > 0 ? ` & ${members.length} agents` : ''}
-        </Btn>
-        {delReason && (
-          <span id={`${ids}-del`} className="reason">
-            {delReason}
-          </span>
-        )}
-      </div>
+      <GroupMembers members={members} onSelect={onSelect} />
+      <DeleteGroup g={g} members={members} reason={delReason} edit={edit} onSelect={onSelect} />
     </SidePanel>
   );
 }
 
-export function ConnectionPanel({ draft, connectionId, issues, edit, locked, onSelect }: { draft: TeamDraft; connectionId: string; issues: DraftIssue[]; edit: Edit; locked: boolean; onSelect: (s: Selection | null) => void }) {
+function ConnectionEnds({ draft, c, locked, edit }: { draft: Draft; c: Draft['connections'][number]; locked: boolean; edit: Edit }) {
   const ids = useId();
+  return <>{(['from', 'to'] as const).map(end => <Field key={end} label={end === 'from' ? 'Source agent' : 'Destination agent'} htmlFor={`${ids}-${end}`}>
+    <select id={`${ids}-${end}`} className="fld-input" value={c[end]} disabled={locked}
+      onChange={e => edit(d => reconnect(d, c.id, end, e.target.value))}>
+      {draft.agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+    </select>
+  </Field>)}</>;
+}
+
+function ConnectionKindField({ c, locked, edit }: { c: Draft['connections'][number]; locked: boolean; edit: Edit }) {
+  const ids = useId();
+  return (
+    <Field label="Kind" htmlFor={`${ids}-kind`} reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
+      <select
+        id={`${ids}-kind`}
+        className="fld-input"
+        value={c.kind}
+        disabled={locked}
+        aria-describedby={locked ? `${ids}-lock` : undefined}
+        onChange={(e) => edit((d) => setConnectionKind(d, c.id, e.target.value as ConnectionKind))}
+      >
+        <option value="hands-work-to">hands work to</option>
+        <option value="reports-to">reports to ({NOT_ENFORCED})</option>
+        <option value="watches">watches ({NOT_ENFORCED})</option>
+      </select>
+    </Field>
+  );
+}
+
+export function ConnectionPanel({ draft, connectionId, issues, edit, locked, onSelect }: PanelProps & { connectionId: string }) {
   const c = draft.connections.find((x) => x.id === connectionId)!;
   return (
     <SidePanel
@@ -193,26 +239,8 @@ export function ConnectionPanel({ draft, connectionId, issues, edit, locked, onS
     >
       <Problems issues={issuesFor(issues, 'connection', c.id)} />
       <p className="conn-sentence">{connectionSentence(draft, c)}</p>
-      {(['from', 'to'] as const).map(end => <Field key={end} label={end === 'from' ? 'Source agent' : 'Destination agent'} htmlFor={`${ids}-${end}`}>
-        <select id={`${ids}-${end}`} className="fld-input" value={c[end]} disabled={locked}
-          onChange={e => edit(d => reconnect(d, c.id, end, e.target.value))}>
-          {draft.agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
-      </Field>)}
-      <Field label="Kind" htmlFor={`${ids}-kind`} reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
-        <select
-          id={`${ids}-kind`}
-          className="fld-input"
-          value={c.kind}
-          disabled={locked}
-          aria-describedby={locked ? `${ids}-lock` : undefined}
-          onChange={(e) => edit((d) => setConnectionKind(d, c.id, e.target.value as ConnectionKind))}
-        >
-          <option value="hands-work-to">hands work to</option>
-          <option value="reports-to">reports to ({NOT_ENFORCED})</option>
-          <option value="watches">watches ({NOT_ENFORCED})</option>
-        </select>
-      </Field>
+      <ConnectionEnds draft={draft} c={c} locked={locked} edit={edit} />
+      <ConnectionKindField c={c} locked={locked} edit={edit} />
       <p className="fld-meta muted">“Hands work to” sets who starts first. The others are notes for now: saved, not enforced.</p>
       <div className="fld-actions">
         <Btn danger icon="trash" disabled={locked} onClick={() => {

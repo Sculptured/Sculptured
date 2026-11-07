@@ -5,7 +5,7 @@ import { errorText } from '../errors';
 import type { DraftIssue } from '../generated/DraftIssue';
 import { Btn } from '../shell/ui';
 import { TextArea } from '../shell/TextArea';
-import { TemplatePreview } from './TemplateGallery';
+import { TemplatePreview } from './TemplatePreview';
 import { plural } from '../format';
 import { gw } from '../hosted/session';
 import '../features.css';

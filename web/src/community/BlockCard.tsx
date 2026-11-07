@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Publication } from '../generated/community/Publication';
-import { TemplatePreview } from '../structure/TemplateGallery';
+import { TemplatePreview } from '../structure/TemplatePreview';
 import { AuthorChip } from './AuthorChip';
 import { KIND_LABEL, whereItRuns } from '../structure/components';
 import { componentOf, opensHere } from './kinds';

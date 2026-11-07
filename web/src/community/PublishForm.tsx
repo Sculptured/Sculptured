@@ -5,7 +5,7 @@ import { errorText } from '../errors';
 import type { GroupBlock } from '../generated/GroupBlock';
 import { sanitizeExport } from '../release/sharing';
 import { Btn } from '../shell/ui';
-import { TemplatePreview } from '../structure/TemplateGallery';
+import { TemplatePreview } from '../structure/TemplatePreview';
 import { communityApi } from './api';
 
 type Fields = { title: string; description: string; tags: string; license: string; reviewed: boolean };

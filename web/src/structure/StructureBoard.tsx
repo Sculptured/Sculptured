@@ -1,5 +1,5 @@
 import { DismissibleError } from '../shell/DismissibleError';
-import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from 'react';
 import type { AgentKind } from '../generated/AgentKind';
 import type { DraftIssue } from '../generated/DraftIssue';
 import type { TeamDraft } from '../generated/TeamDraft';
@@ -132,31 +132,13 @@ function useKeptSelection(teamId: string) {
   return [sel, setSel] as const;
 }
 
-/**
- * The Design board: the canvas and its toolbar, nothing beside it. A card opens its agent's
- * page; a group or an arrow shows a small bar of its settings over the board. Edits autosave.
- * While the team runs, structure is read-only.
- */
-export function StructureBoard({ teamId, t, running, onOpenAgent, onWorkflow, startReason = null, leadTools, onStartBlock, ref }: Props) {
-  const [sel, setSel] = useKeptSelection(teamId);
-  const canvas = useRef<CanvasHandle | null>(null);
-  const a = useDesignAssistant(teamId);
-  const comparison = useMemo(() => (t.draft && a.proposal ? compareDesigns(t.draft, a.proposal.draft) : null), [t.draft, a.proposal]);
-  // While the design assistant's proposal is open the board shows it, read-only; the saved design is untouched.
-  const draft = comparison?.shown ?? t.draft;
-  const edit: Edit = comparison ? () => null : t.edit;
-  const proposing = comparison !== null;
-  const selection = draft ? selectionExists(draft, sel) : null;
-  const runLocked = running !== null ? running : t.serverLive;
-  const locked = runLocked || proposing;
-  const issues = useMemo(() => (a.proposal ? a.proposal.issues : draft ? liveIssues(draft, t.issues) : []), [a.proposal, draft, t.issues]);
-  useBoardKeys(t, proposing);
-  useEffect(() => {
-    onStartBlock?.(proposing ? "Approve or reject the design assistant's proposal first." : null);
-    return () => onStartBlock?.(null);
-  }, [proposing, onStartBlock]);
-  useRefreshOnRunChange(running, t);
-  useRestoreFocus(canvas, sel, draft !== null);
+const PROPOSAL_FIRST = "Approve or reject the design assistant's proposal first";
+
+type Assistant = ReturnType<typeof useDesignAssistant>;
+type Comparison = ReturnType<typeof compareDesigns> | null;
+
+/** What the command palette and keys can do on the board, read when they ask. */
+function useBoardHandle(ref: Ref<BoardHandle> | undefined, canvas: RefObject<CanvasHandle | null>, t: TeamDraftApi, draft: TeamDraft | null, onWorkflow: Props['onWorkflow'], proposing: boolean, locked: boolean, startReason: string | null) {
   useImperativeHandle(ref, () => ({
     fit: () => canvas.current?.fit(),
     zoomBy: (f: number) => canvas.current?.zoomBy(f),
@@ -168,14 +150,46 @@ export function StructureBoard({ teamId, t, running, onOpenAgent, onWorkflow, st
     redo: () => t.redo(),
     workflowList: () => onWorkflow('list'),
     status: () => draft && {
-      canUndo: t.canUndo && !proposing, canRedo: t.canRedo && !proposing, startReason: proposing ? "Approve or reject the design assistant's proposal first" : startReason,
-      lockReason: locked ? (proposing ? "Approve or reject the design assistant's proposal first." : LOCK_REASON) : null, workflow: !!draft.workflow,
+      canUndo: t.canUndo && !proposing, canRedo: t.canRedo && !proposing, startReason: proposing ? PROPOSAL_FIRST : startReason,
+      lockReason: locked ? (proposing ? `${PROPOSAL_FIRST}.` : LOCK_REASON) : null, workflow: !!draft.workflow,
     },
   }));
+}
 
-  if (t.loadError) return <section className="panel structure" aria-label="Structure"><DismissibleError className="pad tone-red">Could not load this team: {t.loadError}</DismissibleError></section>;
-  if (!draft) return <section className="panel structure" aria-label="Structure"><p role="status" className="pad muted">Loading team…</p></section>;
+/** The board's extra tools: the workflow list, the design assistant and the save status. */
+function BoardTools({ draft, t, a, onWorkflow }: { draft: TeamDraft; t: TeamDraftApi; a: Assistant; onWorkflow: Props['onWorkflow'] }) {
+  return (
+    <span className="sb-extra-tools">
+      {draft.workflow && <Btn variant="ghost" size="sm" icon="list" onClick={() => onWorkflow('list')} tip="Every stage and item of the workflow, as a list">Workflow list</Btn>}
+      <Btn variant="ghost" size="sm" icon="bot" aria-pressed={a.open} onClick={() => a.setOpen(!a.open || !!a.proposal)}>Design assistant</Btn>
+      <SaveStatus state={t.saveState} error={t.saveError} onRetry={() => void t.retry()} onReload={() => void t.reload()} onKeepMine={() => void t.keepMine()} />
+    </span>
+  );
+}
 
+function BoardMessage({ children, error = false }: { children: ReactNode; error?: boolean }) {
+  return <section className="panel structure" aria-label="Structure">{error ? <DismissibleError className="pad tone-red">{children}</DismissibleError> : <p role="status" className="pad muted">{children}</p>}</section>;
+}
+
+/** The small bar of settings over the board for a selected group or arrow. */
+function ElementBars({ draft, selection, issues, edit, locked, onClose }: { draft: TeamDraft; selection: Selection | null; issues: DraftIssue[]; edit: Edit; locked: boolean; onClose: () => void }) {
+  if (selection?.kind === 'group') return <GroupBar key={selection.id} draft={draft} groupId={selection.id} issues={issues} edit={edit} locked={locked} onClose={onClose} />;
+  if (selection?.kind === 'connection') return <ConnectionBar key={selection.id} draft={draft} connectionId={selection.id} edit={edit} locked={locked} onClose={onClose} />;
+  return null;
+}
+
+function BoardNotices({ running, notice }: { running: boolean; notice: string | null | undefined }) {
+  return <>
+    {running && <p className="muted board-notice" role="status"><span aria-hidden="true">◑ </span>Running: you can rename agents, edit jobs and move cards. Stop the team to change the rest.</p>}
+    {notice && <p className="tone-amber notice board-notice" role="status">{notice}</p>}
+  </>;
+}
+
+type StageProps = { canvas: RefObject<CanvasHandle | null>; teamId: string; t: TeamDraftApi; draft: TeamDraft; issues: DraftIssue[]; selection: Selection | null; setSel: (s: Selection | null) => void; edit: Edit; locked: boolean;
+  runLocked: boolean; a: Assistant; comparison: Comparison; leadTools?: ReactNode; onOpenAgent: Props['onOpenAgent']; onWorkflow: Props['onWorkflow'] };
+
+function BoardStage({ canvas, teamId, t, draft, issues, selection, setSel, edit, locked, runLocked, a, comparison, leadTools, onOpenAgent, onWorkflow }: StageProps) {
+  const proposing = comparison !== null;
   const show = (i: DraftIssue) => {
     const s = selectionFor(draft, i);
     if (s?.kind === 'agent') return onOpenAgent(s.id);
@@ -188,36 +202,59 @@ export function StructureBoard({ teamId, t, running, onOpenAgent, onWorkflow, st
     t.edit((d) => ({ ...p.draft, id: d.id, revision: d.revision }), 'design-assistant');
     a.end('approved');
   };
-  const tools = (
-    <span className="sb-extra-tools">
-      {draft.workflow && <Btn variant="ghost" size="sm" icon="list" onClick={() => onWorkflow('list')} tip="Every stage and item of the workflow, as a list">Workflow list</Btn>}
-      <Btn variant="ghost" size="sm" icon="bot" aria-pressed={a.open} onClick={() => a.setOpen(!a.open || !!a.proposal)}>Design assistant</Btn>
-      <SaveStatus state={t.saveState} error={t.saveError} onRetry={() => void t.retry()} onReload={() => void t.reload()} onKeepMine={() => void t.keepMine()} />
-    </span>
+  return (
+    <div className="sb-stage">
+      {a.busy ? <WorkingBar a={a} /> : comparison && <ProposalBar a={a} comparison={comparison} onApprove={approve} />}
+      <StructureCanvas
+        ref={canvas} teamId={teamId} draft={draft} issues={issues} selection={selection} onSelect={setSel} onInspect={setSel} edit={edit} locked={locked}
+        onOpen={onOpenAgent} onOpenAgent={onOpenAgent} onWorkflow={onWorkflow}
+        canUndo={t.canUndo && !proposing} canRedo={t.canRedo && !proposing} marks={comparison?.marks} onUndo={t.undo} onRedo={t.redo}
+        leadTools={leadTools} extraTools={<BoardTools draft={draft} t={t} a={a} onWorkflow={onWorkflow} />}
+      />
+      <ElementBars draft={draft} selection={selection} issues={issues} edit={edit} locked={locked} onClose={() => setSel(null)} />
+      <FixBox draft={draft} issues={issues} onShow={show} edit={edit} locked={locked} />
+      {a.open && (
+        <div className="da-window">
+          <DesignAssistant a={a} revision={t.draft?.revision ?? 0} lockedReason={runLocked ? 'Stop the team to change its design.' : null} comparison={comparison} onApprove={approve}
+            onInspect={(target) => { setSel(target); canvas.current?.show(target); }} />
+        </div>
+      )}
+    </div>
   );
+}
+
+/**
+ * The Design board: the canvas and its toolbar, nothing beside it. A card opens its agent's
+ * page; a group or an arrow shows a small bar of its settings over the board. Edits autosave.
+ * While the team runs, structure is read-only.
+ */
+export function StructureBoard({ teamId, t, running, onOpenAgent, onWorkflow, startReason = null, leadTools, onStartBlock, ref }: Props) {
+  const [sel, setSel] = useKeptSelection(teamId);
+  const canvas = useRef<CanvasHandle | null>(null);
+  const a = useDesignAssistant(teamId);
+  const comparison = useMemo(() => (t.draft && a.proposal ? compareDesigns(t.draft, a.proposal.draft) : null), [t.draft, a.proposal]);
+  // While the design assistant's proposal is open the board shows it, read-only; the saved design is untouched.
+  const draft = comparison?.shown ?? t.draft;
+  const proposing = comparison !== null;
+  const runLocked = running !== null ? running : t.serverLive;
+  const locked = runLocked || proposing;
+  const issues = useMemo(() => (a.proposal ? a.proposal.issues : draft ? liveIssues(draft, t.issues) : []), [a.proposal, draft, t.issues]);
+  useBoardKeys(t, proposing);
+  useEffect(() => {
+    onStartBlock?.(proposing ? `${PROPOSAL_FIRST}.` : null);
+    return () => onStartBlock?.(null);
+  }, [proposing, onStartBlock]);
+  useRefreshOnRunChange(running, t);
+  useRestoreFocus(canvas, sel, draft !== null);
+  useBoardHandle(ref, canvas, t, draft, onWorkflow, proposing, locked, startReason);
+  if (t.loadError) return <BoardMessage error>Could not load this team: {t.loadError}</BoardMessage>;
+  if (!draft) return <BoardMessage>Loading team…</BoardMessage>;
   return (
     <section className="panel structure" aria-label={`Structure of ${draft.name || 'this team'}`}>
-      {runLocked && !proposing && <p className="muted board-notice" role="status"><span aria-hidden="true">◑ </span>Running: you can rename agents, edit jobs and move cards. Stop the team to change the rest.</p>}
-      {t.notice && <p className="tone-amber notice board-notice" role="status">{t.notice}</p>}
+      <BoardNotices running={runLocked && !proposing} notice={t.notice} />
       <div className="sb-body">
-        <div className="sb-stage">
-          {a.busy ? <WorkingBar a={a} /> : comparison && <ProposalBar a={a} comparison={comparison} onApprove={approve} />}
-          <StructureCanvas
-            ref={canvas} teamId={teamId} draft={draft} issues={issues} selection={selection} onSelect={setSel} onInspect={setSel} edit={edit} locked={locked}
-            onOpen={onOpenAgent} onOpenAgent={onOpenAgent} onWorkflow={onWorkflow}
-            canUndo={t.canUndo && !proposing} canRedo={t.canRedo && !proposing} marks={comparison?.marks} onUndo={t.undo} onRedo={t.redo}
-            leadTools={leadTools} extraTools={tools}
-          />
-          {selection?.kind === 'group' && <GroupBar key={selection.id} draft={draft} groupId={selection.id} issues={issues} edit={edit} locked={locked} onClose={() => setSel(null)} />}
-          {selection?.kind === 'connection' && <ConnectionBar key={selection.id} draft={draft} connectionId={selection.id} edit={edit} locked={locked} onClose={() => setSel(null)} />}
-          <FixBox draft={draft} issues={issues} onShow={show} edit={edit} locked={locked} />
-          {a.open && (
-            <div className="da-window">
-              <DesignAssistant a={a} revision={t.draft?.revision ?? 0} lockedReason={runLocked ? 'Stop the team to change its design.' : null} comparison={comparison} onApprove={approve}
-                onInspect={(target) => { setSel(target); canvas.current?.show(target); }} />
-            </div>
-          )}
-        </div>
+        <BoardStage canvas={canvas} teamId={teamId} t={t} draft={draft} issues={issues} selection={selectionExists(draft, sel)} setSel={setSel} edit={comparison ? () => null : t.edit} locked={locked}
+          runLocked={runLocked} a={a} comparison={comparison} leadTools={leadTools} onOpenAgent={onOpenAgent} onWorkflow={onWorkflow} />
       </div>
     </section>
   );

@@ -5,7 +5,7 @@ import type { Publication } from '../generated/community/Publication';
 import { BlockDescription, BlockDetails, BlockFeatures } from '../groups/BlockDetails';
 import { downloadBlock } from '../release/sharing';
 import { Btn } from '../shell/ui';
-import { TemplatePreview } from '../structure/TemplateGallery';
+import { TemplatePreview } from '../structure/TemplatePreview';
 import { COMMUNITY_WORDS } from '../vocab';
 import { communityApi } from './api';
 import { AuthorChip } from './AuthorChip';

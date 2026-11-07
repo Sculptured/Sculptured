@@ -210,25 +210,28 @@ export function useBoardClipboard({ draft, selection, edit, locked, groupOnly, o
 
 type ClipKeys = { copy: (s: Selection) => unknown; paste: (where: PasteAt) => void; duplicate: (s: Selection) => void; selection: Selection | null };
 
+const ctrlOnly = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+
+/** Whether this keypress may be a board shortcut: not in a text field or an open dialog. */
+const boardKeyFree = (e: KeyboardEvent) => ctrlOnly(e) && !isTextField(e.target) && !e.defaultPrevented && !document.querySelector('[role="dialog"][aria-modal="true"]');
+
+type ClipHandler = (e: KeyboardEvent, keys: ClipKeys, item: Exclude<Selection, { kind: 'connection' }> | null) => void;
+
+const CLIP_HANDLERS: Record<string, ClipHandler> = {
+  c: (e, keys, item) => { if (item && !window.getSelection()?.toString() && keys.copy(item)) e.preventDefault(); },
+  v: (e, keys) => { if (readClip()) { e.preventDefault(); keys.paste(keys.selection?.kind === 'group' ? { into: keys.selection.id } : {}); } },
+  d: (e, keys, item) => { if (item) { e.preventDefault(); keys.duplicate(item); } },
+};
+
+function clipboardKey(e: KeyboardEvent, keys: ClipKeys) {
+  const s = keys.selection;
+  CLIP_HANDLERS[e.key.toLowerCase()]?.(e, keys, s && s.kind !== 'connection' ? s : null);
+}
+
 /** Ctrl/⌘+C, V and D on the board, outside text fields and dialogs. Text selected on the page copies as text. */
 function useClipboardKeys(latest: React.RefObject<ClipKeys>) {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || isTextField(e.target) || e.defaultPrevented) return;
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
-      const k = e.key.toLowerCase();
-      const { selection: s, ...act } = latest.current;
-      const item = s && s.kind !== 'connection' ? s : null;
-      if (k === 'c' && item && !window.getSelection()?.toString()) {
-        if (act.copy(item)) e.preventDefault();
-      } else if (k === 'v' && readClip()) {
-        e.preventDefault();
-        act.paste(s?.kind === 'group' ? { into: s.id } : {});
-      } else if (k === 'd' && item) {
-        e.preventDefault();
-        act.duplicate(item);
-      }
-    };
+    const onKey = (e: KeyboardEvent) => { if (boardKeyFree(e)) clipboardKey(e, latest.current); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [latest]);

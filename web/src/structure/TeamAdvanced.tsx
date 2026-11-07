@@ -32,27 +32,36 @@ export function needsSentence(draft: TeamDraft, issues: DraftIssue[]): string {
   return 'This team has things to fix before it can run.';
 }
 
-/**
- * Export the team (a team file, or MADL), and under Advanced its spec, read-only with Copy.
- * Spec words are allowed there only (`data-advanced`).
- */
-export function TeamExport({ teamId, draft, flush }: Props) {
-  const ids = useId();
-  const [spec, setSpec] = useState<TeamSpec | null>(null);
+/** What an export reports: busy while it saves and reads, an error, or the file it wrote. */
+function useExportStatus() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exported, setExported] = useState<string | null>(null);
+  /** A new export starts: busy, with nothing reported yet. */
+  const begin = () => { setBusy(true); setError(null); setExported(null); };
+  return { error, setError, busy, setBusy, exported, setExported, begin };
+}
+
+type Status = ReturnType<typeof useExportStatus>;
+
+/** Select the text of an element, so it can be copied by hand. */
+function selectAll(el: HTMLElement | null) {
+  const sel = window.getSelection();
+  if (!el || !sel) return;
+  sel.selectAllChildren(el);
+  el.focus();
+}
+
+/** The team's spec: read after saving, shown read-only, copied, or downloaded as a file. */
+function useSpecActions(teamId: string, flush: Props['flush'], st: Status) {
+  const [spec, setSpec] = useState<TeamSpec | null>(null);
   const [copied, setCopied] = useState(false);
   const [unsaved, setUnsaved] = useState(false);
-  const [exported, setExported] = useState<string | null>(null);
-  const [withFolders, setWithFolders] = useState(false);
   const pre = useRef<HTMLPreElement>(null);
   const file = `${teamId}.rig.yaml`;
-
   const load = async (): Promise<TeamSpec | null> => {
-    setBusy(true);
-    setError(null);
+    st.begin();
     setCopied(false);
-    setExported(null);
     try {
       const saved = await flush();
       setUnsaved(!saved.ok);
@@ -60,24 +69,36 @@ export function TeamExport({ teamId, draft, flush }: Props) {
       setSpec(s);
       return s;
     } catch (e) {
-      setError(`Could not read the spec: ${errorText(e)}`);
+      st.setError(`Could not read the spec: ${errorText(e)}`);
       return null;
     } finally {
-      setBusy(false);
+      st.setBusy(false);
     }
   };
-
   const exportSpec = async () => {
     const s = await load();
     if (!s) return;
     downloadText(file, s.yaml);
-    setExported(file);
+    st.setExported(file);
   };
+  const copy = async () => {
+    if (!spec) return;
+    try {
+      await navigator.clipboard.writeText(spec.yaml);
+      setCopied(true);
+    } catch {
+      st.setError('Copy did not work. The text is selected below: copy it with Ctrl+C.');
+      selectAll(pre.current);
+    }
+  };
+  return { spec, copied, unsaved, pre, file, load, exportSpec, copy };
+}
 
+/** The team file (MADL), saved first so the file is the saved design. */
+function useMadlExport(teamId: string, flush: Props['flush'], st: Status) {
+  const [withFolders, setWithFolders] = useState(false);
   const exportMadl = async () => {
-    setBusy(true);
-    setError(null);
-    setExported(null);
+    st.begin();
     try {
       await flush();
       const { yaml } = await api.teamMadl(teamId, withFolders);
@@ -85,51 +106,47 @@ export function TeamExport({ teamId, draft, flush }: Props) {
       // The first line lets the file run from a terminal (`./team.madl.yaml`, after chmod +x); to MADL
       // tools it is a YAML comment.
       downloadText(name, yaml.startsWith('#!') ? yaml : `#!/usr/bin/env -S sculptured run\n${yaml}`, 'application/yaml');
-      setExported(name);
+      st.setExported(name);
     } catch (e) {
-      setError(`Could not export the team: ${errorText(e)}`);
+      st.setError(`Could not export the team: ${errorText(e)}`);
     } finally {
-      setBusy(false);
+      st.setBusy(false);
     }
   };
+  return { withFolders, setWithFolders, exportMadl };
+}
 
-  const copy = async () => {
-    if (!spec) return;
-    try {
-      await navigator.clipboard.writeText(spec.yaml);
-      setCopied(true);
-    } catch (e) {
-      setError('Copy did not work. The text is selected below: copy it with Ctrl+C.');
-      const sel = window.getSelection();
-      if (pre.current && sel) {
-        sel.selectAllChildren(pre.current);
-        pre.current.focus();
-      }
-    }
-  };
+function useTeamExport(teamId: string, flush: Props['flush']) {
+  const st = useExportStatus();
+  return { ...st, ...useSpecActions(teamId, flush, st), ...useMadlExport(teamId, flush, st) };
+}
 
-  const status = (
-    <p className="ta-status" role="status">
-      {busy ? <span id={`${ids}-busy`}>Saving and reading the spec…</span> : exported ? <>Exported {exported}. It is in your downloads.</> : null}
-    </p>
-  );
+/**
+ * Export the team (a team file, or MADL), and under Advanced its spec, read-only with Copy.
+ * Spec words are allowed there only (`data-advanced`).
+ */
+export function TeamExport({ teamId, draft, flush }: Props) {
+  const ids = useId();
+  const x = useTeamExport(teamId, flush);
   return (
     <div className="team-export">
       <div className="ta-actions">
-        <Btn onClick={() => void exportMadl()} disabled={busy} title="A MADL (Multi-Agent Descriptor Language) file, which other tools can read too">Export team file</Btn>
-        <label className="ta-check"><input type="checkbox" checked={withFolders} onChange={(e) => setWithFolders(e.target.checked)} /> Include folders (paths on this computer)</label>
+        <Btn onClick={() => void x.exportMadl()} disabled={x.busy} title="A MADL (Multi-Agent Descriptor Language) file, which other tools can read too">Export team file</Btn>
+        <label className="ta-check"><input type="checkbox" checked={x.withFolders} onChange={(e) => x.setWithFolders(e.target.checked)} /> Include folders (paths on this computer)</label>
       </div>
-      {status}
-      {error && <DismissibleError className="tone-red ta-error">{error}</DismissibleError>}
+      <p className="ta-status" role="status">
+        {x.busy ? <span id={`${ids}-busy`}>Saving and reading the spec…</span> : x.exported ? <>Exported {x.exported}. It is in your downloads.</> : null}
+      </p>
+      {x.error && <DismissibleError className="tone-red ta-error">{x.error}</DismissibleError>}
       <details className="team-advanced" data-advanced>
         <summary>{WORDS.advanced}</summary>
         <div className="ta-body">
           <p className="ta-hint">See this team as a spec file, or save it.</p>
           <div className="ta-actions">
-            <Btn onClick={() => void load()} disabled={busy} aria-describedby={busy ? `${ids}-busy` : undefined}>View as spec</Btn>
-            <Btn onClick={() => void exportSpec()} disabled={busy} aria-describedby={busy ? `${ids}-busy` : undefined}>Export</Btn>
+            <Btn onClick={() => void x.load()} disabled={x.busy} aria-describedby={x.busy ? `${ids}-busy` : undefined}>View as spec</Btn>
+            <Btn onClick={() => void x.exportSpec()} disabled={x.busy} aria-describedby={x.busy ? `${ids}-busy` : undefined}>Export</Btn>
           </div>
-          {spec && <SpecView spec={spec} draft={draft} file={file} unsaved={unsaved} copied={copied} onCopy={() => void copy()} pre={pre} />}
+          {x.spec && <SpecView spec={x.spec} draft={draft} file={x.file} unsaved={x.unsaved} copied={x.copied} onCopy={() => void x.copy()} pre={x.pre} />}
         </div>
       </details>
     </div>

@@ -40,45 +40,61 @@ function SharedField({ agent, edit, locked }: { agent: DraftAgent; edit: Edit; l
   );
 }
 
+type FieldProps = { agent: DraftAgent; edit: Edit; locked: boolean };
+
+const fieldId = (agent: DraftAgent, k: string) => `contract-${agent.id}-${k}`;
+
+function DecidesField({ agent, edit, locked }: FieldProps) {
+  const setDomains = (text: string) => edit((d: TeamDraft) => {
+    const domains = lines(text);
+    return setAdvanced(d, agent.id, { authority: domains.length ? { ...agent.advanced.authority, domains } : undefined });
+  }, `contract:${agent.id}:domains`);
+  return (
+    <label htmlFor={fieldId(agent, 'domains')} className="fld">
+      <span>Decides</span>
+      <textarea id={fieldId(agent, 'domains')} className="fld-input" rows={2} disabled={locked} value={(agent.advanced.authority?.domains ?? []).join('\n')} onChange={(e) => setDomains(e.target.value)} />
+      <span className="fld-hint muted">Decisions this agent owns, one per line. Every agent is told who decides what, and asks the owner first.</span>
+    </label>
+  );
+}
+
+function ScopeField({ draft, agent, edit, locked }: FieldProps & { draft: TeamDraft }) {
+  const setScope = (scope: string) => edit((d: TeamDraft) => setAdvanced(d, agent.id, { authority: { domains: agent.advanced.authority?.domains ?? [], ...agent.advanced.authority, scope: scope || undefined } }), `contract:${agent.id}:scope`);
+  return (
+    <label htmlFor={fieldId(agent, 'scope')} className="fld">
+      <span>Its decisions reach</span>
+      <select id={fieldId(agent, 'scope')} className="fld-input" disabled={locked || !agent.advanced.authority?.domains.length} value={agent.advanced.authority?.scope ?? ''} onChange={(e) => setScope(e.target.value)}>
+        <option value="">its own work</option>
+        {draft.groups.map((g) => <option key={g.id} value={g.id}>across the {g.label.trim() || 'unnamed'} group</option>)}
+        <option value="system">across the whole team</option>
+      </select>
+      <span className="fld-hint muted">A decision belongs to the agent whose reach contains its consequences: others take cross-group decisions to it instead of agreeing them between themselves.</span>
+    </label>
+  );
+}
+
+const isEmptyAccess = (a: NonNullable<DraftAgent['advanced']['data_access']>) => !a.reads?.length && !a.writes?.length && !a.side_effects?.length && !a.rationale && !a.shared?.length;
+
 /** The agent's contract (MADL `data_access` and `authority`): what it touches and what it decides. */
 export function ContractFields({ draft, agent, edit, locked }: { draft: TeamDraft; agent: DraftAgent; edit: Edit; locked: boolean }) {
   const data = agent.advanced.data_access ?? {};
   const setData = (key: DataKey, text: string) => edit((d: TeamDraft) => {
     const next = { ...data, [key]: lines(text) };
-    const empty = !next.reads?.length && !next.writes?.length && !next.side_effects?.length && !next.rationale && !next.shared?.length;
-    return setAdvanced(d, agent.id, { data_access: empty ? undefined : next });
+    return setAdvanced(d, agent.id, { data_access: isEmptyAccess(next) ? undefined : next });
   }, `contract:${agent.id}:${key}`);
-  const setDomains = (text: string) => edit((d: TeamDraft) => {
-    const domains = lines(text);
-    return setAdvanced(d, agent.id, { authority: domains.length ? { ...agent.advanced.authority, domains } : undefined });
-  }, `contract:${agent.id}:domains`);
-  const setScope = (scope: string) => edit((d: TeamDraft) => setAdvanced(d, agent.id, { authority: { domains: agent.advanced.authority?.domains ?? [], ...agent.advanced.authority, scope: scope || undefined } }), `contract:${agent.id}:scope`);
-  const id = (k: string) => `contract-${agent.id}-${k}`;
   return (
     <fieldset className="fld-contract">
       <legend className="fld-label">Contract</legend>
       {DATA.map((f) => (
-        <label key={f.key} htmlFor={id(f.key)} className="fld">
+        <label key={f.key} htmlFor={fieldId(agent, f.key)} className="fld">
           <span>{f.label}</span>
-          <textarea id={id(f.key)} className="fld-input mono" rows={2} disabled={locked} value={(data[f.key] ?? []).join('\n')} onChange={(e) => setData(f.key, e.target.value)} />
+          <textarea id={fieldId(agent, f.key)} className="fld-input mono" rows={2} disabled={locked} value={(data[f.key] ?? []).join('\n')} onChange={(e) => setData(f.key, e.target.value)} />
           <span className="fld-hint muted">{f.hint}</span>
         </label>
       ))}
       <SharedField agent={agent} edit={edit} locked={locked} />
-      <label htmlFor={id('domains')} className="fld">
-        <span>Decides</span>
-        <textarea id={id('domains')} className="fld-input" rows={2} disabled={locked} value={(agent.advanced.authority?.domains ?? []).join('\n')} onChange={(e) => setDomains(e.target.value)} />
-        <span className="fld-hint muted">Decisions this agent owns, one per line. Every agent is told who decides what, and asks the owner first.</span>
-      </label>
-      <label htmlFor={id('scope')} className="fld">
-        <span>Its decisions reach</span>
-        <select id={id('scope')} className="fld-input" disabled={locked || !agent.advanced.authority?.domains.length} value={agent.advanced.authority?.scope ?? ''} onChange={(e) => setScope(e.target.value)}>
-          <option value="">its own work</option>
-          {draft.groups.map((g) => <option key={g.id} value={g.id}>across the {g.label.trim() || 'unnamed'} group</option>)}
-          <option value="system">across the whole team</option>
-        </select>
-        <span className="fld-hint muted">A decision belongs to the agent whose reach contains its consequences: others take cross-group decisions to it instead of agreeing them between themselves.</span>
-      </label>
+      <DecidesField agent={agent} edit={edit} locked={locked} />
+      <ScopeField draft={draft} agent={agent} edit={edit} locked={locked} />
     </fieldset>
   );
 }
