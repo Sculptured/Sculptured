@@ -5,113 +5,100 @@ import type { Layout } from "../layout";
 import { communicationStats } from "../collaboration/analytics";
 import { parentForest, treeLayout, subtreeIds } from "./treeLayout";
 import { computeLayout, withLiveChildren } from "../layout";
+type Edge = CompiledRig['edges'][number];
+type Child = { parent: string; child: string };
+
+const LIVE = ['running', 'launching', 'stopping', 'attention', 'failed'];
+
+/** The latest session start per agent: what came before belongs to a session that has ended. */
+function sessionBoundaries(events: EventRecord[]) {
+  const boundaries = new Map<string, number>();
+  for (const e of events) {
+    if (e.subject.kind === 'seat' && e.body.type === 'tenure-started') boundaries.set(e.subject.id, Math.max(boundaries.get(e.subject.id) ?? 0, e.seq));
+  }
+  return boundaries;
+}
+
+/** Arrows and labels for observed traffic: one per sender and recipient, counted. */
+function messageEdges(rows: ReturnType<typeof communicationStats>['rows'], ids: Set<string>, boundaries: Map<string, number>, edges: Edge[], labels: Record<string, string>) {
+  const counts = new Map<string, number>();
+  for (const m of rows) {
+    for (const from of m.from) {
+      if (!ids.has(from) || !ids.has(m.to) || m.event.seq < (boundaries.get(from) ?? 0)) continue;
+      const key = `${from}→${m.to}`;
+      if (!counts.has(key)) edges.push({ from, to: m.to, kind: 'collaborates_with', enforced: true });
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  for (const [key, count] of counts) labels[key] = `${count} ${count === 1 ? 'message' : 'messages'} observed`;
+}
+
+/** A handoff draws an arrow when traffic has not already. */
+function handoffEdges(current: EventRecord[], ids: Set<string>, boundaries: Map<string, number>, edges: Edge[], labels: Record<string, string>) {
+  for (const e of current) {
+    if (e.body.type !== 'handed-over' || e.subject.kind !== 'seat') continue;
+    for (const source of e.body.from) {
+      const to = e.subject.id, from = source.seat;
+      if (ids.has(from) && ids.has(to) && e.seq >= (boundaries.get(from) ?? 0) && !edges.some((edge) => edge.from === from && edge.to === to)) {
+        edges.push({ from, to, kind: 'delegates_to', enforced: true });
+        labels[`${from}→${to}`] = 'Handoff recorded';
+      }
+    }
+  }
+}
+
+/** Parentage is a downward hierarchy arrow. Direct family traffic stays in Communications;
+ * drawing a second return arrow here would obscure which node is the parent. */
+function familyEdges(family: Child[], ids: Set<string>, edges: Edge[], labels: Record<string, string>) {
+  for (const { parent, child } of family) {
+    for (let i = edges.length - 1; i >= 0; i--) {
+      const e = edges[i];
+      if ((e.from === parent && e.to === child) || (e.from === child && e.to === parent)) edges.splice(i, 1);
+    }
+    delete labels[`${child}→${parent}`];
+    delete labels[`${parent}→${child}`];
+    if (ids.has(parent) && ids.has(child)) {
+      edges.push({ from: parent, to: child, kind: 'spawned_by', enforced: true });
+      labels[`${parent}→${child}`] = '';
+    }
+  }
+}
+
+const onlyKeys = <T,>(record: Record<string, T>, keep: Set<string>) => Object.fromEntries(Object.entries(record).filter(([id]) => keep.has(id)));
+
 export function liveProjection(
   compiled: CompiledRig,
   seats: Record<string, SeatView>,
   events: EventRecord[],
   given?: Layout,
-  children: { parent: string; child: string }[] = [],
+  children: Child[] = [],
   subtree?: string,
 ) {
   const scope = subtree ? subtreeIds(compiled, children, subtree) : null;
   if (scope) {
-    compiled = {...compiled,seats:compiled.seats.filter(s=>scope.has(s.id)),edges:compiled.edges.filter(e=>scope.has(e.from)&&scope.has(e.to))};
+    compiled = { ...compiled, seats: compiled.seats.filter(s => scope.has(s.id)), edges: compiled.edges.filter(e => scope.has(e.from) && scope.has(e.to)) };
     // Scope is an explicit user navigation; give this smaller tree its own compact coordinates.
     given = undefined;
   }
   // An agent that needs you or failed stays on the board: its card carries the reason.
-  const live = compiled.seats.filter((s) =>
-    ["running", "launching", "stopping", "attention", "failed"].includes(seats[s.id]?.lifecycle),
-  );
+  const live = compiled.seats.filter((s) => LIVE.includes(seats[s.id]?.lifecycle));
   const ids = new Set(live.map((s) => s.id));
-  const boundaries = new Map<string, number>();
-  for (const e of events)
-    if (e.subject.kind === "seat" && e.body.type === "tenure-started")
-      boundaries.set(
-        e.subject.id,
-        Math.max(boundaries.get(e.subject.id) ?? 0, e.seq),
-      );
-  const current = events.filter(
-    (e) =>
-      e.subject.kind !== "seat" || e.seq >= (boundaries.get(e.subject.id) ?? 0),
-  );
-  const stats = communicationStats(current);
-  const messages = stats.rows;
-  const edges: CompiledRig["edges"] = [];
+  const boundaries = sessionBoundaries(events);
+  const current = events.filter((e) => e.subject.kind !== 'seat' || e.seq >= (boundaries.get(e.subject.id) ?? 0));
+  const edges: Edge[] = [];
   const labels: Record<string, string> = {};
-  const counts = new Map<string, number>();
-  for (const m of messages)
-    for (const from of m.from) {
-      if (
-        !ids.has(from) ||
-        !ids.has(m.to) ||
-        m.event.seq < (boundaries.get(from) ?? 0)
-      )
-        continue;
-      const key = `${from}→${m.to}`;
-      if (!counts.has(key))
-        edges.push({
-          from,
-          to: m.to,
-          kind: "collaborates_with",
-          enforced: true,
-        });
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  for (const [key, count] of counts)
-    labels[key] = `${count} ${count === 1 ? "message" : "messages"} observed`;
-  for (const e of current)
-    if (e.body.type === "handed-over" && e.subject.kind === "seat")
-      for (const source of e.body.from) {
-        const to = e.subject.id,
-          from = source.seat;
-        if (
-          ids.has(from) &&
-          ids.has(to) &&
-          e.seq >= (boundaries.get(from) ?? 0) &&
-          !edges.some((edge) => edge.from === from && edge.to === to)
-        ) {
-          edges.push({ from, to, kind: "delegates_to", enforced: true });
-          labels[`${from}→${to}`] = "Handoff recorded";
-        }
-      }
+  messageEdges(communicationStats(current).rows, ids, boundaries, edges, labels);
+  handoffEdges(current, ids, boundaries, edges, labels);
   const family = parentForest(compiled, children);
-  // Parentage is a downward hierarchy arrow. Direct family traffic stays in Communications;
-  // drawing a second return arrow here would obscure which node is the parent.
-  for (const {parent, child} of family) {
-    for (let i=edges.length-1;i>=0;i--) {
-      const e=edges[i];
-      if ((e.from===parent && e.to===child) || (e.from===child && e.to===parent)) edges.splice(i,1);
-    }
-    delete labels[`${child}→${parent}`];
-    delete labels[`${parent}→${child}`];
-    if (ids.has(parent) && ids.has(child)) {
-      edges.push({from:parent,to:child,kind:"spawned_by",enforced:true});
-      labels[`${parent}→${child}`] = "";
-    }
-  }
+  familyEdges(family, ids, edges, labels);
   const groups = new Set(live.map((s) => s.pod));
   const base = given ? withLiveChildren(given, compiled) : computeLayout(compiled);
   const layout = treeLayout(base, compiled, family);
   return {
-    compiled: {
-      ...compiled,
-      seats: live,
-      pods: compiled.pods.filter((p) => groups.has(p.id)),
-      edges,
-    },
-    layout: {
-      ...layout,
-      seats: Object.fromEntries(
-        Object.entries(layout.seats).filter(([id]) => ids.has(id)),
-      ),
-      pods: Object.fromEntries(
-        Object.entries(layout.pods).filter(([id]) => groups.has(id)),
-      ),
-    },
+    compiled: { ...compiled, seats: live, pods: compiled.pods.filter((p) => groups.has(p.id)), edges },
+    layout: { ...layout, seats: onlyKeys(layout.seats, ids), pods: onlyKeys(layout.pods, groups) },
     labels,
-    unknown: compiled.seats.filter((s) => seats[s.id]?.lifecycle === "stale")
-      .length,
+    unknown: compiled.seats.filter((s) => seats[s.id]?.lifecycle === 'stale').length,
   };
 }
 
