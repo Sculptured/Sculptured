@@ -25,8 +25,7 @@ export function useSeatEvents(seatId: string, feed: EventRecord[], epoch: number
 
   const history = loaded?.seatId === seatId ? loaded.events : null;
   const error = failed?.seatId === seatId ? failed.message : null;
-  const last = history && history.length > 0 ? history[history.length - 1].seq : 0;
-  const gap = history !== null && last > 0 && feed.length >= FEED_LIMIT && feed[0].seq > last;
+  const { last, gap } = historyBoundary(history, feed);
 
   useEffect(() => {
     if (!gap) refetchedFrom.current = null;
@@ -48,6 +47,12 @@ export function useSeatEvents(seatId: string, feed: EventRecord[], epoch: number
     // Only a hole that survived the refetch is reported.
     gap: gap && refetchedFrom.current !== null && refetchedFrom.current !== loaded,
   };
+}
+
+function historyBoundary(history: EventRecord[] | null, feed: EventRecord[]) {
+  const last = history && history.length > 0 ? history[history.length - 1].seq : 0;
+  const gap = history !== null && last > 0 && feed.length >= FEED_LIMIT && feed[0].seq > last;
+  return { last, gap };
 }
 
 /** The seat's latest history page, fetched again on each epoch and reload. */
