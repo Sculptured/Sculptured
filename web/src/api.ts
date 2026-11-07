@@ -74,6 +74,11 @@ export async function apiRequest<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | '
     headers: Object.keys(headers).length ? headers : undefined,
     body: raw ? raw.body : body === undefined ? undefined : JSON.stringify(body),
   });
+  return readResponse<T>(res);
+}
+
+/** Decode successful data and normalize failures at the transport boundary. */
+async function readResponse<T>(res: Response): Promise<T> {
   const text = await res.text();
   let json;
   try {
