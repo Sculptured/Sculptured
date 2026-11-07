@@ -889,8 +889,8 @@ async fn a_question_the_program_settled_itself_is_withdrawn() {
 }
 
 /// A Job that makes a restricted agent ask permission for one harmless shell command in its folder.
-const PERMISSION_JOB: &str =
-    "Use your Bash tool to run exactly: echo sculptured-ok. Then reply with the single word OK.";
+/// A command that changes a file: Claude Code lets read-only ones like `echo` run without asking.
+const PERMISSION_JOB: &str = "Use your Bash tool to run exactly: touch sculptured-ok.txt. Then reply with the single word OK.";
 
 /// The first Bash call of `agent`, with its result: (permission question, Bash call id).
 async fn live_permission(s: &Served, agent: &str) -> (String, String) {
