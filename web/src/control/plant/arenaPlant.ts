@@ -35,9 +35,7 @@ function toolAction(e: Event, declarations: Declarations): PlantAction {
   const p = doc(e.payload);
   const tool = str(p.name) ?? 'a tool';
   const declared = declarations.tools?.[tool];
-  const part = str(p.part);
-  const system = part && declarations.systems?.[part] ? part
-    : declared?.part && declarations.systems?.[declared.part] ? declared.part : 'unknown';
+  const system = toolSystem(str(p.part), declared?.part, declarations);
   const effect = declared?.effect ?? 'unknown';
   const ms = typeof p.duration_ms === 'number' ? p.duration_ms : undefined;
   return {
@@ -45,6 +43,12 @@ function toolAction(e: Event, declarations: Declarations): PlantAction {
     effectBasis: effect === 'unknown' ? 'unknown' : 'declared', ms,
     ...outcomeOf(p.error), request: p.args, result: p.error != null ? p.error : p.result,
   };
+}
+
+function toolSystem(part: string | undefined, declaredPart: string | undefined, declarations: Declarations): string {
+  if (part && declarations.systems?.[part]) return part;
+  if (declaredPart && declarations.systems?.[declaredPart]) return declaredPart;
+  return 'unknown';
 }
 
 /** A handoff or message: a write to the team's messages, to one agent or everyone. */
@@ -77,13 +81,18 @@ function changesIn(result: unknown): ChangeDoc[] {
 const GRANTED = /^(approved?|allow(ed)?|granted|yes)$/i;
 
 function permitOf(c: ChangeDoc, at: number, agent: string | undefined): Permit {
-  const decision = str(c.decision) ?? str(doc(c.decision).decision);
   const by = str(c.decided_by) ?? str(c.by) ?? str(doc(c.decision).by);
-  const state = decision == null && c.decision == null ? 'waiting' : GRANTED.test(decision ?? '') || doc(c.decision).approved === true ? 'granted' : 'refused';
+  const state = permitState(c.decision);
   return {
     id: String(c.id), at, ...(agent ? { agent } : {}), title: str(c.summary) ?? str(c.action) ?? String(c.id), state,
     ...(state !== 'waiting' && by ? { by } : {}), ...(str(c.system) ? { system: str(c.system) } : {}),
   };
+}
+
+function permitState(value: unknown): Permit['state'] {
+  const decision = str(value) ?? str(doc(value).decision);
+  if (decision == null && value == null) return 'waiting';
+  return GRANTED.test(decision ?? '') || doc(value).approved === true ? 'granted' : 'refused';
 }
 
 /** The permits the run's approvals parts showed, each as it stood last; the action that asked for one carries it. */
