@@ -53,12 +53,7 @@ export function NewRun({ tasks, openOk, onError }: Props) {
   return (
     <section className="arena-bar-new" aria-label="New run">
       <div className="arena-row">
-        <label className="arena-inline">
-          <span className="tst-label">Task</span>
-          <select value={selected} onChange={(e) => setTaskId(e.target.value)} disabled={busy || tasks.length === 0}>
-            {tasks.map((t) => <option key={t.id} value={t.id}>{t.id} · {t.reason}</option>)}
-          </select>
-        </label>
+        <TaskSelect tasks={tasks} selected={selected} busy={busy} select={setTaskId} />
         <span className="tst-label">Team</span>
         <Chain team={team} />
         <span className="tst-spacer" />
@@ -69,4 +64,13 @@ export function NewRun({ tasks, openOk, onError }: Props) {
       {editing && team && <TeamEditor team={team} update={update} reset={reset} openOk={openOk} />}
     </section>
   );
+}
+
+function TaskSelect({ tasks, selected, busy, select }: { tasks: TaskSummary[]; selected: string; busy: boolean; select(id: string): void }) {
+  return <label className="arena-inline">
+    <span className="tst-label">Task</span>
+    <select value={selected} onChange={(e) => select(e.target.value)} disabled={busy || tasks.length === 0}>
+      {tasks.map((t) => <option key={t.id} value={t.id}>{t.id} · {t.reason}</option>)}
+    </select>
+  </label>;
 }

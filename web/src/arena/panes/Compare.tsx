@@ -78,13 +78,17 @@ function CompareBody({ settings, setSettings }: PaneProps<Chosen>) {
         <BranchSelect label="First" runs={runs} value={a} onChange={(v) => setSettings({ ...settings, a: v || undefined })} />
         <BranchSelect label="Second" runs={runs} value={b} onChange={(v) => setSettings({ ...settings, b: v || undefined })} />
       </div>
-      {(!a || !b) && <p className="muted">Choose two branches to compare.</p>}
-      {a && b && a === b && <p className="muted">Choose two different branches.</p>}
-      {a && b && a !== b && !ready && <p className="muted">{MUST_FINISH}</p>}
+      <CompareHint a={a} b={b} ready={ready} />
       <ArenaProblem error={error} />
       {cmp && a && b && <Summary cmp={cmp} a={a} b={b} />}
     </>
   );
+}
+
+function CompareHint({ a, b, ready }: Chosen & { ready: boolean }) {
+  if (!a || !b) return <p className="muted">Choose two branches to compare.</p>;
+  if (a === b) return <p className="muted">Choose two different branches.</p>;
+  return ready ? null : <p className="muted">{MUST_FINISH}</p>;
 }
 
 /** Any two branches: where they first differ and how their final worlds differ. */
