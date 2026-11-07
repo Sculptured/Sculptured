@@ -63,9 +63,62 @@ Paths below are relative to web/src or crates as indicated; line numbers describ
 | 29 | web/src/tokens.css:474 | same file:618 | Theme tokens; retain inherited-token semantics. |
 | 28 | crates/controld/tests/handoffs.rs:3125 | same file:3222 | Repeated scenario setup. |
 
-## Verification and remaining work
+## After the refactor
 
-The preceding Control room commit passed TypeScript, changed-file ESLint, 139 targeted web tests,
-six Arena proxy tests, formatting, and desktop/mobile layout checks with captures.
-Clippy initially fails in `crates/model/src/mandate.rs`: `judge` is 32 lines against 30.
-Full platform baseline tests and module refactors are pending.
+The web lint went from 210 findings (65 function-length, 124 complexity, 21 other) to 21
+(3 function-length, 10 complexity, 5 other). All findings in non-test code are in one component,
+`web/src/structure/StructureCanvas.tsx` (3 function-length, 6 complexity, 1 file-length); the other 8 are in
+test files.
+
+| web/src module | Function length (before / after) | Complexity (before / after) | Other lint (before / after) |
+| --- | ---: | ---: | ---: |
+| App.tsx, api.ts, arena, control, herdr, errors, conversation.ts, hooks | 1 / 0 | 22 / 0 | 0 / 0 |
+| collaboration | 3 / 0 | 5 / 0 | 1 / 0 |
+| draft | 0 / 0 | 5 / 2 (tests) | 1 / 1 (test file length) |
+| groups | 1 / 0 | 5 / 0 | 0 / 0 |
+| hosted | 3 / 0 | 3 / 0 | 0 / 0 |
+| pages | 2 / 0 | 8 / 0 | 0 / 0 |
+| release | 4 / 0 | 3 / 0 | 0 / 0 |
+| setup | 1 / 0 | 2 / 0 | 0 / 0 |
+| shell | 24 / 0 | 26 / 2 (perf test) | 8 / 1 (test file length) |
+| structure | 14 / 3 | 18 / 6 | 7 / 3 |
+| tests (Arena UI) | 0 / 0 | 5 / 0 | 0 / 0 |
+| useTeamDraft.ts | 1 / 0 | 1 / 0 | 0 / 0 |
+| visual | 9 / 0 | 6 / 0 | 4 / 0 |
+| workflow | 2 / 0 | 13 / 0 | 0 / 0 |
+| workspace | 0 / 0 | 2 / 0 | 0 / 0 |
+| **Total** | **65 / 3** | **124 / 10** | **21 / 5** |
+
+Duplication is 3.63% of lines (6,858 of 189,000; 714 clones), under the 3.69% budget and below the
+initial 3.687%. In the Rust crates `jscpd` reports 5.0%, almost all in tests and fixtures.
+
+Shared helpers added instead of copies: `closeOnEscape` (six panels), `Composer`, `AgentBox`, the live
+graph's geometry, pulse and layer modules, `transcriptModel`, `TemplatePreview`, `ImportFromFile`,
+`removal.ts` (what is left of a draft when agents go), and `process::stop_session` /
+`hard_stop_session` for the Codex and OpenCode drivers.
+
+## What remains
+
+- `web/src/structure/StructureCanvas.tsx`: one 824-line component with about 40 closures over shared drag,
+  wire, ghost and selection state. It needs its pointer handling split into hooks that share one context
+  object (card, group, port, marquee, palette) and its render split into layers, as was done for
+  `LiveGraph`. It was left because it cannot be refactored safely without browser-level checks of drag and
+  keyboard behaviour; it is the only non-test violation.
+- Test files over 300 lines: `structure/StructureBoard.test.tsx` (701), `structure/TeamFlow.test.tsx` (531),
+  `draft/edits.invariants.test.ts` (441), `shell/Transcript.test.tsx` (398). Split each by describe block.
+- Test helpers over complexity 12: `draft/edits.invariants.test.ts` (two) and
+  `shell/routeEdges.perf.test.ts` (two; its reference router is a deliberately independent oracle).
+- `shell/routeEdges.perf.test.ts` has a wall-clock budget: it can fail when the full suite shares a busy
+  machine (it passes alone and in a quiet run).
+- Rust: `cargo clippy --workspace --all-targets -- -D warnings` still fails on `too_many_lines` in
+  `drivers` (13 in the library), `rigspec` (18), `fixtures` (2), and in tests of `model`, `host-proto` and
+  `interpreter`. The `mandate.rs` failure is fixed. `controld` and crates after the failing ones were not
+  linted because `--keep-going` stops at a failing dependency.
+- Rust duplication worth consolidating next: the Codex and OpenCode session start-up (about 15 lines in
+  `drivers/src/{codex,opencode}/session.rs`), `portable/convert/{claude,codex}.rs`, and the repeated test
+  setup in `controld/tests` and `workflow/tests.rs`.
+
+## Verification
+
+Each commit passed `tsc --noEmit`, ESLint on the files it touched, and the vitest files for the modules it
+changed (one worker). The drivers crate tests pass after the stop-sequence change.
