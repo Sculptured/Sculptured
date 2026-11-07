@@ -35,12 +35,16 @@ export function toComponentForm(s: RegistryServer): RegistryForm | null {
   const pkg = (s.packages ?? []).find((p) => RUNNERS[p.registryType] && (p.transport?.type ?? 'stdio') === 'stdio');
   if (pkg) {
     const r = RUNNERS[pkg.registryType];
-    const env = (pkg.environmentVariables ?? []).map((e) => `${e.name}${e.description ? ` (${e.description})` : ''}`);
-    const install = [`Needs ${r.needs} on the agent's computer.`, env.length ? `Set ${env.join(', ')} there.` : ''].filter(Boolean).join(' ');
+    const install = installInstructions(pkg, r.needs);
     return { ...base, kind: 'mcp', install, program: r.program, args: [...words(pkg.runtimeArguments), ...r.args(pkg), ...words(pkg.packageArguments)].join(' ') };
   }
   const remote = (s.remotes ?? []).find((r) => r.type === 'streamable-http') ?? (s.remotes ?? [])[0];
   if (!remote) return null;
   const headers = (remote.headers ?? []).map((h): [string, string] => [h.name, h.value ? secret(h.value) : `\${${h.name.toUpperCase().replace(/-/g, '_')}}`]);
   return { ...base, kind: 'mcp-remote', install: headers.length ? 'Get the secrets it names from its provider.' : '', url: secret(remote.url), headers };
+}
+
+function installInstructions(pkg: Package, needs: string): string {
+  const env = (pkg.environmentVariables ?? []).map((e) => `${e.name}${e.description ? ` (${e.description})` : ''}`);
+  return [`Needs ${needs} on the agent's computer.`, env.length ? `Set ${env.join(', ')} there.` : ''].filter(Boolean).join(' ');
 }
