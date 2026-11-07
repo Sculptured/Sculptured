@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { closeOnEscape } from '../closeOnEscape';
 import { api } from '../api';
 import { errorText } from '../errors';
 import type { DecisionEntry } from '../generated/DecisionEntry';
@@ -90,7 +91,7 @@ export function KnowledgeView({ rig, onClose }: { rig: string; onClose: () => vo
   const act = (p: Promise<unknown>) => { p.then(() => setTick((t) => t + 1)).catch((e) => setFailed(errorText(e))); };
   const k: Knowledge | null = data ?? null;
   return (
-    <section className="knowledge" aria-label="Knowledge" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+    <section className="knowledge" aria-label="Knowledge" onKeyDown={closeOnEscape(onClose)}>
       <header><h2 ref={heading} tabIndex={-1}>Knowledge</h2><Btn onClick={onClose}>Back to board</Btn></header>
       {(error || failed) && <p role="alert">{failed ?? error}</p>}
       {!k && !error && <p className="muted">Loading…</p>}

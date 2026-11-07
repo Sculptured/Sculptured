@@ -1,4 +1,5 @@
 import './input.css';
+import { closeOnEscape } from '../closeOnEscape';
 import { useEffect, useRef } from 'react';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { connectionPath, type Box } from '../draft/geometry';
@@ -51,7 +52,7 @@ export function InputEditor({ draft, edit, locked, onClose }: { draft: TeamDraft
   const input = draft.input;
   if (!input) return null;
   return (
-    <aside ref={box} className="workflow-inspector team-input-editor" role="dialog" aria-label="Input" tabIndex={-1} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+    <aside ref={box} className="workflow-inspector team-input-editor" role="dialog" aria-label="Input" tabIndex={-1} onKeyDown={closeOnEscape(onClose)}>
       <header><h2>Input</h2><Btn variant="ghost" icon="x" iconOnly onClick={onClose} aria-label="Close Input" kbd="esc" /></header>
       <div className="workflow-inspector-body">
         <p className="muted">The goal, links, notes and files the team starts from. Each agent it goes to gets it after its Job when the team starts.</p>

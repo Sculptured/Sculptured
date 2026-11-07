@@ -17,45 +17,124 @@ const SOURCES:Record<string,string>={'sculptured':'Sculptured','imported:claude-
 const sourceName=(s:string)=>SOURCES[s]??s;
 const runLabel=(r:DeploymentRun)=>r.source?`Imported · ${sourceName(r.source)} · ${date(r.started_ms)}`:`${date(r.started_ms)} · #${r.start_seq}`;
 const label=(a:DeploymentAgent)=>a.name ?? `${a.id.split('@')[0]} (name not recorded)`;
-export function DeploymentHistoryView({rig}:{rig:string}) {
-  const [params,setParams]=useSearchParams();
-  const requested=Number(params.get('run')) || undefined;
-  const root=params.get('history_subtree') ?? '';
-  const [runs,setRuns]=useState<DeploymentRun[]>([]),[older,setOlder]=useState(false),[loadingRuns,setLoadingRuns]=useState(true);
-  const [data,setData]=useState<DeploymentHistory|null>(null),[error,setError]=useState('');
-  const [selected,setSelected]=useState(''),[list,setList]=useState(false),[tokensView,setTokensView]=useState(false);
-  const seq=requested ?? runs[0]?.start_seq;
-  const navigate=(key:string,value:string)=>setParams(previous=>{const next=new URLSearchParams(previous);if(value)next.set(key,value);else next.delete(key);if(key==='run')next.delete('history_subtree');return next;});
-  useEffect(()=>{let active=true;setLoadingRuns(true);setRuns([]);api.deployments(rig).then(items=>{if(active){setRuns(items);setOlder(items.length===50);setLoadingRuns(false);}},()=>{if(active){setError('Could not load deployment history.');setLoadingRuns(false);}});return()=>{active=false};},[rig]);
-  useEffect(()=>{let active=true;setData(null);setSelected('');if(seq)api.deployment(rig,seq).then(value=>{if(active){setData(value);setError('');}},()=>{if(active)setError('Could not load this deployment.');});return()=>{active=false};},[rig,seq]);
+const PAGE_RUNS = 50;
+
+function useRuns(rig: string, onError: (message: string) => void) {
+  const [runs, setRuns] = useState<DeploymentRun[]>([]);
+  const [older, setOlder] = useState(false);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    setLoading(true); setRuns([]);
+    api.deployments(rig).then(items => { if (active) { setRuns(items); setOlder(items.length === PAGE_RUNS); setLoading(false); } },
+      () => { if (active) { onError('Could not load deployment history.'); setLoading(false); } });
+    return () => { active = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rig]);
+  const loadOlder = async () => {
+    try {
+      const next = await api.deployments(rig, runs.at(-1)!.start_seq);
+      setRuns([...runs, ...next]); setOlder(next.length === PAGE_RUNS);
+    } catch { onError('Could not load older deployments.'); }
+  };
+  return { runs, older, loading, loadOlder };
+}
+
+function useDeployment(rig: string, seq: number | undefined, setError: (message: string) => void, resetSelection: () => void) {
+  const [data, setData] = useState<DeploymentHistory | null>(null);
+  useEffect(() => {
+    let active = true;
+    setData(null); resetSelection();
+    if (seq) api.deployment(rig, seq).then(value => { if (active) { setData(value); setError(''); } }, () => { if (active) setError('Could not load this deployment.'); });
+    return () => { active = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rig, seq]);
+  return data;
+}
+
+type ControlsProps = { rig: string; seq: number | undefined; requested: number | undefined; root: string; runs: DeploymentRun[]; older: boolean; data: DeploymentHistory | null;
+  list: boolean; tokensView: boolean; navigate: (key: string, value: string) => void; loadOlder: () => void; toggleList: () => void; toggleTokens: () => void };
+
+function HistoryControls({ rig, seq, requested, root, runs, older, data, list, tokensView, navigate, loadOlder, toggleList, toggleTokens }: ControlsProps) {
+  return <div className="subtree-controls">
+    <label>Deployment <select aria-label="Historical deployment" value={seq ?? ''} onChange={e => navigate('run', e.target.value)}>
+      {requested && !runs.some(r => r.start_seq === requested) && <option value={requested}>Run #{requested}</option>}
+      {runs.map(r => <option key={r.start_seq} value={r.start_seq}>{runLabel(r)}</option>)}
+    </select></label>
+    {older && <button className="btn" onClick={loadOlder}>Load older runs</button>}
+    {data && <SubtreeSelect data={data} root={root} navigate={navigate} />}
+    {root && <button className="btn" onClick={() => navigate('history_subtree', '')}>Whole deployment</button>}
+    <button className="btn" aria-pressed={list} onClick={toggleList}>{list ? 'Graph' : 'List'}</button>
+    {seq !== undefined && <RunButtons rig={rig} seq={seq} imported={Boolean(data?.run.source)} tokensView={tokensView} toggleTokens={toggleTokens} />}
+  </div>;
+}
+
+function SubtreeSelect({ data, root, navigate }: { data: DeploymentHistory; root: string; navigate: (key: string, value: string) => void }) {
+  return <label>Subtree <select aria-label="Historical subtree" value={root} onChange={e => navigate('history_subtree', e.target.value)}>
+    <option value="">Whole deployment</option>{data.agents.map(a => <option key={a.id} value={a.id}>{label(a)}</option>)}
+  </select></label>;
+}
+
+function RunButtons({ rig, seq, imported, tokensView, toggleTokens }: { rig: string; seq: number; imported: boolean; tokensView: boolean; toggleTokens: () => void }) {
+  return <>
+    {!imported && <button className="btn" aria-pressed={tokensView} onClick={toggleTokens}>{tokensView ? 'Agents' : 'Where tokens went'}</button>}
+    <a className="btn" href={api.runFileUrl(rig, seq)} download onClick={() => track('download-run')}>Download run</a>
+  </>;
+}
+
+function RunSummary({ data }: { data: DeploymentHistory }) {
+  return <p className="live-evidence-note">{data.agents.length} agents · Started {date(data.run.started_ms)} · Stop requested: {date(data.stopped_ms)}. {data.has_snapshot ? 'Saved configuration and recorded events.' : 'Recovered from recorded events; original configuration and some names were not retained.'}{data.summary_truncated ? ' Summary capped at 50,000 deployment events; raw history remains paginated below.' : ''}</p>;
+}
+
+type BodyProps = { rig: string; seq: number; data: DeploymentHistory; root: string; list: boolean; selected: string; setSelected: (id: string) => void };
+
+function HistoryBody({ rig, seq, data, root, list, selected, setSelected }: BodyProps) {
+  return <>
+    <RunSummary data={data} />
+    <div className="history-body">
+      <HistoryTree key={`${rig}:${seq}`} rig={rig} data={data} root={root} list={list} selected={selected} onSelect={setSelected} />
+      {selected && <HistoryEvidence key={`${rig}:${seq}:${selected}`} rig={rig} seq={seq} agent={data.agents.find(a => a.id === selected)!} onClose={() => setSelected('')} />}</div>
+  </>;
+}
+
+function HistoryStatus({ error, loading, empty, loadingDeployment }: { error: string; loading: boolean; empty: boolean; loadingDeployment: boolean }) {
+  return <>
+    {error && <DismissibleError message={error} />}
+    {loading && <p role="status">Loading deployments…</p>}
+    {!loading && empty && !error && <p>No recorded deployments yet.</p>}
+    {loadingDeployment && !error && <p role="status">Loading deployment…</p>}
+  </>;
+}
+
+function useHistoryParams() {
+  const [params, setParams] = useSearchParams();
+  const navigate = (key: string, value: string) => setParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (value) next.set(key, value); else next.delete(key);
+    if (key === 'run') next.delete('history_subtree');
+    return next;
+  });
+  return { requested: Number(params.get('run')) || undefined, root: params.get('history_subtree') ?? '', navigate };
+}
+
+export function DeploymentHistoryView({ rig }: { rig: string }) {
+  const { requested, root, navigate } = useHistoryParams();
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState('');
+  const [list, setList] = useState(false);
+  const [tokensView, setTokensView] = useState(false);
+  const { runs, older, loading, loadOlder } = useRuns(rig, setError);
+  const seq = requested ?? runs[0]?.start_seq;
+  const data = useDeployment(rig, seq, setError, () => setSelected(''));
+  const showTokens = tokensView && !data?.run.source;
   return <div className="deployment-history">
-    <div className="subtree-controls">
-      <label>Deployment <select aria-label="Historical deployment" value={seq ?? ''} onChange={e=>navigate('run',e.target.value)}>
-        {requested&&!runs.some(r=>r.start_seq===requested)&&<option value={requested}>Run #{requested}</option>}
-        {runs.map(r=><option key={r.start_seq} value={r.start_seq}>{runLabel(r)}</option>)}
-      </select></label>
-      {older&&<button className="btn" onClick={async()=>{try{const next=await api.deployments(rig,runs.at(-1)!.start_seq);setRuns([...runs,...next]);setOlder(next.length===50);}catch{setError('Could not load older deployments.');}}}>Load older runs</button>}
-      {data&&<label>Subtree <select aria-label="Historical subtree" value={root} onChange={e=>navigate('history_subtree',e.target.value)}>
-        <option value="">Whole deployment</option>{data.agents.map(a=><option key={a.id} value={a.id}>{label(a)}</option>)}
-      </select></label>}
-      {root&&<button className="btn" onClick={()=>navigate('history_subtree','')}>Whole deployment</button>}
-      <button className="btn" aria-pressed={list} onClick={()=>setList(!list)}>{list?'Graph':'List'}</button>
-      {seq!==undefined&&!data?.run.source&&<button className="btn" aria-pressed={tokensView} onClick={()=>setTokensView(!tokensView)}>{tokensView?'Agents':'Where tokens went'}</button>}
-      {seq!==undefined&&<a className="btn" href={api.runFileUrl(rig,seq)} download onClick={()=>track('download-run')}>Download run</a>}
-    </div>
-    {data?.run.source&&<p className="live-evidence-note">Imported from a file ({sourceName(data.run.source)}). Shown as recorded in the file; it did not run here.</p>}
+    <HistoryControls rig={rig} seq={seq} requested={requested} root={root} runs={runs} older={older} data={data} list={list} tokensView={tokensView}
+      navigate={navigate} loadOlder={loadOlder} toggleList={() => setList(!list)} toggleTokens={() => setTokensView(!tokensView)} />
+    {data?.run.source && <p className="live-evidence-note">Imported from a file ({sourceName(data.run.source)}). Shown as recorded in the file; it did not run here.</p>}
     <p className="live-evidence-note">Recorded history · includes stopped and removed agents. Status means last observed in this run, not current activity.</p>
-    {error&&<DismissibleError message={error}/>}
-    {loadingRuns&&<p role="status">Loading deployments…</p>}
-    {!loadingRuns&&!runs.length&&!error&&<p>No recorded deployments yet.</p>}
-    {seq&&!data&&!error&&<p role="status">Loading deployment…</p>}
-    {data&&tokensView&&!data.run.source&&<WhereTokensWent rig={rig} start={seq} seats={data.agents.map(a=>a.id)}/>}
-    {data&&!(tokensView&&!data.run.source)&&<>
-      <p className="live-evidence-note">{data.agents.length} agents · Started {date(data.run.started_ms)} · Stop requested: {date(data.stopped_ms)}. {data.has_snapshot?'Saved configuration and recorded events.':'Recovered from recorded events; original configuration and some names were not retained.'}{data.summary_truncated?' Summary capped at 50,000 deployment events; raw history remains paginated below.':''}</p>
-      <div className="history-body">
-        <HistoryTree key={`${rig}:${seq}`} rig={rig} data={data} root={root} list={list} selected={selected} onSelect={setSelected}/>
-        {selected&&<HistoryEvidence key={`${rig}:${seq}:${selected}`} rig={rig} seq={seq!} agent={data.agents.find(a=>a.id===selected)!} onClose={()=>setSelected('')}/>}</div>
-    </>}
+    <HistoryStatus error={error} loading={loading} empty={!runs.length} loadingDeployment={Boolean(seq) && !data} />
+    {data && showTokens && <WhereTokensWent rig={rig} start={seq} seats={data.agents.map(a => a.id)} />}
+    {data && !showTokens && <HistoryBody rig={rig} seq={seq!} data={data} root={root} list={list} selected={selected} setSelected={setSelected} />}
   </div>;
 }
 function HistoryTree({rig,data,root,list,selected,onSelect}:{rig:string;data:DeploymentHistory;root:string;list:boolean;selected:string;onSelect:(id:string)=>void}) {

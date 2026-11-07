@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { closeOnEscape } from '../closeOnEscape';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import type { EventRecord } from '../generated/EventRecord';
@@ -190,7 +191,7 @@ export function CommunicationDashboard({ rig, state, connected, names, onClose }
   const label = selectionText(p.direction, p.from, p.to, name);
   const routes = stats.routes.filter(r => matchesTraffic({ from: [r.from], to: r.to }, p.selection));
   const start = since || Math.min(now, ...events.map(e => e.at_ms));
-  return <section ref={scroller} className="communication-dashboard" aria-label="Communication analytics" onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+  return <section ref={scroller} className="communication-dashboard" aria-label="Communication analytics" onKeyDown={closeOnEscape(onClose)}>
     <header><h2 ref={heading} tabIndex={-1}>Communications</h2><span className="muted">{cap.paused ? 'Paused' : connected ? 'Live capture' : 'Reconnecting · stale'}</span><Btn onClick={onClose}>Back to board</Btn></header>
     <TrafficToolbar agent={p.agent} window={p.window} direction={p.direction} ids={ids} name={name} paused={cap.paused} filter={p.filter} togglePause={cap.togglePause} clear={() => choose('all')} />
     <p className="traffic-note">Latest {events.length.toLocaleString()} / 10,000 captured messages, handoffs and usage reports for current team members · refreshed every 5s + live updates{cap.updated ? ` · fetched ${new Date(cap.updated).toLocaleTimeString()}` : ''}. {new Date(start).toLocaleString()} – {new Date(now).toLocaleString()}. Older or unmanaged activity may be absent.</p>

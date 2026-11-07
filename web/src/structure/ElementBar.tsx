@@ -1,4 +1,5 @@
 import { useId, useState, type ReactNode } from 'react';
+import { closeOnEscape } from '../closeOnEscape';
 import { reconnect, removeElement, renameGroup, setConnectionKind } from '../draft/edits';
 import { groupOf } from '../draft/ids';
 import { issuesFor, MARK } from '../draft/issues';
@@ -15,7 +16,7 @@ import { LOCK_REASON, nameOf, type Edit } from './Panels';
 function Bar({ label, children, onClose, locked }: { label: string; children: ReactNode; onClose: () => void; locked: boolean }) {
   const ids = useId();
   return (
-    <div className="selection-bar element-bar" role="toolbar" aria-label={label} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+    <div className="selection-bar element-bar" role="toolbar" aria-label={label} onKeyDown={closeOnEscape(onClose)}>
       {children}
       <span className="sel-sep" aria-hidden="true" />
       <Btn size="sm" variant="ghost" icon="x" iconOnly onClick={onClose} aria-label={`Close ${label.toLowerCase()} settings`} kbd="esc" />

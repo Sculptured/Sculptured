@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { closeOnEscape } from '../closeOnEscape';
 import { api, type StatusPage, type TeamStatus } from '../api';
 import { errorText } from '../errors';
 import { shortAge } from '../herdr';
@@ -67,6 +68,31 @@ function Empty({ s }: { s: TeamStatus }) {
   );
 }
 
+function StatusMessages({ data, error, picked, page, setPicked }: { data: TeamStatus | null; error: string; picked: number | null; page: StatusPage | null; setPicked: (seq: number | null) => void }) {
+  return <>
+    {error && <p role="alert">{error}</p>}
+    {!data && !error && <p className="muted">Loading…</p>}
+    {data && !data.page && <Empty s={data} />}
+    {picked !== null && page && (
+      <p className="sp-old" role="status">An earlier version. <Btn size="sm" onClick={() => setPicked(null)}>Show the latest</Btn></p>
+    )}
+  </>;
+}
+
+function StatusBody({ data, error, picked, setPicked, rig }: { data: TeamStatus | null; error: string; picked: number | null; setPicked: (seq: number | null) => void; rig: string }) {
+  const old = useVersion(rig, picked);
+  const page = picked === null ? data?.page ?? null : old.page;
+  return <>
+    <StatusMessages data={data} error={old.error || error} picked={picked} page={page} setPicked={setPicked} />
+    {page && (
+      <article className="sp-page" aria-label="Status page">
+        <About page={page} latest={picked === null} />
+        <div className="sp-body"><Markdown text={page.markdown} /></div>
+      </article>
+    )}
+  </>;
+}
+
 /**
  * Results → Status: the one page the team's owner agent keeps saying where the work stands and what
  * changed, so someone coming back later can read it instead of the transcripts. It is re-read every few
@@ -75,29 +101,16 @@ function Empty({ s }: { s: TeamStatus }) {
 export function StatusPageView({ rig, onClose }: { rig: string; onClose: () => void }) {
   const { data, error } = usePolled(() => api.teamStatus(rig), STATUS_POLL_MS, [rig]);
   const [picked, setPicked] = useState<number | null>(null);
-  const old = useVersion(rig, picked);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus(); setPicked(null); }, [rig]);
-  const page = picked === null ? data?.page ?? null : old.page;
   return (
-    <section className="status-page" aria-label="Status" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+    <section className="status-page" aria-label="Status" onKeyDown={closeOnEscape(onClose)}>
       <header>
         <h2 ref={heading} tabIndex={-1}>Status</h2>
         {data && <Versions s={data} picked={picked} onPick={setPicked} />}
         <Btn onClick={onClose}>Back to board</Btn>
       </header>
-      {(error || old.error) && <p role="alert">{old.error || error}</p>}
-      {!data && !error && <p className="muted">Loading…</p>}
-      {data && !data.page && <Empty s={data} />}
-      {picked !== null && page && (
-        <p className="sp-old" role="status">An earlier version. <Btn size="sm" onClick={() => setPicked(null)}>Show the latest</Btn></p>
-      )}
-      {page && (
-        <article className="sp-page" aria-label="Status page">
-          <About page={page} latest={picked === null} />
-          <div className="sp-body"><Markdown text={page.markdown} /></div>
-        </article>
-      )}
+      <StatusBody data={data} error={error ?? ''} picked={picked} setPicked={setPicked} rig={rig} />
     </section>
   );
 }
