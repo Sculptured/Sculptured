@@ -60,10 +60,14 @@ export function ActionButton({ action, label, glyph, className, onOutcome, doneT
         aria-expanded={expanded} title={caption !== why ? (why ?? undefined) : undefined} onClick={() => (onPress ? onPress() : void run(action))}>
         <span aria-hidden="true">{glyph}</span> {label}
       </button>
-      {why && <span id={id} className="ctl-why">{caption}{caption !== why && <span className="sr-only">: {why}</span>}</span>}
-      {why && fix}
+      <ActionReason id={id} why={why} caption={caption} fix={fix} />
     </span>
   );
+}
+
+function ActionReason({ id, why, caption, fix }: { id: string; why: string | null; caption: string | null; fix?: ReactNode }) {
+  if (!why) return null;
+  return <><span id={id} className="ctl-why">{caption}{caption !== why && <span className="sr-only">: {why}</span>}</span>{fix}</>;
 }
 
 /** An outcome's lines under the controls: what happened, every agent left alone and why. */
