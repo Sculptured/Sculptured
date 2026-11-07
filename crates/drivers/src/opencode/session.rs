@@ -382,14 +382,12 @@ impl Session for AcpSession {
     }
 
     async fn stop(&mut self, grace: Duration) -> Result<(), DriverError> {
-        let _ = self.write.send(None);
-        process::stop_within(grace, &self.exited, &mut self.kill).await;
+        process::stop_session(&self.write, grace, &self.exited, &mut self.kill).await;
         Ok(())
     }
 
     async fn hard_stop(&mut self) -> Result<(), DriverError> {
-        process::hard_stop(self.pid, &self.exited, &mut self.kill).await;
-        let _ = self.write.send(None);
+        process::hard_stop_session(&self.write, self.pid, &self.exited, &mut self.kill).await;
         Ok(())
     }
 

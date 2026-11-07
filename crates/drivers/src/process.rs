@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, BufReader, Lines};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
-use tokio::sync::{oneshot, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 /// How long stderr may stay open after the child is reaped (a detached grandchild may hold it).
@@ -100,6 +100,29 @@ pub(crate) async fn hard_stop(
 ) {
     interrupt_group(pid, exited);
     stop_within(crate::HARD_STOP_FORCE_AFTER, exited, kill).await;
+}
+
+/// A line-writing session's graceful stop: its writer is closed, then it gets `grace` to exit.
+pub(crate) async fn stop_session(
+    write: &mpsc::UnboundedSender<Option<String>>,
+    grace: Duration,
+    exited: &watch::Receiver<bool>,
+    kill: &mut Option<oneshot::Sender<()>>,
+) {
+    let _ = write.send(None);
+    stop_within(grace, exited, kill).await;
+}
+
+/// A line-writing session's hard stop: interrupt at once, force after `HARD_STOP_FORCE_AFTER`,
+/// then close its writer.
+pub(crate) async fn hard_stop_session(
+    write: &mpsc::UnboundedSender<Option<String>>,
+    pid: Option<u32>,
+    exited: &watch::Receiver<bool>,
+    kill: &mut Option<oneshot::Sender<()>>,
+) {
+    hard_stop(pid, exited, kill).await;
+    let _ = write.send(None);
 }
 
 /// Signals the process group this driver created (the child is its leader).
