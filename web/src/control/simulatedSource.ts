@@ -125,11 +125,7 @@ export function useSimulatedSource(run: string, branchId: string): ControlSource
   return {
     kind: 'simulated',
     title: titleOf(b, info.names),
-    running: b?.status === 'running',
-    ...(b ? { startedAt: Date.parse(b.created_at) } : {}),
-    runStatus: b ? outcomeOf(b.status) : info.error ? UNKNOWN : LOADING,
-    ...(b ? {} : { unread: true as const }),
-    ...(b?.ended_at ? { endedAt: Date.parse(b.ended_at) } : {}),
+    ...branchStatus(b, info.error),
     agents: m.agents,
     feed: m.feed,
     approvals: m.approvals,
@@ -142,5 +138,15 @@ export function useSimulatedSource(run: string, branchId: string): ControlSource
     ...(b && m.lay ? { timeline: timelineOf(run, b, cursor, m.lay) } : {}),
     ...(b ? { world: worldOf(b, save) } : {}),
     arena: info,
+  };
+}
+
+function branchStatus(b: BranchDetail | null, error: unknown) {
+  return {
+    running: b?.status === 'running',
+    ...(b ? { startedAt: Date.parse(b.created_at) } : {}),
+    runStatus: b ? outcomeOf(b.status) : error ? UNKNOWN : LOADING,
+    ...(b ? {} : { unread: true as const }),
+    ...(b?.ended_at ? { endedAt: Date.parse(b.ended_at) } : {}),
   };
 }
