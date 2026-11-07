@@ -38,13 +38,17 @@ export function reduce(state: RigState, msg: StreamMsg): RigState {
     const seats = Object.fromEntries(msg.snapshot.seats.map((s) => [s.id, s]));
     return { ...state, snapshot: msg.snapshot, seats, epoch: state.epoch + 1 };
   }
-  const { event, seat } = msg.item;
+  const { event } = msg.item;
   if (event.body.type === 'events-lost') return { ...state, gaps: state.gaps + event.body.count };
   // Stop team / Start team change what the team is set to; the snapshot follows.
   if (event.body.type === 'rig-desired-changed') {
     if (!state.snapshot || event.subject.kind !== 'rig' || event.subject.id !== state.snapshot.rig.name) return state;
     return { ...state, snapshot: { ...state.snapshot, desired: event.body.desired } };
   }
+  return applySeatEvent(state, msg.item);
+}
+
+function applySeatEvent(state: RigState, { event, seat }: StreamItem): RigState {
   if (event.subject.kind !== 'seat') return state;
   const id = event.subject.id;
   const prev = state.feed[id] ?? [];
