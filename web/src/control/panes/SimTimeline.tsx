@@ -37,10 +37,14 @@ const typing = (t: EventTarget) => {
 };
 
 /** ←/→, j/k, Home and End, unless the operator is typing or in the fork panel. */
+const STEP_KEYS: Readonly<Record<string, number | 'first' | 'last'>> = {
+  ArrowRight: 1, j: 1, ArrowLeft: -1, k: -1, Home: 'first', End: 'last',
+};
+
 function stepKeys(steps: Step[], cursor: number, move: (seq: number) => void) {
   return (e: KeyboardEvent) => {
     if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-    const by = e.key === 'ArrowRight' || e.key === 'j' ? 1 : e.key === 'ArrowLeft' || e.key === 'k' ? -1 : e.key === 'Home' ? 'first' : e.key === 'End' ? 'last' : 0;
+    const by = Object.hasOwn(STEP_KEYS, e.key) ? STEP_KEYS[e.key] : 0;
     if (!by) return;
     const next = stepFrom(steps, cursor, by);
     if (next === undefined) return;
