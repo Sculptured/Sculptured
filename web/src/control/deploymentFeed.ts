@@ -48,8 +48,7 @@ function eventItem(e: EventRecord, sentence: string | null, c: FeedContext, tag:
 function alarmOf(b: EventBody, open: Set<string>, session: string | undefined): Tag {
   switch (b.type) {
     case 'seat-lifecycle-changed':
-      if (b.lifecycle !== 'failed' && b.lifecycle !== 'attention') return null;
-      return { alarm: b.lifecycle, ...(session ? { alarmKey: session } : {}) };
+      return lifecycleAlarm(b.lifecycle, session);
     case 'stall-suspected':
       return { alarm: 'stall' };
     case 'context-ceiling-reached':
@@ -65,6 +64,11 @@ function alarmOf(b: EventBody, open: Set<string>, session: string | undefined): 
   }
 }
 
+function lifecycleAlarm(lifecycle: SeatView['lifecycle'], session: string | undefined): Tag {
+  if (lifecycle !== 'failed' && lifecycle !== 'attention') return null;
+  return { alarm: lifecycle, ...(session ? { alarmKey: session } : {}) };
+}
+
 /** The key of an agent's session: the same for its failure event and its status (`agentAlarm`). */
 export const sessionKey = (seat: string, tenure: number | string) => `${seat}:${tenure}`;
 
@@ -74,8 +78,7 @@ export const sessionKey = (seat: string, tenure: number | string) => `${seat}:${
  * (no start in the list since) the agent's session now. The list runs up to now, so this holds.
  */
 function sessionKeys(events: EventRecord[], seats: Record<string, SeatView>): Map<number, string> {
-  const first = new Map<string, number>();
-  for (const e of events) if (e.body.type === 'tenure-started' && e.subject.kind === 'seat' && !first.has(e.subject.id)) first.set(e.subject.id, e.body.tenure);
+  const first = firstTenures(events);
   const last = new Map<string, number>();
   const out = new Map<number, string>();
   for (const e of events) {
@@ -87,6 +90,12 @@ function sessionKeys(events: EventRecord[], seats: Record<string, SeatView>): Ma
     out.set(e.seq, sessionKey(seat, tenure ?? 'unknown'));
   }
   return out;
+}
+
+function firstTenures(events: EventRecord[]): Map<string, number> {
+  const first = new Map<string, number>();
+  for (const e of events) if (e.body.type === 'tenure-started' && e.subject.kind === 'seat' && !first.has(e.subject.id)) first.set(e.subject.id, e.body.tenure);
+  return first;
 }
 
 /** Sentences with the event's own details, for events the progress log has none for. */
