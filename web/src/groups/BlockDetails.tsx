@@ -7,32 +7,71 @@ import type { WorkflowTarget } from '../workflow/WorkflowGraph';
 import '../shell/chat.css';
 import './groups.css';
 
+type Draft = GroupBlock['draft'];
+
+const CONNECTION_TEXT: Record<string, string> = {
+  'hands-work-to': 'Hands completed work to the recipient.',
+  'reports-to': 'Reports to this agent. Coordination uses managed messages.',
+};
+const connectionText = (kind: string) => CONNECTION_TEXT[kind] ?? 'Watches this agent. Coordination uses managed messages.';
+
+function ComponentList({ d, selection, target, select, pickStage }: { d: Draft; selection: Selection | null; target: WorkflowTarget | null; select: (s: Selection) => void; pickStage: (id: string) => void }) {
+  const name = (id: string) => d.agents.find(a => a.id === id)?.name ?? id;
+  const on = (kind: Selection['kind'], id: string) => selection?.kind === kind && selection.id === id;
+  const stageId = target && typeof target === 'object' && 'stage' in target ? target.stage : null;
+  return <nav className="block-component-list" aria-label="Block components">
+    {d.agents.map(a => <button key={a.id} className="btn" aria-pressed={on('agent', a.id)} onClick={() => select({ kind: 'agent', id: a.id })}>{a.name}</button>)}
+    {d.connections.map(c => <button key={c.id} className="btn" aria-pressed={on('connection', c.id)} onClick={() => select({ kind: 'connection', id: c.id })}>{name(c.from)} → {name(c.to)}</button>)}
+    {d.workflow?.stages.map(s => <button key={s.id} className="btn" aria-pressed={stageId === s.id} onClick={() => pickStage(s.id)}>{s.name}</button>)}
+  </nav>;
+}
+
+function StageDetail({ d, stage }: { d: Draft; stage: NonNullable<Draft['workflow']>['stages'][number] }) {
+  const name = (id: string) => d.agents.find(a => a.id === id)?.name ?? id;
+  const next = (to: string | null) => (to ? d.workflow?.stages.find(s => s.id === to)?.name ?? to : 'Complete');
+  return <><h3>{stage.name}</h3><p>Responsible agent: {name(stage.agent)}</p><ul>{Object.entries(stage.routes).map(([outcome, to]) => <li key={outcome}>{outcome} → {next(to)}</li>)}</ul><details><summary>Full stage configuration</summary><pre>{JSON.stringify(stage, null, 2)}</pre></details></>;
+}
+
+function AgentDetail({ agent }: { agent: Draft['agents'][number] }) {
+  return <><h3>{agent.name}</h3><p className="muted">{agent.kind} agent · inherits the project folder</p><ReadableInstructions text={agent.job} /><details><summary>Agent configuration</summary><pre>{JSON.stringify(agent.advanced, null, 2)}</pre></details></>;
+}
+
+function ConnectionDetail({ d, connection }: { d: Draft; connection: Draft['connections'][number] }) {
+  const name = (id: string) => d.agents.find(a => a.id === id)?.name ?? id;
+  return <><h3>{name(connection.from)} → {name(connection.to)}</h3><p>{connectionText(connection.kind)}</p></>;
+}
+
+function SelectionDetail({ d, selection }: { d: Draft; selection: Selection | null }) {
+  const agent = selection?.kind === 'agent' ? d.agents.find(a => a.id === selection.id) : null;
+  const connection = selection?.kind === 'connection' ? d.connections.find(c => c.id === selection.id) : null;
+  if (agent) return <AgentDetail agent={agent} />;
+  return connection ? <ConnectionDetail d={d} connection={connection} /> : null;
+}
+
+function TargetDetail({ d, target }: { d: Draft; target: WorkflowTarget | null }) {
+  const stage = target && typeof target === 'object' && 'stage' in target ? d.workflow?.stages.find(s => s.id === target.stage) : null;
+  if (stage) return <StageDetail d={d} stage={stage} />;
+  if (target && d.workflow) return <><h3>Workflow input</h3><Markdown text={d.workflow.input || 'The project supplies its input when you run it.'} /></>;
+  return <p className="muted">Select an agent or arrow on the board, or choose a component above, to inspect its instructions and configuration.</p>;
+}
+
+function SelectedDetail({ d, selection, target }: { d: Draft; selection: Selection | null; target: WorkflowTarget | null }) {
+  return SelectionDetail({ d, selection }) ?? <TargetDetail d={d} target={target} />;
+}
+
 /** The actual board, with read-only selection and an accessible list of every component. */
-export function BlockDetails({block}:{block:GroupBlock}) {
-  const [selection,setSelection]=useState<Selection|null>(null);
-  const [target,setTarget]=useState<WorkflowTarget|null>(null);
-  const d=block.draft;
-  const agent=selection?.kind==='agent'?d.agents.find(a=>a.id===selection.id):null;
-  const connection=selection?.kind==='connection'?d.connections.find(c=>c.id===selection.id):null;
-  const stage=target&&typeof target==='object'&&'stage' in target?d.workflow?.stages.find(s=>s.id===target.stage):null;
-  const name=(id:string)=>d.agents.find(a=>a.id===id)?.name??id;
-  const select=(s:Selection|null)=>{setSelection(s);setTarget(null);};
+export function BlockDetails({ block }: { block: GroupBlock }) {
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [target, setTarget] = useState<WorkflowTarget | null>(null);
+  const d = block.draft;
+  const select = (s: Selection | null) => { setSelection(s); setTarget(null); };
+  const pickStage = (id: string) => { setSelection(null); setTarget({ stage: id }); };
   return <div className="block-inspection">
     <div className="block-inspection-board sb-stage">
-      <StructureCanvas groupOnly teamId={`inspect:${block.id}`} draft={d} issues={[]} selection={selection} onSelect={select} onInspect={select} onOpen={id=>select({kind:'agent',id})} onOpenAgent={id=>select({kind:'agent',id})} onWorkflow={t=>{setTarget(t);setSelection(null);}} edit={()=>null} locked canUndo={false} canRedo={false} onUndo={()=>{}} onRedo={()=>{}} />
+      <StructureCanvas groupOnly teamId={`inspect:${block.id}`} draft={d} issues={[]} selection={selection} onSelect={select} onInspect={select} onOpen={id => select({ kind: 'agent', id })} onOpenAgent={id => select({ kind: 'agent', id })} onWorkflow={t => { setTarget(t); setSelection(null); }} edit={() => null} locked canUndo={false} canRedo={false} onUndo={() => {}} onRedo={() => {}} />
     </div>
-    <nav className="block-component-list" aria-label="Block components">
-      {d.agents.map(a=><button key={a.id} className="btn" aria-pressed={agent?.id===a.id} onClick={()=>select({kind:'agent',id:a.id})}>{a.name}</button>)}
-      {d.connections.map(c=><button key={c.id} className="btn" aria-pressed={connection?.id===c.id} onClick={()=>select({kind:'connection',id:c.id})}>{name(c.from)} → {name(c.to)}</button>)}
-      {d.workflow?.stages.map(s=><button key={s.id} className="btn" aria-pressed={stage?.id===s.id} onClick={()=>{setSelection(null);setTarget({stage:s.id});}}>{s.name}</button>)}
-    </nav>
-    <section className="block-component-detail" aria-live="polite" aria-label="Selected component">
-      {agent?<><h3>{agent.name}</h3><p className="muted">{agent.kind} agent · inherits the project folder</p><ReadableInstructions text={agent.job}/><details><summary>Agent configuration</summary><pre>{JSON.stringify(agent.advanced,null,2)}</pre></details></>
-      :connection?<><h3>{name(connection.from)} → {name(connection.to)}</h3><p>{connection.kind==='hands-work-to'?'Hands completed work to the recipient.':connection.kind==='reports-to'?'Reports to this agent. Coordination uses managed messages.':'Watches this agent. Coordination uses managed messages.'}</p></>
-      :stage?<><h3>{stage.name}</h3><p>Responsible agent: {name(stage.agent)}</p><ul>{Object.entries(stage.routes).map(([outcome,to])=><li key={outcome}>{outcome} → {to?d.workflow?.stages.find(s=>s.id===to)?.name??to:'Complete'}</li>)}</ul><details><summary>Full stage configuration</summary><pre>{JSON.stringify(stage,null,2)}</pre></details></>
-      :target&&d.workflow?<><h3>Workflow input</h3><Markdown text={d.workflow.input||'The project supplies its input when you run it.'}/></>
-      :<p className="muted">Select an agent or arrow on the board, or choose a component above, to inspect its instructions and configuration.</p>}
-    </section>
+    <ComponentList d={d} selection={selection} target={target} select={select} pickStage={pickStage} />
+    <section className="block-component-detail" aria-live="polite" aria-label="Selected component"><SelectedDetail d={d} selection={selection} target={target} /></section>
   </div>;
 }
 
