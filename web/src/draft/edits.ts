@@ -5,6 +5,7 @@ import type { DraftAgent } from '../generated/DraftAgent';
 import type { DraftGroup } from '../generated/DraftGroup';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { CARD_H, CARD_W } from '../layout';
+import { withoutAgents } from './removal';
 import { CONNECTION_WORDS } from '../vocab';
 import {
   type Box,
@@ -188,6 +189,19 @@ export function moveAgent(d: TeamDraft, id: string, to: Point, keepGroup = false
   return put(slot ?? pos, a.group_id);
 }
 
+
+/** How far `box` may travel along one axis (`move` > 0 forward, < 0 back) before touching a box in its way. */
+function clampAxis(box: Box, others: Box[], move: number, axis: 'x' | 'y'): number {
+  const [pos, len, cross, crossLen] = axis === 'x' ? (['x', 'w', 'y', 'h'] as const) : (['y', 'h', 'x', 'w'] as const);
+  let m = move;
+  for (const o of others) {
+    if (!(box[cross] < o[cross] + o[crossLen] && o[cross] < box[cross] + box[crossLen])) continue;
+    if (m > 0 && o[pos] >= box[pos] + box[len]) m = Math.min(m, Math.max(0, floorGrid(o[pos] - GROUP_GAP - (box[pos] + box[len]))));
+    if (m < 0 && o[pos] + o[len] <= box[pos]) m = Math.max(m, -Math.max(0, floorGrid(box[pos] - (o[pos] + o[len]) - GROUP_GAP)));
+  }
+  return m;
+}
+
 /**
  * Moves a group and its agents together, on the grid. It never leaves the canvas and stops short
  * of another group's box instead of covering it.
@@ -198,31 +212,23 @@ export function moveGroup(d: TeamDraft, id: string, dx: number, dy: number): Tea
   const members = d.agents.filter((a) => groupOf(a) === id);
   const step = (n: number) => Math.round(n / GRID) * GRID;
   // Rounded up to the grid so a clamped move keeps every card on it.
-  let mx = Math.max(step(dx), ceilGrid(-Math.min(g.x, ...members.map((a) => a.x))));
-  let my = Math.max(step(dy), ceilGrid(-Math.min(g.y, ...members.map((a) => a.y))));
+  const wantX = Math.max(step(dx), ceilGrid(-Math.min(g.x, ...members.map((a) => a.x))));
+  const wantY = Math.max(step(dy), ceilGrid(-Math.min(g.y, ...members.map((a) => a.y))));
   const others = drawnGroups(d).filter((o) => o.id !== id);
   // Horizontal first, against groups sharing its rows; then vertical from there, against groups
   // sharing its columns. Neither step can end on a group that was clear before.
-  for (const o of others) {
-    if (!(g.y < o.y + o.h && o.y < g.y + g.h)) continue;
-    if (mx > 0 && o.x >= g.x + g.w) mx = Math.min(mx, Math.max(0, floorGrid(o.x - GROUP_GAP - (g.x + g.w))));
-    if (mx < 0 && o.x + o.w <= g.x) mx = Math.max(mx, -Math.max(0, floorGrid(g.x - (o.x + o.w) - GROUP_GAP)));
-  }
-  const gx = g.x + mx;
-  for (const o of others) {
-    if (!(gx < o.x + o.w && o.x < gx + g.w)) continue;
-    if (my > 0 && o.y >= g.y + g.h) my = Math.min(my, Math.max(0, floorGrid(o.y - GROUP_GAP - (g.y + g.h))));
-    if (my < 0 && o.y + o.h <= g.y) my = Math.max(my, -Math.max(0, floorGrid(g.y - (o.y + o.h) - GROUP_GAP)));
-  }
+  const mx = clampAxis(g, others, wantX, 'x');
+  const my = clampAxis({ ...g, x: g.x + mx }, others, wantY, 'y');
   if (mx === 0 && my === 0) return d;
-  return clearLoose(separate(
-    {
-      ...d,
-      groups: d.groups.map((x) => (x.id === id ? { ...x, x: x.x + mx, y: x.y + my } : x)),
-      agents: d.agents.map((a) => (groupOf(a) === id ? { ...a, x: a.x + mx, y: a.y + my } : a)),
-    },
-    id,
-  ));
+  return clearLoose(separate(shifted(d, id, mx, my), id));
+}
+
+function shifted(d: TeamDraft, id: string, mx: number, my: number): TeamDraft {
+  return {
+    ...d,
+    groups: d.groups.map((x) => (x.id === id ? { ...x, x: x.x + mx, y: x.y + my } : x)),
+    agents: d.agents.map((a) => (groupOf(a) === id ? { ...a, x: a.x + mx, y: a.y + my } : a)),
+  };
 }
 
 /** Takes one agent out of its group: its group shrinks and the card moves out from under the box. */
@@ -251,10 +257,7 @@ export function ungroup(d: TeamDraft, id: string): TeamDraft {
 export function removeElement(d: TeamDraft, s: Selection): { draft: TeamDraft; reason?: string } {
   if (s.kind === 'connection') return { draft: { ...d, connections: d.connections.filter((c) => c.id !== s.id) } };
   const removed = new Set(d.agents.filter(a => s.kind === 'agent' ? a.id === s.id : groupOf(a) === s.id).map(a => a.id));
-  const stages = new Set(d.workflow?.stages.filter(stage => removed.has(stage.agent)).map(stage => stage.id) ?? []);
-  d = {...d, agents:d.agents.filter(a=>!removed.has(a.id)), connections:d.connections.filter(c=>!removed.has(c.from)&&!removed.has(c.to)), ...(d.input?{input:{...d.input,to:d.input.to.filter(a=>!removed.has(a))}}:{}),
-    ...(d.workflow?{workflow:{...d.workflow, dispatcher:removed.has(d.workflow.dispatcher)?'':d.workflow.dispatcher, collector:removed.has(d.workflow.collector)?'':d.workflow.collector, entry:stages.has(d.workflow.entry)?'':d.workflow.entry,
-      stages:d.workflow.stages.filter(stage=>!stages.has(stage.id)).map(stage=>({...stage,workers:stage.workers?.filter(id=>!removed.has(id)),routes:Object.fromEntries(Object.entries(stage.routes).filter(([,to])=>to===null||!stages.has(to)))}))}}:{})};
+  d = withoutAgents(d, removed);
   if (s.kind === 'agent') return {draft:d};
   const groups = d.groups.filter((g) => g.id !== s.id);
   // A lone main group folds away unless you renamed it: then it stays drawn with its label.

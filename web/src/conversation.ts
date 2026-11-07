@@ -142,166 +142,133 @@ export function originOf(e: Pick<EventRecord, 'actor'>): MessageOrigin {
   return e.actor.kind === 'seat' ? 'agent' : e.actor.kind === 'human' ? 'operator' : 'system';
 }
 
+type Body<K extends EventBody['type']> = Extract<EventBody, { type: K }>;
+type Fold = {
+  items: Item[];
+  messages: Map<string, OperatorItem>;
+  tools: Map<string, ToolItem>;
+  turnStart: Map<string, number>;
+  usage: Map<string, { input: number; output: number }>;
+};
+
+function advance(f: Fold, id: string, state: MessageState, reason?: string) {
+  const m = f.messages.get(id);
+  if (!m || m.state === 'failed') return;
+  if (RANK[state] > RANK[m.state]) {
+    m.state = state;
+    // A reason belongs to the state it came with (a held message's wait ends when it is delivered).
+    m.reason = reason;
+  }
+}
+
+function notice(f: Fold, e: EventRecord, text: string, raw?: string, alarm?: boolean, session?: NoticeItem['session']) {
+  f.items.push({ kind: 'notice', key: `n-${e.seq}`, seq: e.seq, text, raw, provenance: e.provenance, alarm, ...(session ? { session } : {}) });
+}
+
+function onQueued(f: Fold, e: EventRecord, b: Body<'message-queued'>) {
+  const origin = originOf(e);
+  const m: OperatorItem = {
+    kind: 'operator', key: `m-${b.message_id}`, seq: e.seq, atMs: e.at_ms, messageId: b.message_id, text: b.text, intent: b.intent,
+    state: 'queued', provenance: e.provenance, atStart: origin === 'job', origin,
+    sender: e.actor.kind === 'seat' ? e.actor.id : undefined,
+    handoff: origin === 'handoff' ? (parseHandoff(b.text) ?? undefined) : undefined,
+  };
+  f.messages.set(b.message_id, m);
+  f.items.push(m);
+}
+
+function onConsumed(f: Fold, _e: EventRecord, b: Body<'message-consumed'>) {
+  advance(f, b.message_id, 'consumed');
+  const m = f.messages.get(b.message_id);
+  if (m) m.turnId = b.turn_id;
+}
+
+function onHeld(f: Fold, _e: EventRecord, b: Body<'message-held'>) {
+  const m = f.messages.get(b.message_id);
+  if (m?.state === 'queued') m.reason = b.reason;
+}
+
+function onUsage(f: Fold, _e: EventRecord, b: Body<'usage-reported'>) {
+  if (b.turn_id === null) return;
+  const u = f.usage.get(b.turn_id) ?? { input: 0, output: 0 };
+  u.input += b.input_tokens + b.cache_read_tokens + b.cache_write_tokens;
+  u.output += b.output_tokens;
+  f.usage.set(b.turn_id, u);
+}
+
+function onToolCalled(f: Fold, e: EventRecord, b: Body<'tool-called'>) {
+  const t: ToolItem = {
+    kind: 'tool', key: `t-${b.call_id}-${e.seq}`, seq: e.seq, callId: b.call_id, name: b.name, input: b.input,
+    parentCallId: b.parent_call_id, provenance: e.provenance, calledMs: e.at_ms, turnId: b.turn_id,
+  };
+  f.tools.set(b.call_id, t);
+  f.items.push(t);
+}
+
+function onToolResulted(f: Fold, e: EventRecord, b: Body<'tool-resulted'>) {
+  const t = f.tools.get(b.call_id);
+  if (!t) return notice(f, e, `result for an unseen tool call ${b.call_id}`);
+  t.output = b.output;
+  t.isError = b.is_error;
+  t.resultMs = e.at_ms;
+}
+
+function onTurnEnded(f: Fold, e: EventRecord, b: Body<'turn-ended'>) {
+  const start = f.turnStart.get(b.turn_id);
+  f.items.push({
+    kind: 'turn-end', key: `e-${e.seq}`, seq: e.seq, turnId: b.turn_id, status: b.status, provenance: e.provenance,
+    durationMs: start === undefined ? null : Math.max(0, e.at_ms - start),
+    tokens: f.usage.get(b.turn_id) ?? null,
+  });
+}
+
+function onLifecycle(f: Fold, e: EventRecord, b: Body<'seat-lifecycle-changed'>) {
+  notice(f, e, `${LIFECYCLE[b.lifecycle].label}${b.reason ? ` — ${b.reason}` : ''}`, b.reason || undefined, b.lifecycle === 'failed' || b.lifecycle === 'attention');
+}
+
+function onTenureEnded(f: Fold, e: EventRecord, b: Body<'tenure-ended'>) {
+  // The process is gone: a message it had not read yet never will be.
+  for (const m of f.messages.values()) {
+    if (m.state === 'queued' || m.state === 'delivered') advance(f, m.messageId, 'failed', STOPPED_BEFORE_READING);
+  }
+  notice(f, e, WORDS.sessionEnded(b.tenure, b.exit_code, b.signal), undefined, b.exit_code !== 0 && b.exit_code !== null, { phase: 'ended' });
+}
+
+function onContextCeiling(f: Fold, e: EventRecord, b: Body<'context-ceiling-reached'>) {
+  notice(f, e, `Context ${Math.round(b.used_tokens / 1000)}k passed the ${Math.round(b.ceiling / 1000)}k limit: this agent writes its notes and continues in a fresh conversation`);
+}
+
+type Handlers = { [K in EventBody['type']]?: (f: Fold, e: EventRecord, b: Body<K>) => void };
+
+const HANDLERS: Handlers = {
+  'message-queued': onQueued,
+  'message-delivered': (f, _e, b) => advance(f, b.message_id, 'delivered'),
+  'message-consumed': onConsumed,
+  'message-failed': (f, _e, b) => advance(f, b.message_id, 'failed', b.reason),
+  'message-held': onHeld,
+  'turn-started': (f, e, b) => { f.turnStart.set(b.turn_id, e.at_ms); },
+  'usage-reported': onUsage,
+  'agent-text': (f, e, b) => { f.items.push({ kind: 'agent', key: `a-${e.seq}`, seq: e.seq, atMs: e.at_ms, text: b.text, provenance: e.provenance, turnId: b.turn_id }); },
+  'tool-called': onToolCalled,
+  'tool-resulted': onToolResulted,
+  'turn-ended': onTurnEnded,
+  'unrecognized': (f, e, b) => { f.items.push({ kind: 'unrecognized', key: `u-${e.seq}`, seq: e.seq, raw: b.raw }); },
+  'seat-lifecycle-changed': onLifecycle,
+  'tenure-started': (f, e, b) => notice(f, e, WORDS.sessionStarted(b.tenure, b.cause, b.driver), b.driver, undefined, { phase: 'started', cause: b.cause }),
+  'tenure-ended': onTenureEnded,
+  'events-lost': (f, e, b) => notice(f, e, `${b.count} events lost — history has a gap`, undefined, true),
+  // The refused call's own result says it too; this marks it as Sculptured's doing.
+  'protection-applied': (f, e, b) => notice(f, e, `Sculptured refused this call: ${b.reason.replace(/^Sculptured protection:\s*/, '')}`, b.reason),
+  'stall-suspected': (f, e, b) => notice(f, e, `May be stalled (heuristic): ${b.reason}`, b.reason),
+  'result-checked': (f, e, b) => notice(f, e, resultCheckedText(b), undefined, !b.passed),
+  'context-ceiling-reached': onContextCeiling,
+};
+
 /** Folds a seat's events into conversation items. Message state only moves forward. */
 export function conversationItems(events: EventRecord[]): Item[] {
-  const items: Item[] = [];
-  const messages = new Map<string, OperatorItem>();
-  const tools = new Map<string, ToolItem>();
-  const turnStart = new Map<string, number>();
-  const usage = new Map<string, { input: number; output: number }>();
-  const advance = (id: string, state: MessageState, reason?: string) => {
-    const m = messages.get(id);
-    if (!m || m.state === 'failed') return;
-    if (RANK[state] > RANK[m.state]) {
-      m.state = state;
-      // A reason belongs to the state it came with (a held message's wait ends when it is delivered).
-      m.reason = reason;
-    }
-  };
-  let prov = '';
-  const notice = (seq: number, text: string, raw?: string, alarm?: boolean, session?: NoticeItem['session']) =>
-    items.push({ kind: 'notice', key: `n-${seq}`, seq, text, raw, provenance: prov, alarm, ...(session ? { session } : {}) });
-
-  for (const e of events) {
-    const b = e.body;
-    prov = e.provenance;
-    switch (b.type) {
-      case 'message-queued': {
-        const origin = originOf(e);
-        const m: OperatorItem = {
-          kind: 'operator',
-          key: `m-${b.message_id}`,
-          seq: e.seq,
-          atMs: e.at_ms,
-          messageId: b.message_id,
-          text: b.text,
-          intent: b.intent,
-          state: 'queued',
-          provenance: e.provenance,
-          atStart: origin === 'job',
-          origin,
-          sender: e.actor.kind === "seat" ? e.actor.id : undefined,
-          handoff: origin === 'handoff' ? (parseHandoff(b.text) ?? undefined) : undefined,
-        };
-        messages.set(b.message_id, m);
-        items.push(m);
-        break;
-      }
-      case 'message-delivered':
-        advance(b.message_id, 'delivered');
-        break;
-      case 'message-consumed': {
-        advance(b.message_id, 'consumed');
-        const m = messages.get(b.message_id);
-        if (m) m.turnId = b.turn_id;
-        break;
-      }
-      case 'message-failed':
-        advance(b.message_id, 'failed', b.reason);
-        break;
-      case 'message-held': {
-        const m = messages.get(b.message_id);
-        if (m?.state === 'queued') m.reason = b.reason;
-        break;
-      }
-      case 'turn-started':
-        turnStart.set(b.turn_id, e.at_ms);
-        break;
-      case 'usage-reported': {
-        if (b.turn_id === null) break;
-        const u = usage.get(b.turn_id) ?? { input: 0, output: 0 };
-        u.input += b.input_tokens + b.cache_read_tokens + b.cache_write_tokens;
-        u.output += b.output_tokens;
-        usage.set(b.turn_id, u);
-        break;
-      }
-      case 'agent-text':
-        items.push({ kind: 'agent', key: `a-${e.seq}`, seq: e.seq, atMs: e.at_ms, text: b.text, provenance: e.provenance, turnId: b.turn_id });
-        break;
-      case 'tool-called': {
-        const t: ToolItem = {
-          kind: 'tool',
-          key: `t-${b.call_id}-${e.seq}`,
-          seq: e.seq,
-          callId: b.call_id,
-          name: b.name,
-          input: b.input,
-          parentCallId: b.parent_call_id,
-          provenance: e.provenance,
-          calledMs: e.at_ms,
-          turnId: b.turn_id,
-        };
-        tools.set(b.call_id, t);
-        items.push(t);
-        break;
-      }
-      case 'tool-resulted': {
-        const t = tools.get(b.call_id);
-        if (t) {
-          t.output = b.output;
-          t.isError = b.is_error;
-          t.resultMs = e.at_ms;
-        } else {
-          notice(e.seq, `result for an unseen tool call ${b.call_id}`);
-        }
-        break;
-      }
-      case 'turn-ended': {
-        const start = turnStart.get(b.turn_id);
-        items.push({
-          kind: 'turn-end',
-          key: `e-${e.seq}`,
-          seq: e.seq,
-          turnId: b.turn_id,
-          status: b.status,
-          provenance: e.provenance,
-          durationMs: start === undefined ? null : Math.max(0, e.at_ms - start),
-          tokens: usage.get(b.turn_id) ?? null,
-        });
-        break;
-      }
-      case 'unrecognized':
-        items.push({ kind: 'unrecognized', key: `u-${e.seq}`, seq: e.seq, raw: b.raw });
-        break;
-      case 'seat-lifecycle-changed':
-        notice(
-          e.seq,
-          `${LIFECYCLE[b.lifecycle].label}${b.reason ? ` — ${b.reason}` : ''}`,
-          b.reason || undefined,
-          b.lifecycle === 'failed' || b.lifecycle === 'attention',
-        );
-        break;
-      case 'tenure-started':
-        notice(e.seq, WORDS.sessionStarted(b.tenure, b.cause, b.driver), b.driver, undefined, { phase: 'started', cause: b.cause });
-        break;
-      case 'tenure-ended':
-        // The process is gone: a message it had not read yet never will be.
-        for (const m of messages.values()) {
-          if (m.state === 'queued' || m.state === 'delivered') advance(m.messageId, 'failed', STOPPED_BEFORE_READING);
-        }
-        notice(e.seq, WORDS.sessionEnded(b.tenure, b.exit_code, b.signal), undefined, b.exit_code !== 0 && b.exit_code !== null, { phase: 'ended' });
-        break;
-      case 'events-lost':
-        notice(e.seq, `${b.count} events lost — history has a gap`, undefined, true);
-        break;
-      case 'protection-applied':
-        // The refused call's own result says it too; this marks it as Sculptured's doing.
-        notice(e.seq, `Sculptured refused this call: ${b.reason.replace(/^Sculptured protection:\s*/, '')}`, b.reason);
-        break;
-      case 'stall-suspected':
-        notice(e.seq, `May be stalled (heuristic): ${b.reason}`, b.reason);
-        break;
-      case 'result-checked':
-        notice(e.seq, resultCheckedText(b), undefined, !b.passed);
-        break;
-      case 'context-ceiling-reached':
-        notice(e.seq, `Context ${Math.round(b.used_tokens / 1000)}k passed the ${Math.round(b.ceiling / 1000)}k limit: this agent writes its notes and continues in a fresh conversation`);
-        break;
-      default:
-        break;
-    }
-  }
-  return items;
+  const fold: Fold = { items: [], messages: new Map(), tools: new Map(), turnStart: new Map(), usage: new Map() };
+  for (const e of events) (HANDLERS[e.body.type] as ((f: Fold, e: EventRecord, b: EventBody) => void) | undefined)?.(fold, e, e.body);
+  return fold.items;
 }
 
 /** A result against the agent's result checks: passed, or what failed and whether it went back. */
