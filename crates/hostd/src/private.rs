@@ -3,19 +3,7 @@
 use std::path::Path;
 
 /// Writes `bytes` to `path` (replacing it, flushed to disk), readable by this user only.
-pub fn write_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    use std::io::Write;
-    let mut options = std::fs::OpenOptions::new();
-    options.create(true).write(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut f = options.open(path)?;
-    // `mode` applies only on create; an existing file is narrowed too.
-    #[cfg(unix)]
-    f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
-    f.write_all(bytes)?;
-    f.sync_all()
-}
+pub use localops::private::write_file;
 
 /// Creates `dir` (and its parents) for this user only when it is missing; never loosens an existing one.
 pub fn create_dir(dir: &Path) -> std::io::Result<()> {

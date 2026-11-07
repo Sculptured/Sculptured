@@ -28,22 +28,13 @@ pub fn load(dir: &Path) -> Option<Credentials> {
 
 /// Writes a temporary owner-only file and renames it over `community.json`.
 pub fn save(dir: &Path, c: &Credentials) -> std::io::Result<()> {
-    use std::io::Write;
     let tmp = dir.join(format!("{FILE}.tmp"));
-    let mut options = std::fs::OpenOptions::new();
-    options.create(true).write(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut f = options.open(&tmp)?;
-    // `mode` applies only on create; a leftover file is narrowed too.
-    #[cfg(unix)]
-    f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
-    f.write_all(
+    localops::private::write_file(
+        &tmp,
         serde_json::to_string(c)
             .expect("credentials serialize")
             .as_bytes(),
     )?;
-    f.sync_all()?;
     std::fs::rename(&tmp, dir.join(FILE))
 }
 

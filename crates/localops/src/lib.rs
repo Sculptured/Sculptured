@@ -12,6 +12,7 @@ pub mod generate;
 pub mod git;
 pub mod map;
 pub mod plan;
+pub mod private;
 mod process;
 pub mod programs;
 
