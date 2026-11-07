@@ -126,6 +126,14 @@ function Primary({ p, start, stop, why }: { p: Project; start: StartApi; stop: S
   );
 }
 
+/** What the refusal's reason lets the person do about it: sign the CLI in, or fix the design. */
+function RefusalHelp({ p, start }: { p: Project; start: StartApi }) {
+  const code = start.refusal?.code;
+  if (code === 'cli_not_ready') return p.draft ? <CliReadiness need={cliNeeds(p.draft)} on={{ team: p.team }} onReady={() => { start.close(); start.ask(); }} /> : null;
+  if (!code || code === 'plan_limit' || !p.builtHere) return null;
+  return <p>Fix it on the <Link to={boardPath(p.team, 'design')} onClick={start.close}>Design board</Link>.</p>;
+}
+
 /** Confirmations and outcomes of Start and Stop, in one quiet strip under the bar. */
 function Notices({ p, start, stop }: { p: Project; start: StartApi; stop: StopApi }) {
   const shell = useShell();
@@ -134,8 +142,7 @@ function Notices({ p, start, stop }: { p: Project; start: StartApi; stop: StopAp
     <>
       {stop.asking && <StopConfirm p={p} stop={stop} />}
       <StartRefused refusal={start.refusal} onClose={start.close} onAnyway={start.anyway}>
-        {start.refusal?.code === 'cli_not_ready' && p.draft && <CliReadiness need={cliNeeds(p.draft)} on={{ team: p.team }} onReady={() => { start.close(); start.ask(); }} />}
-        {start.refusal && start.refusal.code !== 'plan_limit' && start.refusal.code !== 'cli_not_ready' && p.builtHere && <p>Fix it on the <Link to={boardPath(p.team, 'design')} onClick={start.close}>Design board</Link>.</p>}
+        <RefusalHelp p={p} start={start} />
       </StartRefused>
       {stop.error && <DismissibleError className="pb-note tone-red">{stop.error}</DismissibleError>}
       {stop.failures.length > 0 && (

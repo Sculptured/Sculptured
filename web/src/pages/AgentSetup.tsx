@@ -4,6 +4,8 @@ import { drawnGroups } from '../draft/geometry';
 import { groupOf } from '../draft/ids';
 import { issuesFor, MARK } from '../draft/issues';
 import type { DraftIssue } from '../generated/DraftIssue';
+import type { DraftAgent } from '../generated/DraftAgent';
+import type { TeamDraft } from '../generated/TeamDraft';
 import { boardPath } from '../paths';
 import { AdvancedFields, ConnectionsField, DeleteAgent, fieldOf, FolderField, JobField, NameField, RunsOnField, type FieldKey } from '../structure/AgentFields';
 import { AgentMoreSettings, moreSummary } from '../structure/Panels';
@@ -50,10 +52,7 @@ function ProblemLine({ issues, ids }: { issues: DraftIssue[]; ids: string }) {
  * Advanced folded). It edits the same design as the board: autosaved, and Ctrl+Z undoes.
  */
 export function AgentSetup({ p, agentId }: { p: Project; agentId: string | undefined }) {
-  const ids = useId();
-  const navigate = useNavigate();
-  const { t } = p;
-  useBoardKeys(t, false);
+  useBoardKeys(p.t, false);
   const draft = p.draft;
   const a = draft?.agents.find((x) => x.id === agentId);
   if (!draft || !a) {
@@ -63,6 +62,13 @@ export function AgentSetup({ p, agentId }: { p: Project; agentId: string | undef
       </section>
     );
   }
+  return <SetupColumn p={p} draft={draft} a={a} />;
+}
+
+function SetupColumn({ p, draft, a }: { p: Project; draft: TeamDraft; a: DraftAgent }) {
+  const ids = useId();
+  const navigate = useNavigate();
+  const { t } = p;
   const locked = p.live ? p.running : t.serverLive;
   const mine = issuesFor(p.issues, 'agent', a.id).concat(p.issues.filter((i) => i.element.kind === 'connection' && draft.connections.some((c) => c.id === i.element.id && (c.from === a.id || c.to === a.id))));
   const at = (k: FieldKey) => mine.filter((i) => fieldOf(i) === k);

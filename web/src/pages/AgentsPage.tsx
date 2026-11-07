@@ -32,16 +32,78 @@ function runsOn(a: AgentRow, draft: TeamDraft | null): string {
   return `${a.vendor.name}${model ? ` · ${model}` : ''}`;
 }
 
+const KEY_STEP: Record<string, number> = { ArrowDown: 1, j: 1, ArrowUp: -1, k: -1 };
+
 /** Arrow keys (and j, k) move between rows; Shift+Space picks the focused one. */
 function rowKeys(e: React.KeyboardEvent<HTMLTableSectionElement>, onPick: (id: string) => void) {
   const row = (e.target as HTMLElement).closest<HTMLElement>('tr[data-agent]');
   if (!row) return;
   if (e.key === ' ' && e.shiftKey) { e.preventDefault(); onPick(row.dataset.agent!); return; }
-  const step = e.key === 'ArrowDown' || e.key === 'j' ? 1 : e.key === 'ArrowUp' || e.key === 'k' ? -1 : 0;
+  const step = KEY_STEP[e.key] ?? 0;
   if (!step || (e.target as HTMLElement).matches('input')) return;
   e.preventDefault();
   const next = (step > 0 ? row.nextElementSibling : row.previousElementSibling) as HTMLElement | null;
   next?.querySelector<HTMLElement>('a.at-name')?.focus();
+}
+
+const isMulti = (e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => e.shiftKey || e.metaKey || e.ctrlKey;
+
+type Pick = { picked: Set<string>; pick: (id: string) => void; selected: string | null | undefined; now: number };
+
+function AgentTableRow({ a, team, draft, home, open, sel }: { a: AgentRow; team: string; draft: TeamDraft | null; home: string | null; open: (a: AgentRow) => void; sel: Pick }) {
+  const { picked, pick } = sel;
+  const go = (e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => { if (isMulti(e)) pick(a.id); else open(a); };
+  return (
+    <tr data-agent={a.id} className={`${picked.has(a.id) ? 'picked' : ''}${sel.selected === a.id ? ' selected' : ''}`}
+      onClick={(e) => { if ((e.target as HTMLElement).closest('a, input')) return; go(e); }}>
+      <td className="col-pick"><input type="checkbox" aria-label={`Select ${a.name}`} checked={picked.has(a.id)} onChange={() => pick(a.id)} /></td>
+      <td><a className="at-name" href={linkOf(team, a)} onClick={(e) => { e.preventDefault(); go(e); }}><VendorMark v={a.vendor} size="xs" />{a.name}</a></td>
+      <td className="muted">{runsOn(a, draft)}</td>
+      <td><StatusCell a={a} /></td>
+      <td className={`col-folder muted${a.folder ? ' mono' : ''}`} title={a.folder || undefined}>{a.folder ? (a.folder === '~' ? '~' : shortPath(a.folder, home)) : 'none chosen'}</td>
+      <td className="col-age muted">{a.seat ? shortAge(a.lastMs, sel.now) : '—'}</td>
+      <td className="col-said"><Said a={a} /></td>
+    </tr>
+  );
+}
+
+function StatusNote({ a }: { a: AgentRow }) {
+  if (a.stuck && a.state.key === 'stuck') return <StuckMark reason={a.stuck.reason} className="at-sub" />;
+  return a.waitingFor?.length ? <WaitingMark names={a.waitingFor} className="at-sub" /> : null;
+}
+
+function StatusCell({ a }: { a: AgentRow }) {
+  const reason = a.seat && needsAttention(a.seat.lifecycle) && a.seat.lifecycle_reason;
+  return <><StateMark state={a.state} pill /><StatusNote a={a} />{reason && <span className="at-reason reason" data-raw-evidence>{a.seat!.lifecycle_reason}</span>}</>;
+}
+
+function AgentsTable({ rows, team, draft, home, open, sel, onPick }: { rows: AgentRow[]; team: string; draft: TeamDraft | null; home: string | null; open: (a: AgentRow) => void; sel: Pick; onPick: (id: string) => void }) {
+  return (
+    <div className="table-wrap">
+      <table className="data-table agents-table">
+        <thead>
+          <tr><th className="col-pick"><span className="sr-only">Select</span></th><th>Name</th><th>Runs on</th><th>Status</th><th className="col-folder">Folder</th><th className="col-age">Last activity</th><th className="col-said">Last message</th></tr>
+        </thead>
+        <tbody onKeyDown={(e) => rowKeys(e, onPick)}>
+          {rows.map((a) => <AgentTableRow key={a.id} a={a} team={team} draft={draft} home={home} open={open} sel={sel} />)}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MessageBar({ count, total, none, onSelected, onAll }: { count: number; total: number; none: string | null; onSelected: () => void; onAll: () => void }) {
+  const ids = useId();
+  return (
+    <div className="list-head-row">
+      <h2 className="page-title">Agents <span className="muted count">{total}</span></h2>
+      <span className="tb-fill" />
+      {count > 0 && <span className="muted" role="status">{count} selected</span>}
+      <Btn size="sm" icon="message" disabled={!!none || count === 0} aria-describedby={`${ids}-why`} onClick={onSelected}>Message selected…</Btn>
+      <Btn size="sm" icon="message" disabled={!!none} aria-describedby={none ? `${ids}-why` : undefined} onClick={onAll}>Message all…</Btn>
+      <span id={`${ids}-why`} className="reason">{none ?? (count === 0 ? 'Tick agents to message some of them.' : '')}</span>
+    </div>
+  );
 }
 
 /**
@@ -51,47 +113,18 @@ function rowKeys(e: React.KeyboardEvent<HTMLTableSectionElement>, onPick: (id: s
 export function AgentsPage() {
   const p = useProject();
   const shell = useShell();
-  const ids = useId();
   const home = useHome();
   const navigate = useNavigate();
   const rows = ordered(p.row?.agents ?? [], p.draft, p.live?.snapshot?.rig.seats.map((s) => s.id));
   const picked = new Set(shell.picked);
-  const receivers = rows.filter(canReceive).length;
-  const none = receivers === 0 ? (p.started ? 'No agent is running.' : 'Start the team first.') : null;
+  const none = rows.filter(canReceive).length === 0 ? (p.started ? 'No agent is running.' : 'Start the team first.') : null;
   const open = (a: AgentRow) => navigate(linkOf(p.team, a));
+  const sel: Pick = { picked, pick: shell.pick, selected: shell.selected, now: shell.now };
+  const empty = <p className="muted empty-line">{p.row ? 'This team has no agents yet. Add one on the board.' : 'Loading agents…'}</p>;
   return (
     <main className="page page-list agents-page">
-      <div className="list-head-row">
-        <h2 className="page-title">Agents <span className="muted count">{rows.length}</span></h2>
-        <span className="tb-fill" />
-        {picked.size > 0 && <span className="muted" role="status">{picked.size} selected</span>}
-        <Btn size="sm" icon="message" disabled={!!none || picked.size === 0} aria-describedby={`${ids}-why`} onClick={() => shell.broadcast(p.team, [...picked])}>Message selected…</Btn>
-        <Btn size="sm" icon="message" disabled={!!none} aria-describedby={none ? `${ids}-why` : undefined} onClick={() => shell.broadcast(p.team, [])}>Message all…</Btn>
-        <span id={`${ids}-why`} className="reason">{none ?? (picked.size === 0 ? 'Tick agents to message some of them.' : '')}</span>
-      </div>
-      {rows.length === 0 ? <p className="muted empty-line">{p.row ? 'This team has no agents yet. Add one on the board.' : 'Loading agents…'}</p> : (
-        <div className="table-wrap">
-          <table className="data-table agents-table">
-            <thead>
-              <tr><th className="col-pick"><span className="sr-only">Select</span></th><th>Name</th><th>Runs on</th><th>Status</th><th className="col-folder">Folder</th><th className="col-age">Last activity</th><th className="col-said">Last message</th></tr>
-            </thead>
-            <tbody onKeyDown={(e) => rowKeys(e, shell.pick)}>
-              {rows.map((a) => (
-                <tr key={a.id} data-agent={a.id} className={`${picked.has(a.id) ? 'picked' : ''}${shell.selected === a.id ? ' selected' : ''}`}
-                  onClick={(e) => { if ((e.target as HTMLElement).closest('a, input')) return; if (e.shiftKey || e.metaKey || e.ctrlKey) shell.pick(a.id); else open(a); }}>
-                  <td className="col-pick"><input type="checkbox" aria-label={`Select ${a.name}`} checked={picked.has(a.id)} onChange={() => shell.pick(a.id)} /></td>
-                  <td><a className="at-name" href={linkOf(p.team, a)} onClick={(e) => { e.preventDefault(); if (e.shiftKey || e.metaKey || e.ctrlKey) shell.pick(a.id); else open(a); }}><VendorMark v={a.vendor} size="xs" />{a.name}</a></td>
-                  <td className="muted">{runsOn(a, p.draft)}</td>
-                  <td><StateMark state={a.state} pill />{a.stuck && a.state.key === 'stuck' ? <StuckMark reason={a.stuck.reason} className="at-sub" /> : a.waitingFor?.length ? <WaitingMark names={a.waitingFor} className="at-sub" /> : null}{a.seat && needsAttention(a.seat.lifecycle) && a.seat.lifecycle_reason && <span className="at-reason reason" data-raw-evidence>{a.seat.lifecycle_reason}</span>}</td>
-                  <td className={`col-folder muted${a.folder ? ' mono' : ''}`} title={a.folder || undefined}>{a.folder ? (a.folder === '~' ? '~' : shortPath(a.folder, home)) : 'none chosen'}</td>
-                  <td className="col-age muted">{a.seat ? shortAge(a.lastMs, shell.now) : '—'}</td>
-                  <td className="col-said"><Said a={a} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <MessageBar count={picked.size} total={rows.length} none={none} onSelected={() => shell.broadcast(p.team, [...picked])} onAll={() => shell.broadcast(p.team, [])} />
+      {rows.length === 0 ? empty : <AgentsTable rows={rows} team={p.team} draft={p.draft} home={home} open={open} sel={sel} onPick={shell.pick} />}
       <Connections />
     </main>
   );

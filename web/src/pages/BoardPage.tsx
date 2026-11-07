@@ -23,12 +23,13 @@ const NO_DESIGN = 'This team was started from a file: it has no design to edit h
 /** The mode to show: the one asked for when it can show, else Run while the team runs, else Design. */
 export function boardMode(asked: string | null, p: Pick<Project, 'builtHere' | 'started' | 'running' | 't' | 'live'>): BoardMode {
   // A design that could not be loaded still opens on Design, which says why.
-  if (asked === 'design' && (p.builtHere || !!p.t.loadError) && !p.live) return 'design';
-  if (asked === 'design' && p.builtHere) return 'design';
+  if (asked === 'design' && (p.builtHere || (!!p.t.loadError && !p.live))) return 'design';
   if (asked === 'run' && p.started) return 'run';
-  // A team set to run (even one whose agents were lost in a restart) opens on Run.
-  return p.running || p.live?.snapshot?.desired === 'running' || !p.builtHere ? 'run' : 'design';
+  return setToRun(p) ? 'run' : 'design';
 }
+
+/** A team set to run (even one whose agents were lost in a restart) opens on Run. */
+const setToRun = (p: Pick<Project, 'builtHere' | 'running' | 'live'>) => p.running || p.live?.snapshot?.desired === 'running' || !p.builtHere;
 
 /** Design | Run: the board's two modes. The one that cannot open says why, on hover, focus and to screen readers. */
 function ModeSwitch({ mode, p, onChange }: { mode: BoardMode; p: Project; onChange: (m: BoardMode) => void }) {

@@ -40,23 +40,33 @@ function AdminGuard() {
   return s.kind === 'signed-in' && s.user.role === 'admin' ? <AdminPage /> : <Navigate replace to="/" />;
 }
 
+type Params = { team?: string; rig?: string; seat?: string; tab?: string; '*'?: string };
+
+/** An old agent address: the agent and tab come from the path, or from what followed `/rig/:rig/`. */
+function legacyAgentPath(id: string, { seat, tab, '*': rest }: Params, search: string) {
+  const agent = seat ?? rest?.split('/')[0];
+  if (!agent) return boardPath(id);
+  const t = agentTabOf(tab ?? rest?.split('/')[1]);
+  return agentPagePath(id, agent, t.tab) + (t.search || search);
+}
+
+/** Where an old address now lives. */
+function legacyTarget(to: 'board' | 'design' | 'results' | 'agent' | 'git', id: string, params: Params, search: string) {
+  switch (to) {
+    case 'results': return resultsPath(id);
+    case 'git': return `/p/${encodeURIComponent(id)}/git`;
+    case 'design': return boardPath(id, 'design');
+    case 'agent': return legacyAgentPath(id, params, search);
+    // `/rig/:rig?view=history` was the Run board's history; it is part of Results now.
+    default: return new URLSearchParams(search).get('view') === 'history' ? resultsPath(id, 'history') : boardPath(id);
+  }
+}
+
 /** Old addresses keep working: each goes to the page that now does its job. */
 function Legacy({ to }: { to: 'board' | 'design' | 'results' | 'agent' | 'git' }) {
-  const { team, rig, seat, tab, '*': rest } = useParams();
+  const params = useParams();
   const { search } = useLocation();
-  const id = (team ?? rig)!;
-  if (to === 'results') return <Navigate replace to={resultsPath(id)} />;
-  if (to === 'git') return <Navigate replace to={`/p/${encodeURIComponent(id)}/git`} />;
-  if (to === 'design') return <Navigate replace to={boardPath(id, 'design')} />;
-  if (to === 'agent') {
-    const agent = seat ?? rest?.split('/')[0];
-    const t = agentTabOf(tab ?? rest?.split('/')[1]);
-    if (!agent) return <Navigate replace to={boardPath(id)} />;
-    return <Navigate replace to={agentPagePath(id, agent, t.tab) + (t.search || search)} />;
-  }
-  // `/rig/:rig?view=history` was the Run board's history; it is part of Results now.
-  if (new URLSearchParams(search).get('view') === 'history') return <Navigate replace to={resultsPath(id, 'history')} />;
-  return <Navigate replace to={boardPath(id)} />;
+  return <Navigate replace to={legacyTarget(to, (params.team ?? params.rig)!, params, search)} />;
 }
 
 function ProjectRoutes() {

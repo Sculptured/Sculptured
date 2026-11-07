@@ -4,6 +4,7 @@ import { seatIdFor } from '../draft/ids';
 import { effectiveModel } from '../draft/models';
 import type { DraftAgent } from '../generated/DraftAgent';
 import type { TeamDraft } from '../generated/TeamDraft';
+import type { EventRecord } from '../generated/EventRecord';
 import { agentPagePath, boardPath, seatFromKey, type AgentTab } from '../paths';
 import { useAgentControls } from '../shell/AgentControls';
 import { handOverReason } from '../shell/HandoffActions';
@@ -69,6 +70,28 @@ function agentOf(draft: TeamDraft | null, seat: string): DraftAgent | undefined 
   return draft.agents.find((a) => seatIdFor(draft, a.id) === seat) ?? draft.agents.find((a) => a.id === member);
 }
 
+const tabOf = (tab: string | undefined): AgentTab | null => (TABS.some((t) => t.id === tab) ? (tab as AgentTab) : null);
+
+/** The agent's address, following it when a move to another group changes it. */
+function useSeatAddress(p: Project, key: string, tab: string | undefined) {
+  const asked = seatFromKey(p.team, key);
+  const d = agentOf(p.draft, asked);
+  const seat = d && p.draft ? seatIdFor(p.draft, d.id)! : asked;
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (seat !== asked) navigate(agentPagePath(p.team, seat, tabOf(tab) ?? undefined), { replace: true });
+  }, [seat, asked, p.team, tab, navigate]);
+  return { seat, d };
+}
+
+/** What to show when no agent matches the address, or null when there is one. */
+function missingState(p: Project, row: AgentRow | undefined, d: DraftAgent | undefined): { loading: boolean; unknown?: boolean } | null {
+  if (!row && !d) return { loading: p.live ? false : p.started || (!p.draft && !p.t.loadError) };
+  // In a started team's spec, but no status has arrived for it: say so, not "not started".
+  if (row && !row.seat && !d && row.state.key !== 'planned') return { loading: false, unknown: true };
+  return null;
+}
+
 /**
  * `/p/:team/agents/:agent[/:tab]`: one agent, one job per tab. Conversation is the default once the
  * team has started, Setup before.
@@ -77,38 +100,29 @@ export function AgentPage() {
   const p = useProject();
   const shell = useShell();
   const { agent: key, tab } = useParams();
-  const asked = seatFromKey(p.team, key!);
-  const d = agentOf(p.draft, asked);
-  // Moving an agent to another group changes its address: follow it to the new one.
-  const seat = d && p.draft ? seatIdFor(p.draft, d.id)! : asked;
-  const navigate = useNavigate();
-  useEffect(() => {
-    if (seat !== asked) navigate(agentPagePath(p.team, seat, TABS.some((t) => t.id === tab) ? (tab as AgentTab) : undefined), { replace: true });
-  }, [seat, asked, p.team, tab, navigate]);
+  const { seat, d } = useSeatAddress(p, key!, tab);
   const row = shell.byId[seat];
-  if (!row && !d) return <Missing p={p} seat={seat} loading={p.live ? false : p.started || (!p.draft && !p.t.loadError)} />;
-  // In a started team's spec, but no status has arrived for it: say so, not "not started".
-  if (row && !row.seat && !d && row.state.key !== 'planned') return <Missing p={p} seat={seat} loading={false} unknown />;
+  const missing = missingState(p, row, d);
+  if (missing) return <Missing p={p} seat={seat} loading={missing.loading} unknown={missing.unknown} />;
   const name = d?.name.trim() || row?.name || 'Unnamed agent';
-  const chosen = TABS.some((t) => t.id === tab) ? (tab as AgentTab) : null;
-  const current = chosen ?? (row?.seat ? 'conversation' : 'setup');
+  const current = tabOf(tab) ?? (row?.seat ? 'conversation' : 'setup');
   if (row?.seat) return <LiveAgent key={seat} p={p} seat={seat} row={row} d={d} name={name} tab={current} />;
+  return <PlannedAgent p={p} seat={seat} name={name} row={row} d={d} tab={current} />;
+}
+
+/** An agent in the design that has not started: Setup and Questions work, the rest say "not started". */
+function PlannedAgent({ p, seat, name, row, d, tab }: { p: Project; seat: string; name: string; row?: AgentRow; d?: DraftAgent; tab: AgentTab }) {
   return (
-    <main className={`page agent-page ap-on-${current}`}>
-      <AgentHead p={p} seat={seat} name={name} row={row} d={d} tab={current} />
-      {current === 'setup' ? <AgentSetup p={p} agentId={d?.id} /> : current === 'questions' ? <AgentQuestions team={p.team} seat={seat} name={name} feed={[]} /> : <NotStarted p={p} seat={seat} tab={current} />}
+    <main className={`page agent-page ap-on-${tab}`}>
+      <AgentHead p={p} seat={seat} name={name} row={row} d={d} tab={tab} />
+      {tab === 'setup' ? <AgentSetup p={p} agentId={d?.id} /> : tab === 'questions' ? <AgentQuestions team={p.team} seat={seat} name={name} feed={[]} /> : <NotStarted p={p} seat={seat} tab={tab} />}
     </main>
   );
 }
 
-/** A running (or once-run) agent: one set of controls for its Conversation and Activity. */
-function LiveAgent({ p, seat, row, d, name, tab }: { p: Project; seat: string; row: AgentRow; d?: DraftAgent; name: string; tab: AgentTab }) {
-  const shell = useShell();
-  const heading = useRef<HTMLHeadingElement>(null);
-  const c = useAgentControls(row.seat!, heading);
-  const feed = p.live?.feed[seat] ?? [];
-  // Hand over again lives on Activity (and in Ctrl K), unless it is the obvious next step: the CLI
-  // was signed out, and after signing in, handing over again is how the agent tries again.
+/** Hand over again lives on Activity (and in Ctrl K), unless it is the obvious next step: the CLI
+ * was signed out, and after signing in, handing over again is how the agent tries again. */
+function useHandOver(p: Project, seat: string, row: AgentRow, tab: AgentTab, feed: EventRecord[]) {
   const inline = signedOut(row, feed);
   const [askHandOver, setAskHandOver] = useState(0);
   // Asked from Ctrl K on another tab: Activity opens and asks there, the same question as its button.
@@ -118,18 +132,38 @@ function LiveAgent({ p, seat, row, d, name, tab }: { p: Project; seat: string; r
     if (inline || tab === 'activity') setAskHandOver((n) => n + 1);
     else { setAskOnOpen(true); navigate(agentPagePath(p.team, seat, 'activity')); }
   };
-  shell.refs.controls.current = { ...c, handOver: (row.handsTo ?? []).length === 0 ? null : { reason: handOverReason(row), ask } };
+  return { inline, askHandOver, askOnOpen, clearAsk: () => setAskOnOpen(false), ask };
+}
+
+/** A running (or once-run) agent: one set of controls for its Conversation and Activity. */
+function LiveAgent({ p, seat, row, d, name, tab }: { p: Project; seat: string; row: AgentRow; d?: DraftAgent; name: string; tab: AgentTab }) {
+  const shell = useShell();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const c = useAgentControls(row.seat!, heading);
+  const feed = p.live?.feed[seat] ?? [];
+  const h = useHandOver(p, seat, row, tab, feed);
+  shell.refs.controls.current = { ...c, handOver: (row.handsTo ?? []).length === 0 ? null : { reason: handOverReason(row), ask: h.ask } };
   useEffect(() => () => { shell.refs.controls.current = null; }, [shell.refs.controls]);
   const [search, setSearch] = useState<HTMLElement | null>(null);
   return (
     <main className={`page agent-page ap-on-${tab}`}>
       <AgentHead p={p} seat={seat} name={name} row={row} d={d} tab={tab} headingRef={heading} tools={tab === 'conversation' ? <span className="pane-search" ref={setSearch} /> : null} />
-      {tab === 'conversation' && <AgentConversation a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} searchSlot={search} handOverInline={inline} askHandOver={inline ? askHandOver : 0} />}
-      {tab === 'setup' && <AgentSetup p={p} agentId={d?.id} />}
-      {tab === 'questions' && <AgentQuestions team={p.team} seat={seat} name={name} feed={feed} />}
-      {tab === 'activity' && <AgentActivity a={row} c={c} feed={feed} epoch={p.live?.epoch ?? 0} handOverInline={inline} askHandOver={askHandOver} askOnOpen={askOnOpen} onAsked={() => setAskOnOpen(false)} />}
+      <LiveTab p={p} seat={seat} row={row} d={d} name={name} tab={tab} c={c} feed={feed} h={h} search={search} />
     </main>
   );
+}
+
+type LiveTabProps = { p: Project; seat: string; row: AgentRow; d?: DraftAgent; name: string; tab: AgentTab; c: ReturnType<typeof useAgentControls>; feed: EventRecord[]; h: ReturnType<typeof useHandOver>; search: HTMLElement | null };
+
+function LiveTab({ p, seat, row, d, name, tab, c, feed, h, search }: LiveTabProps) {
+  const epoch = p.live?.epoch ?? 0;
+  switch (tab) {
+    case 'conversation': return <AgentConversation a={row} c={c} feed={feed} epoch={epoch} searchSlot={search} handOverInline={h.inline} askHandOver={h.inline ? h.askHandOver : 0} />;
+    case 'setup': return <AgentSetup p={p} agentId={d?.id} />;
+    case 'questions': return <AgentQuestions team={p.team} seat={seat} name={name} feed={feed} />;
+    case 'activity': return <AgentActivity a={row} c={c} feed={feed} epoch={epoch} handOverInline={h.inline} askHandOver={h.askHandOver} askOnOpen={h.askOnOpen} onAsked={h.clearAsk} />;
+    default: return null;
+  }
 }
 
 /** Conversation and Activity before the team has started: nothing has happened yet. */
