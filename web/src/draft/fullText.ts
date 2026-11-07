@@ -10,17 +10,7 @@ const GROUP_PAD = 20;
  */
 export function fullTextLayout(d: TeamDraft, heights: Record<string, number>): TeamDraft {
   const h = (id: string) => Math.max(CARD_H, heights[id] ?? CARD_H);
-  const order = [...d.agents].sort((a, b) => a.y - b.y || a.x - b.x);
-  const y = new Map<string, number>();
-  for (const a of order) {
-    let top = a.y;
-    for (const b of order) {
-      if (b === a || !y.has(b.id)) continue;
-      const sameColumn = Math.abs(b.x - a.x) < CARD_W, wasAbove = b.y + CARD_H <= a.y + 1;
-      if (sameColumn && wasAbove) top = Math.max(top, y.get(b.id)! + h(b.id) + (a.y - (b.y + CARD_H)));
-    }
-    y.set(a.id, top);
-  }
+  const y = agentTops(d.agents, h);
   const frame = (g: (typeof d.groups)[number]) => {
     const members = d.agents.filter((a) => a.group_id === g.id);
     if (!members.length) return g;
@@ -47,4 +37,20 @@ export function fullTextLayout(d: TeamDraft, heights: Record<string, number>): T
   }
   const agents = d.agents.map((a) => ({ ...a, y: y.get(a.id)! }));
   return { ...d, agents, groups: d.groups.map((g) => placed.get(g.id) ?? g) };
+}
+
+/** Expand cards down their columns while keeping each original gap. */
+function agentTops(agents: TeamDraft['agents'], height: (id: string) => number): Map<string, number> {
+  const order = [...agents].sort((a, b) => a.y - b.y || a.x - b.x);
+  const y = new Map<string, number>();
+  for (const a of order) {
+    let top = a.y;
+    for (const b of order) {
+      if (b === a || !y.has(b.id)) continue;
+      const sameColumn = Math.abs(b.x - a.x) < CARD_W, wasAbove = b.y + CARD_H <= a.y + 1;
+      if (sameColumn && wasAbove) top = Math.max(top, y.get(b.id)! + height(b.id) + (a.y - (b.y + CARD_H)));
+    }
+    y.set(a.id, top);
+  }
+  return y;
 }
