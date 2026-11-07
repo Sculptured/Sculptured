@@ -8,15 +8,21 @@ const EMPTY = { name: '', host: '', port: '22', username: '', jump_host: '', jum
 type Fields = typeof EMPTY;
 type Setter = (k: keyof Fields) => (e: { target: { value: string } }) => void;
 
+const num = (v: string, fallback: number) => Number(v) || fallback;
+
+function jumpFields(f: Fields, jump: boolean) {
+  return jump && f.jump_host ? { jump_host: f.jump_host, jump_port: num(f.jump_port, 22), jump_username: f.jump_username || undefined } : {};
+}
+
+function secretFields(f: Fields, auth: Auth) {
+  const key = auth === 'key' || auth === 'certificate' ? { private_key: f.private_key, passphrase: f.passphrase || undefined } : {};
+  return { ...key, ...(auth === 'certificate' ? { certificate: f.certificate } : {}), ...(auth === 'password' ? { password: f.password } : {}) };
+}
+
 /** What Add sends: only the chosen way to sign in, and the jump host only when ticked. */
 function addBody(f: Fields, auth: Auth, jump: boolean): Record<string, unknown> {
   const hold = Number(f.hold);
-  const body: Record<string, unknown> = { name: f.name || undefined, host: f.host, port: Number(f.port) || 22, username: f.username, auth, hold_hours: Number.isFinite(hold) ? hold : 12 };
-  if (jump && f.jump_host) Object.assign(body, { jump_host: f.jump_host, jump_port: Number(f.jump_port) || 22, jump_username: f.jump_username || undefined });
-  if (auth === 'key' || auth === 'certificate') Object.assign(body, { private_key: f.private_key, passphrase: f.passphrase || undefined });
-  if (auth === 'certificate') body.certificate = f.certificate;
-  if (auth === 'password') body.password = f.password;
-  return body;
+  return { name: f.name || undefined, host: f.host, port: num(f.port, 22), username: f.username, auth, hold_hours: Number.isFinite(hold) ? hold : 12, ...jumpFields(f, jump), ...secretFields(f, auth) };
 }
 
 /** The Add form's state; a saved secret leaves the page at once. A pasted key, certificate or password

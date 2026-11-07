@@ -24,52 +24,65 @@ function DayBars({ title, rows, value, unit }: { title: string; rows: { day: str
   const ids = useId();
   const values = rows.map((r) => value(r as never));
   const max = Math.max(1, ...values);
-  const W = 640;
-  const H = 140;
-  const gap = 2;
-  const bw = Math.max(2, (W - gap * (rows.length - 1)) / Math.max(1, rows.length));
   return (
     <figure className="an-chart" aria-labelledby={`${ids}-t`}>
       <figcaption>
         <span id={`${ids}-t`}>{title}</span> <span className="muted">· up to {max} {max === 1 ? (ONE[unit] ?? unit) : unit}</span>
       </figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${title}: highest ${max} ${unit}`}>
-        <line x1={0} x2={W} y1={H} y2={H} className="an-axis" />
-        {rows.map((r, i) => {
-          const h = (values[i] / max) * (H - 8);
-          return (
-            <g key={r.day}>
-              <rect x={i * (bw + gap)} y={H - h} width={bw} height={Math.max(h, values[i] > 0 ? 2 : 0)} rx={Math.min(4, bw / 2)} className="an-bar">
-                <title>{`${r.day}: ${values[i]} ${unit}`}</title>
-              </rect>
-            </g>
-          );
-        })}
-      </svg>
+      <BarSvg title={title} days={rows.map((r) => r.day)} values={values} max={max} unit={unit} />
       <div className="an-ticks" aria-hidden="true">
         <span>{rows[0]?.day}</span>
         <span>{rows.at(-1)?.day}</span>
       </div>
-      <details className="an-table">
-        <summary>Table</summary>
-        <table>
-          <thead>
-            <tr>
-              <th>Day</th>
-              <th>{unit}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={r.day}>
-                <td>{r.day}</td>
-                <td>{values[i]}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </details>
+      <DayTable unit={unit} days={rows.map((r) => r.day)} values={values} />
     </figure>
+  );
+}
+
+const BAR_W = 640;
+const BAR_H = 140;
+const BAR_GAP = 2;
+
+function BarSvg({ title, days, values, max, unit }: { title: string; days: string[]; values: number[]; max: number; unit: string }) {
+  const bw = Math.max(2, (BAR_W - BAR_GAP * (days.length - 1)) / Math.max(1, days.length));
+  return (
+    <svg viewBox={`0 0 ${BAR_W} ${BAR_H}`} preserveAspectRatio="none" role="img" aria-label={`${title}: highest ${max} ${unit}`}>
+      <line x1={0} x2={BAR_W} y1={BAR_H} y2={BAR_H} className="an-axis" />
+      {days.map((day, i) => {
+        const h = (values[i] / max) * (BAR_H - 8);
+        return (
+          <g key={day}>
+            <rect x={i * (bw + BAR_GAP)} y={BAR_H - h} width={bw} height={Math.max(h, values[i] > 0 ? 2 : 0)} rx={Math.min(4, bw / 2)} className="an-bar">
+              <title>{`${day}: ${values[i]} ${unit}`}</title>
+            </rect>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function DayTable({ unit, days, values }: { unit: string; days: string[]; values: number[] }) {
+  return (
+    <details className="an-table">
+      <summary>Table</summary>
+      <table>
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th>{unit}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.map((day, i) => (
+            <tr key={day}>
+              <td>{day}</td>
+              <td>{values[i]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   );
 }
 
@@ -156,6 +169,28 @@ function Timeline({ person }: { person: Person }) {
   );
 }
 
+const PEOPLE_COLUMNS = ['Name', 'Joined', 'Last active', 'Minutes this week', 'Teams', 'Runs', 'Tokens', 'Computers'];
+
+function PersonRow({ p, open, toggle }: { p: Person; open: boolean; toggle: () => void }) {
+  return (
+    <tr>
+      <td>
+        <button className="btn-link" aria-pressed={open} onClick={toggle}>
+          {p.name}
+        </button>{' '}
+        <span className="muted">{p.email}</span>
+      </td>
+      <td>{new Date(p.joined).toLocaleDateString()}</td>
+      <td>{p.last_active ? new Date(p.last_active).toLocaleString() : '—'}</td>
+      <td>{minutes(p.seconds_week)}</td>
+      <td>{p.teams}</td>
+      <td>{p.runs}</td>
+      <td>{p.tokens.toLocaleString()}</td>
+      <td>{p.devices}</td>
+    </tr>
+  );
+}
+
 function PeopleTab() {
   const [people, error] = useData<Person[]>('/admin/analytics/users');
   const [open, setOpen] = useState<Person | null>(null);
@@ -165,35 +200,10 @@ function PeopleTab() {
     <>
       <table aria-label="People">
         <thead>
-          <tr>
-            <th>Name</th>
-            <th>Joined</th>
-            <th>Last active</th>
-            <th>Minutes this week</th>
-            <th>Teams</th>
-            <th>Runs</th>
-            <th>Tokens</th>
-            <th>Computers</th>
-          </tr>
+          <tr>{PEOPLE_COLUMNS.map((c) => <th key={c}>{c}</th>)}</tr>
         </thead>
         <tbody>
-          {people.map((p) => (
-            <tr key={p.id}>
-              <td>
-                <button className="btn-link" aria-pressed={open?.id === p.id} onClick={() => setOpen(open?.id === p.id ? null : p)}>
-                  {p.name}
-                </button>{' '}
-                <span className="muted">{p.email}</span>
-              </td>
-              <td>{new Date(p.joined).toLocaleDateString()}</td>
-              <td>{p.last_active ? new Date(p.last_active).toLocaleString() : '—'}</td>
-              <td>{minutes(p.seconds_week)}</td>
-              <td>{p.teams}</td>
-              <td>{p.runs}</td>
-              <td>{p.tokens.toLocaleString()}</td>
-              <td>{p.devices}</td>
-            </tr>
-          ))}
+          {people.map((p) => <PersonRow key={p.id} p={p} open={open?.id === p.id} toggle={() => setOpen(open?.id === p.id ? null : p)} />)}
         </tbody>
       </table>
       {open && <Timeline key={open.id} person={open} />}

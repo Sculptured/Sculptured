@@ -3,23 +3,23 @@ import { gw } from './session';
 
 type Entry = { id: number; at: string; action: string; detail: Record<string, unknown>; admin_email: string | null; target_email: string | null };
 
+const PHRASES: Record<string, (who: string, e: Entry) => string> = {
+  'invite.created': (_, e) => (e.detail.admin ? 'created an admin invite' : 'created an invite'),
+  'invite.revoked': () => 'revoked an invite',
+  'user.reset_link_made': (who) => `made a reset link for ${who}`,
+  'user.disabled': (who) => `disabled ${who}`,
+  'user.enabled': (who) => `enabled ${who}`,
+  'user.admin_granted': (who) => `made ${who} an admin`,
+  'user.admin_removed': (who) => `removed ${who}'s admin rights`,
+  'user.signed_out': (who) => `signed ${who} out everywhere`,
+  'device.revoked': (who) => `revoked a computer of ${who}`,
+  'instance.stopped': (who) => `stopped ${who}'s Sculptured`,
+  'ops.signed_in': () => 'opened the ops tools',
+};
+
 /** Every admin action in plain words. Unknown actions show their code word rather than a guess. */
 function words(e: Entry): string {
-  const who = e.target_email ?? 'a user';
-  switch (e.action) {
-    case 'invite.created': return e.detail.admin ? 'created an admin invite' : 'created an invite';
-    case 'invite.revoked': return 'revoked an invite';
-    case 'user.reset_link_made': return `made a reset link for ${who}`;
-    case 'user.disabled': return `disabled ${who}`;
-    case 'user.enabled': return `enabled ${who}`;
-    case 'user.admin_granted': return `made ${who} an admin`;
-    case 'user.admin_removed': return `removed ${who}'s admin rights`;
-    case 'user.signed_out': return `signed ${who} out everywhere`;
-    case 'device.revoked': return `revoked a computer of ${who}`;
-    case 'instance.stopped': return `stopped ${who}'s Sculptured`;
-    case 'ops.signed_in': return 'opened the ops tools';
-    default: return e.action;
-  }
+  return PHRASES[e.action]?.(e.target_email ?? 'a user', e) ?? e.action;
 }
 
 export function AdminAudit() {

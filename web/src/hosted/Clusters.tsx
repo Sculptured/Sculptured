@@ -78,20 +78,23 @@ function summary(c: Cluster): string {
   ].filter(Boolean).join(' ');
 }
 
+const where = (c: Cluster) => `${c.username}@${c.host}${c.port === 22 ? '' : `:${c.port}`}${c.jump ? ` through ${c.jump.username}@${c.jump.host}` : ''}`;
+const showsDetail = (c: Cluster) => Boolean(c.detail) && c.state !== 'running' && !c.busy && c.certificate?.warning !== 'expired';
+const wantsKeySteps = (c: Cluster) => c.state === 'new' || c.state === 'failed';
+
 function ClusterCard({ c, reload }: { c: Cluster; reload: () => void }) {
   const [error, setError] = useState('');
   const s = status(c);
   const post = (path: string, body?: unknown) => gw('POST', `/clusters/${c.id}/${path}`, body).then(reload, (e) => setError(e.message));
-  const where = `${c.username}@${c.host}${c.port === 22 ? '' : `:${c.port}`}`;
   return (
     <article className="cluster-card" aria-label={c.name}>
       <header className="admin-head">
-        <div><strong>{c.name}</strong> <span className="muted">{where}{c.jump ? ` through ${c.jump.username}@${c.jump.host}` : ''}</span></div>
+        <div><strong>{c.name}</strong> <span className="muted">{where(c)}</span></div>
         <span className={s.tone} role="status">{s.text}</span>
       </header>
-      {c.detail && c.state !== 'running' && !c.busy && c.certificate?.warning !== 'expired' && <p className={c.state === 'failed' ? 'tone-red' : 'muted'}>{c.detail}</p>}
+      {showsDetail(c) && <p className={c.state === 'failed' ? 'tone-red' : 'muted'}>{c.detail}</p>}
       {c.question && <Question c={c} onAnswer={(answers) => void post('answer', { answers })} />}
-      {c.authorized_keys && (c.state === 'new' || c.state === 'failed') && <KeySteps c={c} keys={c.authorized_keys} />}
+      {c.authorized_keys && wantsKeySteps(c) && <KeySteps c={c} keys={c.authorized_keys} />}
       {c.certificate && <CertificateLine c={c} reload={reload} />}
       <p className="muted">{summary(c)}</p>
       {c.held_until && <SignedIn c={c} onSignOut={() => void post('sign-out')} />}
