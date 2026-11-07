@@ -121,23 +121,20 @@ impl RuleTest {
                 ),
                 None => (false, format!("{field} is {shown}, not a number")),
             },
-            Self::OneOf { values } => {
-                let text = text(v);
-                let ok = values
-                    .iter()
-                    .any(|x| x.trim().eq_ignore_ascii_case(text.trim()));
-                (
-                    ok,
-                    format!(
-                        "{field} is {shown}, {} {}",
-                        if ok { "one of" } else { "not one of" },
-                        values.join(", ")
-                    ),
-                )
-            }
+            Self::OneOf { values } => judge_membership(field, v, values),
             Self::Present => (true, format!("{field} is {shown}")),
         }
     }
+}
+
+fn judge_membership(field: &str, v: &Value, values: &[String]) -> (bool, String) {
+    let text = text(v);
+    let passed = values
+        .iter()
+        .any(|value| value.trim().eq_ignore_ascii_case(text.trim()));
+    let relation = if passed { "one of" } else { "not one of" };
+    let words = format!("{field} is {}, {relation} {}", shown(v), values.join(", "));
+    (passed, words)
 }
 
 /// The rules for `action`, each checked against `payload`, in the mandate's order.
