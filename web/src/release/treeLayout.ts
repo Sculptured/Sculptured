@@ -49,6 +49,11 @@ export function treeLayout(saved: Layout, rig: TreeTopology, links: ParentLink[]
     place(root.id,x,0);
     x += widths.get(root.id)!+COL_GAP;
   }
+  const pods = groupBounds(rig, seats);
+  return {seats,pods,width:Math.max(0,...Object.values(pods).map(b=>b.x+b.w)),height:Math.max(0,...Object.values(pods).map(b=>b.y+b.h))};
+}
+
+function groupBounds(rig: TreeTopology, seats: Record<string, Box>): Layout['pods'] {
   const pods: Layout['pods'] = {};
   for (const pod of rig.pods) {
     const boxes = rig.seats.filter(s=>s.pod===pod.id).map(s=>seats[s.id]);
@@ -57,7 +62,7 @@ export function treeLayout(saved: Layout, rig: TreeTopology, links: ParentLink[]
     const top=Math.min(...boxes.map(b=>b.y))-POD_PAD-POD_HEAD;
     pods[pod.id]={x:left,y:top,w:Math.max(...boxes.map(b=>b.x+b.w))-left+POD_PAD,h:Math.max(...boxes.map(b=>b.y+b.h))-top+POD_PAD};
   }
-  return {seats,pods,width:Math.max(0,...Object.values(pods).map(b=>b.x+b.w)),height:Math.max(0,...Object.values(pods).map(b=>b.y+b.h))};
+  return pods;
 }
 
 /** Inclusive descendants, including stopped ancestors so live grandchildren remain reachable. */
