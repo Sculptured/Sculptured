@@ -72,16 +72,7 @@ function badge(t: WorkflowTask): string | null {
 
 export function itemBoard(run: WorkflowRun, usage: Record<string, TurnTokens>, now: number): { columns: Column[]; summary: Summary } {
   const w = run.config, order = stageOrder(w);
-  const card = (t: WorkflowTask): Card => {
-    // An item that finished or stopped at this stage is not entering it again.
-    const ended = t.status === 'complete' || (t.status === 'blocked' && t.history.at(-1)?.stage === t.stage);
-    return {
-      task: t.input.id, title: t.input.title, stage: t.stage, status: t.status,
-      rounds: t.history.filter((h) => h.stage === t.stage).length + (ended ? 0 : 1),
-      sinceMs: t.waiting?.since_ms ?? t.history.at(-1)?.at_ms ?? null,
-      ...tokensOf(t, usage), ...costOf(t, usage), badge: badge(t),
-    };
-  };
+  const card = (t: WorkflowTask) => taskCard(t, usage);
   const columns: Column[] = order.map((id) => ({ stage: id, name: w.stages.find((s) => s.id === id)!.name, cards: [] }));
   const done: Column = { stage: '$done', name: 'Done', cards: [] };
   for (const t of run.tasks) {
@@ -111,6 +102,17 @@ export function itemBoard(run: WorkflowRun, usage: Record<string, TurnTokens>, n
       costPerDone: doneCosts.length ? doneCosts.reduce((a, b) => a + b, 0) / doneCosts.length : null,
       sendBacks, waitingMs: waiting.reduce((sum, t) => sum + now - (t.waiting?.since_ms ?? now), 0),
     },
+  };
+}
+
+function taskCard(t: WorkflowTask, usage: Record<string, TurnTokens>): Card {
+  // An item that finished or stopped at this stage is not entering it again.
+  const ended = t.status === 'complete' || (t.status === 'blocked' && t.history.at(-1)?.stage === t.stage);
+  return {
+    task: t.input.id, title: t.input.title, stage: t.stage, status: t.status,
+    rounds: t.history.filter((h) => h.stage === t.stage).length + (ended ? 0 : 1),
+    sinceMs: t.waiting?.since_ms ?? t.history.at(-1)?.at_ms ?? null,
+    ...tokensOf(t, usage), ...costOf(t, usage), badge: badge(t),
   };
 }
 
