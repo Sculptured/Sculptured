@@ -177,10 +177,7 @@ const VERBATIM = new Set(['plan_limit', 'needs_computer', 'project_archived', 'g
 
 export function errorText(e: unknown): string {
   if (!(e instanceof ApiError)) return UNREACHABLE;
-  if (e.code === 'team_invalid') {
-    const n = (e.issues ?? []).filter((i) => i.severity === 'error').length || (e.issues ?? []).length;
-    return n > 0 ? `${plural(n, 'thing')} to fix` : 'This team has things to fix before it can start.';
-  }
+  if (e.code === 'team_invalid') return teamIssueText(e.issues ?? []);
   // A host's reason is runtime evidence: kept verbatim.
   if (e.code === 'host_unreachable') return `Sculptured could not reach this agent's host: ${e.message}`;
   // So is the agent's refusal of an answer (its program's words).
@@ -189,6 +186,11 @@ export function errorText(e: unknown): string {
   if (VERBATIM.has(e.code) && e.message) return e.message;
   if (e.code === 'http_error') return `Sculptured answered in an unexpected way (error ${e.status}). ${RELOAD}`;
   return ERROR_WORDS[e.code] ?? `Sculptured could not do that (error ${e.status}). ${RELOAD}`;
+}
+
+function teamIssueText(issues: DraftIssue[]): string {
+  const n = issues.filter((i) => i.severity === 'error').length || issues.length;
+  return n > 0 ? `${plural(n, 'thing')} to fix` : 'This team has things to fix before it can start.';
 }
 
 /** `errorText`, with words of its own for the codes one action answers differently (Arena's cleanup). */
