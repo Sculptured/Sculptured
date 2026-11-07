@@ -58,12 +58,22 @@ function permitsOf(events: EventRecord[]): Map<string, Permit> {
     const b = e.body;
     const agent = seatOf(e);
     if (b.type === 'question-raised' && b.source === 'native-permission') out.set(b.question_id, { id: b.question_id, at: e.at_ms, ...(agent ? { agent } : {}), title: `use ${b.prompt.tool ?? 'a tool'}`, state: 'waiting' });
-    if (b.type === 'question-answered') set(b.question_id, b.answer.kind === 'allow' ? { state: 'granted', by: 'you' } : b.answer.kind === 'deny' || b.answer.kind === 'expired' ? { state: 'refused', by: b.answer.kind === 'expired' ? 'nobody in time' : 'you' } : {});
+    if (b.type === 'question-answered') set(b.question_id, answeredPermit(b.answer));
     if (b.type === 'question-decided') set(b.question_id, { state: /allow|approve|yes/i.test(b.decision) ? 'granted' : 'refused', by: 'a decision rule' });
-    if (b.type === 'change-proposed') out.set(b.proposal_id, { id: b.proposal_id, at: e.at_ms, ...(agent ? { agent } : {}), title: b.summary, state: 'waiting', ...(b.system ? { system: b.system } : {}) });
+    if (b.type === 'change-proposed') out.set(b.proposal_id, proposedPermit(b, e.at_ms, agent));
     if (b.type === 'change-decided') set(b.proposal_id, { state: b.approved ? 'granted' : 'refused', by: DECIDER[b.by] });
   }
   return out;
+}
+
+function proposedPermit(b: Body<'change-proposed'>, at: number, agent: string | undefined): Permit {
+  return { id: b.proposal_id, at, ...(agent ? { agent } : {}), title: b.summary, state: 'waiting', ...(b.system ? { system: b.system } : {}) };
+}
+
+function answeredPermit(answer: Body<'question-answered'>['answer']): Partial<Permit> {
+  if (answer.kind === 'allow') return { state: 'granted', by: 'you' };
+  if (answer.kind === 'deny' || answer.kind === 'expired') return { state: 'refused', by: answer.kind === 'expired' ? 'nobody in time' : 'you' };
+  return {};
 }
 
 /** The first call of the permitted tool by the same agent after its permission question carries the permit. */
@@ -83,14 +93,18 @@ export function rightsOf(draft: TeamDraft | undefined, seats: string[]): Rights 
   for (const seat of seats) {
     const a = draft?.agents.find((x) => x.id === memberOf(seat));
     if (!a) { out[seat] = []; continue; }
-    const domains = a.advanced.authority?.domains ?? [];
-    out[seat] = [
-      ...(domains.length ? [`decides: ${domains.join(', ')}`] : []),
-      a.advanced.permission === 'restricted' ? 'asks before using tools' : 'uses its tools without asking',
-      ...(rules ? [`changes it proposes are checked against ${rules} rule${rules === 1 ? '' : 's'}`] : []),
-    ];
+    out[seat] = agentRights(a, rules);
   }
   return out;
+}
+
+function agentRights(agent: TeamDraft['agents'][number], rules: number): string[] {
+  const domains = agent.advanced.authority?.domains ?? [];
+  return [
+    ...(domains.length ? [`decides: ${domains.join(', ')}`] : []),
+    agent.advanced.permission === 'restricted' ? 'asks before using tools' : 'uses its tools without asking',
+    ...(rules ? [`changes it proposes are checked against ${rules} rule${rules === 1 ? '' : 's'}`] : []),
+  ];
 }
 
 function usageOf(events: EventRecord[]): UsagePoint[] {
