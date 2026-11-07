@@ -82,6 +82,52 @@ function NotRunning({ state, rig }: { state: RigState; rig: string }) {
   );
 }
 
+/** The subtree the board is narrowed to, kept in the address so it can be shared. */
+function useSubtree() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const subtree = searchParams.get('subtree') || undefined;
+  const setSubtree = (id: string) => setSearchParams((prev) => { const next = new URLSearchParams(prev); if (id) next.set('subtree', id); else next.delete('subtree'); return next; });
+  return { subtree, setSubtree };
+}
+
+/** Shift, Ctrl or Command+click on an agent picks it instead of opening it; Shift+Space does the same from the keyboard. */
+function usePickFrom(p: Props) {
+  return (e: React.MouseEvent | React.KeyboardEvent) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-agent]')?.dataset.agent;
+    if (!p.onPick || !id || !p.agents[id]) return;
+    e.preventDefault();
+    e.stopPropagation();
+    p.onPick(id);
+  };
+}
+
+/** The graph's handle, kept here for Fit and passed on to the page's own ref. */
+function useGraphHandle(outer: Props['graphRef']) {
+  const graph = useRef<GraphHandle | null>(null);
+  const setGraph = (h: GraphHandle | null) => {
+    graph.current = h;
+    if (typeof outer === 'function') outer(h);
+    else if (outer) (outer as { current: GraphHandle | null }).current = h;
+  };
+  return { graph, setGraph };
+}
+
+function NoLiveAgents({ rig, subtree }: { rig: string; subtree?: string }) {
+  return (
+    <div className="release-empty">
+      <h2>{subtree ? 'No live agents in this subtree' : 'No live agents'}</h2>
+      <p>{subtree ? 'This branch is stopped or no longer part of the current run. Choose Whole tree to return.' : <>The board shows running agents. <Link to={agentsPath(rig)}>Agents</Link> lists every agent and what it did.</>}</p>
+    </div>
+  );
+}
+
+function LiveNotes({ gaps, unknown, observedError }: { gaps: number; unknown: number; observedError?: string | null }) {
+  return <>
+    {gaps > 0 && <p className="bar-note gap-notice tone-amber" role="status">{plural(gaps, 'event')} lost — history has a gap</p>}
+    {(unknown > 0 || observedError) && <div className="live-evidence-note">{unknown > 0 && `${unknown} disconnected agents have unknown status.`} {observedError}</div>}
+  </>;
+}
+
 /**
  * The Run board: the live graph and its small toolbar, nothing beside it. Clicking a card opens
  * its agent; Shift+click picks agents to message together. Status, Start and Stop are in the project
@@ -90,29 +136,14 @@ function NotRunning({ state, rig }: { state: RigState; rig: string }) {
 export function TeamLive(p: Props) {
   const { rig, state, agents, names, now } = p;
   const pulses = useHandoffPulses(state.feed);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const subtree = searchParams.get('subtree') || undefined;
-  const setSubtree = (id: string) => setSearchParams((prev) => { const next = new URLSearchParams(prev); if (id) next.set('subtree', id); else next.delete('subtree'); return next; });
-  const viewportKey = `${rig}:live:${subtree ?? 'all'}`;
+  const { subtree, setSubtree } = useSubtree();
   const snap = state.snapshot!;
   const { projection, children, observedError } = useLiveProjection(rig, state, p.layout, subtree);
-  const graph = useRef<GraphHandle | null>(null);
+  const { graph, setGraph } = useGraphHandle(p.graphRef);
   const views = snap.rig.seats.map((s) => state.seats[s.id]).filter(Boolean);
   const rows = snap.rig.seats.map((s) => agents[s.id]).filter(Boolean);
   const picked = useMemo(() => new Set(p.picked ?? []), [p.picked]);
-  // Shift, Ctrl or Command+click on an agent picks it instead of opening it; Shift+Space does the same from the keyboard.
-  const pickFrom = (e: React.MouseEvent | React.KeyboardEvent) => {
-    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-agent]')?.dataset.agent;
-    if (!p.onPick || !id || !agents[id]) return;
-    e.preventDefault();
-    e.stopPropagation();
-    p.onPick(id);
-  };
-  const setGraph = (h: GraphHandle | null) => {
-    graph.current = h;
-    if (typeof p.graphRef === 'function') p.graphRef(h);
-    else if (p.graphRef) (p.graphRef as { current: GraphHandle | null }).current = h;
-  };
+  const pickFrom = usePickFrom(p);
   return (
     <section className="panel team-live" aria-label="Run board">
       <div className="board-toolbar" role="toolbar" aria-label="Run board">
@@ -125,16 +156,10 @@ export function TeamLive(p: Props) {
       <BudgetStatus rig={rig} names={names} />
       <RestoreBanner team={rig} views={views} names={names} />
       <NotRunning state={state} rig={rig} />
-      {state.gaps > 0 && <p className="bar-note gap-notice tone-amber" role="status">{plural(state.gaps, 'event')} lost — history has a gap</p>}
-      {(projection.unknown > 0 || observedError) && <div className="live-evidence-note">{projection.unknown > 0 && `${projection.unknown} disconnected agents have unknown status.`} {observedError}</div>}
+      <LiveNotes gaps={state.gaps} unknown={projection.unknown} observedError={observedError} />
       <div className="team-body" onClickCapture={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) pickFrom(e); }} onKeyDownCapture={(e) => { if (e.key === ' ' && e.shiftKey) pickFrom(e); }}>
-        {projection.compiled.seats.length === 0 ? (
-          <div className="release-empty">
-            <h2>{subtree ? 'No live agents in this subtree' : 'No live agents'}</h2>
-            <p>{subtree ? 'This branch is stopped or no longer part of the current run. Choose Whole tree to return.' : <>The board shows running agents. <Link to={agentsPath(rig)}>Agents</Link> lists every agent and what it did.</>}</p>
-          </div>
-        ) : (
-          <LiveGraph viewportKey={viewportKey} liveOnly observedLabels={projection.labels} onWorkflow={p.onWorkflow} ref={setGraph} rig={rig} compiled={projection.compiled} agents={agents} layout={projection.layout} names={names}
+        {projection.compiled.seats.length === 0 ? <NoLiveAgents rig={rig} subtree={subtree} /> : (
+          <LiveGraph viewportKey={`${rig}:live:${subtree ?? 'all'}`} liveOnly observedLabels={projection.labels} onWorkflow={p.onWorkflow} ref={setGraph} rig={rig} compiled={projection.compiled} agents={agents} layout={projection.layout} names={names}
             selected={p.selected} picked={picked} onOpen={p.onOpen} onAnswer={p.onAnswer} onSelect={p.onSelect} now={now} pulses={pulses} />
         )}
       </div>

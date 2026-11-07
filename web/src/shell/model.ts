@@ -144,6 +144,16 @@ function downstreamFor(compiled: CompiledRig, id: string): AgentRow['downstream'
 
 type TeamView = { rig: string; compiled: CompiledRig; seats: Record<string, SeatView>; activity: Record<string, AgentActivity>; names: NameMap; groups: Record<string, string> };
 
+/** What comes from the agent's seat when it has one, else from the team's spec. */
+function seatFields(spec: CompiledRig['seats'][number], seat: SeatView | undefined) {
+  return { folder: seat?.cwd ?? spec.cwd, seat, vendor: vendor(seat?.runtime ?? spec.runtime), lastMs: seat?.last_event_ms ?? null };
+}
+
+/** The names of the agents this one hands work to (never itself). */
+function handsToOf(compiled: CompiledRig, id: string, nameOf: (id: string) => string): string[] {
+  return compiled.edges.filter((e) => e.kind === 'delegates_to' && e.from === id && e.to !== id).map((e) => nameOf(e.to));
+}
+
 function agentRow(t: TeamView, spec: CompiledRig['seats'][number]): AgentRow {
   const seat = t.seats[spec.id];
   const act = t.activity[spec.id];
@@ -156,16 +166,13 @@ function agentRow(t: TeamView, spec: CompiledRig['seats'][number]): AgentRow {
     rig: t.rig,
     name: nameOf(spec.id),
     group: t.groups[spec.pod] ?? 'unknown',
-    folder: seat?.cwd ?? spec.cwd,
-    seat,
+    ...seatFields(spec, seat),
     state,
-    vendor: vendor(seat?.runtime ?? spec.runtime),
     summary: summaryFor(seat, state, stuck, waitingFor),
-    lastMs: seat?.last_event_ms ?? null,
     activity: act,
     waitingFor,
     stuck,
-    handsTo: t.compiled.edges.filter((e) => e.kind === 'delegates_to' && e.from === spec.id && e.to !== spec.id).map((e) => nameOf(e.to)),
+    handsTo: handsToOf(t.compiled, spec.id, nameOf),
     downstream: downstreamFor(t.compiled, spec.id),
   };
 }

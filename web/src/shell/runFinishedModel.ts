@@ -6,17 +6,19 @@ import type { AgentRow } from './model';
  * finished at least one turn in this start, and nothing waits on it, on you or on another agent.
  * This says only that the turns ended (protocol-observed); it never says the work is right.
  */
+type Seat = NonNullable<AgentRow['seat']>;
+
+const idleAndQuiet = (s: Seat) => s.lifecycle === 'running' && s.activity === 'idle' && !s.current_turn && !s.current_tool;
+const nothingOpen = (s: Seat) => !(s.open_questions > 0 || s.restore_offer || s.handoff_stuck || s.slot_wait);
+const nothingWaited = (s: Seat, a: AgentRow) => !(s.waiting_for && s.waiting_for.length > 0) && !(a.waitingFor && a.waitingFor.length > 0);
+
+function agentFinished(a: AgentRow): boolean {
+  const s = a.seat;
+  return !!s && idleAndQuiet(s) && nothingOpen(s) && nothingWaited(s, a) && a.activity?.lastTurnEndSeq != null;
+}
+
 export function allAgentsFinished(rows: AgentRow[]): boolean {
-  if (rows.length === 0) return false;
-  return rows.every((a) => {
-    const s = a.seat;
-    if (!s || s.lifecycle !== 'running' || s.activity !== 'idle') return false;
-    if (s.current_turn || s.current_tool) return false;
-    if (s.open_questions > 0 || s.restore_offer || s.handoff_stuck || s.slot_wait) return false;
-    if (s.waiting_for && s.waiting_for.length > 0) return false;
-    if (a.waitingFor && a.waitingFor.length > 0) return false;
-    return a.activity?.lastTurnEndSeq != null;
-  });
+  return rows.length > 0 && rows.every(agentFinished);
 }
 
 /** Identifies one finished state: a later turn by any agent makes a new one (a dismissed summary comes back). */

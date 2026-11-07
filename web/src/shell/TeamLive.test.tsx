@@ -98,10 +98,10 @@ describe('RigView spec notes', () => {
     message: 'permission_policy is recorded but not enforced until M2; the seat runs with the default unrestricted posture',
   };
   const notEnforced = { path: 'culture_file', severity: 'not-enforced' as const, message: 'declared · not enforced in this version' };
-  const error = { path: 'x', severity: 'error' as const, message: 'never shown here' };
+  type Diagnostic = { path: string; severity: 'error'; message: string };
 
   /** Spec notes are part of Results, under Advanced. */
-  function openWith(diagnostics: (typeof warning | typeof notEnforced | typeof error)[]) {
+  function openWith(diagnostics: (typeof warning | typeof notEnforced | Diagnostic)[]) {
     renderAt('/p/r/results');
     const rig = { ...snapshot().rig, diagnostics };
     act(() => FakeEventSource.instances[0].emit('snapshot', snapshot({ rig })));

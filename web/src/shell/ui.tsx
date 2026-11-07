@@ -24,6 +24,11 @@ type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   tip?: string;
 };
 
+const tipAttr = (tip: string | undefined, kbd: string | undefined) => (tip || kbd ? (tip ?? '') : undefined);
+
+const btnClass = (v: BtnVariant, size: BtnProps['size'], iconOnly: boolean | undefined, className: string | undefined) =>
+  ['btn', `btn-${v}`, v === 'primary' || v === 'danger' ? v : '', size === 'sm' ? 'btn-sm' : '', iconOnly ? 'btn-icon' : '', className ?? ''].filter(Boolean).join(' ');
+
 /**
  * A real button: primary (filled accent), secondary (subtle fill, 1px border), ghost
  * (transparent until hovered) or danger (red text on a subtle fill). Each has hover, active
@@ -31,15 +36,14 @@ type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
  */
 export function Btn({ danger, kbd, pressed, className, children, variant, size, icon, iconOnly, tip, title, ...rest }: BtnProps) {
   const v: BtnVariant = variant ?? (danger ? 'danger' : 'secondary');
-  const label = rest['aria-label'];
-  const tipText = tip ?? title ?? (iconOnly ? label : undefined);
+  const tipText = tip ?? title ?? (iconOnly ? rest['aria-label'] : undefined);
   return (
     <button
       type="button"
-      className={`btn btn-${v}${v === 'primary' || v === 'danger' ? ` ${v}` : ''}${size === 'sm' ? ' btn-sm' : ''}${iconOnly ? ' btn-icon' : ''}${className ? ` ${className}` : ''}`}
+      className={btnClass(v, size, iconOnly, className)}
       aria-pressed={pressed}
       aria-keyshortcuts={kbd ? kbdAria(kbd) : undefined}
-      data-tip={tipText || kbd ? (tipText ?? '') : undefined}
+      data-tip={tipAttr(tipText, kbd)}
       data-kbd={kbd}
       {...rest}
     >
@@ -191,16 +195,27 @@ export function VendorMark({ v, size = 'sm' }: { v: Vendor; size?: 'xs' | 'sm' |
   );
 }
 
-/**
- * One tooltip for the whole app. Any element with `data-tip` (and optionally `data-kbd`) shows
- * it after a short hover, or at once on keyboard focus. Purely visual: names stay on the
- * controls themselves. Drawn fixed, so panels that clip their content never cut it off.
- */
-export function TooltipLayer() {
-  const [tip, setTip] = useState<{ text: string; kbd?: string; x: number; y: number; below: boolean } | null>(null);
+type Tip = { text: string; kbd?: string; x: number; y: number; below: boolean };
+
+/** Where a tooltip for `el` goes, or null when it has nothing to say. */
+function tipFor(el: HTMLElement): Tip | null {
+  const text = (el.dataset.tip || el.getAttribute('aria-label') || el.textContent || '').trim();
+  const kbd = el.dataset.kbd || undefined;
+  if (!text && !kbd) return null;
+  const r = el.getBoundingClientRect();
+  const below = r.top < 64 || r.bottom + 44 < window.innerHeight;
+  // Keep the bubble on screen near the edges (it is centred on x).
+  const x = Math.min(window.innerWidth - 120, Math.max(120, r.left + r.width / 2));
+  return { text, kbd, x, y: below ? r.bottom + 6 : r.top - 6, below };
+}
+
+const tipTarget = (e: Event) => (e.target instanceof Element ? (e.target.closest('[data-tip]') as HTMLElement | null) : null);
+
+/** Shows the tooltip after a short hover, or at once on keyboard focus; hides it on any other input. */
+function useTooltip() {
+  const [tip, setTip] = useState<Tip | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const current = useRef<Element | null>(null);
-
   useEffect(() => {
     const clear = () => {
       if (timer.current) clearTimeout(timer.current);
@@ -208,20 +223,10 @@ export function TooltipLayer() {
       current.current = null;
       setTip(null);
     };
-    const show = (el: HTMLElement) => {
-      const text = (el.dataset.tip || el.getAttribute('aria-label') || el.textContent || '').trim();
-      const kbd = el.dataset.kbd || undefined;
-      if (!text && !kbd) return;
-      const r = el.getBoundingClientRect();
-      const below = r.top < 64 || r.bottom + 44 < window.innerHeight;
-      // Keep the bubble on screen near the edges (it is centred on x).
-      const x = Math.min(window.innerWidth - 120, Math.max(120, r.left + r.width / 2));
-      setTip({ text, kbd, x, y: below ? r.bottom + 6 : r.top - 6, below });
-    };
-    const target = (e: Event) => (e.target instanceof Element ? (e.target.closest('[data-tip]') as HTMLElement | null) : null);
+    const show = (el: HTMLElement) => { const t = tipFor(el); if (t) setTip(t); };
     const over = (e: PointerEvent) => {
       if (e.pointerType === 'touch') return;
-      const el = target(e);
+      const el = tipTarget(e);
       if (el === current.current) return;
       clear();
       if (!el) return;
@@ -229,32 +234,32 @@ export function TooltipLayer() {
       timer.current = setTimeout(() => show(el), 450);
     };
     const focus = (e: FocusEvent) => {
-      const el = target(e);
+      const el = tipTarget(e);
       if (!el || !el.matches(':focus-visible')) return;
       clear();
       current.current = el;
       show(el);
     };
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && clear();
-    document.addEventListener('pointerover', over);
-    document.addEventListener('focusin', focus);
-    document.addEventListener('focusout', clear);
-    document.addEventListener('pointerdown', clear, true);
-    document.addEventListener('keydown', key, true);
-    window.addEventListener('scroll', clear, true);
-    window.addEventListener('blur', clear);
+    const listeners: [EventTarget, string, EventListener, boolean?][] = [
+      [document, 'pointerover', over as EventListener], [document, 'focusin', focus as EventListener], [document, 'focusout', clear],
+      [document, 'pointerdown', clear, true], [document, 'keydown', ((e: KeyboardEvent) => e.key === 'Escape' && clear()) as EventListener, true], [window, 'scroll', clear, true], [window, 'blur', clear],
+    ];
+    for (const [t, name, fn, capture] of listeners) t.addEventListener(name, fn, capture);
     return () => {
       clear();
-      document.removeEventListener('pointerover', over);
-      document.removeEventListener('focusin', focus);
-      document.removeEventListener('focusout', clear);
-      document.removeEventListener('pointerdown', clear, true);
-      document.removeEventListener('keydown', key, true);
-      window.removeEventListener('scroll', clear, true);
-      window.removeEventListener('blur', clear);
+      for (const [t, name, fn, capture] of listeners) t.removeEventListener(name, fn, capture);
     };
   }, []);
+  return tip;
+}
 
+/**
+ * One tooltip for the whole app. Any element with `data-tip` (and optionally `data-kbd`) shows
+ * it after a short hover, or at once on keyboard focus. Purely visual: names stay on the
+ * controls themselves. Drawn fixed, so panels that clip their content never cut it off.
+ */
+export function TooltipLayer() {
+  const tip = useTooltip();
   if (!tip) return null;
   return (
     <div className={`tooltip${tip.below ? ' below' : ' above'}`} style={{ left: tip.x, top: tip.y }} aria-hidden="true">

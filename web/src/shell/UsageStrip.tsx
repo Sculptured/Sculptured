@@ -3,6 +3,7 @@ import { compactNumber, plural } from '../format';
 import type { EventRecord } from '../generated/EventRecord';
 import type { Meter } from '../generated/Meter';
 import type { SeatView } from '../generated/SeatView';
+import type { TeamBudget } from '../generated/TeamBudget';
 import { usePolled } from '../usePolling';
 
 type Figure = { label: string; value: string; note: string };
@@ -60,6 +61,13 @@ function Item({ f, children }: { f: Figure; children?: React.ReactNode }) {
   );
 }
 
+/** The run-budget item: unknown when it cannot be read, a placeholder while it loads. */
+function runBudget(error: unknown, data: TeamBudget | null): Figure & { meter?: Meter } {
+  if (error) return { label: 'Run budget', value: 'unknown', note: 'budget status unavailable' };
+  if (!data) return { label: 'Run budget', value: '…', note: '' };
+  return budgetLine(data.run?.meters ?? []);
+}
+
 /**
  * The Standard look's footer: this run's tokens, its cost and its run budget, in tabular numbers.
  * Every figure comes from the agents' own usage reports and the team budget; anything not
@@ -71,7 +79,7 @@ export function UsageStrip({ rig, seats }: { rig: string; seats: SeatView[] }) {
   const fromRun = usage.data ? runUsage(usage.data) : null;
   const tokens = fromRun?.tokens ?? seatTokens(seats);
   const cost = fromRun?.cost ?? { label: 'Cost', value: 'unknown', note: usage.error ? "this run's usage reports could not be read" : 'reading usage reports…' };
-  const run = budget.error ? { label: 'Run budget', value: 'unknown', note: 'budget status unavailable' } : budget.data ? budgetLine(budget.data.run?.meters ?? []) : { label: 'Run budget', value: '…', note: '' };
+  const run = runBudget(budget.error, budget.data);
   return (
     <footer className="usage-strip" aria-label="Run usage">
       <Item f={tokens} />

@@ -84,73 +84,111 @@ class ArrowGrid {
   }
 }
 
+type Seat = Box;
+type Routing = {
+  edges: CompiledEdge[];
+  ordered: CompiledEdge[];
+  seats: Record<string, Box>;
+  boxes: [string, Box][];
+  drawn: ArrowGrid;
+  /** How many arcs over the top have been drawn, so each one sits a little higher. */
+  arcs: { over: number };
+};
+
+const curve = (pts: EdgeGeom['pts']): EdgeGeom => ({ pts, d: `M${pts[0].x},${pts[0].y} C${pts[1].x},${pts[1].y} ${pts[2].x},${pts[2].y} ${pts[3].x},${pts[3].y}`, mid: mid(...pts), room: Infinity });
+
+const sample = (g: EdgeGeom) => Array.from({ length: 49 }, (_, i) => {
+  const t = i / 48, u = 1 - t, [a, b, c, d] = g.pts;
+  return { x: u * u * u * a.x + 3 * u * u * t * b.x + 3 * u * t * t * c.x + t * t * t * d.x, y: u * u * u * a.y + 3 * u * u * t * b.y + 3 * u * t * t * c.y + t * t * t * d.y };
+});
+
+/** A rightward connection that would pass through another box arcs over the top instead. */
+function arcOverTop(e: CompiledEdge, a: Seat, b: Seat, g: EdgeGeom, r: Routing): EdgeGeom {
+  if (e.kind === 'spawned_by' || b.x < a.x + a.w) return g;
+  const y0 = Math.min(a.y + a.h / 2, b.y + b.h / 2) - 1;
+  const y1 = Math.max(a.y + a.h / 2, b.y + b.h / 2) + 1;
+  const blocked = r.boxes.some(([id, c]) => id !== e.from && id !== e.to && overlaps(a.x + a.w, b.x, c.x, c.x + c.w) && overlaps(y0, y1, c.y, c.y + c.h));
+  if (!blocked) return g;
+  const top = Math.min(...r.boxes.filter(([, c]) => overlaps(a.x, b.x + b.w, c.x, c.x + c.w)).map(([, c]) => c.y));
+  const apex = top - 96 - 28 * r.arcs.over++;
+  const p0 = { x: a.x + a.w * 0.6, y: a.y };
+  const p3 = { x: b.x + b.w * 0.5, y: b.y };
+  const p1 = { x: p0.x, y: apex };
+  const p2 = { x: p3.x, y: apex };
+  const f = (n: number) => Math.round(n * 10) / 10;
+  return { d: `M${f(p0.x)},${f(p0.y)} C${f(p1.x)},${f(p1.y)} ${f(p2.x)},${f(p2.y)} ${f(p3.x)},${f(p3.y)}`, mid: mid(p0, p1, p2, p3), room: Infinity, pts: [p0, p1, p2, p3] };
+}
+
+/** Separate ports in child order, so a wide family does not overprint at its source. */
+function spawnPort(e: CompiledEdge, a: Seat, g: EdgeGeom, r: Routing): EdgeGeom {
+  const siblings = r.ordered.filter(s => s.kind === 'spawned_by' && s.from === e.from && r.seats[s.to]).sort((u, v) => r.seats[u.to].x - r.seats[v.to].x || u.to.localeCompare(v.to));
+  const x = a.x + a.w * (siblings.indexOf(e) + 1) / (siblings.length + 1);
+  const [p0, p1, p2, p3] = g.pts;
+  return curve([{ ...p0, x }, { ...p1, x }, p2, p3]);
+}
+
+/** The five ways round: over, under, left and right of both boxes, each at its own distance. */
+function detours(a: Seat, b: Seat, pad: number) {
+  const upper = Math.min(a.y, b.y) - pad, lower = Math.max(a.y + a.h, b.y + b.h) + pad;
+  const left = Math.min(a.x, b.x) - pad, right = Math.max(a.x + a.w, b.x + b.w) + pad;
+  const top = curve([{ x: a.x + a.w * .6, y: a.y }, { x: a.x + a.w * .6, y: upper }, { x: b.x + b.w * .4, y: upper }, { x: b.x + b.w * .4, y: b.y }]);
+  const bottom = curve([{ x: a.x + a.w * .4, y: a.y + a.h }, { x: a.x + a.w * .4, y: lower }, { x: b.x + b.w * .6, y: lower }, { x: b.x + b.w * .6, y: b.y + b.h }]);
+  const west = curve([{ x: a.x, y: a.y + a.h * .4 }, { x: left, y: a.y + a.h * .4 }, { x: left, y: b.y + b.h * .6 }, { x: b.x, y: b.y + b.h * .6 }]);
+  const east = curve([{ x: a.x + a.w, y: a.y + a.h * .6 }, { x: right, y: a.y + a.h * .6 }, { x: right, y: b.y + b.h * .4 }, { x: b.x + b.w, y: b.y + b.h * .4 }]);
+  const loop = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y) ? (b.x >= a.x ? top : bottom) : (b.y >= a.y ? east : west);
+  return { top, bottom, west, east, loop };
+}
+
+/** How badly a candidate curve crosses boxes (10000 each) and runs beside arrows already drawn. */
+function curveCost(candidate: EdgeGeom, e: CompiledEdge, r: Routing): number {
+  let n = 0;
+  const [start, , , end] = candidate.pts;
+  for (const p of sample(candidate).slice(1, -1)) {
+    for (const [id, c] of r.boxes) {
+      const margin = id === e.from || id === e.to ? 0 : 10;
+      if (p.x > c.x - margin && p.x < c.x + c.w + margin && p.y > c.y - margin && p.y < c.y + c.h + margin) n += 10000;
+    }
+    // Arrows that share a port (a planner handing work to two builders) meet there by design:
+    // company counts only away from this arrow's own ends, or the fan would loop round the cards.
+    if (far(p, start) && far(p, end)) n += 12 * r.drawn.near(p);
+  }
+  return n;
+}
+
+/** The cheapest of the straight curve and its detours; a reciprocal, parallel or self arrow tries the loop first. */
+function bestRoute(e: CompiledEdge, a: Seat, b: Seat, g: EdgeGeom, r: Routing): EdgeGeom {
+  const parallel = r.ordered.filter(s => s.from === e.from && s.to === e.to);
+  const { top, bottom, west, east, loop } = detours(a, b, 80 + parallel.indexOf(e) * 32);
+  const reciprocal = r.edges.some(s => s.from === e.to && s.to === e.from);
+  const candidates = reciprocal || parallel.length > 1 || e.from === e.to ? [loop, top, bottom, west, east, g] : [g, top, bottom, west, east];
+  let best = Infinity, chosen = g;
+  for (const candidate of candidates) {
+    const c = curveCost(candidate, e, r);
+    if (c < best) { best = c; chosen = candidate; }
+  }
+  return chosen;
+}
+
+function routeOne(e: CompiledEdge, a: Seat, b: Seat, r: Routing): EdgeGeom {
+  const g = arcOverTop(e, a, b, edgeGeometry(a, b, e.kind === 'spawned_by'), r);
+  if (e.kind === 'spawned_by') return b.y >= a.y + a.h ? spawnPort(e, a, g, r) : g;
+  return bestRoute(e, a, b, g, r);
+}
+
 /**
  * Geometry for every connection. A rightward connection that would pass through another box
  * arcs over the top instead, each one a little higher, so no line or label sits on a box.
  */
 export function routeEdges(edges: CompiledEdge[], seats: Record<string, Box>): Map<CompiledEdge, EdgeGeom> {
   const out = new Map<CompiledEdge, EdgeGeom>();
-  const boxes = Object.entries(seats);
-  let over = 0;
-  const ordered=[...edges].sort((a,b)=>`${a.from}:${a.to}:${a.kind}`.localeCompare(`${b.from}:${b.to}:${b.kind}`));
-  const curve=(pts:EdgeGeom['pts']):EdgeGeom=>({pts,d:`M${pts[0].x},${pts[0].y} C${pts[1].x},${pts[1].y} ${pts[2].x},${pts[2].y} ${pts[3].x},${pts[3].y}`,mid:mid(...pts),room:Infinity});
-  const sample=(g:EdgeGeom)=>Array.from({length:49},(_,i)=>{const t=i/48,u=1-t,[a,b,c,d]=g.pts;return{x:u*u*u*a.x+3*u*u*t*b.x+3*u*t*t*c.x+t*t*t*d.x,y:u*u*u*a.y+3*u*u*t*b.y+3*u*t*t*c.y+t*t*t*d.y}});
-  const drawn=new ArrowGrid();
+  const ordered = [...edges].sort((a, b) => `${a.from}:${a.to}:${a.kind}`.localeCompare(`${b.from}:${b.to}:${b.kind}`));
+  const r: Routing = { edges, ordered, seats, boxes: Object.entries(seats), drawn: new ArrowGrid(), arcs: { over: 0 } };
   for (const e of ordered) {
-    const a = seats[e.from];
-    const b = seats[e.to];
+    const a = seats[e.from], b = seats[e.to];
     if (!a || !b) continue;
-    let g = edgeGeometry(a, b, e.kind === 'spawned_by');
-    if (e.kind !== 'spawned_by' && b.x >= a.x + a.w) {
-      const y0 = Math.min(a.y + a.h / 2, b.y + b.h / 2) - 1;
-      const y1 = Math.max(a.y + a.h / 2, b.y + b.h / 2) + 1;
-      const blocked = boxes.some(
-        ([id, c]) => id !== e.from && id !== e.to && overlaps(a.x + a.w, b.x, c.x, c.x + c.w) && overlaps(y0, y1, c.y, c.y + c.h),
-      );
-      if (blocked) {
-        const top = Math.min(...boxes.filter(([, c]) => overlaps(a.x, b.x + b.w, c.x, c.x + c.w)).map(([, c]) => c.y));
-        const apex = top - 96 - 28 * over++;
-        const p0 = { x: a.x + a.w * 0.6, y: a.y };
-        const p3 = { x: b.x + b.w * 0.5, y: b.y };
-        const p1 = { x: p0.x, y: apex };
-        const p2 = { x: p3.x, y: apex };
-        const f = (n: number) => Math.round(n * 10) / 10;
-        g = { d: `M${f(p0.x)},${f(p0.y)} C${f(p1.x)},${f(p1.y)} ${f(p2.x)},${f(p2.y)} ${f(p3.x)},${f(p3.y)}`, mid: mid(p0, p1, p2, p3), room: Infinity, pts: [p0, p1, p2, p3] };
-      }
-    }
-    if(e.kind==='spawned_by' && b.y>=a.y+a.h) {
-      // Separate ports in child order, so a wide family does not overprint at its source.
-      const siblings=ordered.filter(s=>s.kind==='spawned_by'&&s.from===e.from&&seats[s.to]).sort((u,v)=>seats[u.to].x-seats[v.to].x||u.to.localeCompare(v.to));
-      const x=a.x+a.w*(siblings.indexOf(e)+1)/(siblings.length+1);
-      const [p0,p1,p2,p3]=g.pts;g=curve([{...p0,x},{...p1,x},p2,p3]);
-    } else if(e.kind!=='spawned_by') {
-      const parallel=ordered.filter(s=>s.from===e.from&&s.to===e.to);
-      const lane=parallel.indexOf(e),pad=80+lane*32;
-      const reciprocal=edges.some(s=>s.from===e.to&&s.to===e.from);
-      const upper=Math.min(a.y,b.y)-pad,lower=Math.max(a.y+a.h,b.y+b.h)+pad;
-      const left=Math.min(a.x,b.x)-pad,right=Math.max(a.x+a.w,b.x+b.w)+pad;
-      const top=curve([{x:a.x+a.w*.6,y:a.y},{x:a.x+a.w*.6,y:upper},{x:b.x+b.w*.4,y:upper},{x:b.x+b.w*.4,y:b.y}]);
-      const bottom=curve([{x:a.x+a.w*.4,y:a.y+a.h},{x:a.x+a.w*.4,y:lower},{x:b.x+b.w*.6,y:lower},{x:b.x+b.w*.6,y:b.y+b.h}]);
-      const west=curve([{x:a.x,y:a.y+a.h*.4},{x:left,y:a.y+a.h*.4},{x:left,y:b.y+b.h*.6},{x:b.x,y:b.y+b.h*.6}]);
-      const east=curve([{x:a.x+a.w,y:a.y+a.h*.6},{x:right,y:a.y+a.h*.6},{x:right,y:b.y+b.h*.4},{x:b.x+b.w,y:b.y+b.h*.4}]);
-      const loop=Math.abs(b.x-a.x)>=Math.abs(b.y-a.y)?(b.x>=a.x?top:bottom):(b.y>=a.y?east:west);
-      const candidates=reciprocal||parallel.length>1||e.from===e.to?[loop,top,bottom,west,east,g]:[g,top,bottom,west,east];
-      const cost=(candidate:EdgeGeom)=>{
-        const points=sample(candidate);let n=0;
-        const [start,,,end]=candidate.pts;
-        for(const p of points.slice(1,-1)) {
-          for(const [id,c] of boxes){const margin=id===e.from||id===e.to?0:10;if(p.x>c.x-margin&&p.x<c.x+c.w+margin&&p.y>c.y-margin&&p.y<c.y+c.h+margin)n+=10000;}
-          // Arrows that share a port (a planner handing work to two builders) meet there by design:
-          // company counts only away from this arrow's own ends, or the fan would loop round the cards.
-          if(far(p,start)&&far(p,end))n+=12*drawn.near(p);
-        }
-        return n;
-      };
-      let best=Infinity;for(const candidate of candidates){const c=cost(candidate);if(c<best){best=c;g=candidate;}}
-    }
-    drawn.add(sample(g));
+    const g = routeOne(e, a, b, r);
+    r.drawn.add(sample(g));
     out.set(e, g);
   }
   return out;
 }
-

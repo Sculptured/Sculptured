@@ -85,6 +85,22 @@ export function NameField({ a, edit, inputRef, issues = [] }: { a: DraftAgent; e
   );
 }
 
+type RunsOnProps = { draft: TeamDraft; a: DraftAgent; conn: ModelConnection | null; locked: boolean; edit: Edit };
+
+/** The model beside "Runs on": the connection's own, a choice of model, or none for a practice agent. */
+function ModelPart({ draft, a, conn, locked, edit }: RunsOnProps) {
+  const k = a.kind;
+  if (conn?.provider === 'openrouter') return <span className="muted">Model: <code>{conn.model}</code> · from the connection</span>;
+  if (!isModelKind(k)) return <span className="muted">free · no model calls</span>;
+  const fallback = groupDefault(draft, a.group_id, k);
+  const from = a.group_id && draft.groups.find((g) => g.id === a.group_id)?.models?.[k as ModelKind] ? 'group' : 'team';
+  return (
+    <ModelSelect key={k} kind={k} label={`${KIND_LABEL[k]} model for ${a.name || 'this agent'}`} value={a.advanced.model}
+      inherited={fallback ? `${modelLabel(k, fallback)}, from the ${from}` : modelLabel(k, null)} disabled={locked}
+      onChange={(model) => edit((d) => setAdvanced(d, a.id, { model }), `model:${a.id}`)} />
+  );
+}
+
 /** "Runs on" (Claude, Codex or OpenCode, and hosted, your model connections) and its model, side by side. */
 export function RunsOnField({ draft, a, edit, locked }: Common) {
   const k = a.kind;
@@ -92,8 +108,6 @@ export function RunsOnField({ draft, a, edit, locked }: Common) {
   const conns = useConnections(hosted);
   const conn = usesConnections(k) && a.connection ? conns.list.find((c) => c.id === a.connection) ?? null : null;
   const picker = hosted && (conns.list.length > 0 || (conns.loaded && !!a.connection));
-  const fallback = isModelKind(k) ? groupDefault(draft, a.group_id, k) : null;
-  const from = a.group_id && draft.groups.find((g) => g.id === a.group_id)?.models?.[k as ModelKind] ? 'group' : 'team';
   const label = `${a.name || 'This agent'} runs on`;
   return (
     <div className="fld runs-on">
@@ -102,15 +116,7 @@ export function RunsOnField({ draft, a, edit, locked }: Common) {
         {picker
           ? <RunsOnPicker a={a} label={label} conns={conns.list} disabled={locked} onChange={(kind, id) => edit((d) => setRunsOn(d, a.id, kind, id))} />
           : <KindSwitch label={label} value={k} disabled={locked} onChange={(next) => edit((d) => setKind(d, a.id, next))} />}
-        {conn?.provider === 'openrouter' ? (
-          <span className="muted">Model: <code>{conn.model}</code> · from the connection</span>
-        ) : isModelKind(k) ? (
-          <ModelSelect key={k} kind={k} label={`${KIND_LABEL[k]} model for ${a.name || 'this agent'}`} value={a.advanced.model}
-            inherited={fallback ? `${modelLabel(k, fallback)}, from the ${from}` : modelLabel(k, null)} disabled={locked}
-            onChange={(model) => edit((d) => setAdvanced(d, a.id, { model }), `model:${a.id}`)} />
-        ) : (
-          <span className="muted">free · no model calls</span>
-        )}
+        <ModelPart draft={draft} a={a} conn={conn} locked={locked} edit={edit} />
       </div>
       <ConnectionWarning a={a} conn={conn} loaded={conns.loaded} />
       {locked && <p className="reason fld-reason">{LOCK_REASON}</p>}
@@ -138,6 +144,40 @@ export function JobField({ draft, a, edit, rows = 6 }: { draft: TeamDraft; a: Dr
   );
 }
 
+type Own = { id: string; name: string } | undefined;
+
+/** The folder the agent works in: its own on its computer, else the project's for it. */
+const folderOf = (draft: TeamDraft, a: DraftAgent, own: Own) => (own ? a.folder?.trim() || null : effectiveFolder(draft, a));
+
+/** The folder as shown: its short path, or what stands in for it (the agent's own computer, home, none). */
+function folderShown(a: DraftAgent, own: Own, folder: string | null, home: string | null, hosted: boolean) {
+  if (folder) return shortPath(folder, home);
+  if (own) return `${own.name}’s own folder`;
+  if (a.kind === 'practice') return 'your home folder';
+  return hosted ? 'its computer’s own folder' : 'none chosen';
+}
+
+function FolderPath({ a, own, folder, shown, fromProject }: { a: DraftAgent; own: Own; folder: string | null; shown: string; fromProject: boolean }) {
+  return (
+    <span className={`folder-path${a.folder ? '' : ' muted'}`} title={folder ?? undefined}>
+      <Icon name="folder" size={14} className="muted" />
+      <span className={a.folder ? 'mono' : undefined}>{shown}{fromProject && !own ? ' · from project' : ''}</span>
+    </span>
+  );
+}
+
+type FolderButtonsProps = { draft: TeamDraft; a: DraftAgent; own: Own; edit: Edit; off: { disabled: boolean; 'aria-describedby': string | undefined }; onChoose: () => void };
+
+function FolderButtons({ draft, a, own, edit, off, onChoose }: FolderButtonsProps) {
+  const clearable = a.folder && (own || draft.folder || a.kind === 'practice');
+  const clearLabel = own ? `Use ${own.name}’s own folder` : draft.folder ? 'Use project folder' : 'Clear';
+  return <>
+    <Btn {...off} onClick={onChoose} aria-label={`Choose a folder for ${a.name || 'this agent'}`} icon="folder" size="sm">Choose…</Btn>
+    {a.folder && !own && draft.agents.length > 1 && <Btn {...off} size="sm" variant="ghost" onClick={() => edit((d) => folderForAll(d, a.folder!))}>Use this folder for every agent</Btn>}
+    {clearable && <Btn {...off} size="sm" variant="ghost" onClick={() => edit((d) => setFolder(d, a.id, null))}>{clearLabel}</Btn>}
+  </>;
+}
+
 export function FolderField({ draft, a, edit, locked, issues = [] }: Common & { issues?: DraftIssue[] }) {
   const ids = useId();
   const [picking, setPicking] = useState(false);
@@ -145,20 +185,14 @@ export function FolderField({ draft, a, edit, locked, issues = [] }: Common & { 
   const hosted = useHosted().kind === 'signed-in';
   // An agent on its own computer never uses the project folder: that path is on the team's computer.
   const own = useAgentHosts(draft.id, hosted)[a.id];
-  const folder = own ? a.folder?.trim() || null : effectiveFolder(draft, a);
-  const shown = folder ? shortPath(folder, home) : own ? `${own.name}’s own folder` : a.kind === 'practice' ? 'your home folder' : hosted ? 'its computer’s own folder' : 'none chosen';
+  const folder = folderOf(draft, a, own);
   const off = { disabled: locked, 'aria-describedby': locked ? `${ids}-lock` : undefined };
   return (<>
     <HostedRunOn draft={draft} a={a} />
     <Field tour="agent-folder" label={own ? `Folder on ${own.name}` : 'Folder'} reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
       <div className="fld-folder">
-        <span className={`folder-path${a.folder ? '' : ' muted'}`} title={folder ?? undefined}>
-          <Icon name="folder" size={14} className="muted" />
-          <span className={a.folder ? 'mono' : undefined}>{shown}{!a.folder && !own && draft.folder ? ' · from project' : ''}</span>
-        </span>
-        <Btn {...off} onClick={() => setPicking(true)} aria-label={`Choose a folder for ${a.name || 'this agent'}`} icon="folder" size="sm">Choose…</Btn>
-        {a.folder && !own && draft.agents.length > 1 && <Btn {...off} size="sm" variant="ghost" onClick={() => edit((d) => folderForAll(d, a.folder!))}>Use this folder for every agent</Btn>}
-        {a.folder && (own || draft.folder || a.kind === 'practice') && <Btn {...off} size="sm" variant="ghost" onClick={() => edit((d) => setFolder(d, a.id, null))}>{own ? `Use ${own.name}’s own folder` : draft.folder ? 'Use project folder' : 'Clear'}</Btn>}
+        <FolderPath a={a} own={own} folder={folder} shown={folderShown(a, own, folder, home, hosted)} fromProject={!a.folder && !own && !!draft.folder} />
+        <FolderButtons draft={draft} a={a} own={own} edit={edit} off={off} onChoose={() => setPicking(true)} />
       </div>
       <FieldIssues issues={issues} />
       {picking && <FolderPicker team={hosted ? draft.id : undefined} host={own?.id} initialPath={folder} onClose={() => setPicking(false)} onChoose={(path) => { setPicking(false); edit((d) => setFolder(d, a.id, path)); }} />}

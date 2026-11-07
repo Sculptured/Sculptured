@@ -64,23 +64,41 @@ type RowInput = {
   openAgent: string | undefined;
 };
 
-function teamRows(p: RowInput): TeamRow[] {
-  const built = buildTeams(p.teams, p.order, p.activity, p.names, p.titles);
-  // A team started here runs its agents without a folder in the home folder ("." from home).
-  for (const t of built) if (p.drafts[t.rig]) for (const a of t.agents) if (a.folder === '.') a.folder = '~';
-  // A first agent with no Job: your next message is its work (shown above its message box).
+type Built = ReturnType<typeof buildTeams>;
+
+/** A team started here runs its agents without a folder in the home folder ("." from home). */
+function homeFolders(built: Built, drafts: RowInput['drafts']) {
+  for (const t of built) if (drafts[t.rig]) for (const a of t.agents) if (a.folder === '.') a.folder = '~';
+}
+
+/** A first agent with no Job: your next message is its work (shown above its message box). */
+function markFirstMessages(built: Built, p: RowInput) {
   for (const t of built) {
     const live = p.teams[t.rig]?.state;
     if (!live?.snapshot) continue;
     for (const a of t.agents) a.firstMessageIsWork = !!a.teamRunning && firstMessageIsWork(live.snapshot.rig, live.seats, p.drafts[t.rig], a.id);
   }
-  // Teams built here that have never started: their agents come from the draft.
+}
+
+/** Teams built here that have never started: their agents come from the draft. */
+function addUnstarted(built: Built, p: RowInput) {
   for (const s of p.summaries ?? []) {
     if (p.order.includes(s.id) || s.started) continue;
     const d = p.drafts[s.id];
     if (d) built.push(draftTeamRow(d));
   }
-  // The agent you are looking at has nothing unseen.
-  for (const t of built) for (const a of t.agents) if (a.id === p.openAgent && a.state.key === 'done') a.state = { ...a.state, ...STATES.idle };
+}
+
+/** The agent you are looking at has nothing unseen. */
+function clearSeen(built: Built, openAgent: string | undefined) {
+  for (const t of built) for (const a of t.agents) if (a.id === openAgent && a.state.key === 'done') a.state = { ...a.state, ...STATES.idle };
+}
+
+function teamRows(p: RowInput): TeamRow[] {
+  const built = buildTeams(p.teams, p.order, p.activity, p.names, p.titles);
+  homeFolders(built, p.drafts);
+  markFirstMessages(built, p);
+  addUnstarted(built, p);
+  clearSeen(built, p.openAgent);
   return sortTeams(built, p.rigs);
 }

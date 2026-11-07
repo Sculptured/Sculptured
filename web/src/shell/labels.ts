@@ -68,6 +68,81 @@ const near = (r: R, p: Point, pad: number) => p.x > r.x0 - pad && p.x < r.x1 + p
 
 export type LabelItem = { key: string; geom: { pts: Bezier; mid: Point; room: number }; text: string };
 
+type Size = { w: number; h: number };
+
+/** Beside the curve, near its middle first: offset along the normal, upper side first. */
+function besideCurve(b: Bezier, { w, h }: Size): Point[] {
+  const out: Point[] = [];
+  for (const t of [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74]) {
+    const p = bezierAt(b, t);
+    const tan = tangentAt(b, t);
+    let n = { x: -tan.y, y: tan.x };
+    if (n.y > 0 || (n.y === 0 && n.x > 0)) n = { x: -n.x, y: -n.y };
+    const d = (Math.abs(n.x) * w + Math.abs(n.y) * h) / 2 + CLEAR + 2;
+    out.push({ x: p.x + n.x * d, y: p.y + n.y * d }, { x: p.x - n.x * d, y: p.y - n.y * d });
+  }
+  return out;
+}
+
+/** Above or below the stretch of curve under the label (a narrow gap between two cards). */
+function aboveBelowCurve(b: Bezier, cx: number, { w, h }: Size): Point[] {
+  const under = bezierPoints(b, 96).filter((p) => p.x >= cx - w / 2 - CLEAR && p.x <= cx + w / 2 + CLEAR);
+  if (under.length === 0) return [];
+  const top = Math.min(...under.map((p) => p.y));
+  const bottom = Math.max(...under.map((p) => p.y));
+  return [0, 8, 20].flatMap((extra) => [{ x: cx, y: top - h / 2 - PORT - extra }, { x: cx, y: bottom + h / 2 + PORT + extra }]);
+}
+
+/** Farther out along the normal at the middle, for crowded places. */
+function farBeside(b: Bezier, { w, h }: Size): Point[] {
+  const p = bezierAt(b, 0.5);
+  const tan = tangentAt(b, 0.5);
+  const n = { x: -tan.y, y: tan.x };
+  const d = (Math.abs(n.x) * w + Math.abs(n.y) * h) / 2 + CLEAR + 2;
+  return [16, 36, 64].flatMap((extra) => [{ x: p.x + n.x * (d + extra), y: p.y + n.y * (d + extra) }, { x: p.x - n.x * (d + extra), y: p.y - n.y * (d + extra) }]);
+}
+
+/** Clear of the cards: just above the highest, or just below the lowest, card under the label. */
+function clearOfCards(cards: R[], cx: number, { w, h }: Size): Point[] {
+  const under = cards.filter((c) => c.x0 < cx + w / 2 && cx - w / 2 < c.x1);
+  if (under.length === 0) return [];
+  const span = (y: number): R => rectOf({ x: cx, y }, w, h);
+  const top = Math.min(...under.map((c) => c.y0));
+  const bottom = Math.max(...under.map((c) => c.y1));
+  const out: Point[] = [];
+  for (const extra of [0, 12]) {
+    const above = top - h / 2 - CLEAR - extra;
+    const below = bottom + h / 2 + CLEAR + extra;
+    if (cards.every((c) => !hits(span(above), c))) out.push({ x: cx, y: above });
+    if (cards.every((c) => !hits(span(below), c))) out.push({ x: cx, y: below });
+  }
+  return out;
+}
+
+/** Last resort (cards dropped against each other): a ring of spots around the middle. */
+function ringAround(m: Point, { w, h }: Size): Point[] {
+  const out: Point[] = [];
+  for (const ring of [1, 2, 3]) {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * 2 * Math.PI;
+      out.push({ x: m.x + Math.cos(a) * (w / 2 + 14) * ring, y: m.y + Math.sin(a) * (h / 2 + 14) * ring });
+    }
+  }
+  return out;
+}
+
+/** The first clear spot, else the least bad one (never the middle of the line by default). */
+function chooseSpot(candidates: Point[], m: Point, size: Size, cost: (r: R) => number): Point {
+  const clear = candidates.find((c) => cost(rectOf(c, size.w, size.h)) === 0);
+  if (clear) return clear;
+  let best = Infinity, spot: Point | undefined;
+  for (const c of [...candidates, m]) {
+    const v = cost(rectOf(c, size.w, size.h));
+    if (v < best) [best, spot] = [v, c];
+  }
+  return spot ?? m;
+}
+
 export function placeLabels(items: LabelItem[], boxes: Box[]): Map<string, LabelSpot> {
   const out = new Map<string, LabelSpot>();
   const curves = items.map((it) => bezierPoints(it.geom.pts, 96));
@@ -84,69 +159,9 @@ export function placeLabels(items: LabelItem[], boxes: Box[]): Map<string, Label
 
   for (const it of items) {
     const { w, h, wrap, maxWidth } = labelSize(it.text, it.geom.room);
-    const b = it.geom.pts;
-    const candidates: Point[] = [];
-    // Beside the curve, near its middle first: offset along the normal, upper side first.
-    for (const t of [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74]) {
-      const p = bezierAt(b, t);
-      const tan = tangentAt(b, t);
-      let n = { x: -tan.y, y: tan.x };
-      if (n.y > 0 || (n.y === 0 && n.x > 0)) n = { x: -n.x, y: -n.y };
-      const d = (Math.abs(n.x) * w + Math.abs(n.y) * h) / 2 + CLEAR + 2;
-      candidates.push({ x: p.x + n.x * d, y: p.y + n.y * d }, { x: p.x - n.x * d, y: p.y - n.y * d });
-    }
-    // Above or below the stretch of curve under the label (a narrow gap between two cards).
-    const cx = it.geom.mid.x;
-    const under = bezierPoints(b, 96).filter((p) => p.x >= cx - w / 2 - CLEAR && p.x <= cx + w / 2 + CLEAR);
-    if (under.length > 0) {
-      const top = Math.min(...under.map((p) => p.y));
-      const bottom = Math.max(...under.map((p) => p.y));
-      for (const extra of [0, 8, 20]) {
-        candidates.push({ x: cx, y: top - h / 2 - PORT - extra }, { x: cx, y: bottom + h / 2 + PORT + extra });
-      }
-    }
-    // Farther out along the normal at the middle, for crowded places.
-    {
-      const p = bezierAt(b, 0.5);
-      const tan = tangentAt(b, 0.5);
-      const n = { x: -tan.y, y: tan.x };
-      const d = (Math.abs(n.x) * w + Math.abs(n.y) * h) / 2 + CLEAR + 2;
-      for (const extra of [16, 36, 64]) {
-        candidates.push({ x: p.x + n.x * (d + extra), y: p.y + n.y * (d + extra) }, { x: p.x - n.x * (d + extra), y: p.y - n.y * (d + extra) });
-      }
-    }
-    // Clear of the cards: just above the highest, or just below the lowest, card under the label.
-    {
-      const span = (y: number): R => rectOf({ x: cx, y }, w, h);
-      const under = cards.filter((c) => c.x0 < cx + w / 2 && cx - w / 2 < c.x1);
-      if (under.length > 0) {
-        const top = Math.min(...under.map((c) => c.y0));
-        const bottom = Math.max(...under.map((c) => c.y1));
-        for (const extra of [0, 12]) {
-          const above = top - h / 2 - CLEAR - extra;
-          const below = bottom + h / 2 + CLEAR + extra;
-          if (cards.every((c) => !hits(span(above), c))) candidates.push({ x: cx, y: above });
-          if (cards.every((c) => !hits(span(below), c))) candidates.push({ x: cx, y: below });
-        }
-      }
-    }
-    // Last resort (cards dropped against each other): a ring of spots around the middle.
-    const m = it.geom.mid;
-    for (const ring of [1, 2, 3])
-      for (let k = 0; k < 16; k++) {
-        const a = (k / 16) * 2 * Math.PI;
-        candidates.push({ x: m.x + Math.cos(a) * (w / 2 + 14) * ring, y: m.y + Math.sin(a) * (h / 2 + 14) * ring });
-      }
-    // The first clear spot, else the least bad one (never the middle of the line by default).
-    let spot = candidates.find((c) => cost(rectOf(c, w, h)) === 0);
-    if (!spot) {
-      let best = Infinity;
-      for (const c of [...candidates, m]) {
-        const v = cost(rectOf(c, w, h));
-        if (v < best) [best, spot] = [v, c];
-      }
-    }
-    spot ??= m;
+    const size = { w, h }, b = it.geom.pts, m = it.geom.mid, cx = m.x;
+    const candidates = [...besideCurve(b, size), ...aboveBelowCurve(b, cx, size), ...farBeside(b, size), ...clearOfCards(cards, cx, size), ...ringAround(m, size)];
+    const spot = chooseSpot(candidates, m, size, cost);
     placed.push(rectOf(spot, w, h));
     out.set(it.key, { x: spot.x, y: spot.y, w, h, wrap, maxWidth });
   }
