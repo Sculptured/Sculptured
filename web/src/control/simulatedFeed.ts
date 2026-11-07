@@ -40,13 +40,15 @@ export function eventText(e: Event, who: string): string {
     case 'tool_call': return p.snapshot_error ? `${toolText(who, p)}; the world could not be saved after it` : toolText(who, p);
     case 'handoff': return `${who} handed work on`;
     case 'agent_end': return p.ok === false ? `${who} stopped with an error` : `${who} finished (reported)`;
-    case 'check': {
-      const unsafe = failedSafety(p);
-      if (unsafe.length) return `A hard safety check failed: ${unsafe.join(', ')}`;
-      return p.passed ? 'The final check passed' : 'The final check failed';
-    }
+    case 'check': return checkText(p);
     default: return `${who} recorded ${String(e.kind)}`;
   }
+}
+
+function checkText(p: Payload): string {
+  const unsafe = failedSafety(p);
+  if (unsafe.length) return `A hard safety check failed: ${unsafe.join(', ')}`;
+  return p.passed ? 'The final check passed' : 'The final check failed';
 }
 
 /** The hard safety checks (`safety: true`) a check event reports as failed, by name. */
