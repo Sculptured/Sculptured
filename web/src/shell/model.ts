@@ -42,7 +42,7 @@ export type AgentRow = {
   /** Names of the agents this one hands work to. */
   handsTo?: string[];
   /** Every agent downstream of this one (a "Hand over again" wave runs each once), and the
-   * paid accounts they use ("Claude", "Codex"); empty when all are Practice agents. */
+   * paid accounts they use ("Claude", "Codex"); empty when none of them uses one. */
   downstream?: { count: number; accounts: string[] };
   /** The agent's team is set to run (so it can be restarted or hand over again). */
   teamRunning?: boolean;
@@ -247,7 +247,7 @@ export const NOT_STARTED: AgentState = { key: 'planned', glyph: '○', word: 'no
 export function draftTeamRow(d: TeamDraft): TeamRow {
   const groups = Object.fromEntries(d.groups.map((g) => [g.id, g.label]));
   const agents: AgentRow[] = d.agents.map((a) => {
-    const v = vendor(a.kind === 'claude' ? 'claude-code' : a.kind === 'codex' ? 'codex' : 'stub');
+    const v = vendor(a.kind === 'claude' ? 'claude-code' : a.kind);
     return {
       id: seatIdFor(d, a.id)!,
       rig: d.id,

@@ -3,10 +3,8 @@ import type { DraftAgent } from '../generated/DraftAgent';
 import type { ModelDefaults } from '../generated/ModelDefaults';
 import type { TeamDraft } from '../generated/TeamDraft';
 
-/** The kinds that call a model; Practice agents never do. */
-export type ModelKind = 'claude' | 'codex' | 'opencode';
-
-export const isModelKind = (k: AgentKind): k is ModelKind => k !== 'practice';
+/** The kinds that call a model: every agent does. */
+export type ModelKind = AgentKind;
 
 /** Where an agent's model comes from, for the "from team / from group" note. */
 export type ModelSource = 'agent' | 'group' | 'team' | 'cli';
@@ -19,7 +17,6 @@ const pick = (m: ModelDefaults | undefined, k: ModelKind) => clean(m?.[k]);
 export function effectiveModel(d: TeamDraft, a: DraftAgent): { model: string | null; source: ModelSource } {
   const own = clean(a.advanced.model);
   if (own) return { model: own, source: 'agent' };
-  if (!isModelKind(a.kind)) return { model: null, source: 'cli' };
   const group = pick(d.groups.find((g) => g.id === a.group_id)?.models, a.kind);
   if (group) return { model: group, source: 'group' };
   const team = pick(d.models, a.kind);

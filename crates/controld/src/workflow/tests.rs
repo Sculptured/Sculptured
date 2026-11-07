@@ -12,7 +12,9 @@ use serde_json::json;
 
 // Keep scheduler mechanics independent of additions to the production template.
 pub(super) fn review_fixture() -> TeamDraft {
-    let mut d = rigspec::textbook::template("book", "Book", true);
+    let mut d = rigspec::textbook::template("book", "Book");
+    // Its agents run on real models, so they need a folder.
+    d.folder = Some("/tmp/book".into());
     d.agents
         .retain(|a| a.group_id.as_deref() != Some("webgpu-engine"));
     d.groups.retain(|g| g.id != "webgpu-engine");

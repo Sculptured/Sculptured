@@ -4,12 +4,8 @@ use model::{
     PermissionPosture, TeamDraft,
 };
 #[must_use]
-pub fn template(id: &str, team: &str, name: &str, practice: bool) -> Option<TeamDraft> {
-    let kind = if practice {
-        AgentKind::Practice
-    } else {
-        AgentKind::Codex
-    };
+pub fn template(id: &str, team: &str, name: &str) -> Option<TeamDraft> {
+    let kind = AgentKind::Codex;
     let a = |id: &str, name: &str, job: &str, x, y| DraftAgent {
         id: id.into(),
         group_id: None,

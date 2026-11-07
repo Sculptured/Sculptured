@@ -1,3 +1,4 @@
+import type { AgentKind } from './generated/AgentKind';
 import type { CompiledEdge } from './generated/CompiledEdge';
 import type { CompiledRig } from './generated/CompiledRig';
 import type { ConnectionKind } from './generated/ConnectionKind';
@@ -18,14 +19,12 @@ export const RUNTIME_LABEL: Record<Runtime, string> = {
   pi: 'Pi',
   omp: 'OMP',
   terminal: 'Terminal',
-  stub: 'Practice agent',
 };
 
-export const KIND_LABEL: Record<'claude' | 'codex' | 'opencode' | 'practice', string> = {
+export const KIND_LABEL: Record<AgentKind, string> = {
   claude: 'Claude',
   codex: 'Codex',
   opencode: 'OpenCode',
-  practice: 'Practice agent',
 };
 
 export const EDGE_WORDS: Record<EdgeKind, string> = {
@@ -48,7 +47,6 @@ export const CAUSE_WORDS: Record<string, string> = {
 
 /** The program that runs an agent's session, by the name the runner reports. */
 export const DRIVER_WORDS: Record<string, string> = {
-  stub: 'Practice agent',
   claude: 'Claude',
   'claude-code': 'Claude',
   codex: 'Codex',

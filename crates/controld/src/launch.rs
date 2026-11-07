@@ -16,7 +16,6 @@ pub fn driver_for(rt: Runtime) -> Option<&'static str> {
         Runtime::ClaudeCode => Some("claude-stream"),
         Runtime::Codex => Some("codex-app-server"),
         Runtime::Opencode => Some("opencode-acp"),
-        Runtime::Stub => Some("stub"),
         _ => None,
     }
 }

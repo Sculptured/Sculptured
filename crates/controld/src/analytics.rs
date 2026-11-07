@@ -106,7 +106,6 @@ pub fn shape(d: &TeamDraft, own_copies: bool) -> Value {
         "claude": kind(AgentKind::Claude),
         "codex": kind(AgentKind::Codex),
         "opencode": kind(AgentKind::Opencode),
-        "practice": kind(AgentKind::Practice),
         "groups": d.groups.len(),
         "arrows_hands": arrows(ConnectionKind::HandsWorkTo),
         "arrows_reports": arrows(ConnectionKind::ReportsTo),
@@ -128,7 +127,6 @@ pub fn started(d: &TeamDraft, own_copies: bool) -> Value {
             AgentKind::Claude => "claude-code",
             AgentKind::Codex => "codex",
             AgentKind::Opencode => "opencode",
-            AgentKind::Practice => "stub",
         })
         .collect();
     let models: BTreeSet<String> = d

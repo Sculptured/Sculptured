@@ -116,12 +116,10 @@ export function vendor(runtime: Runtime | undefined): Vendor {
       return { mark: '◈', name: 'Codex', cls: 'v-codex' };
     case 'opencode':
       return { mark: '‹›', name: 'OpenCode', cls: 'v-opencode' };
-    case 'stub':
-      return { mark: '◇', name: 'Practice', cls: 'v-practice' };
     case undefined:
       return { mark: '·', name: 'unknown', cls: 'v-other' };
     default:
-      return { mark: '▪', name: RUNTIME_LABEL[runtime], cls: 'v-other' };
+      return { mark: '▪', name: RUNTIME_LABEL[runtime] ?? 'other', cls: 'v-other' };
   }
 }
 

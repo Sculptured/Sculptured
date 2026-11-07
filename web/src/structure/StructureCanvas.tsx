@@ -62,7 +62,7 @@ export type CanvasHandle = {
 
 const EDGE_KIND: Record<ConnectionKind, EdgeKind> = { 'hands-work-to': 'delegates_to', 'reports-to': 'escalates_to', watches: 'can_observe' };
 const PALETTE: AgentKind[] = OFFERED_KINDS;
-const PALETTE_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', practice: 'Practice' };
+const PALETTE_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };
 
 /** Whether More tools is open, per browser: newcomers see one Add agent button. */
 export const MORE_TOOLS_KEY = 'sculptured.design.more-tools.v1';
@@ -80,8 +80,7 @@ export function mainKindOf(d: TeamDraft): AgentKind {
 }
 
 /** The model shown on a card: the one it will run with, or the CLI's default. */
-const cardModel = (d: TeamDraft, a: TeamDraft['agents'][number]) =>
-  a.kind === 'practice' ? 'free' : modelLabel(a.kind, effectiveModel(d, a).model);
+const cardModel = (d: TeamDraft, a: TeamDraft['agents'][number]) => modelLabel(a.kind, effectiveModel(d, a).model);
 
 /** `ids`: several selected agents dragged together (the card under the pointer is `id`). */
 type Drag = { kind: 'agent' | 'group' | 'input' | 'stage' | 'team-input'; id: string; dx: number; dy: number; ids?: string[] };
@@ -950,7 +949,7 @@ export function StructureCanvas(p: Props) {
                             <span className="word">{errs.length ? `${errs.length} to fix` : `${ai.length} to check`}</span>
                           </span>
                         ) : (
-                          <span className="logo-kind">{v.name} · {a.kind === 'practice' ? 'free' : cardModel(draft, a)}</span>
+                          <span className="logo-kind">{v.name} · {cardModel(draft, a)}</span>
                         )}
                       />
                     ) : <>
@@ -967,14 +966,14 @@ export function StructureCanvas(p: Props) {
                     </span>
                     {/* One small muted line: kind and model. The job speaks for itself, so it has no label. */}
                     <span className={`sb-kind ${v.cls}`}>
-                      {v.name} · {a.kind === 'practice' ? 'free' : cardModel(draft, a)}
+                      {v.name} · {cardModel(draft, a)}
                     </span>
                     <ComponentChips agent={a} draft={draft} />
                     <span className={`sb-job${a.job.trim() ? '' : ' muted'}`}>{a.job.trim() || 'No job yet. Select the agent to write one.'}</span>
                     <span className={`sb-folder${folderIssue ? ' tone-red' : ''}`} title={(a.folder || draft.folder) ?? undefined}>
                       {folderIssue ? <span aria-hidden="true">▲</span> : <Icon name="folder" size={11} />}
                       {folderIssue && a.folder && <span className="folder-why">{FOLDER_ISSUE_WORDS[folderIssue.code] ?? 'folder problem'} ·</span>}
-                      <span className={a.folder ? 'mono' : undefined}>{(a.folder || draft.folder) ? shortPath((a.folder || draft.folder)!, home) : a.kind === 'practice' ? '~ (home folder)' : 'needs a folder'}</span>
+                      <span className={a.folder ? 'mono' : undefined}>{(a.folder || draft.folder) ? shortPath((a.folder || draft.folder)!, home) : 'needs a folder'}</span>
                       {computers[a.id] && <span className="sb-on"> · on {computers[a.id]}</span>}
                     </span>
                     </>}

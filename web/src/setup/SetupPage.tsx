@@ -215,7 +215,7 @@ function FirstProject({ setup, nav }: { setup: Setup; nav: Nav }) {
   const create = async () => {
     setBusy(true); setError('');
     try {
-      const rec = await api.createTeam('builder-reviewer', false, 'First project');
+      const rec = await api.createTeam('builder-reviewer', 'First project');
       // The template's reviewer is Codex; a first project runs on Claude only.
       if (rec.draft.agents.some((a) => a.kind !== 'claude')) await api.saveTeam(rec.draft.id, rec.draft.revision, setKindAll(rec.draft, 'claude'));
       navigate(boardPath(rec.draft.id, 'design'));

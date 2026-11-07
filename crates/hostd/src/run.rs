@@ -4,7 +4,6 @@ use drivers::Driver;
 use drivers::claude::ClaudeStreamDriver;
 use drivers::codex::CodexAppServerDriver;
 use drivers::opencode::OpencodeAcpDriver;
-use drivers::stub::StubDriver;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -231,10 +230,5 @@ fn drivers(opts: &HostdOptions) -> Vec<Arc<dyn Driver>> {
     let opencode = OpencodeAcpDriver {
         program: std::path::PathBuf::from("opencode"),
     };
-    vec![
-        Arc::new(StubDriver),
-        Arc::new(claude),
-        Arc::new(codex),
-        Arc::new(opencode),
-    ]
+    vec![Arc::new(claude), Arc::new(codex), Arc::new(opencode)]
 }

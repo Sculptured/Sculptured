@@ -16,7 +16,7 @@ group_id: string | null, name: string, kind: AgentKind,
  */
 job: string, 
 /**
- * Absolute path. Practice agents may leave it empty (they use the home folder).
+ * Absolute path; None = the team's folder.
  */
 folder: string | null, x: number, y: number, advanced: AgentAdvanced, 
 /**

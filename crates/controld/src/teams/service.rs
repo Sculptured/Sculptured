@@ -173,7 +173,8 @@ pub(super) struct CreateReq {
     #[serde(default)]
     pub(super) request_id: String,
     pub(super) template: String,
-    #[serde(default)]
+    /// Only to refuse it: older clients asked for model-less agents here, and there are none.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(super) practice: bool,
     #[serde(default)]
     pub(super) name: Option<String>,
@@ -187,6 +188,12 @@ pub(super) async fn create_team(
     let request_id = req.request_id.clone();
     let st2 = st.clone();
     crate::teams::idempotent(&st, &request_id, fp, move || async move {
+        if req.practice {
+            return Err(ApiError::bad_request(
+                "real_model_required",
+                model::REAL_MODEL_REQUIRED,
+            ));
+        }
         let info = rigspec::templates::templates()
             .into_iter()
             .find(|t| t.id == req.template)
@@ -206,8 +213,8 @@ pub(super) async fn create_team(
         let draft = {
             let mut store = st2.store.lock().expect("store mutex must not be poisoned");
             let id = new_team_id(&store, &name);
-            let draft = rigspec::templates::template(&info.id, &id, &name, req.practice)
-                .expect("listed template exists");
+            let draft =
+                rigspec::templates::template(&info.id, &id, &name).expect("listed template exists");
             store.insert_draft(&draft)?;
             draft
         };

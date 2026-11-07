@@ -2,7 +2,6 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, typ
 import { groupAgents, moveAgentsToGroup, removeAgents, setFolderFor, setKindFor, setLimitsFor, setModelFor, type BulkLimits } from '../draft/bulk';
 import { drawnGroups, looseAllowed } from '../draft/geometry';
 import { groupOf } from '../draft/ids';
-import { isModelKind } from '../draft/models';
 import type { AgentKind } from '../generated/AgentKind';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { plural } from '../format';
@@ -130,7 +129,7 @@ function ModelMenu({ draft, ids, apply }: { draft: TeamDraft; ids: string[]; app
         ))}
       </div>
       <span className="sel-pop-label">Model</span>
-      {one && isModelKind(one) ? (
+      {one && MODEL_CHOICES[one] ? (
         <div className="sel-pop-col">
           <button type="button" className="sel-opt" onClick={() => apply((d) => setModelFor(d, ids, null))}>Default <span className="muted">· the group's or team's</span></button>
           {MODEL_CHOICES[one].map((m) => (

@@ -4127,7 +4127,7 @@
           "const": "request-input"
         },
         {
-          "description": "The CLI's own ask-the-user prompt (Codex `item/tool/requestUserInput`, a Practice agent's `ask:`).",
+          "description": "The CLI's own ask-the-user prompt (Codex `item/tool/requestUserInput`).",
           "type": "string",
           "const": "native-question"
         },
@@ -4631,7 +4631,7 @@
           "const": "fresh"
         },
         {
-          "description": "A native fork of the current session (Codex, Practice; not Claude in M2).",
+          "description": "A native fork of the current session (Codex; not Claude in M2).",
           "type": "string",
           "const": "fork"
         }

@@ -4,7 +4,7 @@ import type { AccountUsage } from '../generated/AccountUsage';
 import { DailyChart, dayLabel } from './DailyChart';
 
 const usd = (n: number) => (n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`);
-const RUNTIMES: Record<string, string> = { 'claude-code': 'Claude Code', claude: 'Claude Code', codex: 'Codex', stub: 'Practice agents' };
+const RUNTIMES: Record<string, string> = { 'claude-code': 'Claude Code', claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 /** A row's cost, only when something was reported (a missing cost is not $0.00). */
 const rowCost = (n: number) => (n > 0 ? ` · ${usd(n)}` : '');
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

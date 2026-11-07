@@ -11,8 +11,7 @@ import { Btn } from './ui';
 export const PRODUCT: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 
 /** The CLIs a team's agents need ready: Claude Code and Codex signed in, unless the agent runs on a
- * model connection's key; OpenCode installed, always (a connection gives it only the key). Practice
- * agents need none. */
+ * model connection's key; OpenCode installed, always (a connection gives it only the key). */
 export function cliNeeds(draft: TeamDraft): string[] {
   const signIn = draft.agents.filter((a) => !a.connection && (a.kind === 'claude' || a.kind === 'codex')).map((a) => a.kind);
   const installed = draft.agents.some((a) => a.kind === 'opencode') ? ['opencode'] : [];

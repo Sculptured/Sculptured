@@ -121,7 +121,6 @@ function AgentItems({ id, c }: { id: string; c: Ctx }) {
   const a = c.draft.agents.find((q) => q.id === id)!;
   const s: Selection = { kind: 'agent', id };
   const grouped = a.group_id !== null && drawnGroups(c.draft).some((g) => g.id === groupOf(a)) && looseAllowed(c.draft);
-  const kinds: AgentKind[] = a.kind === 'practice' ? [...OFFERED_KINDS, 'practice'] : OFFERED_KINDS;
   return (
     <>
       <MenuItem onClick={c.run(() => c.act.openAgent(id))}>Open details</MenuItem>
@@ -133,7 +132,7 @@ function AgentItems({ id, c }: { id: string; c: Ctx }) {
         </MenuItem>
       )}
       <Sep />
-      {kinds.map((k) => (
+      {OFFERED_KINDS.map((k) => (
         <MenuItem key={k} checked={a.kind === k} disabled={c.locked} onClick={c.run(() => c.edit((d) => setKind(d, id, k)))}>
           <VendorMark v={kindVendor(k)} size="xs" /> Runs on {KIND_LABEL[k]}
         </MenuItem>

@@ -178,11 +178,11 @@ export function StuckMark({ reason, className }: { reason: string; className?: s
   );
 }
 
-const VENDOR_ICON: Record<string, IconName> = { 'v-claude': 'claude', 'v-codex': 'codex', 'v-opencode': 'opencode', 'v-practice': 'practice' };
+const VENDOR_ICON: Record<string, IconName> = { 'v-claude': 'claude', 'v-codex': 'codex', 'v-opencode': 'opencode' };
 
 /**
  * The agent's avatar: a rounded tile tinted with its provider's colour and its provider's mark
- * (Claude, Codex, Practice; anything else gets a neutral one).
+ * (Claude, Codex, OpenCode; anything else gets a neutral one).
  */
 export function VendorMark({ v, size = 'sm' }: { v: Vendor; size?: 'xs' | 'sm' | 'md' | 'lg' }) {
   const px = { xs: 16, sm: 20, md: 26, lg: 32 }[size];

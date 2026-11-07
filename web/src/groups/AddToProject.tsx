@@ -30,7 +30,7 @@ function useAddFlow(block: GroupBlock, destination: string, name: string, openPr
   const creationName = useRef<string | null>(null);
   const targetTeam = async () => {
     if (destination !== 'new') return api.getTeam(destination);
-    created.current ??= await api.createTeam('blank', false, creationName.current ??= name.trim(), requestId.current);
+    created.current ??= await api.createTeam('blank', creationName.current ??= name.trim(), requestId.current);
     return created.current;
   };
   const attempt = async () => {

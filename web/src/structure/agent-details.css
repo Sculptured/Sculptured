@@ -2,7 +2,7 @@
 
 .model-fields { display: flex; flex-direction: column; gap: 8px; }
 
-/* Equal columns that always fit the panel: a long name ("Practice agent") wraps inside its own button. */
+/* Equal columns that always fit the panel: a long name wraps inside its own button. */
 .kind-switch {
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 3px; align-self: stretch;
   background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius-md);
@@ -15,7 +15,6 @@
 .kind-opt.on { background: var(--raised-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-3); }
 .kind-opt.on.v-claude { box-shadow: inset 0 0 0 1px var(--claude); }
 .kind-opt.on.v-codex { box-shadow: inset 0 0 0 1px var(--codex); }
-.kind-opt.on.v-practice { box-shadow: inset 0 0 0 1px var(--practice); }
 .kind-opt:disabled { cursor: not-allowed; opacity: 0.6; }
 
 .model-select { display: flex; flex-direction: column; gap: 6px; }

@@ -27,7 +27,7 @@ function ordered(rows: AgentRow[], draft: TeamDraft | null, seats: string[] | un
 /** "Claude · Sonnet 4.5", from the design when there is one, else as the agent reported it. */
 function runsOn(a: AgentRow, draft: TeamDraft | null): string {
   const d = draft?.agents.find((x) => seatIdFor(draft, x.id) === a.id);
-  if (draft && d) return d.kind === 'practice' ? 'Practice · free' : `${KIND_LABEL[d.kind]} · ${modelLabel(d.kind, effectiveModel(draft, d).model)}`;
+  if (draft && d) return `${KIND_LABEL[d.kind]} · ${modelLabel(d.kind, effectiveModel(draft, d).model)}`;
   const model = a.seat?.model_observed ?? a.seat?.model_requested;
   return `${a.vendor.name}${model ? ` · ${model}` : ''}`;
 }

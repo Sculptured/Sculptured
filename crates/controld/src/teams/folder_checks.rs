@@ -1,7 +1,7 @@
 //! Checks of an agent's folder that need the filesystem.
 use crate::folders::{self, Home};
 use crate::state::AppState;
-use model::{AgentKind, DraftAgent, DraftIssue, ElementKind, ElementRef, IssueSeverity, TeamDraft};
+use model::{DraftAgent, DraftIssue, ElementKind, ElementRef, IssueSeverity, TeamDraft};
 
 /// Hosted: a team's folders and agents are on the user's computers, so without those connected it
 /// can't start: the team's computer, and each agent's own. Local `serve` runs everything on this
@@ -69,7 +69,7 @@ fn team_computer_issue(st: &AppState, d: &TeamDraft) -> Option<DraftIssue> {
 /// Checks that need the filesystem, so they live here and not in `rigspec`. An agent's
 /// folder must sit inside the home folder, checked with the folder picker's own rule
 /// (`folders::resolve_inside`): a place outside home gets the same words whether or not
-/// it exists. A Practice agent without a folder runs in the home folder (`.` in its spec).
+/// it exists.
 pub(crate) fn folder_issues(st: &AppState, d: &TeamDraft) -> Vec<DraftIssue> {
     // Hosted: folders are on the user's computer, whose runner enforces its own allowed folders
     // (`hostd::policy`); the server's home folder says nothing about them.
@@ -148,12 +148,6 @@ fn folder_issue(home: Option<&Home>, a: &DraftAgent, folder: Option<&str>) -> Op
                 ),
             })
         }
-        (None, None) if a.kind == AgentKind::Practice && folder.is_none() => Some(agent_issue(
-            a,
-            "home-unknown",
-            format!("Your home folder is unknown, so {who} needs a folder"),
-            None,
-        )),
         (None, _) => None,
     }
 }
@@ -174,7 +168,7 @@ mod tests {
             },
         );
         st.hosts.test_mark_connected("laptop");
-        let d = rigspec::textbook::template("book", "Book", true);
+        let d = rigspec::textbook::template("book", "Book");
         let (agent, name) = (d.agents[0].id.clone(), d.agents[0].name.clone());
         let settings = TeamSettings {
             host: Some("laptop".into()),

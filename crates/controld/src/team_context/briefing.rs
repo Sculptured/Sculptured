@@ -128,10 +128,6 @@ pub(crate) fn briefing(d: &TeamDraft, seat: &str) -> Option<String> {
 /// The briefing that goes with `message`; a minimal one leaves out the job when the message carries it.
 pub(crate) fn briefing_with(d: &TeamDraft, seat: &str, message: &str) -> Option<String> {
     let me = d.agent_for_seat(seat)?;
-    // Practice messages are executable fixture commands, not model prompts.
-    if me.kind == model::AgentKind::Practice {
-        return None;
-    }
     if minimal::is_minimal(d, seat) {
         return Some(minimal::briefing(d, me, message));
     }
@@ -499,8 +495,7 @@ mod tests {
     #[test]
     fn each_agent_receives_its_own_role_and_the_configured_architecture() {
         let mut d =
-            rigspec::templates::template("builder-reviewer", "project", "My project", false)
-                .unwrap();
+            rigspec::templates::template("builder-reviewer", "project", "My project").unwrap();
         d.folder = Some("/home/me/project".into());
         for a in &d.agents {
             let text = briefing(&d, &d.seat_id(&a.id).unwrap()).unwrap();
@@ -529,8 +524,7 @@ mod tests {
     #[test]
     fn only_the_status_page_owner_is_told_to_write_it_even_on_a_minimal_briefing() {
         let mut d =
-            rigspec::templates::template("builder-reviewer", "project", "My project", false)
-                .unwrap();
+            rigspec::templates::template("builder-reviewer", "project", "My project").unwrap();
         let told = |d: &TeamDraft, id: &str| {
             briefing(d, &d.seat_id(id).unwrap())
                 .unwrap()
@@ -544,8 +538,7 @@ mod tests {
     #[test]
     fn on_a_team_with_rules_every_agent_is_told_to_propose_changes_first() {
         let mut d =
-            rigspec::templates::template("builder-reviewer", "project", "My project", false)
-                .unwrap();
+            rigspec::templates::template("builder-reviewer", "project", "My project").unwrap();
         let told = |d: &TeamDraft, id: &str| {
             briefing(d, &d.seat_id(id).unwrap())
                 .unwrap()
@@ -561,8 +554,7 @@ mod tests {
     #[test]
     fn an_agent_with_result_checks_is_told_how_to_end_its_result() {
         let mut d =
-            rigspec::templates::template("builder-reviewer", "project", "My project", false)
-                .unwrap();
+            rigspec::templates::template("builder-reviewer", "project", "My project").unwrap();
         let line = "end your reply with a fenced json block whose fields are:\n- `price`: a number at most 5000";
         let told =
             |d: &TeamDraft, id: &str| briefing(d, &d.seat_id(id).unwrap()).unwrap().contains(line);
@@ -582,8 +574,7 @@ mod tests {
     #[test]
     fn agents_learn_who_decides_what_and_their_own_data_contract() {
         let mut d =
-            rigspec::templates::template("builder-reviewer", "project", "My project", false)
-                .unwrap();
+            rigspec::templates::template("builder-reviewer", "project", "My project").unwrap();
         let (builder, reviewer) = (d.agents[0].id.clone(), d.agents[1].id.clone());
         d.agents[0].advanced.authority = Some(model::Authority {
             domains: vec!["wing geometry".into()],
@@ -624,8 +615,7 @@ mod tests {
     #[test]
     fn the_group_name_reaches_its_members_and_the_agents_connected_to_it() {
         let mut d =
-            rigspec::templates::template("builder-reviewer", "project", "My project", false)
-                .unwrap();
+            rigspec::templates::template("builder-reviewer", "project", "My project").unwrap();
         d.groups.push(model::DraftGroup {
             id: "checks".into(),
             label: "Quality checks".into(),
@@ -657,8 +647,7 @@ mod tests {
     #[test]
     fn teammates_jobs_are_shortened_and_the_agents_own_is_whole() {
         let mut d =
-            rigspec::templates::template("builder-reviewer", "project", "My project", false)
-                .unwrap();
+            rigspec::templates::template("builder-reviewer", "project", "My project").unwrap();
         d.groups.push(model::DraftGroup {
             id: "g".into(),
             label: "Desk".into(),
@@ -700,14 +689,5 @@ mod tests {
             "a linked agent's job is kept up to a cap"
         );
         assert!(to_reviewer.len() < 6000, "{} chars", to_reviewer.len());
-    }
-
-    #[test]
-    fn practice_agents_get_no_briefing() {
-        let mut d =
-            rigspec::templates::template("builder-reviewer", "project", "My project", false)
-                .unwrap();
-        d.agents[0].kind = model::AgentKind::Practice;
-        assert!(briefing(&d, &d.seat_id(&d.agents[0].id).unwrap()).is_none());
     }
 }

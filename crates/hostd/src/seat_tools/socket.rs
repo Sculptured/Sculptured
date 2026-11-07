@@ -1,4 +1,4 @@
-//! The seat-tools socket: accepts calls from agents' shims (and Practice agents), checks each one, and
+//! The seat-tools socket: accepts calls from agents' shims, checks each one, and
 //! relays it to controld through the supervisor.
 use super::request::Request;
 use crate::supervisor::Supervisor;

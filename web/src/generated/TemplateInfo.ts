@@ -7,6 +7,6 @@ export type TemplateInfo = { id: string, title: string, summary: string,
  */
 default_name: string, 
 /**
- * The graph, for the gallery's drawing (non-Practice kinds).
+ * The graph, for the gallery's drawing.
  */
 preview: TeamDraft, };

@@ -149,7 +149,7 @@ pods:
   - id: team
     label: Team
     members:
-      - { id: agent, agent_ref: "local:agent", profile: default, runtime: stub, cwd: "." }
+      - { id: agent, agent_ref: "local:agent", profile: default, runtime: claude-code, cwd: "." }
 "#;
 
     fn state(mode: ControlMode) -> AppState {

@@ -188,7 +188,7 @@ pub enum DriverEvent {
         turn_id: String,
         status: TurnStatus,
     },
-    /// The CLI (or a Practice agent) asks the operator something and waits.
+    /// The CLI asks the operator something and waits.
     QuestionRaised {
         question_id: String,
         source: QuestionSource,

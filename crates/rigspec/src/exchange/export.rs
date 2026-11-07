@@ -1,12 +1,11 @@
 //! Draft → RigSpec YAML plus the layout comment.
 use super::META_PREFIX;
 use super::meta::{AgentMeta, GroupMeta, Meta};
-use model::{AgentKind, DraftAgent, TeamDraft};
+use model::{DraftAgent, TeamDraft};
 
-/// True when the agent has a folder of its own, or needs none (Practice agents run in
-/// the home folder, which `draft_spec` writes as `.`).
+/// True when the agent has a folder (its own or the team's).
 fn has_folder(d: &TeamDraft, a: &DraftAgent) -> bool {
-    a.kind == AgentKind::Practice || d.effective_folder(a).is_some()
+    d.effective_folder(a).is_some()
 }
 
 fn meta_of(d: &TeamDraft) -> Meta {

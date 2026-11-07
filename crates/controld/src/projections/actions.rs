@@ -1,7 +1,7 @@
 //! Interpreted actions (spec §6.4): one row per tool call, its result, and what the interpreter
 //! read into it. Feeds risk counts, the files a session changed and captured test runs.
 //! A row is keyed by seat, session (tenure) and call id: call ids repeat across sessions
-//! (the stub's `turn-1-call`, fake-claude's `toolu_1`). A result and its interpretation belong
+//! (fake-claude's `toolu_1`). A result and its interpretation belong
 //! to the call of the seat's current session.
 use model::{ActionClass, EventBody, EventRecord, RiskFlag, Subject};
 use rusqlite::{OptionalExtension, Transaction, params};
@@ -50,7 +50,7 @@ pub(crate) fn project(tx: &Transaction, ev: &EventRecord) -> rusqlite::Result<()
     }
 }
 
-/// A Practice agent numbers its calls per session, so an id may come again: the newest call wins.
+/// An agent may number its calls per session, so an id may come again: the newest call wins.
 fn record_call(
     tx: &Transaction,
     seat: &str,

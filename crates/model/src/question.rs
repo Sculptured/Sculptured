@@ -11,7 +11,7 @@ use ts_rs::TS;
 pub enum QuestionSource {
     /// The agent called its `request_input` tool.
     RequestInput,
-    /// The CLI's own ask-the-user prompt (Codex `item/tool/requestUserInput`, a Practice agent's `ask:`).
+    /// The CLI's own ask-the-user prompt (Codex `item/tool/requestUserInput`).
     NativeQuestion,
     /// The CLI asks before running a tool. Only a restricted posture produces these.
     NativePermission,
@@ -177,7 +177,7 @@ pub enum DecisionSource {
 pub enum SessionMode {
     /// A new session primed with a handover note, then sent its unfinished work.
     Fresh,
-    /// A native fork of the current session (Codex, Practice; not Claude in M2).
+    /// A native fork of the current session (Codex; not Claude in M2).
     Fork,
 }
 

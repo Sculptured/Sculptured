@@ -34,7 +34,7 @@ pub struct AppState {
     pub stops: Arc<Mutex<StopMarks>>,
     /// Login seam; AllowAll until a login system exists.
     pub auth: AuthPolicy,
-    /// The user's home folder: root of the folder picker and working folder of Practice agents without one.
+    /// The user's home folder: root of the folder picker.
     pub home: Option<Arc<PathBuf>>,
     /// Set once the handoff dispatcher runs for this state (`handoffs::ensure_running`).
     pub handoffs_started: Arc<std::sync::atomic::AtomicBool>,

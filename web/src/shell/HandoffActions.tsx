@@ -86,7 +86,7 @@ function HandoffButtons({ a, seatId, busy, run, handsTo, canRestart, canResend, 
         </Btn>
       )}
       {canHandOver && (
-        // Real agents cost money: say how many will run before they do. Practice agents are free.
+        // Agents on your accounts cost money: say how many will run before they do.
         <Btn size="sm" icon="arrow-right" disabled={busy} onClick={askHandOver} tip={`Send ${a.name}'s latest finished turn to ${handsTo.join(', ')}; every agent downstream runs once`}>
           Hand over again
         </Btn>

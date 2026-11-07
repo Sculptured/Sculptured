@@ -114,7 +114,7 @@ mod tests {
         let folder = home.path().join("book");
         fs::create_dir(&folder).unwrap();
         let mut store = Store::open_in_memory().unwrap();
-        let mut d = rigspec::textbook::template("book", "Book", true);
+        let mut d = rigspec::textbook::template("book", "Book");
         d.folder = Some(folder.to_string_lossy().into());
         store.insert_draft(&d).unwrap();
         let st = AppState::new(store, "test".into(), vec![]).with_home(home.path());
@@ -142,7 +142,7 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         std::os::unix::fs::symlink(outside.path(), home.path().join("escape")).unwrap();
         let mut store = Store::open_in_memory().unwrap();
-        let mut d = rigspec::textbook::template("book", "Book", true);
+        let mut d = rigspec::textbook::template("book", "Book");
         d.folder = Some(home.path().join("escape").to_string_lossy().into());
         store.insert_draft(&d).unwrap();
         let st = AppState::new(store, "test".into(), vec![]).with_home(home.path());

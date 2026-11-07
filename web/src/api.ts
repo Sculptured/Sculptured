@@ -269,8 +269,8 @@ export const api = {
   teamSpec: (id: string) => get<TeamSpec>(`${teamUrl(id)}/spec`),
   groupBlocks: () => get<import('./generated/GroupBlock').GroupBlock[]>('/api/group-blocks'),
   saveGroupBlock: (block: import('./generated/GroupBlock').GroupBlock, requestId = newRequestId()) => request<import('./generated/GroupBlock').GroupBlock>('PUT', `/api/group-blocks/${encodeURIComponent(block.id)}`, {request_id:requestId,block}),
-  createTeam: (template: string, practice: boolean, name: string | null, requestId = newRequestId()) =>
-    post<TeamRecord>('/api/teams', requestId, { template, practice, name }),
+  createTeam: (template: string, name: string | null, requestId = newRequestId()) =>
+    post<TeamRecord>('/api/teams', requestId, { template, name }),
   saveTeam: (id: string, revision: number, draft: TeamDraft, requestId = newRequestId(), opts?: RequestOptions) =>
     request<TeamRecord>('PUT', teamUrl(id), { request_id: requestId, revision, draft }, opts),
   /** `overPlanLimit`: start although a plan the team uses is near its limit (the server's `plan_limit` refusal). */

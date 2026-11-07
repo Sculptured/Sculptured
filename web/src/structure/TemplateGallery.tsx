@@ -160,7 +160,7 @@ function useCreateTeam(kind: AgentKind, name: string, onCreated: (id: string) =>
     setBusy(t.id);
     setError(null);
     try {
-      const rec = await createOnce((id) => api.createTeam(t.id, false, name.trim() || null, id));
+      const rec = await createOnce((id) => api.createTeam(t.id, name.trim() || null, id));
       if (rec.draft.agents.some((a) => a.kind !== kind)) await api.saveTeam(rec.draft.id, rec.draft.revision, as(rec.draft));
       onCreated(rec.draft.id);
     } catch (e) {

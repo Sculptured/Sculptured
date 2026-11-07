@@ -24,11 +24,10 @@ function ClaudeGuy() {
   );
 }
 
-/** The provider's mark, large: the Claude Code guy, the Codex mark, or a bot (Practice agents in their own colour). */
+/** The provider's mark, large: the Claude Code guy, the Codex mark, or a bot. */
 export function BrandLogo({ v }: { v: Vendor }) {
   if (v.cls === 'v-claude') return <ClaudeGuy />;
   if (v.cls === 'v-codex') return <Icon name="codex" size={50} strokeWidth={1.7} className="logo-svg" />;
-  if (v.cls === 'v-practice') return <Icon name="practice" size={44} strokeWidth={1.7} className="logo-svg" />;
   return <Icon name={v.name === 'unknown' ? 'unknown' : 'bot'} size={44} strokeWidth={1.7} className="logo-svg" />;
 }
 

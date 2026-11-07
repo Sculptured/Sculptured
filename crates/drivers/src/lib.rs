@@ -2,7 +2,6 @@ pub mod claude;
 pub mod codex;
 pub mod opencode;
 mod process;
-pub mod stub;
 
 use async_trait::async_trait;
 use futures::stream::BoxStream;

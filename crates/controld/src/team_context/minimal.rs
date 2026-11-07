@@ -63,7 +63,7 @@ mod tests {
     use model::BriefingLevel;
 
     fn textbook() -> model::TeamDraft {
-        let mut d = rigspec::textbook::template("book", "Book", false);
+        let mut d = rigspec::textbook::template("book", "Book");
         d.input = None;
         for a in &mut d.agents {
             a.advanced.briefing = Some(BriefingLevel::Minimal);

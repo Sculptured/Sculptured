@@ -23,7 +23,7 @@ function connectionOptions(a: DraftAgent, conns: ModelConnection[]) {
   });
 }
 
-/** Hosted: Claude by subscription, each of your model connections, Codex, OpenCode (and Practice for a Practice agent). */
+/** Hosted: Claude by subscription, each of your model connections, Codex, OpenCode. */
 export function RunsOnPicker({ a, label, conns, disabled, onChange }: { a: DraftAgent; label: string; conns: ModelConnection[]; disabled: boolean; onChange: (kind: AgentKind, connection: string | null) => void }) {
   const known = usesConnections(a.kind) && a.connection ? conns.some((c) => c.id === a.connection) : true;
   const value = known ? runsOnValue(a.kind, usesConnections(a.kind) ? a.connection : null) : MISSING;
@@ -38,7 +38,6 @@ export function RunsOnPicker({ a, label, conns, disabled, onChange }: { a: Draft
       {!known && <option value={MISSING} disabled>Removed connection</option>}
       <option value="codex">{KIND_LABEL.codex}</option>
       <option value="opencode">{KIND_LABEL.opencode} (its computer’s own setup)</option>
-      {a.kind === 'practice' && <option value="practice">{KIND_LABEL.practice}</option>}
     </select>
   );
 }

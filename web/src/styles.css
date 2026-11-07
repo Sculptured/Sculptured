@@ -67,7 +67,6 @@ kbd, .kbd {
 .v-claude { --vc: var(--claude); }
 .v-codex { --vc: var(--codex); }
 .v-opencode { --vc: var(--opencode); }
-.v-practice { --vc: var(--practice); }
 .v-other { --vc: var(--other); }
 
 /* Provider avatar: a tinted rounded tile with the provider's mark. */

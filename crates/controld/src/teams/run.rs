@@ -204,7 +204,7 @@ pub(super) async fn start_team(
                 return Err(ApiError::conflict("plan_limit", why));
             }
         }
-        // Practice agents without a folder run in the home folder ("." resolves against it).
+        // A relative folder in the spec ("." for none) resolves against the home folder.
         let spec_dir = st2.home.as_deref().cloned().unwrap_or_else(|| PathBuf::from("/"));
         let after_seq = st2.store.lock().expect("store mutex must not be poisoned").last_seq()?;
         let source = RigSource::Team { id: id.clone(), revision: draft.revision };

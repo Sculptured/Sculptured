@@ -3,7 +3,7 @@ type Block = GroupBlock;
 type Draft = Block['draft'];
 
 const validString = (v: unknown) => typeof v === 'string' && v.length <= 200000;
-const AGENT_KINDS = ['claude', 'codex', 'opencode', 'practice'];
+const AGENT_KINDS = ['claude', 'codex', 'opencode'];
 const CONNECTION_KINDS = ['hands-work-to', 'reports-to', 'watches'];
 
 const hasShape = (b: Block) => !!b?.draft && Array.isArray(b.draft.groups) && b.draft.groups.length === 1 && Array.isArray(b.draft.agents) && b.draft.agents.length <= 64;

@@ -176,8 +176,9 @@ fn check_member_fields(mp: &str, m: &MemberSpec, out: &mut Vec<Diagnostic>) {
         out.push(crate::diag::error(
             format!("{mp}.runtime"),
             format!(
-                "unknown runtime {:?}; expected claude-code, codex, pi, omp, terminal or stub",
-                m.runtime
+                "unknown runtime {:?}; expected claude-code, codex, opencode, pi, omp or terminal ({})",
+                m.runtime,
+                model::REAL_MODEL_REQUIRED
             ),
         ));
     }

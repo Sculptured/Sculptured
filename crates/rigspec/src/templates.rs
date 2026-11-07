@@ -32,7 +32,7 @@ pub struct TemplateInfo {
     pub summary: String,
     /// Team name used when the user does not type one.
     pub default_name: String,
-    /// The graph, for the gallery's drawing (non-Practice kinds).
+    /// The graph, for the gallery's drawing.
     pub preview: TeamDraft,
 }
 
@@ -61,35 +61,26 @@ fn hands(from: &str, to: &str) -> DraftConnection {
 }
 
 /// A fresh draft for template `id`, or None if there is no such template.
-/// `practice` swaps every agent to a Practice agent.
 #[must_use]
-pub fn template(id: &str, team_id: &str, name: &str, practice: bool) -> Option<TeamDraft> {
+pub fn template(id: &str, team_id: &str, name: &str) -> Option<TeamDraft> {
     if id == "textbook" {
-        return Some(crate::textbook::template(team_id, name, practice));
+        return Some(crate::textbook::template(team_id, name));
     }
-    if let Some(d) = crate::release_examples::template(id, team_id, name, practice) {
+    if let Some(d) = crate::release_examples::template(id, team_id, name) {
         return Some(d);
     }
-    let k = |kind: AgentKind| if practice { AgentKind::Practice } else { kind };
     let (agents, connections) = match id {
         "solo" => (
-            vec![agent("claude", "Claude", k(AgentKind::Claude), "", 40, 40)],
+            vec![agent("claude", "Claude", AgentKind::Claude, "", 40, 40)],
             vec![],
         ),
         "builder-reviewer" => (
             vec![
-                agent(
-                    "builder",
-                    "Builder",
-                    k(AgentKind::Claude),
-                    BUILDER_JOB,
-                    40,
-                    40,
-                ),
+                agent("builder", "Builder", AgentKind::Claude, BUILDER_JOB, 40, 40),
                 agent(
                     "reviewer",
                     "Reviewer",
-                    k(AgentKind::Codex),
+                    AgentKind::Codex,
                     REVIEWER_JOB,
                     300,
                     40,
@@ -102,7 +93,7 @@ pub fn template(id: &str, team_id: &str, name: &str, practice: bool) -> Option<T
                 agent(
                     "planner",
                     "Planner",
-                    k(AgentKind::Claude),
+                    AgentKind::Claude,
                     PLANNER_JOB,
                     40,
                     160,
@@ -110,7 +101,7 @@ pub fn template(id: &str, team_id: &str, name: &str, practice: bool) -> Option<T
                 agent(
                     "builder-1",
                     "Builder 1",
-                    k(AgentKind::Claude),
+                    AgentKind::Claude,
                     BUILDER_N_JOB,
                     300,
                     40,
@@ -118,7 +109,7 @@ pub fn template(id: &str, team_id: &str, name: &str, practice: bool) -> Option<T
                 agent(
                     "builder-2",
                     "Builder 2",
-                    k(AgentKind::Claude),
+                    AgentKind::Claude,
                     BUILDER_N_JOB,
                     300,
                     280,
@@ -160,7 +151,7 @@ pub fn templates() -> Vec<TemplateInfo> {
         title: title.into(),
         summary: summary.into(),
         default_name: default_name.into(),
-        preview: template(id, "preview", default_name, false).expect("listed template exists"),
+        preview: template(id, "preview", default_name).expect("listed template exists"),
     };
     vec![
         info("solo", "Solo agent", "One Claude agent.", "Solo agent"),

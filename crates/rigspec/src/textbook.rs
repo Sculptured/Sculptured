@@ -5,7 +5,7 @@ use model::{
 };
 
 #[must_use]
-pub fn template(id: &str, name: &str, practice: bool) -> TeamDraft {
+pub fn template(id: &str, name: &str) -> TeamDraft {
     let roles = [
         ("dispatcher", "Curriculum dispatcher", DISPATCH),
         ("reference", "Mathematical reference", REFERENCE),
@@ -30,11 +30,7 @@ pub fn template(id: &str, name: &str, practice: bool) -> TeamDraft {
             name: (*name).into(),
             job: (*job).into(),
             group_id: (i > 0 && i < 5).then(|| "mathematical-visualization".into()),
-            kind: if practice {
-                AgentKind::Practice
-            } else {
-                AgentKind::Codex
-            },
+            kind: AgentKind::Codex,
             folder: None,
             x: positions[i].0,
             y: positions[i].1,
@@ -58,11 +54,7 @@ pub fn template(id: &str, name: &str, practice: bool) -> TeamDraft {
             name: (*name).into(),
             job: (*job).into(),
             group_id: Some("webgpu-engine".into()),
-            kind: if practice {
-                AgentKind::Practice
-            } else {
-                AgentKind::Codex
-            },
+            kind: AgentKind::Codex,
             folder: None,
             x: 330 + (i as i32) * 280,
             y: 100,

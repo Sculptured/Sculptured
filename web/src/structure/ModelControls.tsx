@@ -28,18 +28,15 @@ const OTHER = '__other__';
 const INHERIT = '';
 
 export const modelLabel = (k: ModelKind, id: string | null) =>
-  id ? (MODEL_CHOICES[k].find((c) => c.id === id)?.label ?? id) : `${KIND_LABEL[k]}'s default`;
+  id ? (MODEL_CHOICES[k]?.find((c) => c.id === id)?.label ?? id) : `${KIND_LABEL[k] ?? 'The CLI'}'s default`;
 
 type KindSwitchProps = { value: AgentKind | null; onChange: (k: AgentKind) => void; disabled?: boolean; kinds?: AgentKind[]; label: string };
 
-/** Claude / Codex / OpenCode / Practice as one row of buttons; `value` null = mixed. */
-/**
- * The kinds offered when adding or switching agents. Practice agents (free, scripted, no model)
- * are no longer offered; a team that already has them keeps them and can switch them.
- */
+/** The kinds offered when adding or switching agents. */
 export const OFFERED_KINDS: AgentKind[] = ['claude', 'codex', 'opencode'];
 
-export function KindSwitch({ value, onChange, disabled, kinds = value === 'practice' ? [...OFFERED_KINDS, 'practice'] : OFFERED_KINDS, label }: KindSwitchProps) {
+/** Claude / Codex / OpenCode as one row of buttons; `value` null = mixed. */
+export function KindSwitch({ value, onChange, disabled, kinds = OFFERED_KINDS, label }: KindSwitchProps) {
   return (
     <div className="kind-switch" role="radiogroup" aria-label={label}>
       {kinds.map((k) => (

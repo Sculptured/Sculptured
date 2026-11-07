@@ -31,7 +31,7 @@ const TABS: { id: AgentTab; label: string }[] = [
 
 /** "Claude · Opus 4.1": what the agent runs on, from its design when there is one. */
 function runsOn(draft: TeamDraft | null, d: DraftAgent | undefined, row: AgentRow | undefined): string {
-  if (draft && d) return d.kind === 'practice' ? 'Practice · free' : `${KIND_LABEL[d.kind]} · ${modelLabel(d.kind, effectiveModel(draft, d).model)}`;
+  if (draft && d) return `${KIND_LABEL[d.kind]} · ${modelLabel(d.kind, effectiveModel(draft, d).model)}`;
   const model = row?.seat?.model_observed ?? row?.seat?.model_requested;
   return row ? `${row.vendor.name}${model ? ` · ${model}` : ''}` : 'unknown';
 }

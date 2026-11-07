@@ -65,22 +65,19 @@ const LIMIT_WORDS = (a: TeamDraft['agents'][number]) =>
 
 /** Which agents have their own limits; when nothing limits the run at all, that is said too. */
 export function limitNotes(d: TeamDraft): string[] {
-  const limited = d.agents.filter((a) => a.kind !== 'practice' && LIMIT_WORDS(a).length > 0);
+  const limited = d.agents.filter((a) => LIMIT_WORDS(a).length > 0);
   if (limited.length > 0) return [`Agent limits: ${limited.map((a) => `${a.name.trim() || 'Unnamed agent'} (${LIMIT_WORDS(a).join(', ')})`).join('; ')}. At the soft value an agent is asked to wrap up; at the hard value it is stopped.`];
   const b = d.budget;
   const budget = !!b && ((b.plan?.length ?? 0) > 0 || !!b.tokens || !!b.minutes);
   return budget ? [] : ['No run budget or agent limits are set: agents work until they finish or you stop them.'];
 }
 
-/**
- * The confirmation a Start needs, or null when every agent is a Practice agent (free, no model
- * calls), which starts straight away. Real agents use the operator's own CLI logins.
- */
+/** The confirmation a Start needs, or null when no agent runs a model CLI. Agents use the operator's own CLI logins. */
 export function startConfirmation(d: TeamDraft | undefined, home: string | null): StartConfirmation | null {
   if (!d) return null;
   const handsTo = d.workflow ? d.agents.filter(a => a.id !== d.workflow!.dispatcher).map(a => ({ from: d.workflow!.dispatcher, to: a.id })) : d.connections.filter((c) => c.kind === 'hands-work-to');
   const c = describe(
-    d.agents.map((a) => ({ id: a.id, name: a.name.trim() || 'Unnamed agent', kind: a.kind === 'practice' ? 'other' : a.kind, folder: effectiveFolder(d, a) })),
+    d.agents.map((a) => ({ id: a.id, name: a.name.trim() || 'Unnamed agent', kind: a.kind, folder: effectiveFolder(d, a) })),
     handsTo,
     home,
     d.workflow?.dispatch && !d.workflow.dispatcher ? 'the dispatch command, which Sculptured runs to make the work' : undefined,

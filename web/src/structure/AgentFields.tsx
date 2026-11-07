@@ -4,7 +4,7 @@ import { effectiveFolder, folderForAll } from '../draft/folders';
 import { drawnGroups } from '../draft/geometry';
 import { groupOf, seatIdFor } from '../draft/ids';
 import { MARK } from '../draft/issues';
-import { groupDefault, isModelKind, setKind, setRunsOn, usesConnections, type ModelKind } from '../draft/models';
+import { groupDefault, setKind, setRunsOn, usesConnections } from '../draft/models';
 import { Link } from 'react-router-dom';
 import { useConnections, type ModelConnection } from '../hosted/connections';
 import type { ConnectionKind } from '../generated/ConnectionKind';
@@ -87,13 +87,12 @@ export function NameField({ a, edit, inputRef, issues = [] }: { a: DraftAgent; e
 
 type RunsOnProps = { draft: TeamDraft; a: DraftAgent; conn: ModelConnection | null; locked: boolean; edit: Edit };
 
-/** The model beside "Runs on": the connection's own, a choice of model, or none for a practice agent. */
+/** The model beside "Runs on": the connection's own, or a choice of model. */
 function ModelPart({ draft, a, conn, locked, edit }: RunsOnProps) {
   const k = a.kind;
   if (conn?.provider === 'openrouter') return <span className="muted">Model: <code>{conn.model}</code> · from the connection</span>;
-  if (!isModelKind(k)) return <span className="muted">free · no model calls</span>;
   const fallback = groupDefault(draft, a.group_id, k);
-  const from = a.group_id && draft.groups.find((g) => g.id === a.group_id)?.models?.[k as ModelKind] ? 'group' : 'team';
+  const from = a.group_id && draft.groups.find((g) => g.id === a.group_id)?.models?.[k] ? 'group' : 'team';
   return (
     <ModelSelect key={k} kind={k} label={`${KIND_LABEL[k]} model for ${a.name || 'this agent'}`} value={a.advanced.model}
       inherited={fallback ? `${modelLabel(k, fallback)}, from the ${from}` : modelLabel(k, null)} disabled={locked}
@@ -149,11 +148,10 @@ type Own = { id: string; name: string } | undefined;
 /** The folder the agent works in: its own on its computer, else the project's for it. */
 const folderOf = (draft: TeamDraft, a: DraftAgent, own: Own) => (own ? a.folder?.trim() || null : effectiveFolder(draft, a));
 
-/** The folder as shown: its short path, or what stands in for it (the agent's own computer, home, none). */
-function folderShown(a: DraftAgent, own: Own, folder: string | null, home: string | null, hosted: boolean) {
+/** The folder as shown: its short path, or what stands in for it (the agent's own computer, none). */
+function folderShown(own: Own, folder: string | null, home: string | null, hosted: boolean) {
   if (folder) return shortPath(folder, home);
   if (own) return `${own.name}’s own folder`;
-  if (a.kind === 'practice') return 'your home folder';
   return hosted ? 'its computer’s own folder' : 'none chosen';
 }
 
@@ -169,7 +167,7 @@ function FolderPath({ a, own, folder, shown, fromProject }: { a: DraftAgent; own
 type FolderButtonsProps = { draft: TeamDraft; a: DraftAgent; own: Own; edit: Edit; off: { disabled: boolean; 'aria-describedby': string | undefined }; onChoose: () => void };
 
 function FolderButtons({ draft, a, own, edit, off, onChoose }: FolderButtonsProps) {
-  const clearable = a.folder && (own || draft.folder || a.kind === 'practice');
+  const clearable = a.folder && (own || draft.folder);
   const clearLabel = own ? `Use ${own.name}’s own folder` : draft.folder ? 'Use project folder' : 'Clear';
   return <>
     <Btn {...off} onClick={onChoose} aria-label={`Choose a folder for ${a.name || 'this agent'}`} icon="folder" size="sm">Choose…</Btn>
@@ -191,7 +189,7 @@ export function FolderField({ draft, a, edit, locked, issues = [] }: Common & { 
     <HostedRunOn draft={draft} a={a} />
     <Field tour="agent-folder" label={own ? `Folder on ${own.name}` : 'Folder'} reason={locked ? LOCK_REASON : null} reasonId={`${ids}-lock`}>
       <div className="fld-folder">
-        <FolderPath a={a} own={own} folder={folder} shown={folderShown(a, own, folder, home, hosted)} fromProject={!a.folder && !own && !!draft.folder} />
+        <FolderPath a={a} own={own} folder={folder} shown={folderShown(own, folder, home, hosted)} fromProject={!a.folder && !own && !!draft.folder} />
         <FolderButtons draft={draft} a={a} own={own} edit={edit} off={off} onChoose={() => setPicking(true)} />
       </div>
       <FieldIssues issues={issues} />

@@ -69,7 +69,30 @@ pub fn read_document(doc: &madl::model::Document) -> Result<Imported, ApiError> 
     if !report.is_ok() {
         return Err(invalid(diagnostics(report.diagnostics)));
     }
-    Ok(crate::portable::madl::from_madl(&madl::expand(doc)))
+    let expanded = madl::expand(doc);
+    let not_models = not_models(&expanded);
+    if !not_models.is_empty() {
+        return Err(invalid(not_models));
+    }
+    Ok(crate::portable::madl::from_madl(&expanded))
+}
+
+/// Agents whose runtime is a scripted, model-less one (older Sculptured files wrote
+/// `x-sculptured-practice`): refused, never imported as something else.
+fn not_models(doc: &madl::model::Document) -> Vec<Diagnostic> {
+    madl::resolve(doc)
+        .agents
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| {
+            let rt = r.settings.preferences.runtime.as_deref()?;
+            matches!(rt, "x-sculptured-practice" | "stub").then(|| Diagnostic {
+                path: format!("/agents/{i}/runtime"),
+                severity: Severity::Error,
+                message: format!("`{rt}` is not a model; {}", model::REAL_MODEL_REQUIRED),
+            })
+        })
+        .collect()
 }
 
 pub(super) fn invalid(d: Vec<Diagnostic>) -> ApiError {

@@ -88,7 +88,7 @@
   .is-logo.logo-animated.v-claude .clawd-legs-a { animation: clawd-step var(--logo-walk) steps(1, end) infinite; }
   .is-logo.logo-animated.v-claude .clawd-legs-b { animation: clawd-step var(--logo-walk) steps(1, end) calc(var(--logo-walk) / -2) infinite; }
   .is-logo.logo-animated.v-codex .logo-turn { animation: logo-turn var(--logo-turn) var(--ease-in-out) infinite; }
-  .is-logo.logo-animated:is(.v-practice, .v-other) .logo-mark { animation: logo-breathe var(--logo-breathe) var(--ease-in-out) infinite; }
+  .is-logo.logo-animated.v-other .logo-mark { animation: logo-breathe var(--logo-breathe) var(--ease-in-out) infinite; }
 }
 
 /* Board style switch: the words go on a phone; the icons stay. */

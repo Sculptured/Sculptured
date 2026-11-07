@@ -4,7 +4,7 @@ use super::{GENERIC_AGENT, GENERIC_GROUP, GENERIC_TEAM};
 use ElementKind::{Agent, Connection, Group, Team};
 use IssueSeverity::Error;
 use model::{
-    AgentKind, ConnectionKind, DraftAgent, DraftConnection, DraftIssue, ElementKind, ElementRef,
+    ConnectionKind, DraftAgent, DraftConnection, DraftIssue, ElementKind, ElementRef,
     IssueSeverity, TeamDraft,
 };
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -215,7 +215,7 @@ pub(crate) fn is_full_path(f: &str) -> bool {
             && matches!(b[2], b'\\' | b'/'))
 }
 
-/// The agent's group exists, and it has a full-path folder unless it is a Practice agent.
+/// The agent's group exists, and it has a full-path folder.
 fn check_agent_place(d: &TeamDraft, a: &DraftAgent, out: &mut Vec<DraftIssue>) {
     let who = crate::draft::names::display_name(a);
     if let Some(g) = &a.group_id
@@ -230,7 +230,7 @@ fn check_agent_place(d: &TeamDraft, a: &DraftAgent, out: &mut Vec<DraftIssue>) {
         ));
     }
     match d.effective_folder(a) {
-        None if a.kind != AgentKind::Practice => {
+        None => {
             out.push(issue(
                 Agent,
                 &a.id,

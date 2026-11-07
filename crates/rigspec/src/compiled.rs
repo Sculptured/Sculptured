@@ -12,7 +12,6 @@ pub enum Runtime {
     Pi,
     Omp,
     Terminal,
-    Stub,
 }
 
 impl Runtime {
@@ -25,7 +24,6 @@ impl Runtime {
             "pi" => Self::Pi,
             "omp" => Self::Omp,
             "terminal" => Self::Terminal,
-            "stub" => Self::Stub,
             _ => return None,
         })
     }
@@ -38,7 +36,6 @@ impl Runtime {
             Self::Pi => "pi",
             Self::Omp => "omp",
             Self::Terminal => "terminal",
-            Self::Stub => "stub",
         }
     }
 }

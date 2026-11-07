@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// keeps running (it owns the agents), so controld checks these before sending a command that needs one.
 pub mod features;
 
-/// The seat-tools socket: one JSON line from the agent's shim (or a Practice agent) to hostd, one back.
+/// The seat-tools socket: one JSON line from the agent's shim to hostd, one back.
 pub mod seat_tools;
 
 /// An agent's process environment, and the only part of it the server may set.

@@ -8,7 +8,7 @@ import { kindVendor } from './Panels';
 import { vendor } from '../herdr';
 import { plural } from '../format';
 
-const KIND_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', practice: 'Practice' };
+const KIND_WORD: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };
 const kindIcon = (k: AgentKind): IconName => k;
 
 /** "2 agents · Claude, Codex". */

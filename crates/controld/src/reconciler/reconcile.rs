@@ -16,7 +16,6 @@ pub fn runtime_words(rt: Runtime) -> &'static str {
         Runtime::Pi => "Pi",
         Runtime::Omp => "OMP",
         Runtime::Terminal => "Terminal",
-        Runtime::Stub => "Practice",
     }
 }
 

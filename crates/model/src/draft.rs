@@ -6,9 +6,8 @@ use ts_rs::TS;
 /// The group (pod) of agents that have no explicit group.
 pub const DEFAULT_GROUP_ID: &str = "team";
 
-#[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema, TS,
-)]
+/// Every kind runs a real model: there is no scripted or model-less agent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, schemars::JsonSchema, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export)]
 pub enum AgentKind {
@@ -16,8 +15,31 @@ pub enum AgentKind {
     Codex,
     /// OpenCode over ACP, for open models (OpenRouter or the person's own OpenCode setup).
     Opencode,
-    /// Runs the stub driver: no model calls, no cost.
-    Practice,
+}
+
+/// The refusal for an agent kind that is not a real model, in the words the API and importers use.
+pub const REAL_MODEL_REQUIRED: &str =
+    "agents must use a real model: Claude Code, Codex or OpenCode";
+
+impl AgentKind {
+    /// The kind for its wire name (`claude`, `codex`, `opencode`); anything else is refused in plain words.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "claude" => Ok(Self::Claude),
+            "codex" => Ok(Self::Codex),
+            "opencode" => Ok(Self::Opencode),
+            other => Err(format!(
+                "`{other}` is not an agent kind: {REAL_MODEL_REQUIRED}"
+            )),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AgentKind {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        Self::parse(&s).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(
@@ -234,14 +256,13 @@ pub struct ModelDefaults {
 }
 
 impl ModelDefaults {
-    /// The default for one kind of agent; Practice agents never have one.
+    /// The default for one kind of agent.
     #[must_use]
     pub fn for_kind(&self, kind: AgentKind) -> Option<&str> {
         match kind {
             AgentKind::Claude => self.claude.as_deref(),
             AgentKind::Codex => self.codex.as_deref(),
             AgentKind::Opencode => self.opencode.as_deref(),
-            AgentKind::Practice => None,
         }
     }
 
@@ -263,7 +284,7 @@ pub struct DraftAgent {
     /// Plain-language instructions, sent as the agent's first message at start.
     #[serde(default)]
     pub job: String,
-    /// Absolute path. Practice agents may leave it empty (they use the home folder).
+    /// Absolute path; None = the team's folder.
     pub folder: Option<String>,
     pub x: i32,
     pub y: i32,
@@ -530,7 +551,7 @@ impl TeamDraft {
     }
 
     /// The model an agent runs with: its own, else its group's for its kind, else the team's.
-    /// None = the CLI's own default. Practice agents inherit nothing.
+    /// None = the CLI's own default.
     #[must_use]
     pub fn effective_model(&self, a: &DraftAgent) -> Option<String> {
         let clean = |m: Option<&str>| {

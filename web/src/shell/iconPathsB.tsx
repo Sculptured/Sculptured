@@ -106,17 +106,6 @@ export const PATHS_B = {
       <rect x="10" y="10" width="4" height="4" rx="1" fill="currentColor" />
     </>
   ),
-  /** Lucide `bot`: the Practice-agent mark, an agent like any other (its colour tells it apart). */
-  practice: (
-    <>
-      <path d="M12 8V4H8" />
-      <rect width="16" height="12" x="4" y="8" rx="2" />
-      <path d="M2 14h2" />
-      <path d="M20 14h2" />
-      <path d="M15 13v2" />
-      <path d="M9 13v2" />
-    </>
-  ),
   /** Lucide `bot`: an agent of another kind. */
   bot: (
     <>

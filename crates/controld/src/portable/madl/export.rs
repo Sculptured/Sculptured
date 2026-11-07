@@ -99,11 +99,9 @@ pub fn runtime(kind: AgentKind) -> &'static str {
         AgentKind::Claude => "claude-code",
         AgentKind::Codex => "codex",
         AgentKind::Opencode => super::care::OPENCODE,
-        AgentKind::Practice => "x-sculptured-practice",
     }
 }
 
-/// A Practice agent inherits no model: `models` has no entry for its runtime.
 fn agent(a: &DraftAgent) -> m::Agent {
     m::Agent {
         id: a.id.clone(),
@@ -181,7 +179,7 @@ pub fn with_provider(kind: AgentKind, id: String) -> String {
     let provider = match kind {
         AgentKind::Codex => "openai",
         AgentKind::Opencode => "openrouter",
-        AgentKind::Claude | AgentKind::Practice => "anthropic",
+        AgentKind::Claude => "anthropic",
     };
     if id.contains('/') {
         id

@@ -4,7 +4,7 @@ import type { DraftAgent } from '../generated/DraftAgent';
 import type { ModelDefaults } from '../generated/ModelDefaults';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { setAdvanced } from '../draft/edits';
-import { groupDefault, isModelKind, notOnTeamModel, setGroupModel, setKind, setKindAll, setTeamModel, toTeamModels, type ModelKind } from '../draft/models';
+import { groupDefault, notOnTeamModel, setGroupModel, setKind, setKindAll, setTeamModel, toTeamModels, type ModelKind } from '../draft/models';
 import { KIND_LABEL } from '../vocab';
 import { KindSwitch, modelLabel, ModelSelect } from './ModelControls';
 import { LOCK_REASON, type Edit } from './Panels';
@@ -18,25 +18,21 @@ function LockNote({ locked }: { locked: boolean }) {
 /** "Runs on" and "Model" for one agent, at the top of its panel. */
 export function AgentModelFields({ draft, edit, locked, a }: Common & { a: DraftAgent }) {
   const k = a.kind;
-  const fallback = isModelKind(k) ? groupDefault(draft, a.group_id, k) : null;
-  const from = a.group_id && draft.groups.find((g) => g.id === a.group_id)?.models?.[k as ModelKind] ? 'group' : 'team';
+  const fallback = groupDefault(draft, a.group_id, k);
+  const from = a.group_id && draft.groups.find((g) => g.id === a.group_id)?.models?.[k] ? 'group' : 'team';
   return (
     <div className="fld model-fields">
       <span className="fld-label">Runs on</span>
       <KindSwitch label={`${a.name || 'This agent'} runs on`} value={k} disabled={locked} onChange={(next) => edit((d) => setKind(d, a.id, next))} />
-      {isModelKind(k) ? (
-        <ModelSelect
-          key={k}
-          kind={k}
-          label={`${KIND_LABEL[k]} model for ${a.name || 'this agent'}`}
-          value={a.advanced.model}
-          inherited={fallback ? `${modelLabel(k, fallback)}, from the ${from}` : modelLabel(k, null)}
-          disabled={locked}
-          onChange={(model) => edit((d) => setAdvanced(d, a.id, { model }), `model:${a.id}`)}
-        />
-      ) : (
-        <p className="muted fld-hint">Practice agents are free and make no model calls.</p>
-      )}
+      <ModelSelect
+        key={k}
+        kind={k}
+        label={`${KIND_LABEL[k]} model for ${a.name || 'this agent'}`}
+        value={a.advanced.model}
+        inherited={fallback ? `${modelLabel(k, fallback)}, from the ${from}` : modelLabel(k, null)}
+        disabled={locked}
+        onChange={(model) => edit((d) => setAdvanced(d, a.id, { model }), `model:${a.id}`)}
+      />
       <LockNote locked={locked} />
     </div>
   );
