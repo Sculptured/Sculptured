@@ -1,0 +1,30 @@
+name: Code health
+
+on:
+  pull_request:
+  push:
+    branches: [platform]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci --no-audit --no-fund
+      - run: npm --prefix web run lint
+      - run: npm --prefix web test -- --maxWorkers=1
+      - run: npm --prefix web run duplication
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: code-health
+          path: target/code-health/

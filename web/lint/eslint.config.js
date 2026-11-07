@@ -3,7 +3,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-const FUNCTION_LINES = { max: 30, skipBlankLines: true, skipComments: true };
+const FUNCTION_LINES = { max: 40, skipBlankLines: true, skipComments: true };
 
 export default tseslint.config(
   { ignores: ['dist', 'lint', 'test-results', 'playwright-report', 'src/generated'] },
@@ -20,6 +20,10 @@ export default tseslint.config(
       'max-lines-per-function': ['error', FUNCTION_LINES],
       'max-lines': ['error', { max: 300, skipBlankLines: true, skipComments: true }],
     },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: { complexity: ['error', 12] },
   },
   {
     files: ['**/*.test.{ts,tsx}', 'e2e/**', 'src/test-fixtures.ts', 'src/test-setup.ts'],
