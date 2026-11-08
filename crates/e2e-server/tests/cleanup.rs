@@ -1,7 +1,8 @@
 //! The e2e launcher leaves nothing behind: the throwaway directory is removed and hostd is
 //! stopped. hostd is played by a copy of `sh` named `sculptured`, started on the session's
 //! data dir like the real one, so the name-and-dir check is exercised for real. It also keeps away
-//! from the person's own Sculptured (ports, home) while letting agents sign in to Claude Code.
+//! from the person's own Sculptured (ports, home) while letting agents sign in to Claude Code and
+//! Codex.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -215,4 +216,48 @@ fn the_claude_cli_is_found_on_path_or_in_the_real_home() {
         find_claude(Some(given.as_os_str()), None, None),
         Some(given)
     );
+}
+
+#[test]
+fn codex_agents_sign_in_with_the_persons_codex_setup_not_the_throwaway_home() {
+    use e2e_server::codex_home;
+    let real = tempfile::tempdir().unwrap();
+    assert_eq!(codex_home(None, Some(real.path())), None, "no setup");
+    std::fs::create_dir(real.path().join(".codex")).unwrap();
+    assert_eq!(
+        codex_home(None, Some(real.path())),
+        Some(real.path().join(".codex"))
+    );
+    let given = tempfile::tempdir().unwrap();
+    assert_eq!(
+        codex_home(Some(given.path().as_os_str()), Some(real.path())),
+        Some(given.path().to_path_buf()),
+        "CODEX_HOME as the person set it wins"
+    );
+}
+
+#[test]
+fn the_codex_cli_is_found_on_path_or_in_the_real_home() {
+    use e2e_server::find_codex;
+    let bin = tempfile::tempdir().unwrap();
+    let real = tempfile::tempdir().unwrap();
+    assert_eq!(
+        find_codex(None, Some(bin.path().as_os_str()), Some(real.path())),
+        None
+    );
+    std::fs::create_dir_all(real.path().join(".local/bin")).unwrap();
+    std::fs::write(real.path().join(".local/bin/codex"), "").unwrap();
+    assert_eq!(
+        find_codex(None, Some(bin.path().as_os_str()), Some(real.path())),
+        Some(real.path().join(".local/bin/codex"))
+    );
+    std::fs::write(bin.path().join("codex"), "").unwrap();
+    assert_eq!(
+        find_codex(None, Some(bin.path().as_os_str()), Some(real.path())),
+        Some(bin.path().join("codex")),
+        "PATH first"
+    );
+    let given = bin.path().join("my-codex");
+    std::fs::write(&given, "").unwrap();
+    assert_eq!(find_codex(Some(given.as_os_str()), None, None), Some(given));
 }

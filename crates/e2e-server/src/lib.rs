@@ -2,9 +2,10 @@
 //! data dir and a throwaway `HOME`, and cleans up after itself.
 //!
 //! Agents are real: Claude Code agents run the person's own `claude` CLI, signed in through
-//! `CLAUDE_CONFIG_DIR` (their real Claude Code setup), since the throwaway `HOME` has none. Nothing
-//! else of the real home is used: `~/.sculptured` and the ports of the person's own Sculptured
-//! ([`RESERVED_PORTS`]) are never touched.
+//! `CLAUDE_CONFIG_DIR` (their real Claude Code setup), and Codex agents their own `codex` CLI,
+//! signed in through `CODEX_HOME` (their real `~/.codex`), since the throwaway `HOME` has neither.
+//! Nothing else of the real home is used: `~/.sculptured` and the ports of the person's own
+//! Sculptured ([`RESERVED_PORTS`]) are never touched.
 //!
 //! `sculptured serve` spawns `sculptured hostd` in its own session, so hostd outlives serve
 //! and is not reached by a signal to serve's process group. [`Session::shutdown`] (also run on
@@ -43,10 +44,41 @@ pub fn claude_config_dir(given: Option<&OsStr>, real_home: Option<&Path>) -> Opt
         .filter(|d| d.is_dir())
 }
 
+/// The Codex setup agents sign in with: `CODEX_HOME` as given, else `.codex` in the person's real
+/// home, when that folder exists.
+#[must_use]
+pub fn codex_home(given: Option<&OsStr>, real_home: Option<&Path>) -> Option<PathBuf> {
+    given
+        .filter(|g| !g.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| real_home.map(|h| h.join(".codex")))
+        .filter(|d| d.is_dir())
+}
+
 /// The `claude` CLI: `given` (`$RIG_E2E_CLAUDE`) when set, else the first on `path`, else
 /// `~/.local/bin/claude` in the person's real home (the throwaway `HOME` hides that fallback).
 #[must_use]
 pub fn find_claude(
+    given: Option<&OsStr>,
+    path: Option<&OsStr>,
+    real_home: Option<&Path>,
+) -> Option<PathBuf> {
+    find_cli("claude", given, path, real_home)
+}
+
+/// The `codex` CLI: `given` (`$RIG_E2E_CODEX`) when set, else the first on `path`, else
+/// `~/.local/bin/codex` in the person's real home.
+#[must_use]
+pub fn find_codex(
+    given: Option<&OsStr>,
+    path: Option<&OsStr>,
+    real_home: Option<&Path>,
+) -> Option<PathBuf> {
+    find_cli("codex", given, path, real_home)
+}
+
+fn find_cli(
+    name: &str,
     given: Option<&OsStr>,
     path: Option<&OsStr>,
     real_home: Option<&Path>,
@@ -57,7 +89,7 @@ pub fn find_claude(
     path.into_iter()
         .flat_map(std::env::split_paths)
         .chain(real_home.map(|h| h.join(".local/bin")))
-        .map(|d| d.join("claude"))
+        .map(|d| d.join(name))
         .find(|p| p.is_file())
 }
 

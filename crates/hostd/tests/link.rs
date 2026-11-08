@@ -1,22 +1,17 @@
 //! The link to controld: commands, replay after a reconnect, journal fast-forward, keepalive.
 mod common;
 
-use async_trait::async_trait;
 use common::{CLAUDE, require};
-use drivers::{Driver, DriverError, DriverEvent, LaunchSpec, OutboundMessage, Session};
-use futures::stream::BoxStream;
 use futures::{SinkExt, StreamExt};
 
 use host_proto::{FromHost, HostCommand, PROTOCOL_VERSION, ToHost};
 use hostd::{Journal, Supervisor};
 
-use model::{Caps, EventBody, MessageIntent, SeatLifecycle};
+use model::{EventBody, MessageIntent, SeatLifecycle};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -203,69 +198,15 @@ async fn live_link_runs_commands_and_replays_after_reconnect() {
     .expect("journal pruned after ack");
 }
 
-/// Test driver: `send` never completes (a wedged agent whose stdin is full).
-struct BlockingDriver;
-struct BlockingSession {
-    tx: UnboundedSender<DriverEvent>,
-    rx: Option<UnboundedReceiver<DriverEvent>>,
-}
-
-#[async_trait]
-impl Driver for BlockingDriver {
-    fn name(&self) -> &'static str {
-        "blocking"
-    }
-    fn capabilities(&self) -> Caps {
-        Caps::default()
-    }
-    async fn launch(&self, _spec: LaunchSpec) -> Result<Box<dyn Session>, DriverError> {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let _ = tx.send(DriverEvent::SessionReady {
-            native_session_id: "blocking".into(),
-        });
-        Ok(Box::new(BlockingSession { tx, rx: Some(rx) }))
-    }
-    async fn resume(
-        &self,
-        spec: LaunchSpec,
-        _native_id: &str,
-    ) -> Result<Box<dyn Session>, DriverError> {
-        self.launch(spec).await
-    }
-}
-
-#[async_trait]
-impl Session for BlockingSession {
-    async fn send(&mut self, _msg: OutboundMessage) -> Result<(), DriverError> {
-        std::future::pending().await
-    }
-    async fn interrupt(&mut self) -> Result<(), DriverError> {
-        Ok(())
-    }
-    async fn stop(&mut self, _grace: Duration) -> Result<(), DriverError> {
-        let _ = self.tx.send(DriverEvent::Exited {
-            exit_code: Some(0),
-            signal: None,
-            stderr_tail: String::new(),
-        });
-        Ok(())
-    }
-    fn take_events(&mut self) -> Option<BoxStream<'static, DriverEvent>> {
-        self.rx
-            .take()
-            .map(|rx| UnboundedReceiverStream::new(rx).boxed())
-    }
-}
-
+/// The agent's real CLI is held stopped (SIGSTOP), so a large Send to it blocks on the full pipe
+/// and never produces a result; nothing reaches the model.
 #[tokio::test]
-async fn a_wedged_send_does_not_stop_the_link_from_reading_stop() {
+#[ignore = "live: real claude CLI (no message reaches the model); run with --ignored"]
+async fn live_a_wedged_send_does_not_stop_the_link_from_reading_stop() {
+    let Some(_) = require() else { return };
     let (listener, url) = listen().await;
     let dir = tempfile::tempdir().unwrap();
-    let sup = Supervisor::new(
-        "local".into(),
-        vec![Arc::new(BlockingDriver)],
-        Journal::open_in_memory(1000).unwrap(),
-    );
+    let sup = common::sup();
     let s = sup.clone();
     let _link = tokio::spawn(async move { hostd::run_link(&url, "secret", &s).await });
     let mut ws = accept(&listener).await;
@@ -273,7 +214,7 @@ async fn a_wedged_send_does_not_stop_the_link_from_reading_stop() {
     send(&mut ws, &ToHost::Welcome { resume_after: 0 }).await;
 
     let seat = "dev.x@r";
-    command(&mut ws, "l", launch(seat, "blocking", dir.path())).await;
+    command(&mut ws, "l", launch(seat, CLAUDE, dir.path())).await;
     loop {
         if let FromHost::CommandResult {
             command_id,
@@ -286,15 +227,16 @@ async fn a_wedged_send_does_not_stop_the_link_from_reading_stop() {
             break;
         }
     }
-    // The Send wedges inside the driver and never produces a result.
+    // The Send wedges writing to the stopped CLI's stdin and never produces a result.
+    let _frozen = common::freeze(&sup, seat);
     let wedged = HostCommand::Send {
         seat: seat.into(),
         message_id: "m".into(),
         intent: MessageIntent::Inform,
-        text: "x".into(),
+        text: common::wedging_text(),
     };
     command(&mut ws, "w", wedged).await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     command(
         &mut ws,
         "s",
@@ -312,6 +254,10 @@ async fn a_wedged_send_does_not_stop_the_link_from_reading_stop() {
         }
     }
     assert!(results.contains(&("s".to_string(), true)), "{results:?}");
+    assert!(
+        !results.contains(&("w".to_string(), true)),
+        "the wedged send never succeeded: {results:?}"
+    );
 }
 
 /// I8: a fresh journal behind controld's cursor fast-forwards, so the next event is

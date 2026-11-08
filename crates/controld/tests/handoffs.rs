@@ -1,7 +1,9 @@
 //! Real handoffs along "hands work to" connections. Agents that act run on the real Claude Code
-//! CLI (`common::live`, live tests); fake-claude replays recorded CLI output where a driver's turn
-//! shapes matter; the planner's bookkeeping is also checked on events written to the store.
+//! CLI (`common::live`, live tests); the planner's bookkeeping is also checked on events written to
+//! the store.
 mod common;
+#[path = "common/crash.rs"]
+mod crash;
 
 use axum::Router;
 use axum::body::Body;
@@ -11,7 +13,6 @@ use controld::handoffs::LOOP_ROUNDS;
 use controld::reconciler::{HANDOFF_ACTOR, TEAM_START_ACTOR};
 use controld::store::{HandoffWrite, RigSource, Store};
 use drivers::Driver;
-use drivers::claude::ClaudeStreamDriver;
 use hostd::journal::Journal;
 use hostd::supervisor::Supervisor;
 use http_body_util::BodyExt;
@@ -1815,38 +1816,32 @@ async fn upgrading_a_store_with_a_running_team_sends_no_handoffs() {
     assert_eq!(waiting_for(&st, &b), None);
 }
 
-// ---- fake-claude: real driver turn shapes ----
-
-fn claude_supervisor() -> Supervisor {
-    supervisor(vec![Arc::new(ClaudeStreamDriver {
-        program: crate::common::fake_bin("fake-claude"),
-    })])
-}
+// ---- live: the real CLI's turn shapes when work is interrupted or the agent crashes ----
 
 fn reason(st: &AppState, seat: &str) -> String {
     stuck(st, seat).map(|(r, _)| r).unwrap_or_default()
 }
 
-/// fake-claude: a first agent's Job is interrupted. Its work is unfinished (it says so,
-/// and so do the agents waiting on it, transitively). Telling it "go" finishes the work,
-/// and the pipeline completes.
+/// A first agent's Job is interrupted mid-turn. Its work is unfinished (it says so, and so do the
+/// agents waiting on it, transitively). Telling it "go" finishes the work, and the pipeline
+/// completes.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn an_interrupted_job_is_stuck_until_the_operator_says_go() {
-    let home = tempfile::tempdir().unwrap();
-    let work = home.path().join("work");
-    std::fs::create_dir(&work).unwrap();
-    let (st, router, url) = serve(home.path()).await;
-    link(&st, url, claude_supervisor()).await;
-    let id = team_of(
+async fn live_an_interrupted_job_is_stuck_until_the_operator_says_go() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
+    let lead_job = hang_once("lead.flag");
+    let id = team(
         &router,
+        home.path(),
         "Hang",
-        &work,
-        None,
         &[
-            ("lead", "Lead", "hang"),
-            ("mid", "Mid", "Build"),
-            ("last", "Last", "Check"),
+            ("lead", "Lead", &lead_job),
+            ("mid", "Mid", REPLY),
+            ("last", "Last", REPLY),
         ],
         &[
             ("lead", "mid", "hands-work-to"),
@@ -1856,13 +1851,8 @@ async fn an_interrupted_job_is_stuck_until_the_operator_says_go() {
     .await;
     let (lead, mid, last) = (seat(&id, "lead"), seat(&id, "mid"), seat(&id, "last"));
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the lead is in its turn", || {
-        events(&st, &lead)
-            .iter()
-            .any(|e| matches!(e.body, EventBody::ToolCalled { .. }))
-    })
-    .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the lead is in its turn", || tool_calls(&st, &lead) > 0).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     let (status, body) = call(
         &router,
         "POST",
@@ -1871,11 +1861,11 @@ async fn an_interrupted_job_is_stuck_until_the_operator_says_go() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the lead is stuck on its unfinished work", || {
+    common::live::wait_for("the lead is stuck on its unfinished work", || {
         reason(&st, &lead) == "Lead's work did not finish (interrupted)"
     })
     .await;
-    crate::common::wait_for("mid and last are stuck behind it", || {
+    common::live::wait_for("mid and last are stuck behind it", || {
         reason(&st, &mid) == "waiting on Lead (stuck)"
             && reason(&st, &last) == "waiting on Mid (stuck)"
     })
@@ -1886,67 +1876,64 @@ async fn an_interrupted_job_is_stuck_until_the_operator_says_go() {
     );
 
     send(&router, &lead, "go", "go").await;
-    crate::common::wait_for("the pipeline completes", || {
+    common::live::wait_for("the pipeline completes", || {
         handoffs(&st, &last)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
     })
     .await;
     assert!(
-        handoffs(&st, &mid)[0]
-            .2
-            .ends_with("--- Lead's result ---\nfake: go"),
+        handoffs(&st, &mid)[0].2.starts_with(&format!(
+            "Handed over by Lead\n\n{REPLY}\n\n--- Lead's result ---\n"
+        )),
         "{}",
         handoffs(&st, &mid)[0].2
     );
-    crate::common::wait_for("nobody is stuck", || {
+    common::live::wait_for("nobody is stuck", || {
         [&lead, &mid, &last].iter().all(|s| stuck(&st, s).is_none())
     })
     .await;
     stop(&router, &id, "x1").await;
 }
 
-/// fake-claude: a first agent crashes after reading its Job. Restart this agent sends the
-/// Job again, asking it to continue, and the pipeline completes.
+/// A first agent crashes mid-Job (its real CLI process is killed). Restart this agent sends the Job
+/// again, asking it to continue, and the pipeline completes.
 #[tokio::test]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn a_job_that_crashed_mid_way_is_continued_by_restart() {
-    let home = tempfile::tempdir().unwrap();
-    let work = home.path().join("work");
-    std::fs::create_dir(&work).unwrap();
-    let (st, router, url) = serve(home.path()).await;
-    link(&st, url, claude_supervisor()).await;
-    let id = team_of(
+async fn live_a_job_that_crashed_mid_way_is_continued_by_restart() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let runner = live_supervisor();
+    let (home, st, router) = served_with(runner.clone()).await;
+    let lead_job = hang_once("lead.flag");
+    let id = team(
         &router,
+        home.path(),
         "Crash",
-        &work,
-        None,
-        &[("lead", "Lead", "crash"), ("next", "Next", "Go on")],
+        &[("lead", "Lead", &lead_job), ("next", "Next", REPLY)],
         &[("lead", "next", "hands-work-to")],
     )
     .await;
     let (lead, next) = (seat(&id, "lead"), seat(&id, "next"));
     start(&router, &id, "s1").await;
-    crate::common::wait_for("the lead is stuck on its unfinished work", || {
+    common::live::wait_for("the lead is mid-Job", || tool_calls(&st, &lead) > 0).await;
+    crash::kill_agent(&runner, &lead);
+    common::live::wait_for("the lead is stuck on its unfinished work", || {
         reason(&st, &lead) == "Lead's work did not finish (the agent stopped)"
     })
     .await;
-    crate::common::wait_for("the next agent is stuck behind it", || {
+    common::live::wait_for("the next agent is stuck behind it", || {
         reason(&st, &next).starts_with("Lead ")
     })
     .await;
-    crate::common::wait_for("the boot finished", || !st.is_booting(&id)).await;
+    common::live::wait_for("the boot finished", || !st.is_booting(&id)).await;
     assert!(handoffs(&st, &next).is_empty());
 
-    let (status, body) = call(
-        &router,
-        "POST",
-        &format!("/api/seats/{lead}/restart"),
-        json!({ "request_id": "rs1" }),
-    )
-    .await;
+    let (status, body) = restart(&router, &lead, "rs1").await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    crate::common::wait_for("the pipeline completes", || {
+    common::live::wait_for("the pipeline completes", || {
         handoffs(&st, &next)
             .first()
             .is_some_and(|(_, m, _)| consumed(&st, m))
@@ -1956,14 +1943,16 @@ async fn a_job_that_crashed_mid_way_is_continued_by_restart() {
     assert_eq!(jobs.len(), 2, "the Job and its continuation: {jobs:?}");
     assert_eq!(
         jobs[1].2,
-        "Your previous attempt did not finish. Continue from where you left off; check what is already written before redoing work.\n\ncrash"
+        format!("{}\n\n{lead_job}", controld::handoffs::CONTINUE_PREFIX)
     );
     assert!(
         handoffs(&st, &next)[0]
             .2
-            .contains("--- Lead's result ---\nfake: Your previous attempt did not finish.")
+            .contains("--- Lead's result ---\n"),
+        "{}",
+        handoffs(&st, &next)[0].2
     );
-    crate::common::wait_for("nobody is stuck", || {
+    common::live::wait_for("nobody is stuck", || {
         stuck(&st, &lead).is_none() && stuck(&st, &next).is_none()
     })
     .await;
@@ -2248,16 +2237,45 @@ async fn a_handoff_the_host_reports_read_is_never_resent() {
     assert_eq!(handoffs(&st, &b).len(), 1);
 }
 
-/// The airplane team (15 Claude agents, fake-claude): after the pipeline has run, one
-/// operator message to Lead adds exactly one turn to the whole team.
+/// Every agent of `seats` has ended each turn it started and read every handoff it was sent.
+fn quiet(st: &AppState, seats: &[String]) -> bool {
+    seats.iter().all(|s| {
+        let evs = events(st, s);
+        let started = evs
+            .iter()
+            .filter(|e| matches!(e.body, EventBody::TurnStarted { .. }))
+            .count();
+        let ended = evs
+            .iter()
+            .filter(|e| matches!(e.body, EventBody::TurnEnded { .. }))
+            .count();
+        started == ended && handoffs(st, s).iter().all(|(_, m, _)| consumed(st, m))
+    })
+}
+
+/// Waits until `seats` are quiet and stay so for a few seconds; returns the turns ended by then.
+async fn wait_quiet(st: &AppState, seats: &[String]) -> usize {
+    loop {
+        common::live::wait_for("the team is quiet", || quiet(st, seats)).await;
+        let n = turns_ended(st, seats);
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        if quiet(st, seats) && turns_ended(st, seats) == n {
+            return n;
+        }
+    }
+}
+
+/// The airplane team (15 Claude agents, each given a one-reply job): after the pipeline has run,
+/// one operator message to Lead adds exactly one turn to the whole team.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
 #[allow(clippy::too_many_lines)] // one scenario: its steps and checks read in order
-async fn on_the_airplane_team_one_message_to_lead_is_one_turn() {
-    let home = tempfile::tempdir().unwrap();
-    let work = home.path().join("work");
-    std::fs::create_dir(&work).unwrap();
-    let (st, router, url) = serve(home.path()).await;
-    link(&st, url, claude_supervisor()).await;
+async fn live_on_the_airplane_team_one_message_to_lead_is_one_turn() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
+    let (home, st, router) = served().await;
+    let work = work_folder(home.path());
     let file = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../examples/teams/airplane-c172.json"
@@ -2279,7 +2297,10 @@ async fn on_the_airplane_team_one_message_to_lead_is_one_turn() {
     let matching_items = draft["agents"].as_array_mut().unwrap();
     for a in matching_items {
         a["folder"] = json!(work.display().to_string());
+        a["job"] = json!(REPLY);
+        a["advanced"]["model"] = Value::Null;
     }
+    draft["models"] = json!({ "claude": common::live::CLAUDE_MODEL });
     let (status, body) = call(
         &router,
         "PUT",
@@ -2317,32 +2338,28 @@ async fn on_the_airplane_team_one_message_to_lead_is_one_turn() {
     start(&router, &id, "s1").await;
 
     // The whole pipeline runs: every downstream agent reads its first handoff.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(90);
-    while !downstream.iter().all(|s| {
-        handoffs(&st, s)
-            .first()
-            .is_some_and(|(_, m, _)| consumed(&st, m))
-    }) {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the pipeline did not finish"
-        );
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    // Quiet: no turn ends for a while.
-    let mut last = turns_ended(&st, &seats);
-    loop {
-        tokio::time::sleep(Duration::from_millis(1500)).await;
-        let now = turns_ended(&st, &seats);
-        if now == last {
-            break;
-        }
-        last = now;
-    }
+    common::live::wait_for("the pipeline finished", || {
+        downstream.iter().all(|s| {
+            handoffs(&st, s)
+                .first()
+                .is_some_and(|(_, m, _)| consumed(&st, m))
+        })
+    })
+    .await;
+    let last = wait_quiet(&st, &seats).await;
+    let sent: Vec<usize> = downstream.iter().map(|s| handoffs(&st, s).len()).collect();
     let lead = seat_of("lead");
     send(&router, &lead, "to-lead", "Status?").await;
-    crate::common::wait_for("Lead answered", || turns_ended(&st, &seats) > last).await;
-    tokio::time::sleep(Duration::from_millis(2000)).await;
+    common::live::wait_for("Lead answered", || turns_ended(&st, &seats) > last).await;
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    assert_eq!(
+        downstream
+            .iter()
+            .map(|s| handoffs(&st, s).len())
+            .collect::<Vec<_>>(),
+        sent,
+        "nothing is handed over for an operator message"
+    );
     assert_eq!(
         turns_ended(&st, &seats) - last,
         1,
@@ -2350,22 +2367,18 @@ async fn on_the_airplane_team_one_message_to_lead_is_one_turn() {
     );
 
     // Hand over again on Lead: one wave, every agent downstream runs exactly once.
-    let last = turns_ended(&st, &seats);
+    let last = wait_quiet(&st, &seats).await;
     let before: Vec<usize> = downstream.iter().map(|s| handoffs(&st, s).len()).collect();
     assert_eq!(hand_over(&router, &lead, "wave-1").await.0, StatusCode::OK);
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
-    while !downstream.iter().zip(&before).all(|(s, n)| {
-        handoffs(&st, s)
-            .get(*n)
-            .is_some_and(|(_, m, _)| consumed(&st, m))
-    }) {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the wave did not reach everyone"
-        );
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    tokio::time::sleep(Duration::from_millis(2000)).await;
+    common::live::wait_for("the wave reached everyone", || {
+        downstream.iter().zip(&before).all(|(s, n)| {
+            handoffs(&st, s)
+                .get(*n)
+                .is_some_and(|(_, m, _)| consumed(&st, m))
+        })
+    })
+    .await;
+    wait_quiet(&st, &seats).await;
     assert_eq!(downstream.len(), 14);
     assert_eq!(
         turns_ended(&st, &seats) - last,

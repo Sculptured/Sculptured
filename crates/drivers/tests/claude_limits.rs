@@ -1,5 +1,5 @@
 //! A turn that ends on the provider's usage or rate limit. M0 recorded none; the line is the shape the
-//! user's real run showed (an `is_error` result carrying the CLI's words), as fake-claude's `limit` prints it.
+//! user's real run showed: an `is_error` result carrying the CLI's words.
 use drivers::DriverEvent;
 use drivers::claude::ClaudeParser;
 use model::{LimitKind, TurnStatus};

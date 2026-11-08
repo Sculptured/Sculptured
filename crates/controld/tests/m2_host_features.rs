@@ -82,7 +82,7 @@ fn hello(live: &[&str], launching: &[&str], features: &[&str]) -> Value {
     v
 }
 
-/// The commands the fake host received within `wait`.
+/// The commands the test's runner connection received within `wait`.
 async fn commands(ws: &mut Ws, wait: Duration) -> Vec<HostCommand> {
     let mut got = Vec::new();
     while let Ok(Some(Ok(m))) = tokio::time::timeout(wait, ws.next()).await {
@@ -266,7 +266,7 @@ async fn a_new_connection_ends_the_evicted_one() {
 
 #[test]
 fn an_action_is_keyed_by_seat_session_and_call() {
-    // Call ids repeat across sessions (fake-claude replays `toolu_1` in every session).
+    // Call ids can repeat across sessions.
     let store = controld::store::Store::open_in_memory().unwrap();
     let insert = "INSERT INTO actions (seat, call_id, rig, tenure, called_seq, at_ms, tool, input_json) VALUES ('dev.a@r', 'toolu_1', 'r', ?1, 1, 0, 'Bash', '{}')";
     store.connection().execute(insert, [1]).unwrap();

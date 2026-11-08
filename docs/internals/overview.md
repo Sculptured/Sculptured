@@ -89,7 +89,7 @@ The Cargo workspace is `crates/*` (`spikes/` is excluded). The hosted gateway an
 | `crates/interpreter` | Heuristic reading of tool calls into plain-language actions and risk flags. Pure; never reads the filesystem, never blocks. | No |
 | `crates/signing` | HMAC `sign` and `verify` for gateway-to-instance requests. | Yes: request signature |
 | `crates/sculptured` | The one binary: `serve`, `hostd`, `seat-tools`, `connect`, `allow`, `stop`, and `guard` (Claude Code's hook for [protections](protections.md)). | CLI |
-| `crates/fixtures` | Fake CLIs (`fake-claude`, `fake-codex`), scrubbed recordings, manual probes. Test-only. | No |
+| `crates/fixtures` | Scrubbed CLI recordings, manual recording probes, the fake Community web service. Test-only. | No |
 | `crates/e2e-server` | The Playwright web server: real binary, throwaway data dir and `HOME`. Test-only. | No |
 | `web/src/generated` | TypeScript types generated from Rust. Never hand-edited. | Mirror of Rust types |
 | `web/src/structure` | Structure board: designing a team, folder picker, start confirmation, team generator UI. | No |

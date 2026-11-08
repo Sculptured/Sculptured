@@ -130,7 +130,7 @@ Disclosure in the web app (`ItemBoard.tsx`):
 - Its title names the source: "Claude Code's own estimate" or "OpenAI list prices (checked 12 Oct 2026)", and says "Claude or ChatGPT plan subscribers are not billed this amount."
 - Tokens carry the note that they are as the CLI reported them, cache reads not included, and "may arrive up to one turn late".
 
-**Where the model comes from.** Codex names the model it runs only in its answer to `thread/start`, `thread/resume` or `thread/fork`. The handshake (`codex/session.rs`) reads that answer itself and hands it to `CodexParser::note_model`, so every later turn's tokens are priced. fake-codex echoes the requested model the way Codex does, and `codex_handoffs.rs::a_codex_turn_on_a_listed_model_reports_its_cost` pins the live path. An unlisted model, such as the fake's default `fake-model`, has no cost.
+**Where the model comes from.** Codex names the model it runs only in its answer to `thread/start`, `thread/resume` or `thread/fork`. The handshake (`codex/session.rs`) reads that answer itself and hands it to `CodexParser::note_model`, so every later turn's tokens are priced. `codex_handoffs.rs::live_a_codex_turn_on_a_listed_model_reports_its_cost` pins the live path. An unlisted model has no cost.
 
 ## 7. Run budgets and the gate
 
@@ -200,7 +200,7 @@ The same budget pass also runs the context ceiling ([Protections §4](protection
 | A token limit with subagents soft-stops the agent and its children | `collaboration.rs::a_token_limit_including_subagents_soft_stops_the_agent_with_its_children` |
 | Claude usage arrives per model call and adds up to `modelUsage` | `crates/drivers/tests/claude_usage.rs` (`usage_arrives_per_message_not_only_at_result`, `repeated_lines_of_one_message_count_once`, `result_reconciles_to_model_usage_exactly`) |
 | Codex usage arrives during the turn | `crates/drivers/tests/codex_recordings.rs::codex_usage_arrives_during_the_turn` |
-| A hard stop ends a stubborn agent and its commands at 2 s; a normal one on the interrupt | `crates/fixtures/tests/claude_contract.rs` (`a_hard_stop_ends_a_stubborn_agent_and_its_commands_within_2_5_s`, `a_well_behaved_agent_exits_on_the_interrupt_alone`) |
+| A hard stop ends the agent and its commands within 2.5 s | `crates/drivers/tests/claude_live.rs::live_a_hard_stop_ends_the_cli_and_its_command_within_2_5_s` |
 | A run wraps up at soft and stops at hard within the bound | `crates/controld/tests/run_budget.rs::a_run_wraps_up_at_soft_and_stops_at_hard_within_the_bound` |
 | A learned rate stops a run with no plan readings | `run_budget.rs::with_no_plan_reading_a_learned_rate_still_stops_the_run` |
 | Every path to new work is refused past soft; interrupts pass | `run_budget.rs::every_path_to_new_work_is_refused_past_the_soft_value` |

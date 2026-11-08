@@ -1,5 +1,5 @@
 //! Starts the real binary (controld + spawned hostd) on a throwaway data dir, `HOME` and port, and
-//! drives it over HTTP; the rig test runs real Claude Code agents on haiku (live, ignored by default).
+//! drives it over HTTP; the agent tests run the real Claude Code CLI (live, ignored by default).
 //! Nothing here can reach `~/.sculptured` or the default ports: every serve gets `--data-dir`,
 //! `--port 0` and its own `HOME`, and only `CLAUDE_CONFIG_DIR` points at the person's Claude Code
 //! setup, so a live agent is signed in.
@@ -408,35 +408,21 @@ fn serve_creates_a_private_data_dir_and_tightens_an_existing_one() {
     wait_gone(&open);
 }
 
-/// M2: an agent process must not inherit hostd's controld token. The "claude" here is a
-/// script that records its environment and then waits on stdin like a real session.
+/// M2: an agent process must not inherit hostd's controld token. The agent is the real Claude
+/// Code CLI; its environment is read from /proc. No message is sent, so no model is called.
 #[tokio::test(flavor = "multi_thread")]
-async fn agent_processes_do_not_inherit_the_host_token() {
-    use std::os::unix::fs::PermissionsExt;
+#[ignore = "live: real claude CLI (no message reaches the model); run with --ignored"]
+async fn live_agent_processes_do_not_inherit_the_host_token() {
+    let Some(claude) = require() else { return };
     let data = tempfile::tempdir().unwrap();
     let work = tempfile::tempdir().unwrap();
-    let env_log = work.path().join("agent.env");
-    let program = work.path().join("fake-claude.sh");
-    std::fs::write(
-        &program,
-        format!(
-            "#!/bin/sh\nenv > '{}'\nexec cat > /dev/null\n",
-            env_log.display()
-        ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let spec_path = work.path().join("claude.yaml");
-    std::fs::write(
-        &spec_path,
-        "version: \"0.2\"\nname: envcheck\npods:\n  - id: dev\n    label: Dev\n    members:\n      - { id: a, agent_ref: \"local:a\", profile: default, runtime: claude-code, cwd: \".\" }\n",
-    )
-    .unwrap();
+    std::fs::write(&spec_path, one_agent_spec("envcheck")).unwrap();
 
     let serve = Serve::start_with(
         data.path(),
         0,
-        &["--claude-program", program.to_str().unwrap()],
+        &["--claude-program", claude.to_str().unwrap()],
     );
     let base = serve.base.clone();
     let http = client();
@@ -447,16 +433,16 @@ async fn agent_processes_do_not_inherit_the_host_token() {
         .await
         .unwrap();
     assert!(boot.status().is_success(), "{}", boot.text().await.unwrap());
-    poll("agent wrote its environment", async || {
-        std::fs::read_to_string(&env_log).is_ok_and(|s| s.contains("PATH="))
-    })
-    .await;
+    let agent = agent_process(&serve).await;
+    let _guard = AgentGroup(agent);
 
-    let env = std::fs::read_to_string(&env_log).unwrap();
+    let env = std::fs::read(format!("/proc/{agent}/environ")).unwrap();
+    let env = String::from_utf8_lossy(&env).replace('\0', "\n");
+    assert!(env.contains("PATH="), "the agent's environment was read");
     let token = std::fs::read_to_string(data.path().join("host-token")).unwrap();
     assert!(
         !env.contains("SCULPTURED_HOST_TOKEN"),
-        "agent env has the token variable:\n{env}"
+        "agent env has the token variable"
     );
     assert!(
         !env.contains(token.trim()),
@@ -475,6 +461,88 @@ async fn agent_processes_do_not_inherit_the_host_token() {
     wait_gone(&data_path);
 }
 
+/// A rig of one Claude Code agent on haiku, working in the spec's folder.
+fn one_agent_spec(name: &str) -> String {
+    format!(
+        "version: \"0.2\"\nname: {name}\npods:\n  - id: dev\n    label: Dev\n    members:\n      - {{ id: a, agent_ref: \"local:a\", profile: default, runtime: claude-code, model: haiku, cwd: \".\" }}\n"
+    )
+}
+
+/// A field of /proc/<pid>/stat after the command name (0 is the state, 1 the parent, 2 the group).
+fn stat_field(pid: i32, n: usize) -> Option<i32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    stat.rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().nth(n))
+        .and_then(|p| p.parse().ok())
+}
+
+fn cmdline(pid: i32) -> String {
+    std::fs::read(format!("/proc/{pid}/cmdline"))
+        .map(|c| String::from_utf8_lossy(&c).replace('\0', " "))
+        .unwrap_or_default()
+}
+
+/// Live children of `parent` whose command line holds `needle`.
+fn children_with(parent: i32, needle: &str) -> Vec<i32> {
+    std::fs::read_dir("/proc")
+        .unwrap()
+        .flatten()
+        .filter_map(|e| e.file_name().to_string_lossy().parse::<i32>().ok())
+        .filter(|&pid| stat_field(pid, 1) == Some(parent) && alive(pid))
+        .filter(|&pid| cmdline(pid).contains(needle))
+        .collect()
+}
+
+/// A live descendant of `root` running `sleep 600` (the command itself, not a shell around it).
+fn sleep_under(root: i32) -> Option<i32> {
+    let is_sleep = |pid: i32| {
+        let cmd = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+        let mut args = cmd.split(|b| *b == 0);
+        let prog = args.next().unwrap_or_default();
+        prog.rsplit(|b| *b == b'/').next() == Some(b"sleep".as_slice())
+            && args.next() == Some(b"600".as_slice())
+    };
+    let mut todo = vec![root];
+    while let Some(p) = todo.pop() {
+        let kids = children_with(p, "");
+        if let Some(&hit) = kids.iter().find(|&&k| is_sleep(k)) {
+            return Some(hit);
+        }
+        todo.extend(kids);
+    }
+    None
+}
+
+/// The real Claude Code process this test's hostd started for its agent (`claude -p … stream-json`).
+async fn agent_process(serve: &Serve) -> i32 {
+    let hostd = serve.hostd_pid().expect("hostd pid");
+    assert!(
+        sculptured_procs(&serve.data).contains(&hostd),
+        "hostd is this test's"
+    );
+    poll_for("the agent's process", Duration::from_secs(60), async || {
+        !children_with(hostd, "stream-json").is_empty()
+    })
+    .await;
+    children_with(hostd, "stream-json")[0]
+}
+
+/// Kills an agent's process group on drop if it is still running, so a failing test leaves no
+/// agent behind once its hostd is gone. The agent leads its own group (the driver makes one).
+struct AgentGroup(i32);
+
+impl Drop for AgentGroup {
+    fn drop(&mut self) {
+        let pid = self.0;
+        if alive(pid) && stat_field(pid, 2) == Some(pid) && cmdline(pid).contains("stream-json") {
+            // SAFETY: the group led by this test's agent, checked just above.
+            unsafe {
+                libc::killpg(pid, libc::SIGKILL);
+            }
+        }
+    }
+}
+
 /// The HTTP client, with the one TLS crypto provider the binary uses (`ring`).
 fn client() -> reqwest::Client {
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -482,58 +550,69 @@ fn client() -> reqwest::Client {
 }
 
 /// A runner told to stop (SIGTERM: the desktop quitting, `systemctl stop`) stops its agents first,
-/// rather than leaving them working unwatched. The "claude" here ignores stdin, as a busy agent does.
+/// rather than leaving them working unwatched. The agent is the real Claude Code CLI on haiku, busy
+/// in a long turn (running `sleep 600` with its Bash tool).
 #[tokio::test(flavor = "multi_thread")]
-async fn a_runner_told_to_stop_stops_its_agents() {
-    use std::os::unix::fs::PermissionsExt;
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_a_runner_told_to_stop_stops_its_agents() {
+    let Some(claude) = require() else { return };
     let data = tempfile::tempdir().unwrap();
     let work = tempfile::tempdir().unwrap();
-    let pid_file = work.path().join("agent.pid");
-    let program = work.path().join("busy-claude.sh");
-    std::fs::write(
-        &program,
-        format!(
-            "#!/bin/sh\necho $$ > '{}'\nexec sleep 600\n",
-            pid_file.display()
-        ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     let spec_path = work.path().join("busy.yaml");
-    std::fs::write(
-        &spec_path,
-        "version: \"0.2\"\nname: busy\npods:\n  - id: dev\n    label: Dev\n    members:\n      - { id: a, agent_ref: \"local:a\", profile: default, runtime: claude-code, cwd: \".\" }\n",
-    )
-    .unwrap();
+    std::fs::write(&spec_path, one_agent_spec("busy")).unwrap();
 
     let serve = Serve::start_with(
         data.path(),
         0,
-        &["--claude-program", program.to_str().unwrap()],
+        &["--claude-program", claude.to_str().unwrap()],
     );
+    let base = serve.base.clone();
     let http = client();
     let boot = http
-        .post(format!("{}/api/rigs", serve.base))
+        .post(format!("{base}/api/rigs"))
         .json(&json!({ "request_id": "boot-busy", "spec_path": spec_path }))
         .send()
         .await
         .unwrap();
     assert!(boot.status().is_success(), "{}", boot.text().await.unwrap());
-    poll("agent started", async || {
-        std::fs::read_to_string(&pid_file).is_ok_and(|s| s.trim().parse::<i32>().is_ok())
+    let agent = agent_process(&serve).await;
+    let _guard = AgentGroup(agent);
+    poll_for("the seat running", Duration::from_secs(60), async || {
+        let snap: Value = http
+            .get(format!("{base}/api/rigs/busy"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        snap["seats"][0]["lifecycle"] == "running"
     })
     .await;
-    let agent: i32 = std::fs::read_to_string(&pid_file)
-        .unwrap()
-        .trim()
-        .parse()
+    let sent = http
+        .post(format!("{base}/api/seats/dev.a@busy/send"))
+        .json(&json!({ "request_id": "send-busy", "text": "Use your Bash tool to run exactly this command and wait for it: sleep 600", "intent": "inform", "interrupt": false }))
+        .send()
+        .await
         .unwrap();
+    assert!(sent.status().is_success(), "{}", sent.text().await.unwrap());
+    poll_for(
+        "the agent busy running sleep",
+        Duration::from_secs(240),
+        async || sleep_under(agent).is_some(),
+    )
+    .await;
+    let sleep = sleep_under(agent).expect("the agent's sleep");
     let hostd = serve.hostd_pid().expect("hostd pid");
 
-    // SAFETY: hostd is this test's runner (read from its pid file just above).
+    // SAFETY: hostd is this test's runner (checked by `agent_process`).
     unsafe { libc::kill(hostd, libc::SIGTERM) };
     poll("agent stopped", async || !alive(agent)).await;
     poll("runner exited", async || !alive(hostd)).await;
+    if alive(sleep) && cmdline(sleep).contains("600") {
+        // SAFETY: the agent's own `sleep`, found among its descendants above and still running.
+        unsafe { libc::kill(sleep, libc::SIGKILL) };
+    }
     let data_path = data.path().to_path_buf();
     drop(serve);
     wait_gone(&data_path);

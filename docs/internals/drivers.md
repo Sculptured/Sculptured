@@ -9,7 +9,7 @@ Sources:
 - `crates/drivers/src/opencode/{mod,config,core,parser,session}.rs`
 - `crates/model/src/{caps,limit,pricing}.rs`
 - `crates/controld/src/launch.rs`, `crates/hostd/src/run.rs`, `crates/hostd/src/supervisor/{mod,lifecycle}.rs`, `crates/hostd/src/mapping.rs`
-- `crates/fixtures/src/bin/{fake-claude,fake-codex,codex-probe,mcp-ping-stub}.rs`, `crates/fixtures/recordings/`
+- `crates/fixtures/src/bin/{codex-probe,mcp-ping-stub}.rs`, `crates/fixtures/recordings/`, `crates/drivers/tests/{claude,codex}_live.rs`
 - `docs/spikes/m0-driver-capabilities.md`, `docs/spikes/codex-app-server-schema-0.160.0/`
 
 ## 1. Parts
@@ -124,7 +124,7 @@ sequenceDiagram
 
 ## 3a. How OpenCode is driven
 
-`opencode acp` speaks the Agent Client Protocol, version 1: JSON-RPC 2.0 lines over stdin and stdout. The recordings `crates/fixtures/recordings/opencode-*.jsonl` were made with OpenCode 1.19.4 against a local stand-in for OpenRouter's chat API (no real model calls); `crates/drivers/tests/opencode_recordings.rs` replays them, and `opencode_live.rs` runs a real `opencode` against a stand-in when `OPENCODE_LIVE_PROGRAM` and `OPENCODE_LIVE_BASE_URL` are set.
+`opencode acp` speaks the Agent Client Protocol, version 1: JSON-RPC 2.0 lines over stdin and stdout. The recordings `crates/fixtures/recordings/opencode-*.jsonl` were made with OpenCode 1.19.4 against a local stand-in for OpenRouter's chat API (no real model calls); `crates/drivers/tests/opencode_recordings.rs` feeds them to the parser as data, and the ignored `opencode_live.rs` runs a real `opencode` on a real OpenRouter model.
 
 - **Launch.** `initialize` (no file system or terminal offered), then `session/new {cwd, mcpServers}` or `session/resume {sessionId, cwd, mcpServers}`, then `session/set_config_option {configId: "model"}` when the agent has a model. A model OpenCode does not know fails the launch in plain words.
 - **Config** (`config.rs`) goes in `OPENCODE_CONFIG_CONTENT`, merged over the person's own OpenCode setup: `permission` from the posture (unrestricted: everything allowed; restricted: edit, bash, webfetch, websearch and outside folders ask; a sandboxed computer denies outside folders), `small_model` set to the agent's own model (otherwise OpenCode titles sessions with another model on the person's key), `experimental.mcp_timeout` long enough for a question to wait for the operator (the MCP SDK's default is 60 seconds), no automatic updates, no sharing.
@@ -184,12 +184,10 @@ stateDiagram-v2
 
 ## 7. Recorded CLI output and live tests
 
-**Fixture CLIs** replay recorded output of the real CLIs so the parsers and process handling can be tested without a model call. They replay shapes from the scrubbed recordings in `crates/fixtures/recordings/`:
-- `fake-claude`: scripts such as `hang`, `crash`, `subagent`, `limit`, `unknown`, `big`, `env:`, `tool:`.
-- `fake-codex`: scripts such as `hang`, `hang-child`, `crash`, `fail`, `tool:`, `edit:`, `run:`, `ask:`. One deliberate difference: a mid-turn `turn/start` gets error -32600, so a driver bug shows up.
+**Recorded CLI output** in `crates/fixtures/recordings/` (scrubbed recordings of the real CLIs) is fed to the parsers line by line as data, in `crates/drivers/tests/*_recordings.rs`, `claude_recorded_lines.rs`, `claude_limits.rs` and `claude_usage.rs`. No process stands in for a CLI.
 - `codex-probe` and `mcp-ping-stub` drive the real `codex app-server` to make new recordings. They spend model calls, so they are run by hand only.
 
-**Live tests** check what only a running agent shows on the real Claude Code CLI with haiku (or Codex). They are named `live_…`, `#[ignore]`d, and run with `cargo test -p <crate> --test <file> -- --ignored live_`; they need the CLI installed and signed in and cost credits. See [Testing](testing.md#3-live-tests).
+**Live tests** check what only a running agent shows on the real Claude Code CLI with haiku (or Codex with `gpt-6-luna`); the driver-level ones are `crates/drivers/tests/claude_live.rs` and `codex_live.rs`. They are named `live_…`, `#[ignore]`d, and run with `cargo test -p <crate> --test <file> -- --ignored live_`; they need the CLI installed and signed in and cost credits. See [Testing](testing.md#3-live-tests).
 
 ## Architecture invariants
 
@@ -209,12 +207,12 @@ stateDiagram-v2
 | Claude flags per posture and seat tools | `crates/drivers/tests/claude_args.rs` (`unrestricted_by_default_skips_permissions`, `restricted_routes_permission_prompts_to_the_approve_tool`, `a_config_file_keeps_the_token_off_the_command_line`) |
 | Real Claude recordings parse; interrupt orders result before turn end | `crates/drivers/tests/claude_recordings.rs` (`every_claude_recording_parses_without_unrecognized`, `interrupt_recording_orders_tool_result_before_turn_end`) |
 | Subagent lines link to their parent and count | `claude_recordings.rs::subagent_recording_links_children_and_counts_their_usage` |
-| Stop kills a CLI that ignores EOF | `crates/fixtures/tests/claude_contract.rs::stop_kills_a_child_that_ignores_eof_and_a_grandchild_holding_stderr` |
-| Stop ends a command an interrupt left running | `crates/fixtures/tests/codex_contract.rs::stop_ends_a_command_the_interrupt_left_running` |
-| One message per Codex turn; refused starts retried three times | `codex_contract.rs::a_message_sent_during_a_turn_waits_for_turn_completed`; `codex/core.rs::a_refused_start_is_resent_after_a_pause_three_times_in_all_then_fails` |
+| Stop ends a CLI and its running command | `crates/drivers/tests/claude_live.rs::live_stop_during_a_command_ends_the_cli_and_the_command` |
+| Stop ends a command an interrupt left running | `crates/drivers/tests/codex_live.rs::live_stop_ends_a_command_the_interrupt_left_running` |
+| One message per Codex turn; refused starts retried three times | `codex_live.rs::live_a_message_sent_during_a_turn_waits_for_the_interrupted_turn`; `codex/core.rs::a_refused_start_is_resent_after_a_pause_three_times_in_all_then_fails` |
 | Unknown server requests are refused | `crates/drivers/tests/codex_recordings.rs::unknown_server_requests_are_refused_not_ignored` |
-| Codex resume counts only new usage | `codex_contract.rs::resume_counts_only_new_usage_and_fork_gets_a_new_thread` |
-| Seat tools reach Codex as thread config | `codex_contract.rs::seat_tools_reach_codex_as_thread_config` |
+| Codex resume counts only new usage | `codex_recordings.rs::usage_after_resume_starts_from_a_baseline`; `codex_live.rs::live_resume_keeps_the_thread_and_fork_gets_a_new_one` |
+| Seat tools reach Codex as thread config | `codex_live.rs::live_seat_tools_reach_codex_as_thread_config` |
 
 ## Not built yet / deferred
 

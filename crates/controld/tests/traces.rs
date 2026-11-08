@@ -1,14 +1,15 @@
 //! Sending a team's runs as OpenTelemetry traces: the setting keeps its key on the server, and a run's
-//! spans reach a stand-in collector (no third-party call).
+//! spans reach a stand-in collector (no third-party call). Runs are events written to the store as the
+//! runner and controld record them.
 mod common;
 use axum::Router;
 use axum::extract::State;
 use axum::http::HeaderMap;
-use common::fake_bin;
-
 use common::m2::{Served, rid};
-use drivers::claude::ClaudeStreamDriver;
+use controld::store::RigSource;
+use model::{Actor, EventBody, Provenance, SeatLifecycle, Subject, TurnStatus};
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 async fn team(s: &Served, dir: &std::path::Path) -> String {
@@ -20,7 +21,7 @@ async fn team(s: &Served, dir: &std::path::Path) -> String {
     )
     .await;
     let mut draft = rec["draft"].clone();
-    draft["agents"] = json!([{ "id": "a", "group_id": null, "name": "Writer", "kind": "claude", "job": "spend:100:50:2", "folder": dir.display().to_string(), "x": 40, "y": 40 }]);
+    draft["agents"] = json!([{ "id": "a", "group_id": null, "name": "Writer", "kind": "claude", "job": "Write the page.", "folder": dir.display().to_string(), "x": 40, "y": 40 }]);
     draft["connections"] = json!([]);
     let id = draft["id"].as_str().unwrap().to_string();
     let (status, body) = crate::common::m2::call(
@@ -142,38 +143,145 @@ fn span_names(got: &Got) -> Vec<String> {
         .collect()
 }
 
+/// The next runner sequence number: every event the "runner" reports in this binary is new.
+static HOST_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Records `body` on `seat` as the runner reports it.
+fn host(s: &Served, seat: &str, body: EventBody) {
+    let ev = host_proto::HostEvent {
+        host_seq: HOST_SEQ.fetch_add(1, Ordering::SeqCst) + 1,
+        at_ms: model::now_ms(),
+        actor: Actor::System("hostd".into()),
+        subject: Subject::Seat(seat.to_string()),
+        provenance: Provenance::ProtocolObserved,
+        body,
+    };
+    s.st.store.lock().unwrap().ingest("local", ev).unwrap();
+}
+
+/// Records `body` on team `id` as controld does.
+fn on_team(s: &Served, id: &str, body: EventBody) {
+    s.st.store
+        .lock()
+        .unwrap()
+        .append_local(
+            Actor::Human("local".into()),
+            Subject::Rig(id.to_string()),
+            Provenance::Operator,
+            body,
+        )
+        .unwrap();
+}
+
+/// Team `id` starts and its agent's session begins (session number `tenure`).
+fn start_run(s: &Served, id: &str, tenure: u32) {
+    {
+        let mut store = s.st.store.lock().unwrap();
+        let draft = store.draft(id).unwrap().unwrap();
+        let rig = rigspec::from_draft(&draft).unwrap().rig;
+        let source = RigSource::Team {
+            id: id.to_string(),
+            revision: draft.revision,
+        };
+        store
+            .upsert_rig(&rig, &source, model::Desired::Running)
+            .unwrap();
+    }
+    on_team(
+        s,
+        id,
+        EventBody::RigBooted {
+            spec_hash: "x".into(),
+            seat_count: 1,
+        },
+    );
+    let seat = format!("team.a@{id}");
+    host(
+        s,
+        &seat,
+        EventBody::TenureStarted {
+            tenure,
+            cause: model::TenureCause::Fresh,
+            driver: "claude-stream".into(),
+            native_session_id: None,
+            caps: Default::default(),
+        },
+    );
+    host(
+        s,
+        &seat,
+        EventBody::SeatLifecycleChanged {
+            lifecycle: SeatLifecycle::Running,
+            reason: None,
+        },
+    );
+}
+
+/// The agent of team `id` does one turn that writes `text`.
+fn turn(s: &Served, id: &str, turn_id: &str, text: &str) {
+    let seat = format!("team.a@{id}");
+    host(
+        s,
+        &seat,
+        EventBody::TurnStarted {
+            turn_id: turn_id.into(),
+        },
+    );
+    host(
+        s,
+        &seat,
+        EventBody::AgentText {
+            turn_id: Some(turn_id.into()),
+            text: text.into(),
+        },
+    );
+    host(
+        s,
+        &seat,
+        EventBody::TurnEnded {
+            turn_id: turn_id.into(),
+            status: TurnStatus::Completed,
+        },
+    );
+}
+
+/// Team `id` is stopped and its agent's session `tenure` ends.
+fn stop_run(s: &Served, id: &str, tenure: u32) {
+    on_team(
+        s,
+        id,
+        EventBody::RigDesiredChanged {
+            desired: model::Desired::Stopped,
+        },
+    );
+    host(
+        s,
+        &format!("team.a@{id}"),
+        EventBody::TenureEnded {
+            tenure,
+            exit_code: Some(0),
+            signal: None,
+            stderr_tail: String::new(),
+        },
+    );
+}
+
 #[tokio::test]
 async fn a_runs_spans_reach_the_collector_with_the_key() {
     let s = crate::common::m2::serve().await;
-    let _runner = crate::common::m2::connect(
-        &s,
-        vec![Arc::new(ClaudeStreamDriver {
-            program: fake_bin("fake-claude"),
-        })],
-        None,
-    )
-    .await;
     let dir = tempfile::tempdir_in(s.home.path()).unwrap();
     let id = team(&s, dir.path()).await;
     let (endpoint, got) = collector().await;
     let (status, v) = crate::common::m2::call(&s.router, "PUT", &format!("/api/teams/{id}/traces"), json!({ "request_id": rid(), "enabled": true, "endpoint": endpoint, "key": "k-1", "content": "full" })).await;
     assert_eq!(status.as_u16(), 200, "{v}");
-    crate::common::m2::start_team(&s, &id).await;
-    common::wait_for("the session began", || {
-        crate::common::m2::events(&s.st, &format!("team.a@{id}"))
-            .iter()
-            .any(|e| matches!(e.body, model::EventBody::TenureStarted { .. }))
-    })
-    .await;
+    start_run(&s, &id, 1);
     controld::traces::export::tick(&s.st).await;
     assert!(
-        controld_turns_ended(&s, &format!("team.a@{id}")) == 0 || !got.lock().unwrap().is_empty(),
-        "the run is followed in full mode first"
+        got.lock().unwrap().is_empty(),
+        "nothing has ended yet: {:?}",
+        span_names(&got)
     );
-    common::wait_for("a turn ends", || {
-        controld_turns_ended(&s, &format!("team.a@{id}")) > 0
-    })
-    .await;
+    turn(&s, &id, "t1", "the secret page text");
     // Switched to timings only while the run goes: from now on no text is sent.
     let (_, v) = crate::common::m2::call(&s.router, "PUT", &format!("/api/teams/{id}/traces"), json!({ "request_id": rid(), "enabled": true, "endpoint": endpoint, "content": "metadata" })).await;
     assert_eq!(v["key_saved"], true, "{v}");
@@ -186,21 +294,7 @@ async fn a_runs_spans_reach_the_collector_with_the_key() {
     let (h, _) = got.lock().unwrap()[0].clone();
     assert_eq!(h["authorization"].to_str().unwrap(), "Bearer k-1");
     assert_eq!(h["content-type"].to_str().unwrap(), "application/json");
-    let (status, _) = crate::common::m2::call(
-        &s.router,
-        "POST",
-        &format!("/api/rigs/{id}/stop"),
-        json!({ "request_id": rid() }),
-    )
-    .await;
-    assert!(status.is_success());
-    let seat = format!("team.a@{id}");
-    common::wait_for("the session ended", || {
-        crate::common::m2::events(&s.st, &seat)
-            .iter()
-            .any(|e| matches!(e.body, model::EventBody::TenureEnded { .. }))
-    })
-    .await;
+    stop_run(&s, &id, 1);
     controld::traces::export::tick(&s.st).await;
     let names = span_names(&got);
     assert!(
@@ -222,11 +316,12 @@ async fn a_runs_spans_reach_the_collector_with_the_key() {
         "the key travels only in the header"
     );
     assert!(
-        got.lock()
-            .unwrap()
-            .iter()
-            .all(|(_, body)| !body.to_string().contains("lmnr.span.input")
-                && !body.to_string().contains("lmnr.span.output")),
+        got.lock().unwrap().iter().all(|(_, body)| {
+            let b = body.to_string();
+            !b.contains("lmnr.span.input")
+                && !b.contains("lmnr.span.output")
+                && !b.contains("the secret page text")
+        }),
         "timings only"
     );
     let before = names.len();
@@ -237,45 +332,15 @@ async fn a_runs_spans_reach_the_collector_with_the_key() {
 #[tokio::test]
 async fn a_run_started_again_before_it_was_sent_still_goes_whole() {
     let s = crate::common::m2::serve().await;
-    let _runner = crate::common::m2::connect(
-        &s,
-        vec![Arc::new(ClaudeStreamDriver {
-            program: fake_bin("fake-claude"),
-        })],
-        None,
-    )
-    .await;
     let dir = tempfile::tempdir_in(s.home.path()).unwrap();
     let id = team(&s, dir.path()).await;
     let (endpoint, got) = collector().await;
     crate::common::m2::call(&s.router, "PUT", &format!("/api/teams/{id}/traces"), json!({ "request_id": rid(), "enabled": true, "endpoint": endpoint, "key": "k", "content": "metadata" })).await;
-    let seat = format!("team.a@{id}");
-    crate::common::m2::start_team(&s, &id).await;
-    common::wait_for("a turn ends", || controld_turns_ended(&s, &seat) > 0).await;
+    start_run(&s, &id, 1);
+    turn(&s, &id, "t1", "done");
     controld::traces::export::tick(&s.st).await;
-    let (status, _) = crate::common::m2::call(
-        &s.router,
-        "POST",
-        &format!("/api/rigs/{id}/stop"),
-        json!({ "request_id": rid() }),
-    )
-    .await;
-    assert!(status.is_success());
-    common::wait_for("the session ended", || {
-        crate::common::m2::events(&s.st, &seat)
-            .iter()
-            .any(|e| matches!(e.body, model::EventBody::TenureEnded { .. }))
-    })
-    .await;
-    crate::common::m2::start_team(&s, &id).await;
-    common::wait_for("the second run began", || {
-        crate::common::m2::events(&s.st, &seat)
-            .iter()
-            .filter(|e| matches!(e.body, model::EventBody::TenureStarted { .. }))
-            .count()
-            > 1
-    })
-    .await;
+    stop_run(&s, &id, 1);
+    start_run(&s, &id, 2);
     controld::traces::export::tick(&s.st).await;
     let names = span_names(&got);
     assert!(
@@ -287,33 +352,17 @@ async fn a_run_started_again_before_it_was_sent_still_goes_whole() {
         "and its agent's session: {names:?}"
     );
 }
-
-fn controld_turns_ended(s: &Served, seat: &str) -> usize {
-    crate::common::m2::events(&s.st, seat)
-        .iter()
-        .filter(|e| matches!(e.body, model::EventBody::TurnEnded { .. }))
-        .count()
-}
-
 #[tokio::test]
 async fn a_collector_that_keeps_failing_is_tried_less_often() {
     let s = crate::common::m2::serve().await;
-    let _runner = crate::common::m2::connect(
-        &s,
-        vec![Arc::new(ClaudeStreamDriver {
-            program: fake_bin("fake-claude"),
-        })],
-        None,
-    )
-    .await;
     let dir = tempfile::tempdir_in(s.home.path()).unwrap();
     let id = team(&s, dir.path()).await;
-    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let hits = Arc::new(AtomicU64::new(0));
     let h = hits.clone();
     let app = Router::new().route(
         "/v1/traces",
         axum::routing::post(move || {
-            h.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            h.fetch_add(1, Ordering::SeqCst);
             async { (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "down") }
         }),
     );
@@ -324,13 +373,10 @@ async fn a_collector_that_keeps_failing_is_tried_less_often() {
     );
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     crate::common::m2::call(&s.router, "PUT", &format!("/api/teams/{id}/traces"), json!({ "request_id": rid(), "enabled": true, "endpoint": endpoint, "key": "k", "content": "metadata" })).await;
-    crate::common::m2::start_team(&s, &id).await;
-    common::wait_for("a turn ends", || {
-        controld_turns_ended(&s, &format!("team.a@{id}")) > 0
-    })
-    .await;
+    start_run(&s, &id, 1);
+    turn(&s, &id, "t1", "done");
     controld::traces::export::tick(&s.st).await;
-    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
     assert!(
         crate::common::m2::get(&s.router, &format!("/api/teams/{id}/traces"))
             .await
@@ -340,9 +386,5 @@ async fn a_collector_that_keeps_failing_is_tried_less_often() {
             .contains("500")
     );
     controld::traces::export::tick(&s.st).await;
-    assert_eq!(
-        hits.load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "the next try waits"
-    );
+    assert_eq!(hits.load(Ordering::SeqCst), 1, "the next try waits");
 }

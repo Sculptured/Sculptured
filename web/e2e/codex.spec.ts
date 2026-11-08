@@ -1,66 +1,57 @@
 import { expect, test } from '@playwright/test';
+import { liveOnly, liveTeam, OK_JOB, seatEvents, TURN_MS, turnsEnded } from './fixtures/live';
 
 /**
- * Codex agents in the real app: a two-agent Codex team, built through the API, started from the
- * Structure board after the "Start 2 Codex agents?" confirmation. The e2e server runs Codex agents
- * on fake-codex, so no model is called. Screenshots of the real app land in web/test-results/screens/codex/.
+ * Codex agents in the real app, live (see fixtures/live.ts): a two-agent team on the real `codex`
+ * CLI with its cheapest model, built through the API and started from the Structure board after the
+ * "Start 2 Codex agents?" confirmation. The lead's turn ends and its result is handed to the
+ * builder. Replies vary; the test checks what Sculptured records and delivers.
+ * Screenshots of the real app land in web/test-results/screens/codex/.
  */
+
+liveOnly();
+
 const SHOTS = 'test-results/screens/codex';
 
-type Event = { seq: number; actor: { kind: string; id: string }; body: { type: string; text?: string } };
+/** The cheapest Codex model (crates/model/src/pricing.rs). */
+const CODEX_MODEL = 'gpt-6-luna';
 
 test('desktop: two Codex agents start, run and hand work over', async ({ page, request }, info) => {
   test.skip(info.project.name !== 'desktop', 'desktop flow');
-  const stamp = Date.now();
-  const home = (await (await request.get('/api/folders')).json()).home as string;
-  const made = await request.post('/api/folders', { data: { request_id: `mk-${stamp}`, parent: home, name: `codex-${stamp}` } });
-  expect(made.ok()).toBe(true);
-  const folder = (await made.json()).path as string;
+  test.setTimeout(900_000);
+  const { id } = await liveTeam(request, `Codex pair ${Date.now()}`, (draft, folder) => {
+    draft.models = { ...draft.models, codex: CODEX_MODEL };
+    draft.agents = [
+      { id: 'lead', group_id: null, name: 'Lead', kind: 'codex', job: OK_JOB, folder, x: 40, y: 80 },
+      { id: 'builder', group_id: null, name: 'Builder', kind: 'codex', job: OK_JOB, folder, x: 380, y: 80 },
+    ];
+    draft.connections = [{ id: 'c1', from: 'lead', to: 'builder', kind: 'hands-work-to' }];
+  });
 
-  const created = await request.post('/api/teams', { data: { request_id: `create-${stamp}`, template: 'blank', name: `Codex pair ${stamp}` } });
-  expect(created.ok()).toBe(true);
-  const draft = (await created.json()).draft;
-  draft.agents = [
-    { id: 'lead', group_id: null, name: 'Lead', kind: 'codex', job: 'Plan the page.', folder, x: 40, y: 80 },
-    { id: 'builder', group_id: null, name: 'Builder', kind: 'codex', job: 'Build what the lead hands you.', folder, x: 380, y: 80 },
-  ];
-  draft.connections = [{ id: 'c1', from: 'lead', to: 'builder', kind: 'hands-work-to' }];
-  const saved = await request.put(`/api/teams/${draft.id}`, { data: { request_id: `put-${stamp}`, revision: draft.revision, draft } });
-  expect(saved.ok()).toBe(true);
-
-  await page.goto(`/team/${draft.id}/structure`);
+  await page.goto(`/team/${id}/structure`);
   await expect(page.getByRole('region', { name: 'Design board' })).toBeVisible();
   await page.getByRole('button', { name: 'Start team' }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toContainText('Start 2 Codex agents?');
   await page.screenshot({ path: `${SHOTS}/codex-start-confirm.png` });
   await dialog.getByRole('button', { name: 'Start team' }).click();
-  await expect(page).toHaveURL(new RegExp(`/p/${draft.id}/board\\?mode=run$`));
+  await expect(page).toHaveURL(new RegExp(`/p/${id}/board\\?mode=run$`));
 
-  const builder = `team.builder@${draft.id}`;
-  await expect
-    .poll(
-      async () => {
-        const r = await request.get(`/api/seats/${encodeURIComponent(builder)}/events?after=0&limit=2000`);
-        const events: Event[] = await r.json();
-        return events.some(
-          (e) =>
-            e.body.type === 'message-queued' &&
-            e.actor.kind === 'system' &&
-            e.actor.id === 'handoff' &&
-            (e.body.text ?? '').includes("--- Lead's result ---\ncodex received: Plan the page."),
-        );
-      },
-      { timeout: 30_000 },
-    )
-    .toBe(true);
+  // The lead's result reaches the builder as a handoff, whatever the lead replied.
+  const builder = `team.builder@${id}`;
+  const handoffs = async () =>
+    (await seatEvents(request, builder)).filter(
+      (e) => e.body.type === 'message-queued' && e.actor.kind === 'system' && e.actor.id === 'handoff',
+    );
+  await expect.poll(async () => (await handoffs()).length, { timeout: 2 * TURN_MS }).toBeGreaterThan(0);
+  expect((await handoffs())[0].body.text ?? '').toMatch(/^Handed over by Lead\n\n[\s\S]*--- Lead's result ---\n/);
+  await expect.poll(() => turnsEnded(request, builder), { timeout: TURN_MS }).toBeGreaterThan(0);
   await page.screenshot({ path: `${SHOTS}/codex-live.png`, fullPage: true });
 
-  await page.goto(`/rig/${draft.id}/agent/${encodeURIComponent(builder)}`);
+  await page.goto(`/rig/${id}/agent/${encodeURIComponent(builder)}`);
   await expect(page.getByText('Handed over by Lead').first()).toBeVisible();
-  await expect(page.getByText(/codex received: Handed over by Lead/).first()).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/codex-builder-transcript.png`, fullPage: true });
 
-  const stopped = await request.post(`/api/teams/${draft.id}/stop`, { data: { request_id: `stop-${stamp}` } });
+  const stopped = await request.post(`/api/teams/${id}/stop`, { data: { request_id: `stop-${id}` } });
   expect(stopped.ok()).toBe(true);
 });

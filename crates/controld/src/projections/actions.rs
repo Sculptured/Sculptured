@@ -1,8 +1,7 @@
 //! Interpreted actions (spec §6.4): one row per tool call, its result, and what the interpreter
 //! read into it. Feeds risk counts, the files a session changed and captured test runs.
-//! A row is keyed by seat, session (tenure) and call id: call ids repeat across sessions
-//! (fake-claude's `toolu_1`). A result and its interpretation belong
-//! to the call of the seat's current session.
+//! A row is keyed by seat, session (tenure) and call id: call ids can repeat across sessions.
+//! A result and its interpretation belong to the call of the seat's current session.
 use model::{ActionClass, EventBody, EventRecord, RiskFlag, Subject};
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde_json::Value;

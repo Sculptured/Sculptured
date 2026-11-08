@@ -1,22 +1,17 @@
 //! The supervisor: launch, messages, stop and crashes of real Claude Code agents (live tests), and
-//! its refusals and slot rules (plain tests; the slot rules use a driver whose send never returns).
+//! its refusals (plain tests). The slot rules are live too: a real CLI held stopped (SIGSTOP)
+//! reads nothing, so a send to it wedges and its stop drains for the whole grace, without any
+//! message reaching the model.
 mod common;
 
-use async_trait::async_trait;
 use common::{CLAUDE, require};
-use drivers::{Driver, DriverError, DriverEvent, LaunchSpec, OutboundMessage, Session};
-use futures::stream::{BoxStream, StreamExt};
 use host_proto::{HostCommand, HostEvent};
-use hostd::{Journal, Supervisor};
+use hostd::Supervisor;
 
-use model::{Caps, EventBody, MessageIntent, SeatActivity, SeatLifecycle, Subject};
+use model::{EventBody, MessageIntent, SeatActivity, SeatLifecycle, Subject};
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Notify;
 use tokio::sync::broadcast::Receiver;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio_stream::wrappers::UnboundedReceiverStream;
 
 const SEAT: &str = "dev.a@r";
 
@@ -253,79 +248,6 @@ async fn commands_to_a_seat_that_is_not_running_fail() {
     );
 }
 
-/// Test driver: `send` never completes (a wedged agent whose stdin is full). `stop`
-/// optionally waits for `release` before emitting `Exited`, to hold the pump open.
-struct BlockingDriver {
-    release: Option<Arc<Notify>>,
-}
-
-struct BlockingSession {
-    tx: UnboundedSender<DriverEvent>,
-    rx: Option<UnboundedReceiver<DriverEvent>>,
-    release: Option<Arc<Notify>>,
-}
-
-#[async_trait]
-impl Driver for BlockingDriver {
-    fn name(&self) -> &'static str {
-        "blocking"
-    }
-    fn capabilities(&self) -> Caps {
-        Caps::default()
-    }
-    async fn launch(&self, _spec: LaunchSpec) -> Result<Box<dyn Session>, DriverError> {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let _ = tx.send(DriverEvent::SessionReady {
-            native_session_id: "blocking".into(),
-        });
-        Ok(Box::new(BlockingSession {
-            tx,
-            rx: Some(rx),
-            release: self.release.clone(),
-        }))
-    }
-    async fn resume(
-        &self,
-        spec: LaunchSpec,
-        _native_id: &str,
-    ) -> Result<Box<dyn Session>, DriverError> {
-        self.launch(spec).await
-    }
-}
-
-#[async_trait]
-impl Session for BlockingSession {
-    async fn send(&mut self, _msg: OutboundMessage) -> Result<(), DriverError> {
-        std::future::pending().await
-    }
-    async fn interrupt(&mut self) -> Result<(), DriverError> {
-        Ok(())
-    }
-    async fn stop(&mut self, _grace: Duration) -> Result<(), DriverError> {
-        if let Some(r) = &self.release {
-            r.notified().await;
-        }
-        let _ = self.tx.send(DriverEvent::Exited {
-            exit_code: Some(0),
-            signal: None,
-            stderr_tail: String::new(),
-        });
-        Ok(())
-    }
-    fn take_events(&mut self) -> Option<BoxStream<'static, DriverEvent>> {
-        self.rx
-            .take()
-            .map(|rx| UnboundedReceiverStream::new(rx).boxed())
-    }
-}
-
-fn sup_with(release: Option<Arc<Notify>>) -> Supervisor {
-    Supervisor::new(
-        "local".into(),
-        vec![Arc::new(BlockingDriver { release })],
-        Journal::open_in_memory(1000).unwrap(),
-    )
-}
 fn cmd_for(seat: &str, driver: &str, cwd: &Path) -> HostCommand {
     let mut c = launch_in(cwd, driver);
     if let HostCommand::Launch { seat: s, .. } = &mut c {
@@ -334,20 +256,54 @@ fn cmd_for(seat: &str, driver: &str, cwd: &Path) -> HostCommand {
     c
 }
 async fn within<T>(what: &str, f: impl std::future::Future<Output = T>) -> T {
-    tokio::time::timeout(Duration::from_secs(2), f)
+    tokio::time::timeout(Duration::from_secs(20), f)
         .await
         .unwrap_or_else(|_| panic!("{what} timed out"))
 }
+/// Waits for `seat`'s lifecycle to reach `want`.
+async fn until_seat(rx: &mut Receiver<HostEvent>, seat: &str, want: SeatLifecycle) {
+    within("lifecycle", async {
+        loop {
+            let ev = rx.recv().await.expect("open");
+            if ev.subject == Subject::Seat(seat.into()) && is_lifecycle(&ev.body, want) {
+                return;
+            }
+        }
+    })
+    .await
+}
+/// Stops `seat` on its own task, giving it `grace_ms` to exit.
+fn stop_later(
+    s: &Supervisor,
+    seat: &str,
+    grace_ms: u64,
+) -> tokio::task::JoinHandle<Result<(), String>> {
+    let (s, seat) = (s.clone(), seat.to_string());
+    tokio::spawn(async move {
+        s.handle(HostCommand::Stop {
+            seat,
+            grace_ms,
+            hard: false,
+        })
+        .await
+    })
+}
 
+/// x's CLI is held stopped, so a large send to it blocks on the full pipe; nothing reaches the model.
 #[tokio::test]
-async fn a_wedged_send_does_not_freeze_other_seats_or_its_own_stop() {
+#[ignore = "live: real claude CLI (no message reaches the model); run with --ignored"]
+async fn live_a_wedged_send_does_not_freeze_other_seats_or_its_own_stop() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
-    let s = sup_with(None);
+    let s = sup();
+    let mut rx = s.subscribe();
     let x = "dev.x@r";
     let y = "dev.y@r";
-    within("launch x", s.handle(cmd_for(x, "blocking", dir.path())))
+    within("launch x", s.handle(cmd_for(x, CLAUDE, dir.path())))
         .await
         .unwrap();
+    until_seat(&mut rx, x, SeatLifecycle::Running).await;
+    let _frozen = common::freeze(&s, x);
     let hung = {
         let s = s.clone();
         tokio::spawn(async move {
@@ -355,15 +311,15 @@ async fn a_wedged_send_does_not_freeze_other_seats_or_its_own_stop() {
                 seat: x.into(),
                 message_id: "w".into(),
                 intent: MessageIntent::Inform,
-                text: "x".into(),
+                text: common::wedging_text(),
             })
             .await
         })
     };
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
     assert!(!hung.is_finished(), "the send must be stuck");
 
-    within("launch y", s.handle(cmd_for(y, "blocking", dir.path())))
+    within("launch y", s.handle(cmd_for(y, CLAUDE, dir.path())))
         .await
         .unwrap();
     within("live_seats", s.live_seats()).await;
@@ -394,7 +350,7 @@ async fn a_wedged_send_does_not_freeze_other_seats_or_its_own_stop() {
             && is_lifecycle(&e.body, SeatLifecycle::Stopped))
     );
     assert_eq!(
-        hung.await.unwrap().unwrap_err(),
+        within("the wedged send", hung).await.unwrap().unwrap_err(),
         format!("seat {x} is stopping")
     );
     assert!(s.live_seats().await.is_empty());
@@ -449,65 +405,48 @@ async fn live_stop_journals_terminal_events_before_returning_and_before_a_relaun
     );
 }
 
+/// The CLI is held stopped, so it cannot exit on its own and the stop drains for its whole grace.
 #[tokio::test]
+#[ignore = "live: real claude CLI (no message reaches the model); run with --ignored"]
 async fn live_seats_lists_only_live_slots() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
-    let release = Arc::new(Notify::new());
-    let s = sup_with(Some(release.clone()));
+    let s = sup();
     let mut rx = s.subscribe();
-    s.handle(cmd_for(SEAT, "blocking", dir.path()))
-        .await
-        .unwrap();
-    until(&mut rx, |b| is_lifecycle(b, SeatLifecycle::Running)).await;
+    s.handle(launch_in(dir.path(), CLAUDE)).await.unwrap();
+    until_seat(&mut rx, SEAT, SeatLifecycle::Running).await;
     assert_eq!(s.live_seats().await, vec![SEAT.to_string()]);
-    let stopper = {
-        let s = s.clone();
-        tokio::spawn(async move {
-            s.handle(HostCommand::Stop {
-                seat: SEAT.into(),
-                grace_ms: 500,
-                hard: false,
-            })
-            .await
-        })
-    };
-    until(&mut rx, |b| is_lifecycle(b, SeatLifecycle::Stopping)).await;
+    let _frozen = common::freeze(&s, SEAT);
+    let stopper = stop_later(&s, SEAT, 5000);
+    until_seat(&mut rx, SEAT, SeatLifecycle::Stopping).await;
     assert!(
         s.live_seats().await.is_empty(),
         "a Stopping seat is not live"
     );
-    release.notify_one();
     within("stop", stopper).await.unwrap().unwrap();
 }
 
+/// The CLI is held stopped, so its old tenure drains for the whole grace of the stop.
 #[tokio::test]
-async fn launch_is_refused_while_the_old_tenure_drains() {
+#[ignore = "live: real claude CLI (no message reaches the model); run with --ignored"]
+async fn live_launch_is_refused_while_the_old_tenure_drains() {
+    let Some(_) = require() else { return };
     let dir = tempfile::tempdir().unwrap();
-    let release = Arc::new(Notify::new());
-    let s = sup_with(Some(release.clone()));
+    let s = sup();
     let mut rx = s.subscribe();
-    within("launch", s.handle(cmd_for(SEAT, "blocking", dir.path())))
+    within("launch", s.handle(launch_in(dir.path(), CLAUDE)))
         .await
         .unwrap();
-    until(&mut rx, |b| is_lifecycle(b, SeatLifecycle::Running)).await;
-    let stopper = {
-        let s = s.clone();
-        tokio::spawn(async move {
-            s.handle(HostCommand::Stop {
-                seat: SEAT.into(),
-                grace_ms: 500,
-                hard: false,
-            })
-            .await
-        })
-    };
-    until(&mut rx, |b| is_lifecycle(b, SeatLifecycle::Stopping)).await;
-    let err = within("relaunch", s.handle(cmd_for(SEAT, "blocking", dir.path())))
+    until_seat(&mut rx, SEAT, SeatLifecycle::Running).await;
+    let frozen = common::freeze(&s, SEAT);
+    let stopper = stop_later(&s, SEAT, 5000);
+    until_seat(&mut rx, SEAT, SeatLifecycle::Stopping).await;
+    let err = within("relaunch", s.handle(launch_in(dir.path(), CLAUDE)))
         .await
         .unwrap_err();
     assert_eq!(err, format!("seat {SEAT} is still stopping"));
-    release.notify_one();
     within("stop", stopper).await.unwrap().unwrap();
+    drop(frozen);
     let evs = s.unacked_after(0).unwrap();
     assert!(
         evs.iter()
@@ -515,8 +454,12 @@ async fn launch_is_refused_while_the_old_tenure_drains() {
     );
     within(
         "relaunch after drain",
-        s.handle(cmd_for(SEAT, "blocking", dir.path())),
+        s.handle(launch_in(dir.path(), CLAUDE)),
     )
     .await
     .unwrap();
+    within("stop the new tenure", stop_later(&s, SEAT, 1000))
+        .await
+        .unwrap()
+        .unwrap();
 }

@@ -23,6 +23,9 @@ use std::time::Duration;
 /// The model every live Claude agent runs with: the cheapest one.
 pub const CLAUDE_MODEL: &str = "haiku";
 
+/// The model every live Codex agent runs with: the cheapest one (`model::pricing`).
+pub const CODEX_MODEL: &str = "gpt-6-luna";
+
 /// How long a live wait lasts: a real model turn takes seconds to a minute or two.
 pub const WAIT: Duration = Duration::from_secs(240);
 
@@ -80,11 +83,12 @@ pub fn work_folder(s: &Served) -> String {
     dir.to_string_lossy().into_owned()
 }
 
-/// Every agent of `draft` becomes a Claude agent on the cheapest model, working in `work_folder`.
+/// Every agent of `draft` becomes a Claude agent on the cheapest model, working in `work_folder`;
+/// the team's Codex model is the cheapest one too, for agents a test switches to Codex.
 pub fn make_live(s: &Served, draft: &mut Value) {
     let folder = work_folder(s);
     draft["folder"] = json!(folder);
-    draft["models"] = json!({ "claude": CLAUDE_MODEL });
+    draft["models"] = json!({ "claude": CLAUDE_MODEL, "codex": CODEX_MODEL });
     for a in draft["agents"].as_array_mut().unwrap() {
         a["kind"] = json!("claude");
     }

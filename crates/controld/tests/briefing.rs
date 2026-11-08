@@ -1,42 +1,33 @@
 //! The team briefing an agent gets: its own job and its neighbours' in full, the rest of the team by
-//! name, once per conversation (fake-claude agents; no model is called).
+//! name, once per conversation. Briefings are checked live, on the real Claude Code CLI with its
+//! cheapest model; launch settings are read from a started team with no computer connected.
 mod common;
 use axum::http::StatusCode;
-use common::fake_bin;
 
 use common::m2::{Served, rid};
-use drivers::claude::ClaudeStreamDriver;
 use model::EventBody;
 use serde_json::json;
-use std::sync::Arc;
 
-async fn team(s: &Served, dir: &std::path::Path) -> String {
-    let (status, rec) = crate::common::m2::call(
-        &s.router,
-        "POST",
-        "/api/teams",
-        json!({ "request_id": rid(), "template": "blank", "name": "Brief" }),
+const OK: &str = "reply with the single word OK and nothing else.";
+
+/// A, B and C (Claude agents on haiku), A handing work to B; not started.
+async fn team(s: &Served) -> String {
+    let (a, b, c) = (
+        format!("JOB-OF-A: {OK}"),
+        format!("JOB-OF-B: {OK}"),
+        format!("JOB-OF-C: {OK}"),
+    );
+    crate::common::m2::chain(
+        s,
+        "Brief",
+        &[
+            ("a", "A", a.as_str()),
+            ("b", "B", b.as_str()),
+            ("c", "C", c.as_str()),
+        ],
+        &[("a", "b")],
     )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{rec}");
-    let mut draft = rec["draft"].clone();
-    let agent = |id: &str, job: &str, x: i32| json!({ "id": id, "group_id": null, "name": id.to_uppercase(), "kind": "claude", "job": job, "folder": dir.display().to_string(), "x": x, "y": 40 });
-    draft["agents"] = json!([
-        agent("a", "JOB-OF-A plan the work", 40),
-        agent("b", "JOB-OF-B build what A plans", 300),
-        agent("c", "JOB-OF-C unrelated research", 560)
-    ]);
-    draft["connections"] = json!([{ "id": "ab", "from": "a", "to": "b", "kind": "hands-work-to" }]);
-    let id = draft["id"].as_str().unwrap().to_string();
-    let (status, body) = crate::common::m2::call(
-        &s.router,
-        "PUT",
-        &format!("/api/teams/{id}"),
-        json!({ "request_id": rid(), "revision": draft["revision"], "draft": draft }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
-    id
+    .await
 }
 
 fn queued(s: &Served, seat: &str) -> Vec<String> {
@@ -50,21 +41,17 @@ fn queued(s: &Served, seat: &str) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn an_agent_is_briefed_once_with_its_neighbours_jobs_and_the_rest_by_name() {
+#[ignore = "live: real claude CLI on haiku; run with --ignored"]
+async fn live_an_agent_is_briefed_once_with_its_neighbours_jobs_and_the_rest_by_name() {
+    let Some(_) = common::live::require() else {
+        return;
+    };
     let s = crate::common::m2::serve().await;
-    let _runner = crate::common::m2::connect(
-        &s,
-        vec![Arc::new(ClaudeStreamDriver {
-            program: fake_bin("fake-claude"),
-        })],
-        None,
-    )
-    .await;
-    let dir = tempfile::tempdir_in(s.home.path()).unwrap();
-    let id = team(&s, dir.path()).await;
+    let _runner = common::live::connect(&s).await;
+    let id = team(&s).await;
     crate::common::m2::start_team(&s, &id).await;
     let a = crate::common::m2::seat(&id, "a");
-    common::wait_for("A's job", || !queued(&s, &a).is_empty()).await;
+    common::live::wait_for("A's job", || !queued(&s, &a).is_empty()).await;
     let first = &queued(&s, &a)[0];
     assert!(
         first.contains("Team architecture (operator configuration)")
@@ -76,30 +63,35 @@ async fn an_agent_is_briefed_once_with_its_neighbours_jobs_and_the_rest_by_name(
         !first.contains("JOB-OF-C") && first.contains("C [c]"),
         "the rest of the team by name only: {first}"
     );
-    crate::common::m2::say(&s, &a, "second message").await;
-    common::wait_for("the second message", || queued(&s, &a).len() >= 2).await;
+    crate::common::m2::say(&s, &a, &format!("second message: {OK}")).await;
+    common::live::wait_for("the second message", || queued(&s, &a).len() >= 2).await;
     let second = &queued(&s, &a)[1];
     assert!(
         !second.contains("Team architecture"),
         "briefed once per conversation: {second}"
     );
     assert!(second.contains("second message"));
+    crate::common::m2::stop_team(&s, &id).await;
+}
+
+/// Starts team `id` with no computer connected: its compiled agents are recorded, none launches.
+async fn start_without_computer(s: &Served, id: &str) {
+    let (status, body) = crate::common::m2::call(
+        &s.router,
+        "POST",
+        &format!("/api/teams/{id}/start"),
+        json!({ "request_id": rid() }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    common::wait_for("boot finished", || !s.st.is_booting(id)).await;
 }
 
 #[tokio::test]
 async fn a_team_without_a_workflow_launches_without_the_workflow_tools() {
     let s = crate::common::m2::serve().await;
-    let _runner = crate::common::m2::connect(
-        &s,
-        vec![Arc::new(ClaudeStreamDriver {
-            program: fake_bin("fake-claude"),
-        })],
-        None,
-    )
-    .await;
-    let dir = tempfile::tempdir_in(s.home.path()).unwrap();
-    let id = team(&s, dir.path()).await;
-    crate::common::m2::start_team(&s, &id).await;
+    let id = team(&s).await;
+    start_without_computer(&s, &id).await;
     let snap =
         s.st.store
             .lock()

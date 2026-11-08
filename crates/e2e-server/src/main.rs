@@ -16,11 +16,12 @@
 //! Serve runs with `--question-timeout-secs 8`: questions expire in 8 s, long enough for a
 //! Playwright test to answer one first and short enough to see an expiry.
 //!
-//! Codex agents run on `fake-codex` (`$RIG_E2E_FAKE_CODEX`, else built with cargo), which replays
-//! recorded Codex output.
+//! Codex agents are real too: serve gets `--codex-program` (`$RIG_E2E_CODEX`, else `codex` on
+//! `PATH` or in `~/.local/bin`) and `CODEX_HOME` (as set, else the real `~/.codex`), so the CLI is
+//! signed in as the person. Only live specs start them.
 //!
 //! Community goes through `fake-community` (`$RIG_E2E_FAKE_COMMUNITY`, else built with cargo), a
-//! stub Sculptured server on `$RIG_E2E_COMMUNITY_PORT` (default 14411); serve gets
+//! stand-in Community web service (not an agent) on `$RIG_E2E_COMMUNITY_PORT` (default 14411); serve gets
 //! `--community-origin http://127.0.0.1:<port>`, so no test reaches a real server.
 
 use std::path::{Path, PathBuf};
@@ -111,7 +112,7 @@ fn binary(root: &Path) -> Result<PathBuf, String> {
     Ok(target.join("debug").join("sculptured"))
 }
 
-/// A fixtures binary for e2e: `$<env>` when set, else built with cargo.
+/// A fixtures binary for e2e (the stand-in Community service): `$<env>` when set, else built with cargo.
 fn fixture_bin(root: &Path, name: &str, env: &str) -> Result<PathBuf, String> {
     if let Some(bin) = std::env::var_os(env) {
         let bin = PathBuf::from(bin);
@@ -208,13 +209,44 @@ fn real_claude(cmd: &mut Command) {
     }
 }
 
+/// Lets serve's Codex agents run the person's `codex`, signed in through `CODEX_HOME`, while `HOME`
+/// is the throwaway one. Call after the serve arguments.
+fn real_codex(cmd: &mut Command) {
+    let real_home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = e2e_server::codex_home(
+        std::env::var_os("CODEX_HOME").as_deref(),
+        real_home.as_deref(),
+    );
+    let codex = e2e_server::find_codex(
+        std::env::var_os("RIG_E2E_CODEX").as_deref(),
+        std::env::var_os("PATH").as_deref(),
+        real_home.as_deref(),
+    );
+    cmd.env_remove("CODEX_HOME");
+    if let Some(dir) = &home {
+        cmd.env("CODEX_HOME", dir);
+    }
+    if let Some(c) = &codex {
+        cmd.arg("--codex-program").arg(c);
+    }
+    match (&codex, &home) {
+        (Some(c), Some(d)) => eprintln!(
+            "e2e-server: Codex agents run {} with the setup in {}",
+            c.display(),
+            d.display()
+        ),
+        _ => eprintln!(
+            "e2e-server: no codex CLI or Codex setup found; live Codex specs (RIG_E2E_LIVE=1) cannot start agents"
+        ),
+    }
+}
+
 fn serve(session: &mut Session) -> Result<ExitCode, String> {
     let port = port()?;
     let root = workspace();
     let dist = session.web_dist();
     build_web(&root, &dist)?;
     let bin = binary(&root)?;
-    let codex = fixture_bin(&root, "fake-codex", "RIG_E2E_FAKE_CODEX")?;
     let community = start_stub(session, &root)?;
     let mut cmd = Command::new(&bin);
     cmd.env("HOME", session.home())
@@ -224,11 +256,10 @@ fn serve(session: &mut Session) -> Result<ExitCode, String> {
         .arg("--web-dir")
         .arg(&dist)
         .args(["--question-timeout-secs", "8"])
-        .arg("--codex-program")
-        .arg(&codex)
         .arg("--community-origin")
         .arg(&community);
     real_claude(&mut cmd);
+    real_codex(&mut cmd);
     let child = cmd
         .spawn()
         .map_err(|e| format!("start {}: {e}", bin.display()))?;

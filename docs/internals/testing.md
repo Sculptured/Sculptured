@@ -4,7 +4,7 @@ Sculptured is tested from pure Rust unit tests up to Playwright flows against th
 
 Sources:
 - `Cargo.toml` (workspace members and `[profile.dev]`), `crates/*/tests/`, `#[cfg(test)] mod tests` in `crates/*/src`
-- `crates/fixtures/src/bin/{fake-claude,fake-codex,codex-probe,mcp-ping-stub}.rs`, `crates/fixtures/recordings/`
+- `crates/fixtures/src/bin/{codex-probe,mcp-ping-stub}.rs`, `crates/fixtures/recordings/`
 - `crates/e2e-server/src/{lib,main}.rs`
 - `crates/controld/tests/common/` (live helpers in `common/live.rs`), `crates/hostd/tests/common/mod.rs`
 - `web/package.json`, `web/vite.config.ts`, `web/playwright{,.layout,.hosted}.config.ts`, `web/e2e/`, `web/src/test-*.ts`
@@ -15,7 +15,7 @@ Sources:
 ```mermaid
 flowchart BT
   U["Rust unit tests: mod tests in crates/*/src"] --> I["Rust integration tests: crates/*/tests"]
-  I --> K["Driver contract tests: drivers against recorded CLI output"]
+  I --> K["Driver parser tests: recorded CLI output as data"]
   K --> P["Process smoke: real sculptured binary"]
   P --> V["Live tests: real Claude Code on haiku, ignored by default"]
   W["Web unit and component tests: Vitest, jsdom"] --> L["Playwright layout: built UI, mocked API"]
@@ -27,7 +27,7 @@ flowchart BT
 |---|---|---|---|
 | Rust unit | `mod tests` in `crates/*/src` | No | No |
 | Rust integration | `crates/*/tests/*.rs` | In-process controld router and hostd supervisor; no agent | No |
-| Driver contract | `crates/fixtures/tests/{claude,codex}_contract.rs`, `crates/drivers/tests/` | Fake CLIs | No |
+| Driver parsers | `crates/drivers/tests/*_recordings.rs` and other recorded-data tests | No: recordings are read as data | No |
 | Process smoke | `crates/sculptured/tests/process_smoke.rs` | The `sculptured` binary | No |
 | Live | `live_…` tests in `crates/*/tests/*.rs`, `#[ignore]`d | Real `claude` (or `codex`) CLI | Yes: haiku, costs credits |
 | Web component | `web/src/**/*.test.{ts,tsx}` | No (jsdom, mocked `api`) | No |
@@ -39,35 +39,10 @@ There is no CI test job. The only workflow, `.github/workflows/release.yml`, bui
 
 ## 2. Recorded CLI output for driver tests
 
-To test how the drivers parse each CLI's protocol without a model call, `crates/fixtures` builds two programs that replay recorded output of the real CLIs. They are recorded-output replays for parser and process tests, not agents:
+The drivers' parsers are tested by feeding them scrubbed recordings of the real CLIs, line by line, as data: `crates/fixtures/recordings/claude-*.jsonl` (Claude Code 2.1.289), `codex-*.jsonl` / `codex-m2-*.jsonl` and `opencode-*.jsonl`, read by `crates/drivers/tests/*_recordings.rs`, `claude_recorded_lines.rs`, `claude_limits.rs` and `claude_usage.rs`. No process stands in for a CLI: there is no fake `claude` or `codex` binary or script. What a driver does with a real CLI process (spawn, turns, interrupts, resume, permissions, stop, crashes) is tested live in `crates/drivers/tests/claude_live.rs` and `codex_live.rs`.
 
-- **`fake-claude`** imitates `claude -p --input-format stream-json --output-format stream-json`. Every line it prints mirrors a shape in `crates/fixtures/recordings/claude-*.jsonl` (scrubbed recordings of Claude Code 2.1.289).
-- **`fake-codex`** imitates `codex app-server` (JSON-RPC). Its lines mirror `codex-*.jsonl` and `codex-m2-*.jsonl`. One divergence is deliberate: a `turn/start` during a running turn gets error `-32600`, so a driver bug shows up in tests.
-
-The test chooses which recorded shape to replay with the **message text**, so the same driver code runs unchanged:
-
-| Fake | Scripts (message text) |
-|---|---|
-| `fake-claude` | `crash`, `hang`, `subagent`, `unknown`, `big`, `limit`, `env:…`, `tool:…`, anything else a normal reply |
-| `fake-codex` | `hang`, `hang-child`, `crash-on-interrupt`, `fail`, `crash`, `crash-once`, `mystery`, `unknown`, `ask:…`, plus tool, edit and run scripts |
-
-```mermaid
-sequenceDiagram
-  participant T as Test
-  participant D as ClaudeStreamDriver
-  participant F as fake-claude
-  T->>D: launch with program = CARGO_BIN_EXE_fake-claude
-  D->>F: spawn with the real CLI flags
-  T->>D: send message "tool:npm test"
-  D->>F: stream-json user line
-  F-->>D: recorded-shape lines: tool_use, tool_result, result
-  D-->>T: DriverEvent stream
-  T->>T: assert on events, not on any model output
-```
-
-- Fixture tests find the fakes with `env!("CARGO_BIN_EXE_fake-claude")`. controld tests use `common::fake_bin(name)`, which builds the binary with cargo if it is missing.
 - `codex-probe` and `mcp-ping-stub` drive the **real** `codex app-server` to make new recordings. They spend real model calls on the user's login, so they are run by hand, with approval, and never by a routine test.
-- In e2e, `crates/e2e-server` passes `--codex-program <fake-codex>` to `serve`. Specs that only design teams, read pages or check API contracts start no agent. Specs that start agents are skipped unless `RIG_E2E_LIVE=1` is set; then they run real Claude Code agents and cost credits.
+- In e2e, `crates/e2e-server` gives `serve` the real `claude` and `codex` (`$RIG_E2E_CLAUDE` / `$RIG_E2E_CODEX`, else on `PATH`) with the user's `CLAUDE_CONFIG_DIR` and `CODEX_HOME`. Specs that only design teams, read pages or check API contracts start no agent. Specs that start agents are skipped unless `RIG_E2E_LIVE=1` is set; then they run real agents and cost credits.
 
 ## 3. Live tests
 
@@ -104,7 +79,7 @@ Behaviour that only a running agent shows (turns, tool calls, questions, permiss
 
 Notes:
 - `playwright.config.ts` sets `testDir: './e2e'` with no `testMatch`, so the default run also collects `layout.spec.ts`. Name the real-binary specs when you want only those.
-- e2e builds the UI and the binary unless `SCULPTURED_BIN` and `RIG_E2E_FAKE_CODEX` point at prebuilt ones. `RIG_E2E_PORT` moves it off port 14410.
+- e2e builds the UI and the binary unless `SCULPTURED_BIN` points at a prebuilt one. `RIG_E2E_PORT` moves it off port 14410.
 - clippy settings live in `clippy.toml` (`too-many-lines-threshold = 30`) and `[workspace.lints.clippy]`.
 
 ## 5. Test helpers
@@ -113,7 +88,7 @@ Notes:
 |---|---|
 | `crates/controld/tests/common/m2.rs` | `serve()`, `serve_hosted()`, `signed(...)`, `connect(...)`, `chain(...)` (a team of Claude agents on haiku that is never started), `start_team`, `say`, `wait_event`, `events` |
 | `crates/controld/tests/common/live.rs` | Live-test helpers: `require()`, `require_codex()`, `drivers()`, `connect(s)`, `work_folder`, `make_live`, `team`, 240 s waits |
-| `crates/controld/tests/common/mod.rs` | `wait_for` (10 s deadline), `fake_bin`, `lifecycle`, `work_message` |
+| `crates/controld/tests/common/mod.rs` | `wait_for` (10 s deadline), `lifecycle`, `work_message` |
 | `crates/controld/tests/common/{knobbed,seat_tools}.rs` | Servers with chosen limits; seat-tool calls end to end |
 | `controld` feature `test-seams` | Test-only hooks (`seams` module), enabled only by controld's own dev-dependency on itself, so release builds carry none |
 | `crates/hostd/tests/common/mod.rs` | A fake controld socket (`accept`, `recv`, `send`, `linked`), `Capture` of launch specs, seat-tool socket calls |
@@ -155,10 +130,10 @@ npm --prefix web test -- src/structure/StructureBoard.test.tsx -t "keeps the boa
 
 | Property | Test |
 |---|---|
-| The Claude driver handles turns, tools, interrupts, crashes and unknown lines | `crates/fixtures/tests/claude_contract.rs` (`basic_turn_and_args`, `interrupt_then_continue`, `unknown_lines_are_kept_not_fatal`) |
-| The Codex driver handles queued turns, interrupts, resume, permissions and crashes | `crates/fixtures/tests/codex_contract.rs` (`queued_messages_each_get_their_own_turn`, `a_crash_ends_the_session_with_exited`) |
-| Stop ends a CLI and a child that ignores EOF | `claude_contract.rs` `stop_kills_a_child_that_ignores_eof_and_a_grandchild_holding_stderr` |
-| Agent processes do not inherit the runner's token | `crates/sculptured/tests/process_smoke.rs` `agent_processes_do_not_inherit_the_host_token` |
+| The Claude driver handles turns, tools, interrupts, crashes and unknown lines | `crates/drivers/tests/claude_live.rs` (`live_a_turn_answers_reports_usage_and_stop_exits_cleanly`, `live_interrupt_ends_the_turn_and_a_queued_message_runs_next`, `live_a_killed_cli_ends_the_session_with_exited`); `claude_recorded_lines.rs::an_unknown_line_is_kept_and_the_turn_goes_on` |
+| The Codex driver handles queued turns, interrupts, resume, permissions and crashes | `crates/drivers/tests/codex_live.rs` (`live_a_message_sent_during_a_turn_waits_for_the_interrupted_turn`, `live_resume_keeps_the_thread_and_fork_gets_a_new_one`, `live_a_killed_app_server_ends_the_session_with_exited`) |
+| Stop ends a CLI and the command it is running | `claude_live.rs` `live_stop_during_a_command_ends_the_cli_and_the_command` |
+| Agent processes do not inherit the runner's token | `crates/sculptured/tests/process_smoke.rs` `live_agent_processes_do_not_inherit_the_host_token` |
 | Duplicate events are ignored; a gap records `EventsLost` first | `crates/controld/tests/store.rs` `duplicate_ingest_is_ignored`, `gap_records_events_lost_first` |
 | Runner journal replays after reconnect | `crates/hostd/tests/link.rs` `link_runs_commands_and_replays_after_reconnect` |
 | controld refuses a foreign Host or Origin | `crates/controld/tests/api.rs` `foreign_host_or_origin_is_403` |

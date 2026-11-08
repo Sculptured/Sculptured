@@ -254,30 +254,80 @@ pub async fn until(
     }
 }
 
-/// Kills the real CLI process of `seat`, as a crash would. Only a child of this test process is
-/// ever killed.
-pub fn crash(sup: &Supervisor, seat: &str) {
+/// The pid of `seat`'s real CLI process, checked to be a child of this test process: only a
+/// process the test started is ever signalled.
+pub fn own_agent_pid(sup: &Supervisor, seat: &str) -> i32 {
     let pid = sup
         .recorded_processes()
         .into_iter()
         .find(|(s, ..)| s == seat)
         .map(|(_, pid, _)| pid)
         .expect("the agent's process is on record");
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).expect("the agent runs");
-    let ppid: u32 = stat
-        .rsplit_once(')')
-        .and_then(|(_, rest)| rest.split_whitespace().nth(1))
-        .and_then(|p| p.parse().ok())
-        .expect("a parent pid");
     assert_eq!(
-        ppid,
-        std::process::id(),
-        "only this test's own agent is killed"
+        parent_of(pid as i32),
+        Some(std::process::id()),
+        "only this test's own agent is signalled"
     );
-    // SAFETY: kill(2) on a child process this test started, verified just above.
+    pid as i32
+}
+
+fn parent_of(pid: i32) -> Option<u32> {
+    stat_field(pid, 1)
+}
+
+/// A numeric field of /proc/<pid>/stat after the command name (0 is the state).
+fn stat_field(pid: i32, n: usize) -> Option<u32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    stat.rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().nth(n))
+        .and_then(|p| p.parse().ok())
+}
+
+/// Kills the real CLI process of `seat`, as a crash would. Only a child of this test process is
+/// ever killed.
+pub fn crash(sup: &Supervisor, seat: &str) {
+    let pid = own_agent_pid(sup, seat);
+    // SAFETY: kill(2) on a child process this test started, checked by `own_agent_pid`.
     unsafe {
-        libc::kill(pid as i32, libc::SIGKILL);
+        libc::kill(pid, libc::SIGKILL);
     }
+}
+
+/// A real CLI held stopped (SIGSTOP to its process group): it reads nothing, so a write to its
+/// stdin blocks once the pipe is full, and it never calls the model. Dropping it kills the group
+/// if its leader is still this test's child, so a failing test leaves no stopped process behind.
+pub struct Frozen(i32);
+
+/// Stops `seat`'s real CLI (a child of this test process, leading the process group the driver
+/// made for it) until hostd kills it.
+pub fn freeze(sup: &Supervisor, seat: &str) -> Frozen {
+    let pid = own_agent_pid(sup, seat);
+    assert_eq!(
+        stat_field(pid, 2),
+        Some(pid as u32),
+        "the agent leads its own group"
+    );
+    // SAFETY: SIGSTOP to the group of a child process this test started, checked just above.
+    unsafe {
+        libc::killpg(pid, libc::SIGSTOP);
+    }
+    Frozen(pid)
+}
+
+impl Drop for Frozen {
+    fn drop(&mut self) {
+        if parent_of(self.0) == Some(std::process::id()) {
+            // SAFETY: the leader is still this test's child (not reaped), so the group is its own.
+            unsafe {
+                libc::killpg(self.0, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+/// A message far bigger than a pipe holds: writing it to a stopped CLI's stdin cannot finish.
+pub fn wedging_text() -> String {
+    "x".repeat(4 << 20)
 }
 
 pub fn blocking_call(

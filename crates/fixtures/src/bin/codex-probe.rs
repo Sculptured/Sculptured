@@ -485,7 +485,7 @@ fn run(scenario: &str, out: &Path, cwd: &Path, thread_arg: Option<&str>, form: O
             p.meta(json!({ "probe": "command item started", "seen": started.is_some() }));
             thread::sleep(Duration::from_millis(1500));
             p.meta(json!({ "probe": "sleep 97 processes before interrupt", "count": procs_with_argv(&["sleep", "97"]).len() }));
-            // What does a turn/start do while a turn runs? (fake-codex answers -32600; the plan guesses the real server steers.)
+            // What does a turn/start do while a turn runs? (the plan guesses the real server steers.)
             let busy = p.request("turn/start", json!({ "threadId": t, "input": [{ "type": "text", "text": "Also remember a second codeword: LIME-5." }] }));
             let busy = p.response(busy, Duration::from_secs(15));
             p.meta(json!({ "probe": "turn/start during a running turn", "same_turn_id": busy.pointer("/result/turn/id") == Some(&json!(turn)) }));
