@@ -223,6 +223,7 @@ pub(super) fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
         }
         tx.pragma_update(None, "user_version", (i + 1) as i64)?;
     }
+    super::model_less::drop_model_less_agents(&tx)?;
     tx.commit()
 }
 

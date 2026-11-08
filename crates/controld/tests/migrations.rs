@@ -505,3 +505,58 @@ fn a_version_8_store_gains_the_question_delivery_columns() {
     drop(Store::open(&path).expect("reopens although the columns already exist"));
     assert_eq!(version(&path), SCHEMA_VERSION);
 }
+
+/// A store from before Practice agents were removed opens: their agents leave the team's design (with
+/// their connections), their seats leave the compiled team, and their seat rows go. The rest stays.
+#[test]
+fn a_store_with_practice_agents_opens_without_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("c.sqlite");
+    let rig = rigspec::compile(SPEC).unwrap();
+    {
+        let s = Store::open(&path).unwrap();
+        drop(s);
+        let mut compiled = serde_json::to_value(&rig).unwrap();
+        let mut stub = compiled["seats"][0].clone();
+        stub["id"] = "dev.p1@r".into();
+        stub["member"] = "p1".into();
+        stub["runtime"] = "stub".into();
+        compiled["seats"].as_array_mut().unwrap().push(stub);
+        compiled["launch_layers"] = serde_json::json!([["dev.a@r", "dev.p1@r"]]);
+        let draft = serde_json::json!({"id": "r", "name": "R", "groups": [], "revision": 1, "agents": [
+            {"id": "a", "group_id": null, "name": "A", "kind": "claude", "job": "", "folder": "/w", "x": 0, "y": 0},
+            {"id": "p1", "group_id": null, "name": "P", "kind": "practice", "job": "", "folder": null, "x": 0, "y": 0}],
+            "connections": [{"id": "c", "from": "a", "to": "p1", "kind": "hands-work-to"}]});
+        let c = Connection::open(&path).unwrap();
+        c.execute(
+            "INSERT INTO rigs (name, source_kind, source_ref, source_revision, spec_hash, compiled_json, desired) VALUES ('r', 'team', 'r', 1, ?1, ?2, 'stopped')",
+            rusqlite::params![rig.spec_hash, compiled.to_string()],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO drafts (id, json, revision, updated_at_ms) VALUES ('r', ?1, 1, 0)",
+            [draft.to_string()],
+        )
+        .unwrap();
+        for (id, runtime) in [("dev.a@r", "claude-code"), ("dev.p1@r", "stub")] {
+            c.execute(
+                "INSERT INTO seats (id, rig, ord, pod, member, runtime, lifecycle, activity) VALUES (?1, 'r', 0, 'dev', 'x', ?2, 'stopped', 'idle')",
+                [id, runtime],
+            )
+            .unwrap();
+        }
+    }
+    let s = Store::open(&path).unwrap();
+    let d = s.draft("r").unwrap().unwrap();
+    assert_eq!(
+        d.agents.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+        ["a"]
+    );
+    assert!(d.connections.is_empty(), "the connection to it went too");
+    let snap = s.rig_snapshot("r").unwrap().unwrap();
+    assert_eq!(
+        snap.seats.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(),
+        ["dev.a@r"]
+    );
+    assert!(s.seat("dev.p1@r").unwrap().is_none());
+}
