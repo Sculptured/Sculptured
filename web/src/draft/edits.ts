@@ -137,6 +137,22 @@ export function fitGroups(d: TeamDraft, anchor?: string): TeamDraft {
   return clearLoose(separate(groups.every((g, i) => g === d.groups[i]) ? d : { ...d, groups }, anchor));
 }
 
+/**
+ * True when every agent's card lies inside its group (with `GROUP_PAD` on all sides and
+ * `GROUP_HEAD` on top) and no two drawn groups overlap.
+ */
+export function groupsFit(d: TeamDraft): boolean {
+  if (d.groups.length === 0) return true;
+  for (const a of d.agents) {
+    const g = d.groups.find((x) => x.id === groupOf(a));
+    if (!g) continue;
+    // The board starts at 0, so a group cannot reach further left or up than that (as in `fitGroups`).
+    if (Math.max(0, a.x - GROUP_PAD) < g.x || Math.max(0, a.y - GROUP_PAD - GROUP_HEAD) < g.y) return false;
+    if (a.x + CARD_W + GROUP_PAD > g.x + g.w || a.y + CARD_H + GROUP_PAD > g.y + g.h) return false;
+  }
+  const drawn = drawnGroups(d);
+  return !drawn.some((g, i) => drawn.slice(i + 1).some((o) => overlaps(g, o)));
+}
 
 /**
  * Adds an agent at `at`. A drop inside a group joins it there; a drop outside every group stays

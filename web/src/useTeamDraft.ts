@@ -1,6 +1,7 @@
 import { errorText } from './errors';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, newRequestId } from './api';
+import { fitGroups, groupsFit } from './draft/edits';
 import { push, redo as redoStep, start, undo as undoStep, type History } from './draft/history';
 import type { DraftIssue } from './generated/DraftIssue';
 import type { TeamDraft } from './generated/TeamDraft';
@@ -118,6 +119,22 @@ export function useTeamDraft(teamId: string, saveDelayMs = saveTiming.delayMs) {
     timer.current = setTimeout(() => void runSaves(), saveDelayMs);
   }, [runSaves, saveDelayMs]);
 
+  /**
+   * Shows a draft read from the server as the present one, with a fresh history. A team imported
+   * through the API keeps its file's box sizes: the board shows it fitted, but that is display
+   * only. The fitted draft is the baseline (nothing is saved because of it), and the first real
+   * edit saves it whole through the normal path. `revision` stays the server's.
+   */
+  const adoptServerDraft = useCallback(
+    (server: TeamDraft) => {
+      revision.current = server.revision;
+      const shown = groupsFit(server) ? server : fitGroups(server);
+      sent.current = shown;
+      commit(start(shown));
+    },
+    [commit],
+  );
+
   useEffect(() => {
     alive.current = true;
     session.current += 1;
@@ -132,11 +149,7 @@ export function useTeamDraft(teamId: string, saveDelayMs = saveTiming.delayMs) {
       .then(() => api.getTeam(teamId))
       .then((rec) => {
         if (!alive.current) return;
-        revision.current = rec.draft.revision;
-        sent.current = rec.draft;
-        blocked.current = false;
-        failed.current = false;
-        commit(start(rec.draft));
+        adoptServerDraft(rec.draft);
         adoptRead(rec);
         setSaveState('saved');
       })
@@ -147,7 +160,7 @@ export function useTeamDraft(teamId: string, saveDelayMs = saveTiming.delayMs) {
       // Leaving within the autosave delay must not lose the last edits: save them now.
       if (histRef.current && histRef.current.present !== sent.current && !blocked.current) void runSaves();
     };
-  }, [teamId, commit, adoptRead, runSaves]);
+  }, [teamId, adoptServerDraft, adoptRead, runSaves]);
 
   // Hosted: while the team waits for the user's computer, re-read its issues every few seconds so
   // "Connect your computer" clears by itself once the computer connects. Only the issues are taken,
@@ -259,9 +272,7 @@ export function useTeamDraft(teamId: string, saveDelayMs = saveTiming.delayMs) {
       blocked.current = false;
       failed.current = false;
       retryOf.current = null;
-      revision.current = rec.draft.revision;
-      sent.current = rec.draft;
-      commit(start(rec.draft));
+      adoptServerDraft(rec.draft);
       adoptRead(rec);
       setSaveState('saved');
       setSaveError(null);
@@ -269,7 +280,7 @@ export function useTeamDraft(teamId: string, saveDelayMs = saveTiming.delayMs) {
     } catch (e) {
       setSaveError(errorText(e));
     }
-  }, [teamId, commit, adoptRead]);
+  }, [teamId, adoptServerDraft, adoptRead]);
 
   /** Conflict: save the local draft over the server's newer revision. */
   const keepMine = useCallback(async () => {

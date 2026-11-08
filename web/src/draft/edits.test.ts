@@ -1,9 +1,14 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { teamDraft } from '../test-fixtures';
+import { draftAgent, teamDraft } from '../test-fixtures';
 import {
   addAgent,
   addGroup,
   connect,
+  fitGroups,
+  groupsFit,
   moveAgent,
   moveGroup,
   moveToGroup,
@@ -190,5 +195,44 @@ describe('geometry', () => {
     expect(l.pods).toEqual({});
     expect(l.width).toBe(540);
     expect(canvasSize(teamDraft()).width).toBeGreaterThanOrEqual(960);
+  });
+});
+
+describe('groupsFit', () => {
+  const shipped = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../sculptured-factory/team/ridgeline-incident.json');
+  const have = existsSync(shipped);
+  const ridgeline = have ? JSON.parse(readFileSync(shipped, 'utf8')) : null;
+  const oldGroups = [
+    { id: 'incident', label: 'Incident', x: 72, y: 40, w: 1328, h: 260 },
+    { id: 'floor', label: 'Plant floor', x: 72, y: 312, w: 1008, h: 260 },
+    { id: 'supply', label: 'Supply and insurance', x: 72, y: 584, w: 624, h: 260 },
+    { id: 'customers', label: 'Customers', x: 712, y: 584, w: 304, h: 260 },
+    { id: 'money', label: 'Money', x: 1032, y: 584, w: 368, h: 260 },
+  ];
+  const at = (id: string, group_id: string, x: number, y: number) => draftAgent(id, { group_id, x, y });
+  const imported = teamDraft({
+    groups: oldGroups,
+    agents: [
+      at('lead', 'incident', 96, 112),
+      at('maintenance', 'floor', 96, 384),
+      at('ehs', 'floor', 416, 384),
+      at('planning', 'floor', 736, 384),
+      at('procurement', 'supply', 96, 656),
+      at('insurance', 'supply', 416, 656),
+      at('customers', 'customers', 736, 656),
+      at('finance', 'money', 1056, 656),
+    ],
+  });
+  it('is false for a team whose cards stick out of their groups', () => {
+    expect(groupsFit(imported)).toBe(false);
+  });
+  it('is true once the groups are fitted', () => {
+    expect(groupsFit(fitGroups(imported))).toBe(true);
+  });
+  it('fits idempotently', () => {
+    expect(fitGroups(fitGroups(imported))).toEqual(fitGroups(imported));
+  });
+  it.skipIf(!have)('holds for the shipped Ridgeline file', () => {
+    expect(groupsFit(ridgeline.team)).toBe(true);
   });
 });

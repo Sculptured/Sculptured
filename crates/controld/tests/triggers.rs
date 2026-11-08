@@ -121,6 +121,44 @@ async fn an_event_starts_a_stopped_team_and_follows_the_agents_job() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_event_is_the_work_of_an_agent_with_no_job_and_its_result_is_handed_on() {
+    let s = common::m2::serve().await;
+    let _sup = connect_stub(&s).await;
+    let id = practice_chain(
+        &s,
+        "Incident",
+        &[
+            ("lead", "Lead", ""),
+            ("maintenance", "Maintenance", "Fix the machine."),
+        ],
+        &[("lead", "maintenance")],
+    )
+    .await;
+    let (_, rec) = get(&s.router, &format!("/api/teams/{id}")).await;
+    let mut draft = rec["draft"].clone();
+    draft["triggers"] =
+        json!([{ "id": "alarm", "agent": "lead", "message": "Open a case.", "starts_team": true }]);
+    let put = json!({ "request_id": rid(), "revision": draft["revision"], "draft": draft });
+    let (status, saved) = call(&s.router, "PUT", &format!("/api/teams/{id}"), put).await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    post(&s, &address(&s, &id).await, ALARM).await;
+    assert_eq!(
+        handled(&s, &id).await["outcome"],
+        "started the team and sent"
+    );
+    let maintenance = seat(&id, "maintenance");
+    common::wait_for("the lead's result is handed to Maintenance", || {
+        !messages_by(&s.st, &maintenance, "handoff").is_empty()
+    })
+    .await;
+    let handed = &messages_by(&s.st, &maintenance, "handoff")[0].2;
+    assert!(
+        handed.contains("Fix the machine.") && handed.contains("VIB-HIGH"),
+        "{handed}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_trigger_that_does_not_start_the_team_records_why_nothing_was_sent() {
     let s = common::m2::serve().await;
     let _sup = connect_stub(&s).await;

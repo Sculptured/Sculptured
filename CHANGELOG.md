@@ -5,6 +5,7 @@ All notable changes to Sculptured are listed here. The format follows [Keep a Ch
 ## [Unreleased]
 
 ### Fixed
+- An event a trigger delivers to an agent with no Job is now that agent's work, as a person's first message is: when its turn finishes, its result is handed on along its "hands work to" connections (`handoffs::work::starts_work`). Before, a team started by a trigger stopped at its first agent.
 - Raising a budget or resetting its plan window no longer resumes an agent paused by the operator, or restarts a team set to stop. Budget continuations coordinate with team controls and recheck them before continuing; use Resume to end an operator pause.
 - Resume now acquires the team's control lock before clearing a stop and rechecks whether a pause arrived meanwhile. A concurrent pause uses session Resume, and a busy team keeps its stop recorded for retry.
 - Control: a project that has never started can be started from Control's own **Start**. It said "Connecting…" forever, waiting for a live stream such a project doesn't have, and Control hides the project bar's Start.

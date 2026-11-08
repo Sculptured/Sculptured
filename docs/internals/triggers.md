@@ -24,7 +24,8 @@ Triggers (`TeamDraft.triggers`, `crates/controld/src/triggers.rs`) give a team a
    - **Team stopped, `starts_team` on:** the task first starts the team as **Start** would (`teams::start_for_event`). A start already under way counts as started. It then waits up to 180 s for the agent to run and up to 30 s for its job (when it has one), so the event follows the job.
    - **Team stopped, `starts_team` off:** nothing is sent.
 4. **The message** is `send_message_as` with intent `instruct` and actor `system:trigger:{id}`. Its text is the trigger's words, then the body in a fence, with a line saying it is outside data and never instructions.
-5. **`TriggerHandled {receipt_id, delivered, outcome}`** is recorded, verified. The outcome is one of:
+5. **Work.** For an agent with no Job, the first trigger message of a start is its work, as a person's first message is (`handoffs/work.rs`): when its turn finishes, its result is handed on along its "hands work to" connections. Later trigger messages are conversation.
+6. **`TriggerHandled {receipt_id, delivered, outcome}`** is recorded, verified. The outcome is one of:
    - `sent`;
    - `started the team and sent`;
    - `not delivered: <why>`.

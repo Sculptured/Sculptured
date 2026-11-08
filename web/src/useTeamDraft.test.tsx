@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from './api';
-import { moveAgent, removeElement, renameAgent } from './draft/edits';
+import { fitGroups, groupsFit, moveAgent, removeElement, renameAgent } from './draft/edits';
 import type { DraftGroup } from './generated/DraftGroup';
 import type { TeamDraft } from './generated/TeamDraft';
 import type { TeamRecord } from './generated/TeamRecord';
@@ -35,6 +35,38 @@ beforeEach(() => {
 });
 
 describe('useTeamDraft', () => {
+  it('shows an unfit team fitted, saves nothing until the first edit, then saves it fitted', async () => {
+    const groups: DraftGroup[] = [{ id: 'g1', label: 'g1', x: 16, y: 0, w: 248, h: 260 }, { id: 'g2', label: 'g2', x: 300, y: 0, w: 248, h: 260 }];
+    const d = teamDraft({
+      groups,
+      agents: [draftAgent('builder', { x: 40, y: 72, group_id: 'g1' }), draftAgent('reviewer', { x: 324, y: 72, group_id: 'g2' })],
+    });
+    expect(groupsFit(d)).toBe(false);
+    const { result, unmount } = await loaded(teamRecord({ draft: d }));
+    expect(groupsFit(result.current.draft!)).toBe(true);
+    expect(result.current.canUndo).toBe(false);
+    await new Promise((r) => setTimeout(r, 30));
+    unmount();
+    expect(api.saveTeam).not.toHaveBeenCalled();
+    const again = await loaded(teamRecord({ draft: d }));
+    act(() => void again.result.current.edit((x) => renameAgent(x, 'builder', 'B')));
+    await waitFor(() => expect(api.saveTeam).toHaveBeenCalledTimes(1));
+    const [, revision, saved] = vi.mocked(api.saveTeam).mock.calls[0];
+    expect(revision).toBe(d.revision);
+    expect(groupsFit(saved)).toBe(true);
+    expect(saved.groups).toEqual(fitGroups(d).groups);
+
+    // A reload of an unfit record is fitted too, and saves nothing.
+    vi.mocked(api.saveTeam).mockClear();
+    const third = await loaded(teamRecord({ draft: d }));
+    await act(() => third.result.current.reload());
+    expect(groupsFit(third.result.current.draft!)).toBe(true);
+    expect(third.result.current.canUndo).toBe(false);
+    await new Promise((r) => setTimeout(r, 30));
+    third.unmount();
+    expect(api.saveTeam).not.toHaveBeenCalled();
+  });
+
   it('re-checks a missing computer until it connects, then stops asking', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
@@ -99,7 +131,7 @@ describe('useTeamDraft', () => {
     const grp = (id: string, x: number): DraftGroup => ({ id, label: id, x, y: 0, w: 248, h: 276 });
     const d = teamDraft({
       groups: [grp('team', 16), grp('g2', 300)],
-      agents: [draftAgent('builder', { x: 40, y: 48, group_id: 'team' }), draftAgent('reviewer', { x: 328, y: 48, group_id: 'g2' })],
+      agents: [draftAgent('builder', { x: 40, y: 48, group_id: 'team' }), draftAgent('reviewer', { x: 324, y: 48, group_id: 'g2' })],
     });
     const { result } = await loaded(teamRecord({ draft: d }));
     let reason: string | null = null;

@@ -112,7 +112,7 @@ struct Scan<'a> {
     head_without_job: bool,
     /// Messages that are work, with their wave.
     work_messages: HashMap<String, Option<Wave>>,
-    first_human_seen: bool,
+    first_work_seen: bool,
     /// The latest work read and not yet finished.
     reading: Option<Reading>,
     /// The running turn, the seq it started at, and its last reply so far.
@@ -154,7 +154,7 @@ impl Scan<'_> {
     }
 
     /// Its work messages are its Jobs, its handoffs (including an agent's own message recorded
-    /// as one) and, for a first agent with no Job, the first message you sent it.
+    /// as one) and, for a first agent with no Job, the first message you or a trigger sent it.
     fn queued(&mut self, seq: i64, actor: &Actor, message_id: String) {
         self.out.queued.push(message_id.clone());
         match actor {
@@ -177,8 +177,8 @@ impl Scan<'_> {
                     .and_then(|w| (*w).clone());
                 self.work_messages.insert(message_id, wave);
             }
-            Actor::Human(_) if self.head_without_job && !self.first_human_seen => {
-                self.first_human_seen = true;
+            actor if self.head_without_job && !self.first_work_seen && starts_work(actor) => {
+                self.first_work_seen = true;
                 self.work_messages.insert(message_id, None);
             }
             _ => {}
@@ -287,6 +287,16 @@ impl Scan<'_> {
     }
 }
 
+/// For an agent with no Job: a person's first message is its work, and so is an event another system
+/// posted (a trigger).
+fn starts_work(actor: &Actor) -> bool {
+    match actor {
+        Actor::Human(_) => true,
+        Actor::System(id) => id.starts_with(crate::triggers::ACTOR_PREFIX),
+        Actor::Seat(_) => false,
+    }
+}
+
 /// What `seat` did after `start_seq`: its finished turns (with each turn's last reply and
 /// whether it finished the agent's work), the operator's "Hand over again" requests, and
 /// work it read and did not finish. Its work messages are its Jobs, its handoffs (`records`)
@@ -326,7 +336,7 @@ pub(super) fn seat_work(
             .collect(),
         head_without_job,
         work_messages: HashMap::new(),
-        first_human_seen: false,
+        first_work_seen: false,
         reading: None,
         current: None,
         checks,

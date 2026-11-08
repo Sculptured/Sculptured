@@ -213,8 +213,11 @@ async fn receive(State(st): State<AppState>, Path(key): Path<String>, body: Byte
         .into_response()
 }
 
+/// A trigger's messages come from `trigger:{id}`.
+pub const ACTOR_PREFIX: &str = "trigger:";
+
 fn actor(t: &Trigger) -> Actor {
-    Actor::System(format!("trigger:{}", t.id))
+    Actor::System(format!("{ACTOR_PREFIX}{}", t.id))
 }
 
 /// The agent's message: what it is asked to do, then the event, marked as outside input.
