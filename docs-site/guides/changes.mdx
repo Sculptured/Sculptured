@@ -15,6 +15,8 @@ When agents work with real business systems, such as an ERP, a purchasing system
 
 Proposing changes nothing by itself. Every proposal, its rule results and its decision are kept under **Results → Changes**.
 
+An outside system, such as a simulation that tests your team's approvals, can propose a change the same way with `POST /api/teams/{id}/changes` (`{request_id, proposer, action, summary, payload, system?, reason?}`). Its changes go through the same rules and wait in **Needs you** the same way, under the proposer's name.
+
 ## Set the rules
 
 Open the project's **Settings → Changes to business systems**.

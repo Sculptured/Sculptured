@@ -1,11 +1,11 @@
 # Proposed changes and rule checks
 
-An agent proposes each change to a business system (an order, a schedule, a record in an ERP) with the `propose_change` seat tool before making it. Sculptured checks the team's rules itself, then approves the change or asks a person. User guide: `docs-site/guides/changes.mdx`.
+An agent proposes each change to a business system (an order, a schedule, a record in an ERP) with the `propose_change` seat tool before making it. An outside system (a simulation such as Arena, another tool) proposes through `POST /api/teams/{id}/changes`. Sculptured checks the team's rules itself, then approves the change or asks a person. User guide: `docs-site/guides/changes.mdx`.
 
 Sources:
 - `crates/model/src/mandate.rs`: `Mandate`, `ChangeRule`, `RuleTest`, `RuleResult`, `evaluate`.
-- `crates/controld/src/seat_tools/propose.rs`: the tool.
-- `crates/controld/src/changes.rs`: the briefing line and `GET /api/teams/{id}/changes`.
+- `crates/controld/src/seat_tools/propose.rs`: the tool, and `propose_external` for outside proposers.
+- `crates/controld/src/changes.rs`: the briefing line, `GET /api/teams/{id}/changes` and `POST /api/teams/{id}/changes`.
 - `crates/controld/src/questions/answers.rs`: `rejected_on_timeout`.
 - `web/src/shell/ChangeApproval.tsx`, `web/src/structure/MandateFields.tsx`, `web/src/collaboration/ChangesView.tsx`.
 
@@ -20,6 +20,17 @@ Sources:
    - **Deny**, with an optional reason, is not approved;
    - **Expired** is not approved, `by: nobody-in-time` (verified). `questions::answers::rejected_on_timeout` closes the question with `DecisionSource::RejectedOnTimeout`, and `undecided_expired` leaves approvals out, so no agent decision is awaited.
 6. **The reply.** It tells the agent whether the change is approved and by whom, each rule's result with ✓ or ✗ and its words, and the proposal id. It also says to carry out exactly the approved change, or not to make it.
+
+## Proposals from outside systems
+
+`POST /api/teams/{id}/changes` with `{request_id, proposer, action, summary, payload, system?, reason?}` runs the same steps 2 to 5 for a proposer that is not an agent, and answers at once.
+
+- **The proposer** is a name the caller gives (1 to 40 letters, digits, `-` or `_`, for example `arena`). It gets its own address, `external.<proposer>@<team>`. That address is the actor of `ChangeProposed` (agent-reported) and the seat of the approval question, so Results → Changes lists the proposer by that name. It is refused (409 `proposer_is_an_agent`) when it is an agent's seat in the team.
+- **The answer** is `{proposal_id, approved, question_id, checks}`. `approved` is `true` when the rules approved the change and null while it waits for a person. `question_id` is the approval question in Needs you, else null.
+- **The decision** comes when the question is answered (`POST /api/questions/{q}/answer`, Allow or Deny) or expires. A task holds the question's waiter and records `ChangeDecided` exactly as step 5 does. An outside proposer's question expires on time even though no seat row exists (`questions::watch::due`).
+- **A restart** withdraws an open outside question ("Sculptured restarted while the agent waited for an answer"), as it does for an agent's waiting call, and the change stays undecided. The outside system proposes it again if it still wants it.
+- Bad arguments are 400 `bad_proposal` with the same words as the tool. A missing `request_id` is 400, an unknown team 404, and a repeated `request_id` gives the first answer.
+- Tests: `crates/controld/tests/external_changes.rs` (plain: Allow, Deny, rules, expiry, refusals, idempotency).
 
 ## Rules
 

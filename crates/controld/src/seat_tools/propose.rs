@@ -3,11 +3,16 @@
 //! every rule that applies passes and the team allows that, or else asks a person in Needs you. Nobody
 //! answering in time means not approved. The proposal changes nothing by itself; the reply tells the agent
 //! whether it may.
-use super::{Outcome, ToolError, ask, invalid, string_arg};
+//!
+//! An outside system proposes the same way through `POST /api/teams/{id}/changes` (`propose_external`):
+//! the same checks, rules, question and decisions, with the proposer at its own address
+//! `external.<name>@<team>` and the decision recorded when the person answers, not in a waiting call.
+use super::{Outcome, SeatWait, ToolError, ask, invalid, string_arg};
+use crate::error::ApiError;
 use crate::state::AppState;
 use model::{
     Actor, Answer, ChangeDecider, EventBody, Mandate, Provenance, QuestionPrompt, QuestionSource,
-    RuleResult, Subject,
+    RuleResult, Subject, valid_segment,
 };
 use serde_json::{Value, json};
 
@@ -126,27 +131,8 @@ pub(super) async fn propose_change(
         .ok_or_else(|| invalid("unknown agent"))?
         .to_string();
     let p = parse(args)?;
-    let mandate = mandate_of(st, &team);
-    let results = model::mandate::evaluate(&mandate, &p.action, &p.payload);
-    let me = Actor::Seat(seat.to_string());
-    let sculptured = Actor::System("controld".into());
-    let proposed = EventBody::ChangeProposed {
-        proposal_id: p.id.clone(),
-        action: p.action.clone(),
-        system: p.system.clone(),
-        summary: p.summary.clone(),
-        payload: p.payload.clone(),
-        reason: p.reason.clone(),
-    };
-    record(st, &team, me, Provenance::AgentReported, proposed)?;
-    let checked = EventBody::ChangeChecked {
-        proposal_id: p.id.clone(),
-        results: results.clone(),
-    };
-    record(st, &team, sculptured.clone(), Provenance::Verified, checked)?;
-    // No rule applying is no evidence: only a change that passes rules is approved without a person.
-    if mandate.approve_within && !results.is_empty() && results.iter().all(|r| r.passed) {
-        decide(st, &team, &p.id, (true, ChangeDecider::Mandate, None))?;
+    let (results, by_rules) = propose_and_check(st, &team, seat, &p)?;
+    if by_rules {
         return Ok((
             reply(&p, &results, true, "Approved by the team's rules"),
             None,
@@ -169,6 +155,141 @@ pub(super) async fn propose_change(
     let approved = decision.0;
     decide(st, &team, &p.id, decision)?;
     Ok((reply(&p, &results, approved, &why), Some((qid, answer))))
+}
+
+/// Records the proposal (from `proposer`, a seat or an outside proposer's address) and the rules' results
+/// on the team, and the decision when the rules approve it. Returns the results and whether they did.
+fn propose_and_check(
+    st: &AppState,
+    team: &str,
+    proposer: &str,
+    p: &Proposal,
+) -> Result<(Vec<RuleResult>, bool), ToolError> {
+    let mandate = mandate_of(st, team);
+    let results = model::mandate::evaluate(&mandate, &p.action, &p.payload);
+    let proposed = EventBody::ChangeProposed {
+        proposal_id: p.id.clone(),
+        action: p.action.clone(),
+        system: p.system.clone(),
+        summary: p.summary.clone(),
+        payload: p.payload.clone(),
+        reason: p.reason.clone(),
+    };
+    let me = Actor::Seat(proposer.to_string());
+    record(st, team, me, Provenance::AgentReported, proposed)?;
+    let checked = EventBody::ChangeChecked {
+        proposal_id: p.id.clone(),
+        results: results.clone(),
+    };
+    let sculptured = Actor::System("controld".into());
+    record(st, team, sculptured, Provenance::Verified, checked)?;
+    // No rule applying is no evidence: only a change that passes rules is approved without a person.
+    let by_rules =
+        mandate.approve_within && !results.is_empty() && results.iter().all(|r| r.passed);
+    if by_rules {
+        decide(st, team, &p.id, (true, ChangeDecider::Mandate, None))?;
+    }
+    Ok((results, by_rules))
+}
+
+/// The group of an outside proposer's address, `external.<name>@<team>`.
+const EXTERNAL_GROUP: &str = "external";
+
+fn api_error(e: ToolError) -> ApiError {
+    match e {
+        ToolError::Invalid(m) => ApiError::bad_request("bad_proposal", m),
+        ToolError::Failed(m) => {
+            ApiError::new(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "failed", m)
+        }
+    }
+}
+
+/// An outside system proposes a change to `team` (`POST /api/teams/{id}/changes`): the same checks,
+/// rules and decisions as an agent's `propose_change`. When the rules do not decide it, a person is
+/// asked in Needs you (an approval question at the proposer's address) and the decision is recorded
+/// when they answer, or as not approved when nobody answers in time. Returns at once.
+pub(crate) fn propose_external(
+    st: &AppState,
+    team: &str,
+    proposer: &str,
+    args: &Value,
+) -> Result<Value, ApiError> {
+    if !valid_segment(proposer) || proposer.len() > 40 {
+        return Err(ApiError::bad_request(
+            "bad_proposal",
+            "proposer must be 1 to 40 letters, digits, - or _ (the outside system's name)",
+        ));
+    }
+    let draft = st
+        .store
+        .lock()
+        .expect("store mutex must not be poisoned")
+        .draft(team)?
+        .ok_or_else(|| ApiError::not_found(format!("no team {team:?}")))?;
+    let address = format!("{EXTERNAL_GROUP}.{proposer}@{team}");
+    if draft.agent_for_seat(&address).is_some() {
+        return Err(ApiError::conflict(
+            "proposer_is_an_agent",
+            format!("{address} is an agent of the team; give the outside proposer another name"),
+        ));
+    }
+    let p = parse(args).map_err(api_error)?;
+    let (results, by_rules) = propose_and_check(st, team, &address, &p).map_err(api_error)?;
+    let question = if by_rules {
+        None
+    } else {
+        Some(ask_for(st, team, &address, &p, &results).map_err(api_error)?)
+    };
+    Ok(json!({
+        "proposal_id": p.id,
+        "approved": by_rules.then_some(true),
+        "question_id": question,
+        "checks": results,
+    }))
+}
+
+/// Asks a person about an outside proposal and records the decision once they answer (or nobody does).
+fn ask_for(
+    st: &AppState,
+    team: &str,
+    address: &str,
+    p: &Proposal,
+    results: &[RuleResult],
+) -> Result<String, ToolError> {
+    let id = format!("q-{}", uuid::Uuid::new_v4().simple());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    // The waiter exists before the question does, so an answer or expiry always finds it.
+    st.seat_waits
+        .lock()
+        .expect("seat_waits mutex must not be poisoned")
+        .insert(id.clone(), SeatWait { answer: tx });
+    let raised = EventBody::QuestionRaised {
+        question_id: id.clone(),
+        source: QuestionSource::Approval,
+        prompt: approval_prompt(p, results).capped(),
+        turn_id: None,
+    };
+    let me = Actor::Seat(address.to_string());
+    let subject = Subject::Seat(address.to_string());
+    if let Err(e) = st.local_event(me, subject, Provenance::AgentReported, raised) {
+        st.seat_waits
+            .lock()
+            .expect("seat_waits mutex must not be poisoned")
+            .remove(&id);
+        return Err(ToolError::Failed(format!(
+            "Sculptured could not record this: {e}"
+        )));
+    }
+    let (st, team, proposal) = (st.clone(), team.to_string(), p.id.clone());
+    tokio::spawn(async move {
+        // Dropped unanswered: the question was withdrawn (Sculptured restarted), so nothing is decided.
+        if let Ok(answer) = rx.await
+            && decide(&st, &team, &proposal, decision_of(&answer)).is_err()
+        {
+            tracing::error!(proposal = %proposal, "cannot record the decision on an outside proposal");
+        }
+    });
+    Ok(id)
 }
 
 type Decision = (bool, ChangeDecider, Option<String>);

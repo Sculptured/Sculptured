@@ -1,9 +1,11 @@
-//! Proposed changes (`propose_change`): the agents' briefing line and the team's list of changes, each with
-//! its rule results and what became of it. The proposal, the checks and the decision are separate events on
-//! the team (`ChangeProposed` agent-reported, `ChangeChecked` verified, `ChangeDecided` by its decider).
+//! Proposed changes (`propose_change`): the agents' briefing line, the team's list of changes, each with
+//! its rule results and what became of it, and proposals from outside systems. The proposal, the checks
+//! and the decision are separate events on the team (`ChangeProposed` reported by its proposer,
+//! `ChangeChecked` verified, `ChangeDecided` by its decider).
 use crate::error::{ApiError, respond};
 use crate::extract::Path;
 use crate::state::AppState;
+use axum::Json;
 use axum::Router;
 use axum::extract::State;
 use axum::response::Response;
@@ -27,7 +29,27 @@ pub fn briefing_line(d: &TeamDraft, _me: &DraftAgent) -> Option<String> {
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/teams/{id}/changes", get(list))
+    Router::new().route("/api/teams/{id}/changes", get(list).post(propose))
+}
+
+/// `POST /api/teams/{id}/changes`: an outside system (a simulation, another tool) proposes a change,
+/// `{request_id, proposer, action, summary, payload, system?, reason?}`. It goes through the team's rules
+/// and Needs you exactly as an agent's `propose_change` does; the answer is `{proposal_id, approved
+/// (true when the rules approved it, else null), question_id (the approval question, else null),
+/// checks}`. The person's answer to that question decides it.
+async fn propose(
+    State(st): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<Value>,
+) -> Response {
+    let request_id = body["request_id"].as_str().unwrap_or_default().to_string();
+    let fp = crate::idempotent::fingerprint(&format!("propose-change:{id}"), &body);
+    let st2 = st.clone();
+    crate::idempotent::idempotent(&st, &request_id, fp, move || async move {
+        let proposer = body["proposer"].as_str().unwrap_or_default();
+        crate::seat_tools::propose::propose_external(&st2, &id, proposer, &body)
+    })
+    .await
 }
 
 fn agent_name(d: Option<&TeamDraft>, seat: &str) -> String {

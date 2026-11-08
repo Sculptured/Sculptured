@@ -176,10 +176,12 @@ fn due(st: &AppState) -> Vec<String> {
     let store = st.store.lock().expect("store mutex must not be poisoned");
     // Not while the agent's host is away (`stale`): the expiry could not reach the agent, and a native
     // question would stay blocked for good. It fires on the first tick after the seat runs again; a
-    // process lost meanwhile is withdrawn instead.
+    // process lost meanwhile is withdrawn instead. An outside proposer's question (`external.*`, no
+    // seat) expires on time.
     let mut q = match store.connection().prepare(
-        "SELECT q.id FROM questions q JOIN seats s ON s.id = q.seat
-         WHERE q.state = 'open' AND q.deadline_ms <= ?1 AND s.lifecycle != 'stale'",
+        "SELECT q.id FROM questions q LEFT JOIN seats s ON s.id = q.seat
+         WHERE q.state = 'open' AND q.deadline_ms <= ?1
+           AND (s.lifecycle != 'stale' OR (s.id IS NULL AND q.seat LIKE 'external.%'))",
     ) {
         Ok(q) => q,
         Err(e) => {
