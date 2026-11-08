@@ -111,25 +111,45 @@ an item, so nothing here shows that the team fixes bugs, how many rounds it take
 
 **The design:**
 - **Intake:** the Triage Nurse is the dispatcher. It reads `ISSUES.md` and dispatches one item per issue,
-  with a triage note (cause, test, severity, recommendation) in the item's context.
+  with an I-PASS triage note in the item's context. Only issues in `ISSUES.md` become items.
 - **Stages:**
   - Admit? (person): admit, not-a-bug or wont-fix;
   - Workup (Fellow), then Plan review (Review Attending): approved, or changes back to Workup;
-  - Treatment (Fellow): at most 4 rounds; from round 3 the Senior Fellow takes over; past the limit,
+  - Treatment (Fellow): at most 6 rounds; from round 3 the Senior Fellow takes over; past the limit,
     Escalation;
+  - Limits (check, verified): the diff is at most 1,000 lines and no existing test line was removed or changed;
   - Tests (check: `npm test` in the item's copy, verified), then Code review (panel: Correctness and
     Safety Reviewers, all must approve);
+  - Audit (Chart Auditor): checks the reviewers' work before anything is done;
   - Sign-off (person), then Merge: the item's branch into `main`, locally; a conflict goes back to
     Treatment.
 - **Discharge:** the Discharge Nurse is the collector. Once every item has finished, it reports each
   item's outcome and writes changelog lines.
-- **Board rounds:** the Charge Nurse gets a message every 30 minutes and summarises the board with
-  `workflow_status`.
+- **Board rounds:** the Charge Nurse is the watchdog. Every 30 minutes it gets a message and reports
+  stalled items first, with `workflow_status`.
 - **Settings:** guard `npm test` on `main` every 15 minutes, decision log on, a copy per item,
   `max_tasks` 10, `max_steps` 32.
-- **Models:** Sonnet by default; Opus for the Senior Fellow and the Review Attending; Haiku for the
-  Discharge and Charge Nurses.
+- **Models:** Sonnet by default; Opus for the Senior Fellow, the Review Attending and the Chart
+  Auditor; Haiku for the Discharge and Charge Nurses.
 - Every number above is a default you can change.
+
+**Lessons from Cockroach Labs' second post** ([Experiment: running hospital code](https://www.cockroachlabs.com/blog/experiment-running-hospital-code/), Storm and Shamim, 2026-10-09), and where each lives:
+
+| Lesson | In the design |
+|---|---|
+| No code before a plan, no plan without review | Treatment starts only after Plan review approved; the Fellow checks the newest Plan review step first and reports `replan` if it did not approve. The plan must list the files it will touch, the tests, and an estimated size. |
+| Stop on scope change; don't improvise | Treatment has a `replan` route back to Workup. A fix that needs anything outside the approved plan stops there. |
+| Structured handoff (I-PASS) | Triage notes and the Fellow, Senior Fellow and reviewers' results end in Illness, Patient, Actions, Situation. The receiver opens its result with `Received:` and restates the Actions and Situation. Synthesis is a convention in the job text; the engine does not check it. |
+| A fault-finding reviewer, audited | The panel reviewers are not the author, and their jobs are written around finding fault (panel angles `adversarial` and `red-team`). The Chart Auditor audits the reviewers at the Audit stage. It is a separate agent from the Discharge Nurse because the engine does not let the assembly agent work a stage. |
+| Circuit breaker | Treatment allows 6 rounds, then Escalation, a person's stage. An agent that sees four consecutive rounds with new blocking findings reports `escalate` unless a precedent covers it. Workup (4) and Audit (3) have limits to Escalation too. Reviewers mark findings blocking or not, new or repeated, so agents can count. |
+| Append-only precedent log | The decision log is on. People write it, from any decision card (Admit?, Sign-off, Escalation); every agent reads it first and before escalating. |
+| Watchdog for stalled stages | The Charge Nurse's 30-minute board round lists items with no step for 30 minutes first. It cannot re-run a stage itself; a person presses Retry. |
+| Rate-limit self-generated work | Nobody but the Triage Nurse makes items, and only from `ISSUES.md`. Agents leave at most one `Follow-up:` line; the Discharge Nurse lists at most three, as suggestions. |
+| Size ceiling; tests out of the fix | The Limits check fails a diff over 1,000 lines or any removed or changed line in `test/` other than a `todo` marker. A failure goes back to Treatment, and the Fellow reports `replan` or `too-big`. A change too big to plan goes to Escalation. |
+| Records as first-class state | Plans, verdicts and audits are each stage's result, kept on the item with who settled it. Cost per step is on the item board. The agents cannot see it, so none states costs. |
+| Prompt hygiene | Each job opens with a one-sentence persona. One short "Always" paragraph replaces the old five-sentence one, and the GitHub clause is gone. |
+
+Not encoded, because Sculptured does not carry them yet: an agent-callable retry (the watchdog only reports), and `triggers` and a change `mandate` in MADL.
 
 **Decisions applied:**
 - No GitHub intake and no PR stage: the GitHub connector was dropped. Agents may use `gh` only if
@@ -155,10 +175,10 @@ an item, so nothing here shows that the team fixes bugs, how many rounds it take
   | Model | Agents and limits | Total |
   |---|---|---|
   | Sonnet | Triage Nurse 0.3M, Fellow 2M, two reviewers 0.8M each | 3.9M |
-  | Opus | Senior Fellow 1M, Review Attending 0.8M | 1.8M |
+  | Opus | Senior Fellow 1M, Review Attending 0.8M, Chart Auditor 0.6M | 2.4M |
   | Haiku | Charge Nurse 0.3M, Discharge Nurse 0.2M | 0.5M |
 
-- **6.2M new tokens in all.** That is a ceiling by design, not an estimate of use.
+- **6.8M new tokens in all.** That is a ceiling by design, not an estimate of use.
 - Reaching a limit soft-stops the agent. Usage is reported after each turn, so a turn in progress can
   overshoot.
 - The team runs on your Claude plan, so what it costs depends on your plan's usage limits, not

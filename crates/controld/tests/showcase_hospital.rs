@@ -35,8 +35,10 @@ fn the_hospital_team_file_is_valid_madl_and_passes_the_draft_checks() {
             "workup",
             "plan-review",
             "treatment",
+            "limits",
             "tests",
             "code-review",
+            "audit",
             "sign-off",
             "merge",
             "escalation"
@@ -66,7 +68,22 @@ fn the_hospital_team_file_is_valid_madl_and_passes_the_draft_checks() {
                 .as_ref()
                 .map(|e| (e.after_rounds, e.agent.as_str()))
         ),
-        (Some(4), Some("escalation"), Some((2, "senior-fellow")))
+        (Some(6), Some("escalation"), Some((2, "senior-fellow")))
+    );
+    // The lessons from the Cockroach Labs post, as the engine sees them.
+    assert_eq!(kind("limits").kind, StageKind::Check);
+    assert_eq!(kind("workup").routes["too-big"].as_deref(), Some("escalation"));
+    assert_eq!(kind("treatment").routes["replan"].as_deref(), Some("workup"));
+    assert_eq!(kind("treatment").routes["escalate"].as_deref(), Some("escalation"));
+    assert_eq!(kind("code-review").routes["approved"].as_deref(), Some("audit"));
+    assert_eq!(kind("audit").agent, "chart-auditor");
+    assert!(
+        !kind("code-review").reviewers.contains(&"chart-auditor".to_string()),
+        "the auditor is a different agent from the reviewers"
+    );
+    assert!(
+        d.agents.iter().all(|a| a.job.starts_with("You are the ")),
+        "every role opens with a one-sentence persona"
     );
     assert_eq!(
         kind("code-review").reviewers,

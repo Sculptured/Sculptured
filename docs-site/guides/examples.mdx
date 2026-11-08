@@ -65,7 +65,7 @@ Every arrow is "hands work to", with no workflow, so work moves forward once. Co
 
 ### Coding hospital
 
-A [workflow](/guides/workflows) that treats a repository's issues like patients. It is modelled on Cockroach Labs' "running a hospital for code" experiment.
+A [workflow](/guides/workflows) that treats a repository's issues like patients. It is modelled on Cockroach Labs' "running a hospital for code" experiments.
 
 | Agent | Role |
 | --- | --- |
@@ -74,17 +74,18 @@ A [workflow](/guides/workflows) that treats a repository's issues like patients.
 | Senior Fellow | Takes over an item's Treatment from round 3, after two failed rounds. |
 | Review Attending | Approves the plan only if it fixes the cause and names the test that proves it. |
 | Correctness Reviewer, Safety Reviewer | The code-review panel. Both must approve. |
-| Charge Nurse | Changes nothing. Every 30 minutes a scheduled board round asks it to summarise what is waiting, blocked or escalated. |
+| Chart Auditor | Audits the reviewers before sign-off: did each cite evidence, run the checks and leave the tests alone? |
+| Charge Nurse | Changes nothing. Every 30 minutes a scheduled board round asks it to report stalled items first, then what is waiting, blocked or escalated. |
 | Discharge Nurse | The assembly. Writes the final report once every item has finished. |
 
 How an item moves:
 
 1. **Admit?** A person admits the issue, or closes it as `not-a-bug` or `wont-fix`.
 2. **Workup → Plan review.** The Fellow plans; the Review Attending approves or sends it back.
-3. **Treatment → Tests.** The Fellow fixes it; Sculptured runs `npm test`. A failure goes back to Treatment.
-4. **Code review.** A two-reviewer panel; any `changes` vote sends it back.
+3. **Treatment → Limits → Tests.** The Fellow fixes it, only inside the approved plan; a change of scope goes back to Workup (`replan`). Sculptured checks that the diff is at most 1,000 lines and no existing test line changed, then runs `npm test`. A failure goes back to Treatment.
+4. **Code review → Audit.** A two-reviewer panel; any `changes` vote sends it back. The Chart Auditor then checks the reviewers' work.
 5. **Sign-off → Merge.** A person ships it; Sculptured merges the item's branch into main. A conflict goes back to Treatment.
-6. **Escalation.** After 4 Treatment rounds, a person decides: `retry` or `wont-fix`.
+6. **Escalation.** A person decides when an agent reports four rounds of new blocking findings, an item is too big to plan, or a stage hits its round limit (Treatment 6): `retry`, `replan` or `wont-fix`. Their notes can become precedents in the decision log.
 
 It also turns on per-item copies and branches, a guard (`npm test` every 15 minutes) and a decision log. The full diagram is on the [workflows page](/guides/workflows#worked-example-the-coding-hospital).
 

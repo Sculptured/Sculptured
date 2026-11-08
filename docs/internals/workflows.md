@@ -89,16 +89,24 @@ flowchart TD
   WU -- plan --> PR["Plan review - Review Attending"]
   PR -- changes --> WU
   PR -- approved --> TR["Treatment - Fellow, Senior Fellow from round 3"]
-  TR -- done --> TS[["Tests - check: npm test"]]
+  TR -- replan --> WU
+  TR -- done --> LM[["Limits - check: size and tests untouched"]]
+  LM -- failed --> TR
+  LM -- passed --> TS[["Tests - check: npm test"]]
   TS -- failed --> TR
   TS -- passed --> CR["Code review - panel of 2, all approve"]
   CR -- changes --> TR
-  CR -- approved --> SO{{"Sign-off - person"}}
+  CR -- approved --> AU["Audit - Chart Auditor"]
+  AU -- reviewers --> CR
+  AU -- changes --> TR
+  AU -- clear --> SO{{"Sign-off - person"}}
   SO -- rework --> TR
   SO -- ship --> MG[["Merge into main"]]
   MG -- conflict --> TR
   MG -- merged --> DONE
-  TR -. "after 4 rounds" .-> ES{{"Escalation - person, 1 round"}}
+  TR -. "escalate, or after 6 rounds" .-> ES{{"Escalation - person, 1 round"}}
+  WU -. "too-big, or after 4 rounds" .-> ES
+  ES -- replan --> WU
   ES -- "wont-fix" --> DONE
 ```
 
