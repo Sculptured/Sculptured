@@ -47,32 +47,23 @@ async fn report_with(s: &Served, id: &str, calls: u64) -> Value {
     }
 }
 
-/// The real CLI keeps its session logs in `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`,
-/// while the report looks under the served home folder: this links one to the other for the test's
-/// length (the link is removed, never what it points to).
-struct ProjectsLink(Option<PathBuf>);
-
-impl ProjectsLink {
-    fn new(s: &Served) -> ProjectsLink {
-        if std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
-            return ProjectsLink(None);
-        }
-        let real =
-            PathBuf::from(std::env::var_os("HOME").expect("HOME is set")).join(".claude/projects");
-        std::fs::create_dir_all(&real).unwrap();
-        let link = s.home.path().join(".claude/projects");
-        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
-        std::os::unix::fs::symlink(&real, &link).unwrap();
-        ProjectsLink(Some(link))
+/// The agents' own Claude Code setup in a folder of this test: `CLAUDE_CONFIG_DIR` is set to it, so the
+/// real CLI writes its session logs there and the report reads them from there. Only the sign-in
+/// (`.credentials.json`) is copied in from the person's setup; their session logs are never read.
+/// Without a credentials file (an API key in the environment instead) nothing is copied.
+fn own_claude_setup(dir: &std::path::Path) {
+    let theirs = std::env::var_os("CLAUDE_CONFIG_DIR").map_or_else(
+        || PathBuf::from(std::env::var_os("HOME").expect("HOME is set")).join(".claude"),
+        PathBuf::from,
+    );
+    let ours = dir.join(".claude");
+    std::fs::create_dir_all(&ours).unwrap();
+    let credentials = theirs.join(".credentials.json");
+    if credentials.is_file() {
+        std::fs::copy(&credentials, ours.join(".credentials.json")).unwrap();
     }
-}
-
-impl Drop for ProjectsLink {
-    fn drop(&mut self) {
-        if let Some(link) = &self.0 {
-            let _ = std::fs::remove_file(link);
-        }
-    }
+    // SAFETY: this binary has one test, on a single-threaded runtime, and it calls this first.
+    unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", &ours) };
 }
 
 #[tokio::test]
@@ -81,8 +72,9 @@ async fn live_a_runs_report_names_its_agents_and_counts_every_call() {
     let Some(_) = common::live::require() else {
         return;
     };
+    let setup = tempfile::tempdir().unwrap();
+    own_claude_setup(setup.path());
     let s = crate::common::m2::serve().await;
-    let _link = ProjectsLink::new(&s);
     let _runner = common::live::connect(&s).await;
     let id = team(
         &s,
