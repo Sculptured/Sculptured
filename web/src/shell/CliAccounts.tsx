@@ -96,7 +96,7 @@ function CliRow({ c, started, usage, now, signIn }: { c: CliStatus; started: Log
   return (
     <li>
       <strong>{nameOf(c.name)}</strong>: {word(c)}
-      {c.version && <span className="muted"> · {c.version}</span>}
+      {c.version && <> · <span className="muted cli-version" title={c.version} data-raw-evidence>{c.version}</span></>}
       {c.installed && unsigned && <>{' '}<Btn size="sm" onClick={() => signIn(c.name)}>Sign in</Btn></>}
       {started && unsigned && <CliSignInSteps cli={c.name} started={started} />}
       {!c.installed && <CliInstall cli={c.name} />}

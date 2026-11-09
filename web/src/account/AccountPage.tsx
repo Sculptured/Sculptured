@@ -1,4 +1,3 @@
-import { BackToApp } from '../hosted/BackToApp';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -19,8 +18,6 @@ export function AccountPage() {
   useEffect(() => { api.accountUsage().then(setUsage, (e) => setError(errorText(e))); }, []);
   return (
     <main className="acct-page">
-      <BackToApp />
-      <p><Link to="/">← Projects</Link></p>
       <h1>Your account</h1>
       {s.kind === 'signed-in' ? <SignedIn name={s.user.name} email={s.user.email} admin={s.user.role === 'admin'} /> :
         <p className="muted">Sculptured runs on this computer, so there is no account to sign in to. Your usage is below.</p>}
@@ -28,12 +25,12 @@ export function AccountPage() {
       {s.kind === 'local' && <section aria-label="Community"><h2>Community</h2><CommunityCard /></section>}
       <section aria-label="Agent sign-in and plan usage">
         <h2>Agent sign-in and plan usage</h2>
-        <p className="muted">Whether Claude Code and Codex are signed in on this computer, and how much of each plan is used, as each CLI reports it.</p>
+        <p className="muted">As each CLI reports it.</p>
         <CliAccounts />
       </section>
       <section aria-label="Your usage">
         <h2>Your usage</h2>
-        <p className="muted">Everything your agents used in Sculptured, from what Claude Code and Codex reported.</p>
+        <p className="muted">From what Claude Code and Codex reported.</p>
         {error && <p className="tone-red" role="alert">{error}</p>}
         {usage ? <UsageSummary u={usage} /> : !error && <p className="muted">Loading…</p>}
       </section>

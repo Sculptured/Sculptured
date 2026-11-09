@@ -57,7 +57,7 @@ export function DeploymentsPane() {
 
 export function ArenaRunsPane() {
   const { runs, runsError } = useOrg();
-  if (!runs) return <p className="ctl-empty">{runsError ? `Arena is not answering (${runsError}). Its runs show here once it is.` : 'Reading Arena runs…'}</p>;
+  if (!runs) return <p className="ctl-empty">{runsError ? <><span aria-hidden="true">∅ </span>{runsError}</> : 'Reading Arena runs…'}</p>;
   const recent = recentRuns(runs);
   if (recent.length === 0) return <p className="ctl-empty">No Arena runs yet. Run a team in Arena from its Design board (Run in Arena), or start one in Arena control.</p>;
   const now = Date.now();
