@@ -1,6 +1,6 @@
 # The Control workspace
 
-Control (`/p/:team/control`), a simulated Arena run (`/arena/runs/:run/:branch`) and Arena control (`/arena`) are one dockable workspace with different panes. The workspace is a tree of splits and tabbed stacks, saved per page in localStorage. Panes come from a registry, share a selection over a `BroadcastChannel`, and can pop out into their own windows. Panes never call the server: they read a **source**, a deployment (a Sculptured team) or a simulated run (an Arena branch). The user guide is [docs/guide/control.md](../guide/control.md).
+Control (`/p/:team/control`), a simulated Shakedown run (`/arena/runs/:run/:branch`) and Shakedown control (`/arena`) are one dockable workspace with different panes. The workspace is a tree of splits and tabbed stacks, saved per page in localStorage. Panes come from a registry, share a selection over a `BroadcastChannel`, and can pop out into their own windows. Panes never call the server: they read a **source**, a deployment (a Sculptured team) or a simulated run (a Shakedown branch). The user guide is [docs/guide/control.md](../guide/control.md).
 
 Sources:
 - `web/src/workspace/`: `model.ts`, `store.ts`, `layouts.ts`, `registry.ts`, `slots.tsx`, `selection.tsx`, `usePopOut.ts`, `PopOutPane.tsx`, `WorkspacePage.tsx`, `Workspace.tsx`, `StackView.tsx`, `PaneMenu.tsx`, `AddPane.tsx`, `LayoutTabs.tsx`, `Splitter.tsx`, `useDrag.ts`, `DropOverlay.tsx`, `MobileWorkspace.tsx`
@@ -48,7 +48,7 @@ flowchart LR
 - **Clean-up.** Duplicate pane ids keep their first occurrence, and unknown pane types are dropped (`dropUnknown`). A layout left with no known pane becomes the default of the same id.
 - **Saving.** `saveLayouts` writes on every change. A failed write (storage full, private mode) is ignored; the page keeps working.
 
-Page keys: `control.<team>` for a project's Control, `arena-run` shared by every Arena run, and `arena` for Arena control. Each Arena branch talks over a channel of its own (`arena-run.<branch>`), so two branches open in two tabs never steer each other.
+Page keys: `control.<team>` for a project's Control, `arena-run` shared by every Shakedown run, and `arena` for Shakedown control. Each Shakedown branch talks over a channel of its own (`arena-run.<branch>`), so two branches open in two tabs never steer each other.
 
 ## 3. The registry and the shell
 
@@ -63,7 +63,7 @@ A `PaneType` (`registry.ts`) declares:
 | `defaultSettings`, `Settings` | Its settings and the form shown under ⋯ → Settings |
 | `Body` | The pane, given `{ instance, settings, setSettings }` |
 
-- **One registry per page, made once.** `controlRegistry` in `web/src/control/registry.ts` and the Arena registry are module-level. `shellRegistry` wraps each type once, so components keep their identity across renders.
+- **One registry per page, made once.** `controlRegistry` in `web/src/control/registry.ts` and the Shakedown registry are module-level. `shellRegistry` wraps each type once, so components keep their identity across renders.
 - **Bodies are never remounted.** `Workspace.tsx` renders each body once per pane id and moves its DOM node into the stack's body slot (`place`). Moving a pane, a live update or a re-render never resets its scroll or state.
 - **Drag.** `useDrag.ts` starts past a 4 px threshold and finds the stack under the pointer by bounding box. The outer 25% of a stack (`EDGE`) drops beside it; the centre drops as a tab; Esc cancels. Callbacks are read when used, so a stream update mid-drag never interrupts it.
 - **Keyboard paths.** The ⋯ menu's **Move to…** (`PaneMenu.tsx`) is the keyboard path for every drag. Splitters move by 5% per arrow key.
@@ -103,13 +103,13 @@ A `PaneType` (`registry.ts`) declares:
 
 Start and Stop team… go through the project bar's own handle (`shell.refs.run`), with its confirmations. Until the stream has answered, every team action says "Connecting…". A design that has never started has no stream, so it is not waiting for one: Start is offered at once.
 
-**The simulated source** (`simulatedSource.ts`) reads the branch, its stream, rows, the restore plan, fork and compare through `/api/arena/*`. Arena runs cannot be paused or stopped from Control yet; those actions say so. While Arena does not answer, `SimGate` shows "Arena is not running" in each pane, with how to start it.
+**The simulated source** (`simulatedSource.ts`) reads the branch, its stream, rows, the restore plan, fork and compare through `/api/arena/*`. Shakedown runs cannot be paused or stopped from Control yet; those actions say so. While Shakedown does not answer, `SimGate` shows "Shakedown is not running" in each pane, with how to start it.
 
-**The plant** (`web/src/control/plant/`) is read by both sources into one shape, so the Process view, the Action timeline and Trends never ask which kind of run they show. `deploymentPlant.ts` places each `tool-called` (with its `tool-resulted` and `action-interpreted`) on a system with `toolSystems.ts`: the `rig` MCP server is Team messages (or Approvals for `propose_change`, `request_input`, `approve`), a team component is an MCP server by its id, an `arena-<agent>` server (Run in Arena) is the Arena world, and the interpreter's class gives files, shell and web. Permits come from `native-permission` questions and `change-proposed`/`change-decided`; rights from the draft (`authority`, `permission`, `mandate`). `arenaPlant.ts` takes each part's `system` and each tool's `effect` from the run's world in `run_start`, then the branch's own `world`, then `GET /api/world` only for a part whose integration matches; without them kind and effect are `unknown` and rows written are an `observed` write. `flows.ts`, `lanes.ts` and `trends.ts` are pure.
+**The plant** (`web/src/control/plant/`) is read by both sources into one shape, so the Process view, the Action timeline and Trends never ask which kind of run they show. `deploymentPlant.ts` places each `tool-called` (with its `tool-resulted` and `action-interpreted`) on a system with `toolSystems.ts`: the `rig` MCP server is Team messages (or Approvals for `propose_change`, `request_input`, `approve`), a team component is an MCP server by its id, an `arena-<agent>` server (Run in Shakedown) is the Shakedown world, and the interpreter's class gives files, shell and web. Permits come from `native-permission` questions and `change-proposed`/`change-decided`; rights from the draft (`authority`, `permission`, `mandate`). `arenaPlant.ts` takes each part's `system` and each tool's `effect` from the run's world in `run_start`, then the branch's own `world`, then `GET /api/world` only for a part whose integration matches; without them kind and effect are `unknown` and rows written are an `observed` write. `flows.ts`, `lanes.ts` and `trends.ts` are pure.
 
-**The organisation overview** (`web/src/control/org/`, `/control`) reads `GET /api/control/overview` (`crates/controld/src/control_overview.rs`, from the `seats`, `questions` and `actions` projections and the latest run's `usage-reported` events), Arena's runs and `GET /api/arena/suites` (404: no suites in this Arena).
+**The organisation overview** (`web/src/control/org/`, `/control`) reads `GET /api/control/overview` (`crates/controld/src/control_overview.rs`, from the `seats`, `questions` and `actions` projections and the latest run's `usage-reported` events), Shakedown's runs and `GET /api/arena/suites` (404: no suites in this Shakedown).
 
-**Run in Arena** (`crates/controld/src/arena_runs/`, the board's `web/src/arena/RunInArena.tsx`): `POST /api/teams/{id}/arena-runs` starts an external run, registers each agent (`plan::registration`), stores and starts the run's own team (`plan::run_draft`: one `mcp-remote` component per agent, Arena's task after the job of each agent nobody hands work to), and spawns `drive::run`, which polls the team's events, posts each `usage-reported` to Arena, and finishes (agent ends, `finish`, Stop team) when asked, when the team stops, or after every agent stays finished for the settle time. Driven runs are kept in memory on the `Arena` handle (`drives`), so a restart of Sculptured forgets them, and their Arena branch stays running until arenad restarts (Arena then marks it interrupted).
+**Run in Shakedown** (`crates/controld/src/arena_runs/`, the board's `web/src/arena/RunInArena.tsx`): `POST /api/teams/{id}/arena-runs` starts an external run, registers each agent (`plan::registration`), stores and starts the run's own team (`plan::run_draft`: one `mcp-remote` component per agent, Shakedown's task after the job of each agent nobody hands work to), and spawns `drive::run`, which polls the team's events, posts each `usage-reported` to Shakedown, and finishes (agent ends, `finish`, Stop team) when asked, when the team stops, or after every agent stays finished for the settle time. Driven runs are kept in memory on the `Arena` handle (`drives`), so a restart of Sculptured forgets them, and their Shakedown branch stays running until arenad restarts (Shakedown then marks it interrupted).
 
 **Alarms.** `alarms.ts` is pure. A feed entry tagged with a rule raises an alarm when that rule is on, and a threshold rule only after its wait. The alarm's id is the rule plus the condition's key (a question, an agent's session), so an acknowledgement (`useAlarms`, kept per team) stays valid however the condition is seen again.
 
@@ -157,12 +157,12 @@ The guide's screenshots and videos were removed with the model-less practice age
 | Dropping a stack's only pane on itself does nothing | `web/src/workspace/model.test.ts` (`move_onto_itself_is_noop`) |
 | A stream update mid-drag or mid-scroll moves nothing | `web/src/workspace/Workspace.test.tsx` (`stream_update_keeps_drag_and_scroll`) |
 | Emergency stop with nothing running, or pressed twice, never errors | `web/src/control/ControlPage.test.tsx` (`emergency_stop_confirm_and_idle`) |
-| Arena not answering is said plainly in every pane | `web/src/arena/ArenaControlPage.test.tsx`, `web/src/control/SimulatedControl.test.tsx`, `web/src/control/simulatedSource.test.tsx` (`arena_down_is_plain`) |
+| Shakedown not answering is said plainly in every pane | `web/src/arena/ArenaControlPage.test.tsx`, `web/src/control/SimulatedControl.test.tsx`, `web/src/control/simulatedSource.test.tsx` (`arena_down_is_plain`) |
 | A design that never started can Start at once | `web/src/control/deploymentSource.controls.test.tsx` |
 | Control opens first, starts, keeps a dragged layout, moves by keyboard, pauses, resumes, stops; phone pane switcher | `web/e2e/control.spec.ts` |
-| An Arena action's system and effect come from what the world declares, else unknown; today's world only for the same integration | `web/src/control/plant/arenaPlant.test.ts` |
+| A Shakedown action's system and effect come from what the world declares, else unknown; today's world only for the same integration | `web/src/control/plant/arenaPlant.test.ts` |
 | A deployment's calls are placed by Sculptured's own tools; permits show who granted them | `web/src/control/plant/deploymentPlant.test.ts` |
 | Process view, action marks (a refusal stands out), trace evidence, trends | `web/src/control/panes/ControlPlane.test.tsx` |
 | Alarms have priorities; shelving leaves the master caution; refusals and failed safety checks alarm | `web/src/control/ControlPage.test.tsx`, `web/src/control/alarms.test.ts` |
 | Every team is a unit with its state and figures | `crates/controld/tests/control_overview.rs`, `web/src/control/org/OrgControl.test.tsx` |
-| A board runs as an Arena external run and is finished when its agents are, or when asked | `crates/controld/tests/arena_runs.rs`, `web/src/arena/RunInArena.test.tsx` |
+| A board runs as a Shakedown external run and is finished when its agents are, or when asked | `crates/controld/tests/arena_runs.rs`, `web/src/arena/RunInArena.test.tsx` |

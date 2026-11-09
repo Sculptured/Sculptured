@@ -3,9 +3,9 @@ import { isArenaDown, type ArenaCtx } from './data';
 import { agoWords, sizeWords } from './words';
 
 function ArenaTile({ ctx }: { ctx: ArenaCtx }) {
-  if (ctx.health === undefined) return <Tile label="Arena" glyph="◌" tone="plain">Asking</Tile>;
-  if (ctx.health) return <Tile label="Arena" glyph="●" tone="verified">Up</Tile>;
-  return <Tile label="Arena" glyph="■" tone="bad">{isArenaDown(ctx.healthError) ? 'Down' : 'Not answering'}</Tile>;
+  if (ctx.health === undefined) return <Tile label="Shakedown" glyph="◌" tone="plain">Asking</Tile>;
+  if (ctx.health) return <Tile label="Shakedown" glyph="●" tone="verified">Up</Tile>;
+  return <Tile label="Shakedown" glyph="■" tone="bad">{isArenaDown(ctx.healthError) ? 'Down' : 'Not answering'}</Tile>;
 }
 
 function PartsTile({ ctx }: { ctx: ArenaCtx }) {
@@ -34,7 +34,7 @@ function RunningTile({ ctx }: { ctx: ArenaCtx }) {
 export function StatusStrip({ ctx }: { ctx: ArenaCtx }) {
   const c = ctx.lastCleanup;
   return (
-    <ul className="arena-strip" aria-label="Arena status">
+    <ul className="arena-strip" aria-label="Shakedown status">
       <ArenaTile ctx={ctx} />
       <PartsTile ctx={ctx} />
       <SavesTile ctx={ctx} />

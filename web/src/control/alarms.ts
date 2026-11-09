@@ -32,7 +32,7 @@ export const RULE_WORDS: Record<string, string> = {
   'question-waiting': 'A question has waited longer than the threshold',
   'part-error': 'A part of the world reported an error (simulated runs)',
   refused: "A system or a gate refused an agent's call",
-  safety: 'A hard safety check failed (Arena runs)',
+  safety: 'A hard safety check failed (Shakedown runs)',
 };
 
 /**

@@ -39,7 +39,10 @@ pub async fn task(arena: &Arena, id: &str) -> Result<Value, ApiError> {
         .as_array()
         .and_then(|ts| ts.iter().find(|t| t["id"] == id).cloned())
         .ok_or_else(|| {
-            ApiError::bad_request("arena_task_unknown", format!("Arena has no task {id:?}."))
+            ApiError::bad_request(
+                "arena_task_unknown",
+                format!("Shakedown has no task {id:?}."),
+            )
         })
 }
 
@@ -55,7 +58,7 @@ pub async fn start(arena: &Arena, task: &str, team: &str, name: &str) -> Result<
         _ => Err(ApiError::new(
             StatusCode::BAD_GATEWAY,
             "arena_failed",
-            "Arena started a run but did not say which",
+            "Shakedown started a run but did not say which",
         )),
     }
 }
@@ -73,7 +76,7 @@ pub async fn register(arena: &Arena, branch: &str, agent: &Value) -> Result<Stri
         ApiError::new(
             StatusCode::BAD_GATEWAY,
             "arena_failed",
-            "Arena registered an agent without an MCP endpoint",
+            "Shakedown registered an agent without an MCP endpoint",
         )
     })
 }

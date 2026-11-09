@@ -23,7 +23,7 @@ function Header({ ctx }: { ctx: ArenaCtx }) {
   return (
     <>
       <div className="arena-head">
-        <h1 className="arena-title"><Icon name="flask" size={16} /> Arena control</h1>
+        <h1 className="arena-title"><Icon name="flask" size={16} /> Shakedown control</h1>
         <StatusStrip ctx={ctx} />
       </div>
       <DownBanner ctx={ctx} />

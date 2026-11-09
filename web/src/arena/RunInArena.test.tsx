@@ -24,7 +24,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const page = (blocked: string | null = null) => render(<MemoryRouter><RunInArena team="larch" blocked={blocked} /></MemoryRouter>);
 
-describe('Run in Arena from a board', () => {
+describe('Run in Shakedown from a board', () => {
   it('starts an external run of the chosen task, lists it with a link to its Control, and says suites are not available yet', async () => {
     let runs: unknown[] = [];
     const calls = stub({
@@ -39,38 +39,38 @@ describe('Run in Arena from a board', () => {
     });
     page();
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Run in Arena…' }));
-    const panel = within(await screen.findByRole('dialog', { name: 'Run in Arena' }));
+    await user.click(screen.getByRole('button', { name: 'Run in Shakedown…' }));
+    const panel = within(await screen.findByRole('dialog', { name: 'Run in Shakedown' }));
     await user.selectOptions(await panel.findByRole('combobox', { name: 'Task' }), 'short-dated');
     expect(await panel.findByText(SUITES_MISSING)).toBeInTheDocument();
     expect(panel.getByRole('button', { name: 'Run a test suite' })).toBeDisabled();
-    await user.click(panel.getByRole('button', { name: 'Start in Arena' }));
+    await user.click(panel.getByRole('button', { name: 'Start in Shakedown' }));
     expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ task_id: 'short-dated' });
     const link = await panel.findByRole('link', { name: 'Task short-dated' });
     expect(link).toHaveAttribute('href', '/arena/runs/r9/b9');
-    expect(within(panel.getByRole('list', { name: 'Arena runs of this team' })).getByText('running in Arena')).toBeInTheDocument();
+    expect(within(panel.getByRole('list', { name: 'Shakedown runs of this team' })).getByText('running in Shakedown')).toBeInTheDocument();
   });
 
-  it('says why it cannot start: the design has problems, or Arena is not answering', async () => {
+  it('says why it cannot start: the design has problems, or Shakedown is not answering', async () => {
     stub({
       'GET /api/arena/health': [200, { claude: true, codex: true, open_available: false }],
       'GET /api/arena/tasks': [200, [{ id: 'base', reason: 'r' }]],
       'GET /api/teams/larch/arena-runs': [200, { runs: [] }],
     });
     page('Fix 2 things on the design first.');
-    await userEvent.click(screen.getByRole('button', { name: 'Run in Arena…' }));
-    const start = await screen.findByRole('button', { name: 'Start in Arena' });
+    await userEvent.click(screen.getByRole('button', { name: 'Run in Shakedown…' }));
+    const start = await screen.findByRole('button', { name: 'Start in Shakedown' });
     expect(start).toBeDisabled();
     expect(start).toHaveAccessibleDescription('Fix 2 things on the design first.');
     vi.unstubAllGlobals();
     stub({ 'GET /api/arena/health': [503, { error: { code: 'arena_unreachable', message: 'down' } }], 'GET /api/teams/larch/arena-runs': [200, { runs: [] }] });
     document.body.innerHTML = '';
     page();
-    await userEvent.click(screen.getByRole('button', { name: 'Run in Arena…' }));
-    expect(await screen.findByRole('link', { name: 'Open Arena control' })).toHaveAttribute('href', '/arena');
+    await userEvent.click(screen.getByRole('button', { name: 'Run in Shakedown…' }));
+    expect(await screen.findByRole('link', { name: 'Open Shakedown control' })).toHaveAttribute('href', '/arena');
   });
 
-  it("a finished run says why it finished and Arena's outcome", () => {
-    expect(driveWords({ state: 'finished', why: 'the team stopped', status: 'failed', error: null })).toEqual({ glyph: '■', text: 'finished (the team stopped); Arena: failed' });
+  it("a finished run says why it finished and Shakedown's outcome", () => {
+    expect(driveWords({ state: 'finished', why: 'the team stopped', status: 'failed', error: null })).toEqual({ glyph: '■', text: 'finished (the team stopped); Shakedown: failed' });
   });
 });

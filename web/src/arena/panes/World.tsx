@@ -13,7 +13,7 @@ function Answered({ part }: { part: WorldPartInfo }) {
 /** Whether the part runs on the arena's clock: glyph and word. */
 function Clock({ uses }: { uses?: boolean }) {
   if (uses == null) return <span className="muted"><span aria-hidden="true">?</span> Clock unknown</span>;
-  return uses ? <span><span aria-hidden="true">◷</span> Arena clock</span> : <span className="muted"><span aria-hidden="true">○</span> Own time</span>;
+  return uses ? <span><span aria-hidden="true">◷</span> Shakedown clock</span> : <span className="muted"><span aria-hidden="true">○</span> Own time</span>;
 }
 
 function Restore({ part }: { part: WorldPartInfo }) {

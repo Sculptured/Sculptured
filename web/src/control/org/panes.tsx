@@ -57,12 +57,12 @@ export function DeploymentsPane() {
 
 export function ArenaRunsPane() {
   const { runs, runsError } = useOrg();
-  if (!runs) return <p className="ctl-empty">{runsError ? <><span aria-hidden="true">∅ </span>{runsError}</> : 'Reading Arena runs…'}</p>;
+  if (!runs) return <p className="ctl-empty">{runsError ? <><span aria-hidden="true">∅ </span>{runsError}</> : 'Reading Shakedown runs…'}</p>;
   const recent = recentRuns(runs);
-  if (recent.length === 0) return <p className="ctl-empty">No Arena runs yet. Run a team in Arena from its Design board (Run in Arena), or start one in Arena control.</p>;
+  if (recent.length === 0) return <p className="ctl-empty">No Shakedown runs yet. Run a team in Shakedown from its Design board (Run in Shakedown), or start one in Shakedown control.</p>;
   const now = Date.now();
   return (
-    <table className="ctl-table" aria-label="Recent Arena runs">
+    <table className="ctl-table" aria-label="Recent Shakedown runs">
       <thead><tr><th scope="col">Run</th><th scope="col">Team</th><th scope="col">Outcome</th><th scope="col">Started</th></tr></thead>
       <tbody>
         {recent.map((r) => {

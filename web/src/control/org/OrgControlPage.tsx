@@ -21,7 +21,7 @@ export const ORG_CONTROL_PAGE = 'control.org';
 
 export const orgRegistry = createRegistry([
   { type: 'org.deployments', title: 'Deployments', glyph: '◫', Body: DeploymentsPane },
-  { type: 'org.arena', title: 'Arena runs', glyph: '▶', Body: ArenaRunsPane },
+  { type: 'org.arena', title: 'Shakedown runs', glyph: '▶', Body: ArenaRunsPane },
   { type: 'org.suites', title: 'Test suites', glyph: '▦', Body: SuitesPane },
 ]);
 
@@ -48,7 +48,7 @@ function Strip({ ctx }: { ctx: OrgCtx }) {
       <StatusTile label="Deployments">{known ? `${running} running of ${teams.length}` : 'unknown'}</StatusTile>
       <StatusTile label="Alarms" glyph={alarms ? '▲' : '○'} tone={alarms ? 'bad' : 'plain'}>{known ? (alarms ? `${alarms} raised` : 'none') : 'unknown'}</StatusTile>
       <StatusTile label="Tool calls">{known ? `${rate} this minute` : 'unknown'}</StatusTile>
-      <StatusTile label="Arena" glyph={ctx.runs ? '●' : '∅'} tone={ctx.runs ? 'plain' : 'unknown'}>{ctx.runs ? `${ctx.runs.length} runs` : 'not answering'}</StatusTile>
+      <StatusTile label="Shakedown" glyph={ctx.runs ? '●' : '∅'} tone={ctx.runs ? 'plain' : 'unknown'}>{ctx.runs ? `${ctx.runs.length} runs` : 'not answering'}</StatusTile>
     </ul>
   );
 }

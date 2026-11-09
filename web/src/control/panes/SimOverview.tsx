@@ -69,7 +69,7 @@ function Restore({ info }: { info?: WorldPartInfo }) {
 function PartCard({ part, info, b }: { part: WorldPartLine; info?: WorldPartInfo; b: BranchDetail }) {
   const { saved, calls } = partTrail(b, part.part);
   const restored = b.restored?.find((r) => r.part === part.part);
-  const clock = info?.uses_clock == null ? 'Clock unknown' : info.uses_clock ? '◷ Arena clock' : '○ Own time';
+  const clock = info?.uses_clock == null ? 'Clock unknown' : info.uses_clock ? '◷ Shakedown clock' : '○ Own time';
   return (
     <li className="ctl-part" aria-label={`Part ${part.part}`}>
       <div className="ctl-part-head"><b>{part.part}</b><span className="ctl-mono ctl-muted">{[part.integration, part.version].filter(Boolean).join(' · ')}</span></div>

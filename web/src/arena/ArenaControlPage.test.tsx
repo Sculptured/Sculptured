@@ -94,10 +94,10 @@ function Where() {
   return <output data-testid="at">{pathname + search}</output>;
 }
 
-describe('Arena control', () => {
+describe('Shakedown control', () => {
   it('arena_overview_layout', async () => {
     const { container } = page();
-    expect(screen.getByRole('heading', { name: /Arena control/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Shakedown control/ })).toBeInTheDocument();
     expect(within(screen.getByRole('tablist', { name: 'Layouts' })).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overview', 'Storage']);
     expect(layoutTab('Overview')).toHaveAttribute('aria-selected', 'true');
     for (const title of ['Runs', 'World', 'Engine']) expect(pane(title)).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe('Arena control', () => {
     expect(root.kind === 'split' && root.sizes).toEqual([0.45, 0.55]);
     expect(await within(pane('Engine')).findByText('Can run', { exact: false })).toBeInTheDocument();
     expect(await within(pane('Runs')).findByRole('link', { name: 'Task 27' })).toHaveAttribute('href', '/arena/runs/r1/b1');
-    const strip = within(screen.getByRole('list', { name: 'Arena status' }));
+    const strip = within(screen.getByRole('list', { name: 'Shakedown status' }));
     expect(await strip.findByText('3/4 answering')).toBeInTheDocument();
     expect(strip.getByText('Up')).toBeInTheDocument();
     expect(strip.getByText('15% of 10 GB')).toBeInTheDocument();
@@ -146,7 +146,7 @@ describe('Arena control', () => {
     expect((await part('retail')).getByText('✓')).toBeInTheDocument();
     expect((await part('plant')).getByText('Exact by replay')).toBeInTheDocument();
     expect((await part('plant')).getByText('Approximate')).toBeInTheDocument();
-    expect((await part('plant')).getByText('Arena clock')).toBeInTheDocument();
+    expect((await part('plant')).getByText('Shakedown clock')).toBeInTheDocument();
     expect((await part('plant')).getByText('isaac@6.2')).toBeInTheDocument();
     expect((await part('ledger')).getByText("Can't be restored").parentElement).toHaveTextContent("⊘ Can't be restored");
     expect((await part('mail')).getByText('Not answering')).toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('Arena control', () => {
     expect(within(storage).getByText('gc timed out')).toHaveAttribute('data-raw-evidence');
     expect(calls.filter((c) => c.method === 'POST' && c.url.endsWith('/gc'))).toHaveLength(2);
     await waitFor(() => expect(calls.filter((c) => c.url.endsWith('/usage')).length).toBeGreaterThan(usageReads));
-    expect(within(screen.getByRole('list', { name: 'Arena status' })).getByText('just now · freed 512 MB')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Shakedown status' })).getByText('just now · freed 512 MB')).toBeInTheDocument();
   });
 
   it('storage clean up waits for running branches, and says why', async () => {
@@ -197,13 +197,13 @@ describe('Arena control', () => {
     const { container } = page();
     // One alarm for the page, with how to start Arena; each pane only says it is offline.
     const banner = await screen.findByRole('alert');
-    expect(banner).toHaveTextContent('Arena is not running');
+    expect(banner).toHaveTextContent('Shakedown is not running');
     expect(within(banner).getByText('cd core && cargo run -p arenad')).toBeInTheDocument();
-    expect(within(screen.getByRole('list', { name: 'Arena status' })).getByText('Down')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Shakedown status' })).getByText('Down')).toBeInTheDocument();
     // The pane on show in that stack (a stack keeps its other tabs' bodies, hidden).
     const shown = (title: string) => within(pane(title).querySelector<HTMLElement>('.ws-pane.is-on')!);
     const plain = async (title: string) => {
-      expect(await shown(title).findByText(/Offline: Arena is not running/)).toBeInTheDocument();
+      expect(await shown(title).findByText(/Offline: Shakedown is not running/)).toBeInTheDocument();
     };
     for (const title of ['Runs', 'World', 'Engine']) await plain(title);
     await user.click(layoutTab('Storage'));
@@ -320,11 +320,11 @@ describe('Arena control', () => {
     await within(storage).findByText('Saves use 1.5 GB of 10 GB');
     failing = new Set(['/runs', '/usage']);
     await healthCheck();
-    expect(await within(tree).findByText('Arena hit a problem with this request.')).toBeInTheDocument();
+    expect(await within(tree).findByText('Shakedown hit a problem with this request.')).toBeInTheDocument();
     expect(within(tree).getByText('Forked from Original at step 5')).toBeInTheDocument();
-    expect(within(storage).getByText('Arena hit a problem with this request.')).toBeInTheDocument();
+    expect(within(storage).getByText('Shakedown hit a problem with this request.')).toBeInTheDocument();
     expect(within(storage).getByText('Saves use 1.5 GB of 10 GB')).toBeInTheDocument();
-    const note = within(tree).getByText('Arena hit a problem with this request.');
+    const note = within(tree).getByText('Shakedown hit a problem with this request.');
     expect(note.compareDocumentPosition(within(tree).getByText('Forked from Original at step 5')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

@@ -68,7 +68,7 @@ export function SimulatedBar({ source }: { source: ControlSource }) {
   return (
     <div className="ctl-sim">
       <div className="ctl-sim-row">
-        <nav className="ctl-sim-crumbs" aria-label="Breadcrumb"><Link to={ARENA_PATH}>Arena</Link><span aria-hidden="true">›</span></nav>
+        <nav className="ctl-sim-crumbs" aria-label="Breadcrumb"><Link to={ARENA_PATH}>Shakedown</Link><span aria-hidden="true">›</span></nav>
         <h1 className="ctl-sim-title">{source.title}{b && <> <StatusPill status={b.status} /> <ApproximateMark of={b} /></>}</h1>
         {b && <Totals b={b} />}
         <Branches a={a} />

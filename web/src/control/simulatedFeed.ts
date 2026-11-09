@@ -128,7 +128,7 @@ const OUTCOME: Record<BranchStatus, Status> = {
 /** The branch's outcome as the header's run status. */
 export const outcomeOf = (status: BranchStatus): Status => OUTCOME[status];
 
-export const DECIDED_BY_AGENTS = 'Changes in an Arena run are decided by its agents. To try another decision, fork with changed instructions.';
+export const DECIDED_BY_AGENTS = 'Changes in a Shakedown run are decided by its agents. To try another decision, fork with changed instructions.';
 const NOT_HERE: Availability = { ok: false, why: DECIDED_BY_AGENTS };
 
 /** The parts of the run's world that hold Sculptured's approvals (the `sculptured` integration). */

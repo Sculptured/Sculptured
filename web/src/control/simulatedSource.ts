@@ -11,9 +11,9 @@ import { rowsAt, saveAt } from './simulatedWorld';
 import { ActionError, type Action, type ActionReport, type ControlSource, type SimulatedTimeline, type TeamActions } from './source';
 
 /** Why the team's controls do nothing on a simulated run, in visible words. */
-export const ARENA_CANT_CONTROL = "Arena runs can't be paused or stopped from here yet";
-export const START_IN_ARENA = 'Start runs from Arena control';
-export const NO_MESSAGES = "Agents in an Arena run can't be sent messages; fork with changed instructions instead";
+export const ARENA_CANT_CONTROL = "Shakedown runs can't be paused or stopped from here yet";
+export const START_IN_ARENA = 'Start runs from Shakedown control';
+export const NO_MESSAGES = "Agents in a Shakedown run can't be sent messages; fork with changed instructions instead";
 
 /** An action that cannot run: disabled with `why`, and pressing it anyway reports the refusal. */
 const unavailable = (why: string): Action => ({
@@ -106,7 +106,7 @@ function worldOf(b: BranchDetail, save: number | null): NonNullable<ControlSourc
 /** A branch's title: "Task 27 · Rerun 1". */
 function titleOf(b: BranchDetail | null, names: Map<string, string>): string {
   const task = (b?.events.find((e) => e.kind === 'run_start')?.payload as { task_id?: string } | undefined)?.task_id;
-  return b ? `Task ${task ?? '?'} · ${names.get(b.id) ?? 'Branch'}` : 'Arena run';
+  return b ? `Task ${task ?? '?'} · ${names.get(b.id) ?? 'Branch'}` : 'Shakedown run';
 }
 
 /**

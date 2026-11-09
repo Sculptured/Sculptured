@@ -2,11 +2,11 @@ import { useOrg } from './data';
 import { suiteFigures, suitePage } from './suites';
 import './suites.css';
 
-export const SUITES_MISSING = 'Test suites are not available in this Arena yet. They show here, scenario by scenario, once Arena has suites.';
+export const SUITES_MISSING = 'Test suites are not available in this Shakedown yet. They show here, scenario by scenario, once Shakedown has suites.';
 
 export function SuitesPane() {
   const { suites } = useOrg();
-  if (!suites) return <p className="ctl-empty">Reading Arena's test suites…</p>;
+  if (!suites) return <p className="ctl-empty">Reading Shakedown's test suites…</p>;
   if ('missing' in suites) return <p className="ctl-empty">○ {SUITES_MISSING}</p>;
   if ('error' in suites) return <p className="ctl-empty"><span aria-hidden="true">∅ </span>{suites.error}</p>;
   if (suites.rows.length === 0) return <p className="ctl-empty">No test suites yet.</p>;

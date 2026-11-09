@@ -152,7 +152,7 @@ async fn read_new(st: &AppState, arena: &Arena, d: &Drive, seen: &mut Seen) {
         if let Some(report) = usage_report(seq, &e.body)
             && let Err(err) = client::usage(arena, &d.branch, agent, &report).await
         {
-            tracing::warn!(branch = %d.branch, agent, error = %err.message, "Arena did not take a usage report");
+            tracing::warn!(branch = %d.branch, agent, error = %err.message, "Shakedown did not take a usage report");
         }
     }
 }
@@ -228,7 +228,7 @@ async fn end_agents(st: &AppState, arena: &Arena, d: &Drive, seen: &Seen) {
         let totals = seen.totals.get(seat).cloned().unwrap_or_default();
         let end = totals.end(failure(st, seat).as_deref(), seconds);
         if let Err(e) = client::end(arena, &d.branch, agent, &end).await {
-            tracing::warn!(branch = %d.branch, agent, error = %e.message, "Arena did not record an agent's end");
+            tracing::warn!(branch = %d.branch, agent, error = %e.message, "Shakedown did not record an agent's end");
         }
     }
 }
@@ -246,7 +246,7 @@ async fn finish(st: &AppState, arena: &Arena, d: &Drive, seen: &Seen, why: Strin
             error: v["error"].as_str().map(str::to_string),
         },
         Err(e) => DriveState::Failed {
-            why: format!("Arena could not finish the run: {}", e.message),
+            why: format!("Shakedown could not finish the run: {}", e.message),
         },
     });
 }
@@ -257,7 +257,7 @@ async fn stop_team(st: &AppState, team: &str) {
         return;
     };
     if let Err(e) = crate::reconciler::stop_rig(st.clone(), team.to_string()).await {
-        tracing::warn!(team, error = %e.message, "the Arena run's team did not stop");
+        tracing::warn!(team, error = %e.message, "the Shakedown run's team did not stop");
     }
 }
 

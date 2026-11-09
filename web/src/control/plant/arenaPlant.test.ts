@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { branchB1, ev } from '../simHarness';
 import { arenaPlant, TEAM_MESSAGES } from './arenaPlant';
 
-describe('an Arena run as a plant', () => {
+describe('a Shakedown run as a plant', () => {
   it('uses the recorded systems and tool effects', () => {
     const p = arenaPlant(branchB1());
     expect(p.systems.find((s) => s.id === 'retail')).toMatchObject({ kind: 'erp', name: 'ERPNext', standsInFor: 'SAP S/4HANA', simulated: false, basis: 'declared' });
@@ -53,7 +53,7 @@ describe('an Arena run as a plant', () => {
     b.events.push(ev(14, 22, 'triage', 'model_call', { usage: { prompt_tokens: 1200, completion_tokens: 80 }, cost_usd: 0.01 }));
     const p = arenaPlant(b);
     expect(p.usage).toEqual([{ at: Date.parse('2026-11-02T10:00:22Z'), agent: 'triage', context: 1200, tokens: 1280, costUsd: 0.01 }]);
-    expect(p.rights.triage).toEqual(['read only: Arena gives it only read tools']);
+    expect(p.rights.triage).toEqual(['read only: Shakedown gives it only read tools']);
     expect(p.rights.resolver).toEqual([]);
   });
 });

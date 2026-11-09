@@ -105,7 +105,10 @@ fn run_names(st: &AppState, board: &TeamDraft, task: &str, branch: &str) -> (Str
         .collect();
     let store = st.store.lock().expect("store mutex must not be poisoned");
     let id = crate::teams::new_team_id(&store, &format!("{} arena {short}", board.name));
-    (id, format!("{} · Arena task {task} ({short})", board.name))
+    (
+        id,
+        format!("{} · Shakedown task {task} ({short})", board.name),
+    )
 }
 
 /// The board to run (it must have agents) and Arena's task.
@@ -119,7 +122,7 @@ async fn board_and_task(
     if board.agents.is_empty() {
         return Err(ApiError::conflict(
             "team_empty",
-            "This team has no agents to run in Arena.",
+            "This team has no agents to run in Shakedown.",
         ));
     }
     Ok((
@@ -184,7 +187,7 @@ async fn finish(State(st): State<AppState>, Path(branch): Path<String>) -> Respo
         let d = a
             .drives
             .get(&branch)
-            .ok_or_else(|| ApiError::not_found("Sculptured is not driving that Arena run"))?;
+            .ok_or_else(|| ApiError::not_found("Sculptured is not driving that Shakedown run"))?;
         d.ask_finish();
         Ok(drive_json(&d))
     }))

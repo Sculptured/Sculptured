@@ -63,14 +63,16 @@ impl Task {
     }
 
     fn brief(&self) -> String {
-        let mut out = format!("## Arena task {}\n\n{}", self.id, self.ticket.trim());
+        let mut out = format!("## Shakedown task {}\n\n{}", self.id, self.ticket.trim());
         if !self.instructions.trim().is_empty() {
             out.push_str(&format!(
                 "\n\n## Instructions\n\n{}",
                 self.instructions.trim()
             ));
         }
-        out.push_str("\n\nThe systems of this task are the tools of your Arena world MCP server.");
+        out.push_str(
+            "\n\nThe systems of this task are the tools of your Shakedown world MCP server.",
+        );
         out
     }
 }
@@ -78,8 +80,9 @@ impl Task {
 fn arena_component(agent: &str, url: &str) -> Component {
     Component {
         id: server_id(agent),
-        name: "Arena world".into(),
-        description: "The world of this Arena run: its systems' tools, recorded by Arena.".into(),
+        name: "Shakedown world".into(),
+        description: "The world of this Shakedown run: its systems' tools, recorded by Shakedown."
+            .into(),
         kind: ComponentKind::McpRemote,
         program: String::new(),
         args: Vec::new(),

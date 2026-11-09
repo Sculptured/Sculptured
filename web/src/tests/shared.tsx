@@ -53,7 +53,7 @@ export function ErrorNote({ error, text }: { error: unknown; text?: string }) {
   return (
     <div className="tst-note tst-note-error" role="alert">
       <span>{text ?? errorText(error)}</span>
-      {raw && <span className="tst-evidence mono" data-raw-evidence>Arena said: {raw}</span>}
+      {raw && <span className="tst-evidence mono" data-raw-evidence>Shakedown said: {raw}</span>}
     </div>
   );
 }
@@ -90,7 +90,7 @@ export function EngineLine({ health }: { health: Health }) {
   return (
     <span className="tst-engine">
       <span className="tst-engine-dot" aria-hidden="true">●</span>
-      <span>Arena running</span>
+      <span>Shakedown running</span>
       {modes.map((m) => (
         <span key={m.word} className={m.on ? '' : 'muted'}>{m.on ? '✓' : '–'} {m.word}{m.on ? '' : ` (${m.why})`}</span>
       ))}

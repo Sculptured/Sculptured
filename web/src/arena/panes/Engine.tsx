@@ -40,7 +40,7 @@ function EngineBody() {
   if (!health) return null;
   return (
     <dl className="arena-grid">
-      <dt>Arena</dt>
+      <dt>Shakedown</dt>
       <dd><span className="arena-up"><span aria-hidden="true">●</span> Up</span> <span className="muted tst-small">answered its health check</span></dd>
       {modes(health).map((m) => (
         <div key={m.word} className="arena-grid-row">
@@ -49,7 +49,7 @@ function EngineBody() {
         </div>
       ))}
       {health.disk && <><dt>Saves</dt><dd className="arena-num">{sizeWords(health.disk.bytes)} of {sizeWords(health.disk.limit_bytes)}</dd></>}
-      {health.benchmark ? <Benchmark b={health.benchmark} /> : <><dt>Benchmark</dt><dd className="muted">Unknown: this Arena does not say</dd></>}
+      {health.benchmark ? <Benchmark b={health.benchmark} /> : <><dt>Benchmark</dt><dd className="muted">Unknown: this Shakedown does not say</dd></>}
     </dl>
   );
 }

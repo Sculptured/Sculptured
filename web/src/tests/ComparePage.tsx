@@ -200,5 +200,5 @@ export function ComparePage() {
 }
 
 function Crumbs() {
-  return <nav className="tst-crumbs" aria-label="Breadcrumb"><Link to={ARENA_PATH}>Arena</Link><span aria-hidden="true">/</span><span>Compare</span></nav>;
+  return <nav className="tst-crumbs" aria-label="Breadcrumb"><Link to={ARENA_PATH}>Shakedown</Link><span aria-hidden="true">/</span><span>Compare</span></nav>;
 }

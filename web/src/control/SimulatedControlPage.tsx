@@ -20,7 +20,7 @@ export const ARENA_RUN_PAGE = 'arena-run';
 export const arenaRunChannel = (branch: string) => `${ARENA_RUN_PAGE}.${branch}`;
 /** Alarms (their acknowledgements and rules) are kept per branch. */
 export const arenaAlarms = (branch: string) => `arena.${branch}`;
-const START_FIX = { text: 'Open Arena control', to: ARENA_PATH };
+const START_FIX = { text: 'Open Shakedown control', to: ARENA_PATH };
 
 /** `/arena/runs/:run/:branch`: an Arena run's branch in the Control workspace, with its replay. */
 export function SimulatedControlPage() {

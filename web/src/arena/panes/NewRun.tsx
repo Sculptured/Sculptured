@@ -60,7 +60,7 @@ export function NewRun({ tasks, openOk, onError }: Props) {
         <Btn size="sm" variant="ghost" aria-expanded={editing} onClick={() => setEditing((e) => !e)} disabled={!team}><span aria-hidden="true">{editing ? '▾' : '▸'}</span> Edit team</Btn>
         <Btn size="sm" variant="primary" icon="play" onClick={() => start(selected)} disabled={busy || !selected || !team}>{busy ? 'Starting…' : 'Start run'}</Btn>
       </div>
-      {!busy && tasks.length === 0 && <p className="muted tst-small">Start run waits for a task: Arena lists none yet.</p>}
+      {!busy && tasks.length === 0 && <p className="muted tst-small">Start run waits for a task: Shakedown lists none yet.</p>}
       {editing && team && <TeamEditor team={team} update={update} reset={reset} openOk={openOk} />}
     </section>
   );

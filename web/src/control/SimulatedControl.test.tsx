@@ -56,8 +56,8 @@ describe('A simulated run in the Control workspace', () => {
     }
     const line = document.querySelector<HTMLElement>('.ctl-why-line')!;
     expect(within(line).getAllByText(ARENA_CANT_CONTROL)).toHaveLength(1);
-    expect(within(line).getByText('Start runs from Arena control')).toBeInTheDocument();
-    expect(controls.getByRole('link', { name: 'Open Arena control' })).toHaveAttribute('href', '/arena');
+    expect(within(line).getByText('Start runs from Shakedown control')).toBeInTheDocument();
+    expect(controls.getByRole('link', { name: 'Open Shakedown control' })).toHaveAttribute('href', '/arena');
     expect(screen.queryByText('Tests')).toBeNull();
     expect(openRigWords(container)).toEqual([]);
   });
@@ -151,9 +151,9 @@ describe('A simulated run in the Control workspace', () => {
     arenaFake.down = true;
     const { container } = page();
     const banner = await screen.findByRole('alert');
-    expect(banner).toHaveTextContent('Arena is not running');
+    expect(banner).toHaveTextContent('Shakedown is not running');
     expect(within(banner).getByText('cd core && cargo run -p arenad')).toBeInTheDocument();
-    for (const title of ['Timeline', 'World state', 'Compare']) expect(await within(pane(title)).findByText(/Offline: Arena is not running/)).toBeInTheDocument();
+    for (const title of ['Timeline', 'World state', 'Compare']) expect(await within(pane(title)).findByText(/Offline: Shakedown is not running/)).toBeInTheDocument();
     expect(screen.getAllByRole('alert')).toHaveLength(1);
     // Nothing about the run could be read: every reading says unknown, never "none" or "not started".
     const tiles = within(screen.getByRole('list', { name: 'Run status' })).getAllByRole('listitem').map((t) => t.textContent);
@@ -232,7 +232,7 @@ describe('A simulated run in the Control workspace', () => {
     expect(within(within(two.container).getByRole('toolbar', { name: 'Replay controls' })).getByText(/^Step/)).toHaveTextContent(/^Step 11 /);
   });
 
-  it('World state reads its rows again when Arena answers again', async () => {
+  it('World state reads its rows again when Shakedown answers again', async () => {
     await loaded('/arena/runs/r1/b1?step=4');
     await within(pane('World state')).findByRole('button', { name: 'orders/#W1' });
     const reads = () => arenaFake.calls.filter((c) => c.url.includes('/rows?seq=3')).length;
@@ -265,7 +265,7 @@ describe('A simulated run in the Control workspace', () => {
     expect(await part('retail').findByText('Exact from a save')).toBeInTheDocument();
     expect(part('plant').getByText('Exact by replay')).toBeInTheDocument();
     expect(part('plant').getByText('Approximate')).toBeInTheDocument();
-    expect(part('plant').getByText('◷ Arena clock')).toBeInTheDocument();
+    expect(part('plant').getByText('◷ Shakedown clock')).toBeInTheDocument();
     expect(part('desk').getByText(/after step/)).toHaveTextContent('◆ after step 9');
     await user.click(screen.getByRole('tab', { name: /Approvals/ }));
     const approvals = within(pane('Approvals'));

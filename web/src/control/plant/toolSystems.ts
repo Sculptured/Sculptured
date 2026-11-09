@@ -42,7 +42,7 @@ function mcpPlace(server: string, tool: string, components: Component[]): ToolPl
     if (GATE_TOOLS.has(tool)) return { system: SYSTEMS.approvals, tool, ...known('write') };
     return { system: SYSTEMS.team, tool, ...known(TEAM_READS.has(tool) ? 'read' : 'write') };
   }
-  if (isArenaServer(server)) return { system: { id: 'mcp:arena', kind: 'mcp', name: 'Arena world', product: 'Arena (staging)', basis: 'sculptured' }, tool, ...known('unknown') };
+  if (isArenaServer(server)) return { system: { id: 'mcp:arena', kind: 'mcp', name: 'Shakedown world', product: 'Shakedown (staging)', basis: 'sculptured' }, tool, ...known('unknown') };
   const c = components.find((x) => x.id === server);
   return { system: { id: `mcp:${server}`, kind: 'mcp', name: c?.name ?? server, part: server, basis: c ? 'sculptured' : 'unknown' }, tool, ...known('unknown') };
 }

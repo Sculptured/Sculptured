@@ -28,15 +28,15 @@ const finishRun = (branch: string) => apiRequest<DrivenRun>('POST', `/api/arena-
 /** A driven run's state as a glyph and words; Arena's own outcome is evidence. */
 export function driveWords(s: DrivenRun['state']): { glyph: string; text: string } {
   switch (s.state) {
-    case 'driving': return { glyph: '⣟', text: 'running in Arena' };
+    case 'driving': return { glyph: '⣟', text: 'running in Shakedown' };
     case 'finishing': return { glyph: '◑', text: `finishing: ${s.why ?? ''}` };
-    case 'finished': return { glyph: '■', text: `finished (${s.why ?? 'done'}); Arena: ${s.status ?? 'unknown'}${s.error ? `, ${s.error}` : ''}` };
+    case 'finished': return { glyph: '■', text: `finished (${s.why ?? 'done'}); Shakedown: ${s.status ?? 'unknown'}${s.error ? `, ${s.error}` : ''}` };
     default: return { glyph: '✕', text: s.why ?? 'failed' };
   }
 }
 
-const SUITE_NOT_BUILT = 'Running a test suite from a board is not built yet: Sculptured does not drive Arena suite runs yet.';
-export const suiteWhy = (s: Suites) => (!s ? 'Asking Arena whether it has test suites…' : 'missing' in s ? SUITES_MISSING : 'error' in s ? `Arena's test suites could not be read: ${s.error}` : SUITE_NOT_BUILT);
+const SUITE_NOT_BUILT = 'Running a test suite from a board is not built yet: Sculptured does not drive Shakedown suite runs yet.';
+export const suiteWhy = (s: Suites) => (!s ? 'Asking Shakedown whether it has test suites…' : 'missing' in s ? SUITES_MISSING : 'error' in s ? `Shakedown's test suites could not be read: ${s.error}` : SUITE_NOT_BUILT);
 
 function useBoardRuns(team: string) {
   const [runs, setRuns] = useState<DrivenRun[]>([]);
@@ -52,7 +52,7 @@ function useBoardRuns(team: string) {
 function RunList({ runs, reload }: { runs: DrivenRun[]; reload(): void }) {
   if (runs.length === 0) return null;
   return (
-    <ul className="ria-runs" aria-label="Arena runs of this team">
+    <ul className="ria-runs" aria-label="Shakedown runs of this team">
       {runs.map((r) => {
         const w = driveWords(r.state);
         return (
@@ -84,7 +84,7 @@ function Form({ team, tasks, blocked, suites, onStarted }: FormProps) {
   const [task, setTask] = useState(tasks[0]?.id ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const why = blocked ?? (tasks.length === 0 ? 'Arena has no tasks to run.' : null);
+  const why = blocked ?? (tasks.length === 0 ? 'Shakedown has no tasks to run.' : null);
   const go = async () => {
     setBusy(true);
     setError('');
@@ -97,9 +97,9 @@ function Form({ team, tasks, blocked, suites, onStarted }: FormProps) {
           {tasks.map((t) => <option key={t.id} value={t.id}>{t.id} · {t.reason}</option>)}
         </select>
       </label>
-      <p className="ria-note">The team's own copy runs with each agent connected to Arena's world, on your Claude Code or Codex sign-in (it may cost money). Arena records and scores it. It finishes when every agent has finished its turns.</p>
+      <p className="ria-note">The team's own copy runs with each agent connected to Shakedown's world, on your Claude Code or Codex sign-in (it may cost money). Shakedown records and scores it. It finishes when every agent has finished its turns.</p>
       <span className="ria-act">
-        <Btn variant="primary" icon="flask" onClick={() => { void go(); }} disabled={!!why || busy || !task} aria-describedby={why ? `${ids}-why` : undefined}>{busy ? 'Starting…' : 'Start in Arena'}</Btn>
+        <Btn variant="primary" icon="flask" onClick={() => { void go(); }} disabled={!!why || busy || !task} aria-describedby={why ? `${ids}-why` : undefined}>{busy ? 'Starting…' : 'Start in Shakedown'}</Btn>
         {why && <span id={`${ids}-why`} className="reason">{why}</span>}
       </span>
       <SuiteButton suites={suites} />
@@ -120,10 +120,10 @@ export function RunInArenaPanel({ team, blocked }: { team: string; blocked: stri
     readSuites().then(setSuites).catch((e: unknown) => setSuites({ error: errorText(e) }));
   }, [health]);
   return (
-    <div className="ria-panel" role="dialog" aria-label="Run in Arena">
-      <h2 className="ria-title">Run this team in Arena</h2>
-      {health === undefined && <p className="muted">Asking Arena…</p>}
-      {health === null && <p className="ria-error">▲ {errorText(error)} <Link to={ARENA_PATH}>Open Arena control</Link></p>}
+    <div className="ria-panel" role="dialog" aria-label="Run in Shakedown">
+      <h2 className="ria-title">Run this team in Shakedown</h2>
+      {health === undefined && <p className="muted">Asking Shakedown…</p>}
+      {health === null && <p className="ria-error">▲ {errorText(error)} <Link to={ARENA_PATH}>Open Shakedown control</Link></p>}
       {health && tasks && <Form team={team} tasks={tasks} blocked={blocked} suites={suites} onStarted={reload} />}
       <RunList runs={runs} reload={reload} />
     </div>
@@ -135,7 +135,7 @@ export function RunInArena({ team, blocked }: { team: string; blocked: string | 
   const [open, setOpen] = useState(false);
   return (
     <span className="ria">
-      <Btn size="sm" variant="ghost" icon="flask" aria-expanded={open} onClick={() => setOpen((o) => !o)} tip="Run this team in Arena, the staging world, and watch it in Control">Run in Arena…</Btn>
+      <Btn size="sm" variant="ghost" icon="flask" aria-expanded={open} onClick={() => setOpen((o) => !o)} tip="Run this team in Shakedown, the staging world, and watch it in Control">Run in Shakedown…</Btn>
       {open && <RunInArenaPanel team={team} blocked={blocked} />}
     </span>
   );

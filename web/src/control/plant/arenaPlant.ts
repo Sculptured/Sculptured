@@ -11,7 +11,7 @@ const atOf = (e: Event) => { const t = Date.parse(e.at); return Number.isNaN(t) 
 
 /** The talk tools' system: Arena's own messages between agents. */
 export const TEAM_MESSAGES = 'arena:messages';
-const MESSAGES: SystemUnit = { id: TEAM_MESSAGES, kind: 'messaging', name: 'Team messages', product: 'Arena talk tools', basis: 'declared' };
+const MESSAGES: SystemUnit = { id: TEAM_MESSAGES, kind: 'messaging', name: 'Team messages', product: 'Shakedown talk tools', basis: 'declared' };
 type Declarations = Pick<RunStartPayload, 'systems' | 'tools'>;
 
 function worldOf(b: BranchDetail): Declarations {
@@ -115,7 +115,7 @@ function rightsOf(b: BranchDetail): Rights {
   const out: Rights = {};
   for (const a of b.team.agents) {
     const ro = (a as { read_only?: unknown }).read_only;
-    out[a.id] = ro === true ? ['read only: Arena gives it only read tools'] : ro === false ? ['may use write tools'] : [];
+    out[a.id] = ro === true ? ['read only: Shakedown gives it only read tools'] : ro === false ? ['may use write tools'] : [];
   }
   return out;
 }

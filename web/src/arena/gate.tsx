@@ -11,7 +11,7 @@ export function ArenaDownBanner({ error }: { error: unknown }) {
     <div className="arena-alarm" role="alert">
       <span className="arena-alarm-head"><span aria-hidden="true">■</span> {ARENA_DOWN}</span>
       <span>Start it in the arena folder with <code className="mono">{ARENA_START_COMMAND}</code>. This page checks again every 15 seconds.</span>
-      {raw && <span className="tst-evidence mono tst-small" data-raw-evidence>Arena said: {raw}</span>}
+      {raw && <span className="tst-evidence mono tst-small" data-raw-evidence>Shakedown said: {raw}</span>}
     </div>
   );
 }
@@ -30,7 +30,7 @@ export function ArenaProblem({ error, text }: { error: unknown; text?: string })
 /** A pane's body once Arena answers; before that, "asking", or why it isn't answering. */
 export function ArenaGate({ children }: { children: ReactNode }) {
   const { health, healthError } = useArena();
-  if (health === undefined) return <p className="muted arena-pad">Asking Arena…</p>;
+  if (health === undefined) return <p className="muted arena-pad">Asking Shakedown…</p>;
   if (health === null) return <div className="arena-pad"><ArenaProblem error={healthError} /></div>;
   return <>{children}</>;
 }

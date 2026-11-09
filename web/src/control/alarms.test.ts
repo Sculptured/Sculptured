@@ -63,7 +63,7 @@ describe('alarm rules', () => {
 });
 
 describe('refusals, hard safety checks and priorities', () => {
-  it('an Arena tool refusal and a failed hard safety check raise their alarms; a plain error does not', async () => {
+  it('a Shakedown tool refusal and a failed hard safety check raise their alarms; a plain error does not', async () => {
     const { branchB1, ev } = await import('./simHarness');
     const { feedOf } = await import('./simulatedFeed');
     const b = branchB1();

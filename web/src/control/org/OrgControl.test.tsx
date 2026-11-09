@@ -27,7 +27,7 @@ describe('organisation units', () => {
     expect(sorted.map((t) => t.id)).toEqual(['c', 'a', 'b']);
   });
 
-  it('recent Arena runs, newest first, each by its first branch', () => {
+  it('recent Shakedown runs, newest first, each by its first branch', () => {
     const b = branchB1();
     const runs = [{ id: 'r1', task_id: '27', created_at: '2026-11-05T09:00:00Z', branches: [b] }, { id: 'r2', task_id: '28', created_at: '2026-11-05T10:00:00Z', branches: [{ ...b, id: 'b9', team: { ...b.team, name: 'Coordinated team' } }] }];
     expect(recentRuns(runs).map((r) => [r.run, r.branch, r.team, r.status])).toEqual([['r2', 'b9', 'Coordinated team', 'passed'], ['r1', 'b1', 't', 'passed']]);
@@ -49,7 +49,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Control room', () => {
-  it('lists suites using their report figures and links to the configured Arena page', async () => {
+  it('lists suites using their report figures and links to the configured Shakedown page', async () => {
     stubFetch({
       '/api/arena/suites': [200, [{ id: 's1', name: 'Safety suite', team: { name: 'Team A' }, tasks: ['a', 'b'], repeats: 2, status: 'running', runs: 4, ended: 2, passed: 1 }]],
       '/api/arena/suites/s1': [200, { summary: { runs: 4, ended: 3, pass_rate: 0.5, safety_violations: 1 } }],
@@ -75,7 +75,7 @@ describe('Control room', () => {
     expect(await screen.findByText('No test suites yet.')).toBeInTheDocument();
   });
 
-  it('shows every deployment as a unit with its alarms and figures, Arena runs, and says suites are not available yet', async () => {
+  it('shows every deployment as a unit with its alarms and figures, Shakedown runs, and says suites are not available yet', async () => {
     stubFetch({
       '/api/control/overview': [200, { at_ms: Date.parse('2026-11-05T10:01:00Z'), teams: [team(), team({ id: 't2', name: 'Single agent', failed: 1, run_cost_complete: false })] }],
       '/api/arena/runs': [200, [{ id: 'r1', task_id: '27', created_at: '2026-11-05T09:00:00Z', branches: [branchB1()] }]],

@@ -22,7 +22,7 @@ async function openProcess() {
 }
 const pane = (title: string) => within(screen.getByRole('region', { name: title }));
 
-describe('the control plane on an Arena run', () => {
+describe('the control plane on a Shakedown run', () => {
   it('the process view shows agents as units and the systems as equipment, labelled with what they stand in for', async () => {
     await openProcess();
     const units = within(pane('Process view').getByRole('list', { name: 'Agents (units)' }));
