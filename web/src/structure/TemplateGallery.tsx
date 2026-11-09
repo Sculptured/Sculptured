@@ -1,6 +1,8 @@
 import { track } from '../hosted/analytics';
 import {DismissibleError} from '../shell/DismissibleError';
+import { KIND_LABEL } from '../vocab';
 import { setKindAll } from '../draft/models';
+import { Hint } from './AgentFields';
 import { KindSwitch } from './ModelControls';
 import { errorText } from '../errors';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -103,14 +105,14 @@ function GalleryOptions({ ids, kind, setKind, name, setName }: { ids: string; ki
       <span className="gallery-kind">
         <span className="prompt">Agents run on</span>
         <KindSwitch label="Agents run on" value={kind} onChange={setKind} />
+        <Hint text={`${KIND_LABEL[kind]} agents use your own CLI logins and may cost money once started. You can switch any agent later.`} />
       </span>
       <span className="gallery-name">
         <label htmlFor={`${ids}-name`} className="prompt">
           Name
         </label>
-        <input id={`${ids}-name`} className="field" value={name} spellCheck={false} placeholder="optional · rename any time" onChange={(e) => setName(e.target.value)} />
+        <input id={`${ids}-name`} className="field" value={name} spellCheck={false} placeholder="Optional" onChange={(e) => setName(e.target.value)} />
       </span>
-      <p className="gallery-warn tone-amber">{kind === 'codex' ? 'Codex' : 'Claude'} agents use your own CLI logins and may cost money once started. You can switch any agent later.</p>
     </div>
   );
 }
@@ -120,11 +122,9 @@ function DescribeIt({ onCreated }: { onCreated: (id: string) => void }) {
   if (describing) return <GenerateTeam onCreated={(id) => onCreated(id)} onCancel={() => setDescribing(false)} />;
   return (
     <p className="gallery-describe">
-      <span>Rather describe what you need?</span>{' '}
-      <Btn icon="bot" onClick={() => { track('describe-it'); setDescribing(true); }}>
-        Describe it
-      </Btn>{' '}
-      <span className="muted">Your own Claude Code or Codex drafts the team for you to review.</span>
+      <Btn variant="ghost" icon="bot" tip="Your own Claude Code or Codex drafts the team for you to review" onClick={() => { track('describe-it'); setDescribing(true); }}>
+        Describe it instead
+      </Btn>
     </p>
   );
 }
@@ -217,8 +217,6 @@ export function TemplateGallery({ onCreated, onClose, inline, flow = inline, adv
   const card = (t: TemplateInfo) => <TemplateCard key={t.id} t={t} ids={ids} busy={make.busy} as={make.as} onCreate={make.create} />;
   return (
     <GalleryFrame ids={ids} inline={inline} onClose={onClose} box={box}>
-      <h2 className="ux-gallery-lead">Pick a team to start from</h2>
-      <p className="gallery-intro muted">You can change every agent, job, folder and connection on the Design board. Nothing runs until you press Start team.</p>
       <GalleryOptions ids={ids} kind={kind} setKind={setKind} name={name} setName={setName} />
       {loadError && <DismissibleError className="tone-red pad">Could not load templates: {loadError}</DismissibleError>}
       {!templates && !loadError && <p role="status" className="muted pad">Loading templates…</p>}
@@ -230,7 +228,7 @@ export function TemplateGallery({ onCreated, onClose, inline, flow = inline, adv
       <div className="ux-gallery-secondary"><DescribeIt onCreated={(id) => onCreated(id)} /></div>
       {flow && <HowItRuns />}
       <details className="gallery-advanced" data-advanced>
-        <summary>Advanced: import a team file or a past run</summary>
+        <summary>Advanced · import a team file or past run</summary>
         <ImportFromFile onCreated={onCreated} />
         <ImportRun onCreated={onCreated} />
         {advanced}

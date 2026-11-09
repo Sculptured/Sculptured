@@ -54,7 +54,7 @@ describe('old addresses go to the page that does their job', () => {
 });
 
 describe('the frame: one top bar, then a project tab row, then the page', () => {
-  it('the top bar holds home, the project switcher, Library, Community, Account, Docs, Ctrl K and the app menu; no sidebar', async () => {
+  it('the top bar holds home, the project switcher, Library, Community, Account, Ctrl K and the app menu with Docs; no sidebar', async () => {
     await twoTeams('/rig/r');
     const bar = topBar();
     expect(within(bar).getByRole('link', { name: 'Sculptured: all projects' })).toHaveAttribute('href', '/');
@@ -62,9 +62,7 @@ describe('the frame: one top bar, then a project tab row, then the page', () => 
     expect(within(nav).getByRole('link', { name: 'Library' })).toHaveAttribute('href', '/library/groups');
     expect(within(nav).getByRole('link', { name: 'Community' })).toHaveAttribute('href', '/community');
     expect(within(nav).getByRole('link', { name: /Account/ })).toHaveAttribute('href', '/account');
-    const docs = within(nav).getByRole('link', { name: /Docs/ });
-    expect(docs).toHaveAttribute('href', 'https://docs.usesculptured.com');
-    expect(docs).toHaveAttribute('target', '_blank');
+    expect(within(nav).queryByRole('link', { name: /Docs/ })).toBeNull();
     expect(within(bar).getByRole('button', { name: /Search or run a command/ })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Agents' })).toBeNull();
     // The switcher: the open project, every project with its status, New project and All projects.
@@ -79,8 +77,10 @@ describe('the frame: one top bar, then a project tab row, then the page', () => 
     await user.click(within(bar).getByLabelText('App menu'));
     for (const name of ['Appearance…', 'Keyboard shortcuts']) expect(within(bar).getByRole('button', { name })).toBeInTheDocument();
     expect(within(bar.querySelector<HTMLElement>('.tb-app-items')!).getByRole('link', { name: 'Community' })).toHaveAttribute('href', '/community');
-    // Phones hide the bar's links, so the menu has Docs too.
-    expect(within(bar).getAllByRole('link', { name: /Docs/ })).toHaveLength(2);
+    // Docs lives in the app menu, in a new tab.
+    const docs = within(bar).getByRole('link', { name: 'Docs' });
+    expect(docs).toHaveAttribute('href', 'https://docs.usesculptured.com');
+    expect(docs).toHaveAttribute('target', '_blank');
   });
 
   it('every project page has Control · Board · Agents · Questions · Results · Settings, a status in shape and words, and one primary action', async () => {

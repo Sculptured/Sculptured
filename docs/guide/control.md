@@ -21,12 +21,11 @@ The header reads left to right.
 | Run | not started, running, stopped, and so on |
 | Elapsed | T+hh:mm:ss since the earliest current agent started, ticking while the team runs |
 | Agents | how many agents are in each state, for example "● 3 running" or "‖ 3 paused" |
-| Tokens in / out | as the agents' tools reported them |
-| Cost | in dollars when it was reported; "unknown" when it was not |
+| Usage | tokens in / out as the agents' tools reported them, and cost in dollars when it was reported; "unknown" when neither was |
 
 **Master caution.** It lights (▲ and a count) while an alarm is not acknowledged, and shows ✓ once every alarm is acknowledged. Press it to open the Alarms pane.
 
-**Team controls.** A control that cannot run now is disabled and says why beside it, for example "Nothing is paused".
+**Team controls.** A control that cannot run now is disabled. The reason is said once, in one line under the controls (for example "Nothing is running"), and each button shows its own reason when you point at it.
 
 | Control | What it does |
 |---|---|

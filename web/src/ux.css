@@ -4,17 +4,14 @@
  */
 
 /* ── New project gallery ── */
-.ux-gallery-lead { padding: var(--space-5) var(--space-4) 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text); }
-.ux-gallery .gallery-intro { padding-top: var(--space-1); }
 .ux-gallery-opts { border-bottom: 0; padding-bottom: 0; }
-.ux-gallery-opts .gallery-warn { padding: 0; margin: 0; flex: 1 1 100%; font-size: var(--text-sm); }
 .ux-gallery .gallery-name { flex: 0 1 320px; }
 .ux-tpl-name-small { font-size: var(--text-xl); }
-.ux-more-templates { margin: 0 var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.ux-more-templates { margin: 0 var(--space-4); }
 .ux-more-templates > summary { cursor: pointer; color: var(--muted); font-weight: var(--weight-medium); width: max-content; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); }
 .ux-more-templates > summary:hover { color: var(--text); background: var(--hover); }
 .ux-more-templates > .tpl-grid { padding-left: 0; padding-right: 0; }
-.ux-gallery-secondary { margin: var(--space-3) var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.ux-gallery-secondary { margin: var(--space-1) var(--space-4); }
 /* Overrides: .gallery-describe had no padding of its own and sat flush with the panel edge. */
 .ux-gallery-secondary .gallery-describe { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: 0; }
 .ux-gallery .gallery-name input::placeholder { color: var(--muted); }

@@ -4,6 +4,7 @@ import type { Answer } from '../generated/Answer';
 import type { QuestionView } from '../generated/QuestionView';
 import { agentPagePath } from '../paths';
 import { needsYou, QuestionCard } from '../shell/OpenQuestions';
+import { EmptyState } from '../shell/ui';
 import './questions.css';
 
 /** What came of a question, for the filters. */
@@ -85,7 +86,7 @@ export function QuestionLog({ team, questions, names, showAgent, onChanged }: { 
   const [filter, setFilter] = useState<Outcome | 'all'>('all');
   const count = (id: Outcome | 'all') => (id === 'all' ? questions.length : questions.filter((q) => outcomeOf(q) === id).length);
   const shown = questions.filter((q) => filter === 'all' || outcomeOf(q) === filter);
-  if (!questions.length) return <p className="muted ql-empty">No questions yet. When an agent asks you something, it shows here, with your answer afterwards.</p>;
+  if (!questions.length) return <EmptyState icon="help" title="No questions yet"><p className="muted">When an agent asks you something, it shows here with your answer.</p></EmptyState>;
   return <div className="question-log">
     <div className="ql-filters" role="group" aria-label="Show">
       {FILTERS.map((f) => <button key={f.id} type="button" className={`btn btn-sm${filter === f.id ? ' on' : ''}`} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{`${f.label} (${count(f.id)})`}</button>)}

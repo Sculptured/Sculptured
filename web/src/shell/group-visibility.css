@@ -5,3 +5,5 @@
 .group-collapsed .group-head[aria-pressed='true'] { color:var(--accent); background:none; }
 .group-collapsed .group-visibility { top:auto; bottom:10px; right:10px; left:10px; justify-content:center; }
 .group-hidden-count { display:block; margin:6px 10px; color:var(--muted); font-size:var(--text-xs); }
+/* The word shows on the group you point at; otherwise the chevron says it. */
+.group-box:not(.group-collapsed):not(:hover) .group-visibility:not(:focus-visible) .gv-word { display: none; }

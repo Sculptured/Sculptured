@@ -170,23 +170,28 @@ export function addAgent(d: TeamDraft, kind: AgentKind, at: Point): { draft: Tea
 export function moveAgent(d: TeamDraft, id: string, to: Point, keepGroup = false): { draft: TeamDraft; reason?: string } {
   const a = d.agents.find((x) => x.id === id);
   if (!a) return { draft: d };
-  const home = groupOf(a);
-  const put = (p: Point, group_id: string | null) => {
-    const moved = { ...d, agents: d.agents.map((x) => (x.id === id ? { ...x, x: p.x, y: p.y, group_id } : x)) };
-    const left = groupOf({ group_id }) !== home ? shrinkLeft(moved, home) : moved;
-    return { draft: fitGroups(left, group_id ?? undefined) };
-  };
   const pos = { x: snap(to.x), y: snap(to.y) };
-  if (drawnGroups(d).length === 0) return put(pos, a.group_id);
+  if (drawnGroups(d).length === 0) return placeAgent(d, id, pos, a.group_id);
   const target = groupAt(d, { x: pos.x + CARD_W / 2, y: pos.y + CARD_H / 2 });
-  if (target !== null) {
-    if (keepGroup && target !== home) return { draft: d, reason: RUNNING_GROUP_REASON };
-    // Membership that does not change keeps its spelling (an agent without a group stays so).
-    return put(pos, target === home ? a.group_id : target);
-  }
-  if (looseAllowed(d) && (a.group_id === null || !keepGroup)) return put(pos, null);
-  const slot = firstFreeSlot(d, home, id);
-  return put(slot ?? pos, a.group_id);
+  if (target !== null) return placeAgent(d, id, pos, target, keepGroup);
+  if (looseAllowed(d) && (a.group_id === null || !keepGroup)) return placeAgent(d, id, pos, null);
+  return placeAgent(d, id, firstFreeSlot(d, groupOf(a), id) ?? pos, a.group_id);
+}
+
+/**
+ * Puts an agent at `to` in group `group` (null: no group). The group grows to hold it and the one
+ * it left shrinks. Membership that does not change keeps its spelling (an agent without a group
+ * stays so). `keepGroup` (the team is running) refuses a change of group.
+ */
+export function placeAgent(d: TeamDraft, id: string, to: Point, group: string | null, keepGroup = false): { draft: TeamDraft; reason?: string } {
+  const a = d.agents.find((x) => x.id === id);
+  if (!a) return { draft: d };
+  const home = groupOf(a);
+  const changes = groupOf({ group_id: group }) !== home;
+  if (keepGroup && changes) return { draft: d, reason: RUNNING_GROUP_REASON };
+  const group_id = changes ? group : a.group_id;
+  const moved = { ...d, agents: d.agents.map((x) => (x.id === id ? { ...x, x: snap(to.x), y: snap(to.y), group_id } : x)) };
+  return { draft: fitGroups(changes ? shrinkLeft(moved, home) : moved, group_id ?? undefined) };
 }
 
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityOf, agentState, chipText, shortAge, sortAgents, tierOf, tokensText, vendor } from './herdr';
+import { activityOf, agentState, agoText, chipText, shortAge, sortAgents, tierOf, tokensText, vendor } from './herdr';
 import { ev, seatView } from './test-fixtures';
 
 describe('agent states', () => {
@@ -90,6 +90,12 @@ describe('words', () => {
     expect(shortAge(0, 14 * 60_000)).toBe('14m');
     expect(shortAge(0, 3 * 3_600_000)).toBe('3h');
     expect(shortAge(0, 72 * 3_600_000)).toBe('3d');
+  });
+
+  it('says how long ago, never "now ago"', () => {
+    expect(agoText(0, 30_000)).toBe('just now');
+    expect(agoText(0, 14 * 60_000)).toBe('14m ago');
+    expect(agoText(null, 0)).toBe('unknown');
   });
 
   it('says tokens unknown before any usage report', () => {

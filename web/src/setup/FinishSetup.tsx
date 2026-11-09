@@ -12,9 +12,8 @@ export function FinishSetup() {
   const notNow = async () => { for (const s of left) await setup.mark(s, 'skipped'); };
   return (
     <aside className="setup-note" aria-label="Setup">
-      <span>Setup has steps left: {left.map((s) => STEP_NAME[s]).join(', ')}.</span>
-      <span className="tb-fill" />
-      <Link to="/setup" className="btn btn-sm btn-primary">Finish setup</Link>
+      <Link to="/setup" className="btn btn-sm">Finish setup</Link>
+      <span className="muted">{left.map((s) => STEP_NAME[s]).join(', ')}</span>
       <button type="button" className="btn btn-sm btn-ghost" onClick={() => void notNow()}>Not now</button>
     </aside>
   );

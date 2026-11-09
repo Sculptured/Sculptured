@@ -50,8 +50,7 @@ export function QuestionsPage() {
   return (
     <main className="page page-wide questions-page">
       <header className="questions-head">
-        <h1>Questions</h1>
-        <p className="muted">What the agents asked you, your answers and the choices they offered, and what they decided when nobody answered.</p>
+        <h1 className="page-title">Questions</h1>
         {asking.length > 1 && (
           <label className="fld"><span>Agent</span>
             <select className="fld-input" value={agent} onChange={(e) => setAgent(e.target.value)}>

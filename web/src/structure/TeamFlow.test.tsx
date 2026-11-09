@@ -81,7 +81,7 @@ describe('New team: Start from…', () => {
     renderAt('/');
     const gallery = await screen.findByRole('region', { name: 'New project' });
     const user = userEvent.setup();
-    expect(within(gallery).getByText(/use your own CLI logins and may cost money/)).toBeInTheDocument();
+    expect(within(gallery).getByRole('img', { name: /Claude agents use your own CLI logins and may cost money/ })).toBeInTheDocument();
     expect(await within(gallery).findByRole('button', { name: 'Solo agent' })).toHaveAccessibleDescription(/1 agent · Claude/);
     await user.type(within(gallery).getByRole('textbox', { name: 'Name' }), 'Docs crew');
     await user.click(within(gallery).getByRole('button', { name: 'Solo agent' }));
@@ -98,7 +98,7 @@ describe('New team: Start from…', () => {
     const gallery = await screen.findByRole('region', { name: 'New project' });
     const user = userEvent.setup();
     await user.click(within(gallery).getByRole('radio', { name: /Codex/ }));
-    expect(within(gallery).getByText(/Codex agents use your own CLI logins/)).toBeInTheDocument();
+    expect(within(gallery).getByRole('img', { name: /Codex agents use your own CLI logins/ })).toBeInTheDocument();
     await user.click(await within(gallery).findByRole('button', { name: 'Solo agent' }));
     await waitFor(() => expect(api.saveTeam).toHaveBeenCalled());
     const saved = vi.mocked(api.saveTeam).mock.calls[0][2];

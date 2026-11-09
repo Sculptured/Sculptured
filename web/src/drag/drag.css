@@ -1,0 +1,14 @@
+/* Declarative dragging (drag/): the picked-up card floats above the board; where it will land is outlined. */
+.graph-world .sb-slot.dragging { z-index: 7; opacity: 1; }
+.graph-world .sb-slot.dragging .sb-card {
+  border-color: var(--accent); box-shadow: var(--shadow-overlay); transform: scale(1.02);
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.sb-landing {
+  position: absolute; z-index: 1; pointer-events: none; border-radius: var(--radius-md);
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent); background: color-mix(in srgb, var(--accent) 6%, transparent);
+  transition: left 120ms var(--ease-out), top 120ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) { .sb-landing, .graph-world .sb-slot.dragging .sb-card { transition: none; } }
+.graph-world .sb-slot.dragging .port.port { opacity: 0; }
+html.pointer-dragging .sb-viewport, html.pointer-dragging .sb-main { cursor: grabbing; }

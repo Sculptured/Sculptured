@@ -164,5 +164,3 @@
 .ctl-replay-side .tst-rerun-commit .tst-restore { padding-top: 0; border-top: 0; }
 .ctl-replay-side .tst-plan li { padding: 1px 0; }
 
-/* A reason the stop controls share, said once under them. */
-.ctl-why-shared { flex-basis: 100%; margin: 0; text-align: right; contain: inline-size; }

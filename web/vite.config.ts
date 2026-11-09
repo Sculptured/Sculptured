@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:4410',
+        target: process.env.SCULPTURED_API ?? 'http://127.0.0.1:4410',
         ws: false,
         // controld's guard accepts only its own Host and Origin. Rewrite the Host and
         // drop the dev server's Origin, which the guard would reject.

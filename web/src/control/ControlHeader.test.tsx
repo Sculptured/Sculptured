@@ -52,12 +52,27 @@ describe('Control header', () => {
     expect(note).toHaveClass('tone-warn');
   });
 
-  it('start_says_running_in_one_line_while_running', async () => {
+  it('start_keeps_its_reason_as_a_tooltip_while_running_and_says_no_more', async () => {
     await control();
     const start = within(header()).getByRole('button', { name: 'Start' });
     expect(start).toBeDisabled();
-    expect(start.parentElement!.querySelector('.ctl-why')!.firstChild!.textContent).toBe('Running');
     expect(start).toHaveAccessibleDescription(/The team is already running/);
+    expect(start).toHaveAttribute('title', expect.stringMatching(/The team is already running/));
+    // The Run reading already says it runs: the line under the buttons does not repeat it.
+    expect(header().querySelector('.ctl-why-line')).not.toHaveTextContent(/already running/);
+  });
+
+  it('idle_controls_say_their_reason_once_in_one_line', async () => {
+    await control();
+    act(() => stream().emit('snapshot', stopped()));
+    await waitFor(() => expect(within(header()).getByRole('button', { name: 'Pause all' })).toBeDisabled());
+    const line = header().querySelector<HTMLElement>('.ctl-why-line')!;
+    expect(within(line).getAllByText('Nothing is running')).toHaveLength(1);
+    expect(line).not.toHaveTextContent('Nothing is paused');
+    expect(header().querySelectorAll('.ctl-why')).toHaveLength(1);
+    // Each button keeps its own reason as tooltip and description.
+    expect(within(header()).getByRole('button', { name: 'Resume all' })).toHaveAccessibleDescription('Nothing is paused');
+    expect(within(header()).getByRole('button', { name: 'Resume all' })).toHaveAttribute('title', 'Nothing is paused');
   });
 
   it('emergency_stop_never_reopens_by_itself_and_closes_outside', async () => {
