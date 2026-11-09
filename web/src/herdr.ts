@@ -135,6 +135,12 @@ export function shortAge(ms: number | null, now: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+/** "just now", "14m ago", "3h ago"; "unknown" without a time. */
+export function agoText(ms: number | null, now: number): string {
+  const a = shortAge(ms, now);
+  return a === 'now' ? 'just now' : a === 'unknown' ? a : `${a} ago`;
+}
+
 export function tokensText(seat: Pick<SeatView, 'tokens_in' | 'tokens_out'> | undefined): string {
   if (!seat || seat.tokens_in === null || seat.tokens_out === null) return tokensLabel(null);
   return tokensLabel(seat.tokens_in + seat.tokens_out);

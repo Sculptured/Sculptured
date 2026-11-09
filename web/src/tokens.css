@@ -690,3 +690,44 @@
 @media (prefers-contrast: more) {
   .workspace[data-look='plant'] { --muted: #c0c4c9; --line: #4a4e54; --line-2: #62666d; --line-3: #8c9198; }
 }
+
+/*
+ * Plant in a light app: when the app look is Standard light, Plant keeps its rules (neutral greys,
+ * colour only for an abnormal state, always with a glyph and a word) on a light ground, as a classic
+ * light-grey HMI, so the workspace never turns dark inside a light app. Only canonical colours change;
+ * Plant's derived tokens recompute from them. Text contrast is at least 4.5:1 on every surface.
+ */
+:root[data-look='standard'][data-mode='light'] .workspace[data-look='plant'] {
+  color-scheme: light;
+  --bg: #eceef1; --panel: #f7f8f9; --raised: #fdfdfd; --raised-2: #fff; --hover: #e3e6ea; --well: #f1f3f5;
+  --scrim: rgb(24 27 31 / 35%);
+  --line: #d9dde2; --line-2: #c5cad1; --line-3: #969da6;
+  --text: #1c2024; --muted: #565e68; --text-disabled: #8a919a;
+  --accent: #3d4c5c; --accent-strong: #2a3643; --accent-ink: #fff; --accent-deep: #cdd6e0; --on-hue: #fff;
+  --red: #c0262d; --green: #1d7a3b; --amber: #8a5800; --violet: #6a4cc2; --blue: #2c5d97;
+  --claude: #a4573a; --codex: #39679f; --opencode: #4d7838; --k-search: #2a7a70; --other: #5c636b;
+  --k-edit: #86691c; --k-web: #984c7a; --k-other: #666d75;
+  --series-1: #6b5ea6; --series-2: #3c6c9f; --series-3: #2b7a68; --series-4: #876c22; --series-5: #a05b40; --series-6: #57772f;
+  --shade: #1c2024;
+  --shadow-pop: 0 0 0 1px rgb(15 17 21 / 4%), 0 4px 12px rgb(15 17 21 / 10%), 0 12px 32px -8px rgb(15 17 21 / 16%);
+  --shadow-overlay: 0 8px 24px rgb(15 17 21 / 12%), 0 24px 64px -12px rgb(15 17 21 / 22%);
+  --avatar-bg: var(--accent);
+}
+@media (prefers-color-scheme: light) {
+  :root[data-look='standard']:not([data-mode='dark']) .workspace[data-look='plant'] {
+    color-scheme: light;
+    --bg: #eceef1; --panel: #f7f8f9; --raised: #fdfdfd; --raised-2: #fff; --hover: #e3e6ea; --well: #f1f3f5;
+    --scrim: rgb(24 27 31 / 35%);
+    --line: #d9dde2; --line-2: #c5cad1; --line-3: #969da6;
+    --text: #1c2024; --muted: #565e68; --text-disabled: #8a919a;
+    --accent: #3d4c5c; --accent-strong: #2a3643; --accent-ink: #fff; --accent-deep: #cdd6e0; --on-hue: #fff;
+    --red: #c0262d; --green: #1d7a3b; --amber: #8a5800; --violet: #6a4cc2; --blue: #2c5d97;
+    --claude: #a4573a; --codex: #39679f; --opencode: #4d7838; --k-search: #2a7a70; --other: #5c636b;
+    --k-edit: #86691c; --k-web: #984c7a; --k-other: #666d75;
+    --series-1: #6b5ea6; --series-2: #3c6c9f; --series-3: #2b7a68; --series-4: #876c22; --series-5: #a05b40; --series-6: #57772f;
+    --shade: #1c2024;
+    --shadow-pop: 0 0 0 1px rgb(15 17 21 / 4%), 0 4px 12px rgb(15 17 21 / 10%), 0 12px 32px -8px rgb(15 17 21 / 16%);
+    --shadow-overlay: 0 8px 24px rgb(15 17 21 / 12%), 0 24px 64px -12px rgb(15 17 21 / 22%);
+    --avatar-bg: var(--accent);
+  }
+}

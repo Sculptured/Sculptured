@@ -8,7 +8,7 @@ export function SuitesPane() {
   const { suites } = useOrg();
   if (!suites) return <p className="ctl-empty">Reading Arena's test suites…</p>;
   if ('missing' in suites) return <p className="ctl-empty">○ {SUITES_MISSING}</p>;
-  if ('error' in suites) return <p className="ctl-empty">Arena's test suites could not be read: {suites.error}</p>;
+  if ('error' in suites) return <p className="ctl-empty"><span aria-hidden="true">∅ </span>{suites.error}</p>;
   if (suites.rows.length === 0) return <p className="ctl-empty">No test suites yet.</p>;
   return (
     <table className="ctl-table org-suites" aria-label="Test suites">

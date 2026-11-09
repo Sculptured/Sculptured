@@ -1,6 +1,7 @@
-.acct-page { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
-.acct-page h1 { margin: 8px 0 16px; font-size: var(--text-2xl); font-weight: var(--weight-bold); }
-.acct-page h2 { margin: 32px 0 4px; font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.acct-page { max-width: 980px; margin: 0 auto; padding: var(--space-6) var(--space-4) calc(var(--space-6) * 2); }
+.cli-version { display: inline-block; max-width: 36ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.acct-page h1 { margin: 0 0 var(--space-4); font-size: var(--text-xl); font-weight: var(--weight-semibold); }
+.acct-page h2 { margin: var(--space-6) 0 var(--space-1); font-size: var(--text-lg); font-weight: var(--weight-semibold); }
 .acct-page h3 { margin: 24px 0 8px; font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .acct-who { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
 .acct-who > div:first-child { display: flex; flex-direction: column; gap: 2px; }

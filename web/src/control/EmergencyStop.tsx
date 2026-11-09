@@ -66,8 +66,8 @@ type Props = {
   onOutcome(o: Outcome | null): void;
   /** Where focus goes once the stop is sent (its button is then disabled). */
   afterStop?(): void;
-  /** A shorter caption for its reason, when the reason is said once beside the controls. */
-  shortWhy?: (why: string) => string | null;
+  /** Its reason is said once beside the controls. */
+  quiet?: boolean;
   className?: string;
   /** What to say once a stop that reports nothing was sent. */
   doneText?: string;
@@ -79,7 +79,7 @@ type Props = {
  * reopens by itself), on Cancel, Esc, or a press outside it. While its own stop is being sent it stays,
  * saying "Stopping…", then closes.
  */
-export function ConfirmedStop({ action, label, ask, onOutcome, afterStop, shortWhy, className = '', doneText }: Props) {
+export function ConfirmedStop({ action, label, ask, onOutcome, afterStop, quiet, className = '', doneText }: Props) {
   const [asking, setAsking] = useState<StopAsk | null>(null);
   const [sending, setSending] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
@@ -97,14 +97,14 @@ export function ConfirmedStop({ action, label, ask, onOutcome, afterStop, shortW
   const open = () => setAsking((a) => (a ? null : ask()));
   return (
     <span ref={box} className="ctl-estop">
-      <ActionButton action={action} label={label} glyph="■" className={`btn-danger danger ${className}`} onOutcome={onOutcome} onPress={open} expanded={!!asking} shortWhy={shortWhy} />
+      <ActionButton action={action} label={label} glyph="■" className={`btn-danger danger ${className}`} onOutcome={onOutcome} onPress={open} expanded={!!asking} quiet={quiet} />
       {asking && <Confirm title={label} ask={asking} sending={sending} stop={() => void stop()} close={close} />}
     </span>
   );
 }
 
 /** Emergency stop: every running agent at once, asking first how many (counted when it opened). */
-export function EmergencyStop(p: Pick<Props, 'action' | 'onOutcome' | 'afterStop' | 'shortWhy'>) {
+export function EmergencyStop(p: Pick<Props, 'action' | 'onOutcome' | 'afterStop' | 'quiet'>) {
   const ask = (): StopAsk => {
     const n = p.action.can.ok ? (p.action.can.count ?? null) : null;
     const each = n === 1 ? 'It stops at once, with every agent it started.' : 'Each stops at once, with every agent it started.';

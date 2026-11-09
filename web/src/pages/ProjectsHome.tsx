@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { shortAge } from '../herdr';
+import { agoText } from '../herdr';
 import { agentsPath, boardPath, projectPath } from '../paths';
 import { DismissibleError } from '../shell/DismissibleError';
 import type { TeamRow } from '../shell/model';
@@ -84,8 +84,8 @@ function RowActions({ r, live, v, ask }: { r: TeamRow; live: boolean; v: Visibil
   const canStart = !live && shell.isTeam(r.rig);
   return (
     <td className="col-act">
-      {live && <Btn size="sm" icon="stop" onClick={() => ask(r.rig, 'stop')}>Stop…</Btn>}
-      {canStart && <Btn size="sm" icon="play" onClick={() => ask(r.rig, 'start')}>Start…</Btn>}
+      {live && <Btn size="sm" variant="ghost" icon="stop" onClick={() => ask(r.rig, 'stop')}>Stop…</Btn>}
+      {canStart && <Btn size="sm" variant="ghost" icon="play" onClick={() => ask(r.rig, 'start')}>Start…</Btn>}
       <details className="project-menu top-menu">
         <summary aria-label={`Manage ${r.title}`} data-tip="Project actions"><Icon name="more" size={15} /></summary>
         <div className="top-menu-body">
@@ -109,7 +109,7 @@ function ProjectRow({ r, picks, v, ask }: { r: TeamRow; picks: Picks; v: Visibil
       <td><Link to={projectPath(r.rig)} className="pt-name">{r.title}</Link></td>
       <td><StatusBadge s={teamStatus(r)} /></td>
       <td className="col-num"><Link to={agentsPath(r.rig)} className="muted" aria-label={`${r.agents.length} agents in ${r.title}`}>{r.agents.length}</Link></td>
-      <td className="col-age muted">{last ? `${shortAge(last, shell.now)} ago` : 'unknown'}</td>
+      <td className="col-age muted">{agoText(last, shell.now)}</td>
       <RowActions r={r} live={running(r)} v={v} ask={ask} />
     </tr>
   );

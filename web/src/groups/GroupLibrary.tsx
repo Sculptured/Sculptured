@@ -13,6 +13,9 @@ import { emptyBlock } from './blocks';
 import { GroupEditor } from './GroupEditor';
 import './groups.css';
 
+/** How saved groups are used; the empty state says enough on its own. */
+const LibraryIntro=({empty}:{empty:boolean})=>empty?null:<p>Add any saved group directly to a project, or drag it onto a board from <strong>Saved groups</strong>. Each insertion is an independent copy.</p>;
+
 export function GroupLibrary() {
   const [blocks,setBlocks]=useState<GroupBlock[]|null>(null),[editing,setEditing]=useState<GroupBlock|null>(null),[error,setError]=useState('');
   const [inspecting,setInspecting]=useState<GroupBlock|null>(null);
@@ -23,10 +26,10 @@ export function GroupLibrary() {
   if(editing)return <GroupEditor key={editing.id} initial={editing} onBack={()=>{setEditing(null);reload();}} onSaved={saved=>setBlocks(list=>[...(list??[]).filter(b=>b.id!==saved.id),saved])} />;
   const empty=blocks?.length===0;
   const actions=<span className="library-actions"><Btn variant="primary" icon="plus" onClick={()=>setEditing(emptyBlock())}>Create group</Btn><Btn icon="upload" onClick={()=>fileInput.current?.click()} tip="Review a downloaded block before saving it">Import group file</Btn></span>;
-  return <section className="group-library" aria-label="Saved groups"><header><div><h2>Reusable groups</h2><p>Add any saved group directly to a project, or drag it onto a board from <strong>Saved groups</strong>. Each insertion is an independent copy.</p></div>{!!blocks?.length&&actions}</header>
+  return <section className="group-library" aria-label="Saved groups"><header><div><h2>Reusable groups</h2><LibraryIntro empty={empty}/></div>{!!blocks?.length&&actions}</header>
     <input ref={fileInput} hidden aria-label="Import group file" type="file" accept=".json" onChange={async e=>{try{const f=e.target.files?.[0];if(!f)return;if(f.size>500000)throw Error('Group is too large');const b=sanitizeExport(JSON.parse(await f.text()));b.id=`import-${crypto.randomUUID().slice(0,12)}`;b.revision=0;setEditing(b);}catch(e){setError((e as Error).message);}e.target.value='';}} />
     {error&&<DismissibleError>{error} <Btn onClick={reload}>Retry</Btn></DismissibleError>}{!blocks&&!error&&<p>Loading saved groups…</p>}
-    {empty&&<div className="library-empty"><span className="library-empty-mark" aria-hidden="true"><Icon name="group" size={22}/></span><h3>No groups saved yet</h3><p>Create one here, import a downloaded group file, or select a group on a project's board and choose <strong>Save group to Library</strong>.</p>{actions}</div>}
+    {empty&&<div className="library-empty"><span className="library-empty-mark" aria-hidden="true"><Icon name="group" size={22}/></span><h3>No groups saved yet</h3><p>Or select a group on a board and choose <strong>Save group to Library</strong>.</p>{actions}</div>}
     <div className="group-library-grid">{blocks?.map(b=><article className="group-library-card" key={b.id}>
       <button className="library-card-preview" aria-label={`Inspect ${b.name}`} onClick={()=>setInspecting(b)}><TemplatePreview draft={b.draft}/></button>
       <div className="library-card-body"><h3>{b.name}</h3><p>{b.draft.agents.length} {b.draft.agents.length===1?'agent':'agents'} · {b.draft.workflow?`${b.draft.workflow.stages.length} workflow stages`:`${b.draft.connections.length} connections`}</p>

@@ -28,7 +28,7 @@
 }
 .tb-brand { display: inline-flex; align-items: center; gap: var(--space-2); margin-right: var(--space-2); color: var(--text); font-weight: var(--weight-semibold); font-size: var(--text-lg); text-decoration: none; border-radius: var(--radius-md); }
 .tb-brand:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.tb-brand .coastal-mark { width: 26px; height: 26px; }
+.tb-brand .coastal-mark { width: 32px; height: 24px; aspect-ratio: auto; }
 .tb-nav { display: flex; align-items: center; gap: var(--space-1); }
 .tb-link {
   display: inline-flex; align-items: center; gap: 6px; height: var(--control-h); padding: 0 10px; border-radius: var(--radius-md);
@@ -57,7 +57,7 @@
 .top-menu-body > button:disabled { color: var(--text-disabled); cursor: not-allowed; }
 .top-menu-body > small { padding: var(--space-1) var(--space-3); color: var(--muted); font-size: var(--text-xs); }
 .tb-app > summary, .project-menu.top-menu > summary {
-  display: inline-grid; place-items: center; width: var(--control-h); height: var(--control-h); border-radius: var(--radius-md); color: var(--muted);
+  display: inline-grid; place-items: center; width: var(--control-h); height: var(--control-h); border: 0; border-radius: var(--radius-md); color: var(--muted);
 }
 .tb-app > summary:hover, .tb-app[open] > summary, .project-menu.top-menu > summary:hover { background: var(--hover); color: var(--text); }
 .top-menu > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
@@ -217,16 +217,19 @@
 .ap-chat > .composer { padding: var(--space-3) var(--space-4) var(--space-4); }
 
 /* Setup: one roomy column. */
-.setup-col { max-width: calc(var(--ap-w) + 2 * var(--space-5)); margin: 0 auto; padding: var(--space-6) var(--space-5) calc(var(--space-6) * 2); display: flex; flex-direction: column; gap: var(--space-6); }
+.setup-col { max-width: calc(var(--ap-w) + 2 * var(--space-5)); margin: 0 auto; padding: var(--space-6) var(--space-5) calc(var(--space-6) * 2); display: flex; flex-direction: column; gap: var(--space-5); }
 .setup-sec { display: flex; flex-direction: column; gap: var(--space-4); }
-.setup-sec + .setup-sec { padding-top: var(--space-6); border-top: 1px solid var(--line); }
+.setup-sec + .setup-sec { padding-top: var(--space-5); border-top: 1px solid var(--line); }
 .setup-title, .setup-advanced > .ux-agent-more > summary {
   margin: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text);
 }
 .setup .fld { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; }
 .setup .fld-label { font-weight: var(--weight-medium); color: var(--text); }
 .setup .fld-input { width: 100%; }
-.setup .fld-job { min-height: 240px; line-height: var(--leading); }
+.setup .fld-job { min-height: 140px; line-height: var(--leading); }
+/* The agent's folder on Setup: the path and its buttons on one plain row, as on Settings. */
+.setup .fld-folder { padding: 0; border: 0; background: transparent; gap: var(--space-2); }
+.setup .fld-folder > .folder-path { flex: 0 1 auto; margin-right: var(--space-2); font-size: var(--text-sm); color: var(--text); }
 .setup-status { display: flex; flex-direction: column; gap: var(--space-2); }
 .setup-status:not(:has(> :not(.sr-only))) { display: none; }
 .setup-problems { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0; }
@@ -282,9 +285,9 @@
 .results-history .history-body { border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
 
 /* ── Settings ── */
-.settings-page { display: flex; flex-direction: column; gap: var(--space-6); }
+.settings-page { display: flex; flex-direction: column; gap: var(--space-5); }
 .set-sec { display: flex; flex-direction: column; gap: var(--space-3); }
-.set-sec + .set-sec { padding-top: var(--space-6); border-top: 1px solid var(--line); }
+.set-sec + .set-sec { padding-top: var(--space-5); border-top: 1px solid var(--line); }
 .set-title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text); }
 .set-hint { margin: 0; font-size: var(--text-sm); }
 .set-links { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
@@ -295,12 +298,16 @@
 .set-more[open] > summary { margin-bottom: var(--space-3); }
 .settings-page .fld { margin: 0; }
 .settings-page .fld-input { max-width: 480px; }
+.project-folder-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.project-folder-row > .folder-path { flex: 0 1 auto; margin-right: var(--space-2); font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text); }
 
 /* ── Workflow pages ── */
 .workflow-inspector.as-page { position: static; inset: auto; width: auto; box-shadow: none; border: 1px solid var(--line); border-radius: var(--radius-lg); }
 
 /* ── New project, Library, Account and Community inside the frame ── */
 .new-project .gallery.inline, .projects-home .gallery.inline { border: 0; background: transparent; box-shadow: none; }
+.new-project .gallery.inline > .panel-bar, .projects-home .gallery.inline > .panel-bar { border-bottom: 0; background: transparent; }
+.new-project .gallery.inline .panel-title, .projects-home .gallery.inline .panel-title { font-size: var(--text-xl); }
 .library-host .library-page { border: 0; background: transparent; box-shadow: none; }
 
 /* ── Phones ── */
@@ -349,6 +356,7 @@
 .settings-page .ta-limits { min-width: 0; }
 .settings-page .ta-limit { grid-template-columns: minmax(0, 1fr) minmax(0, 120px); }
 .settings-page .ta-limit input { width: 100%; min-width: 0; }
+.settings-page .ta-budget .ta-limit { grid-template-columns: minmax(0, 1fr) 248px; }
 .page-host { background: var(--panel); }
 @media (max-width: 720px) {
   .page-board .sb-toolbar { flex-wrap: wrap; }
@@ -361,3 +369,6 @@
 .agents-links ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .agents-links li { display: flex; align-items: center; gap: var(--space-2); }
 .agents-table .at-sub { display: block; margin-top: 4px; font-size: var(--text-xs); }
+.settings-page .model-row { grid-template-columns: 140px minmax(0, 480px); align-items: center; }
+.settings-page .model-row-kind { padding-top: 0; }
+.settings-page .model-fields > .fld-hint { margin: 0 0 var(--space-3); }

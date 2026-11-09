@@ -52,10 +52,11 @@ describe('A simulated run in the Control workspace', () => {
     for (const name of ['Pause all', 'Resume all', 'Stop team…', 'Emergency stop']) {
       const button = controls.getByRole('button', { name: new RegExp(name) });
       expect(button).toBeDisabled();
-      expect(button).toHaveAccessibleDescription(`: ${ARENA_CANT_CONTROL}`);
+      expect(button).toHaveAccessibleDescription(ARENA_CANT_CONTROL);
     }
-    expect(controls.getAllByText(ARENA_CANT_CONTROL)).toHaveLength(1);
-    expect(controls.getByText('Start runs from Arena control')).toBeInTheDocument();
+    const line = document.querySelector<HTMLElement>('.ctl-why-line')!;
+    expect(within(line).getAllByText(ARENA_CANT_CONTROL)).toHaveLength(1);
+    expect(within(line).getByText('Start runs from Arena control')).toBeInTheDocument();
     expect(controls.getByRole('link', { name: 'Open Arena control' })).toHaveAttribute('href', '/arena');
     expect(screen.queryByText('Tests')).toBeNull();
     expect(openRigWords(container)).toEqual([]);

@@ -11,7 +11,7 @@ import type { TeamActions } from './source';
 
 /**
  * Control's header: a status strip read at a glance (run status, elapsed clock, agents by status,
- * tokens and cost, the master caution), then the whole team's controls. Every reading is a glyph
+ * usage, the master caution), then the whole team's controls. Every reading is a glyph
  * and a word or a number; anything not known says "unknown".
  */
 
@@ -28,14 +28,22 @@ function Clock({ startedAt, endedAt, running, unread }: { startedAt?: number; en
   }, [running, startedAt]);
   if (unread) return <><span className="ctl-clock is-quiet">T+ --:--:--</span> <small>unknown</small></>;
   if (!running && startedAt !== undefined && endedAt !== undefined) return <><span className="ctl-clock is-quiet">{span(endedAt - startedAt)}</span> <small>ran for</small></>;
-  if (!running || startedAt === undefined) return <><span className="ctl-clock is-quiet">T+ --:--:--</span> <small>{running ? 'unknown' : 'not running'}</small></>;
+  if (!running || startedAt === undefined) return <><span className="ctl-clock is-quiet">T+ --:--:--</span>{running && <> <small>unknown</small></>}</>;
   return <span className="ctl-clock" role="timer" aria-label={`Running for ${span(now - startedAt)}`}>T+{span(now - startedAt)}</span>;
 }
 
-/** Tokens in / out as reported, else the total where only that was reported (an Arena run), else unknown. */
-function tokenWords(m: ControlCtx['source']['metrics']): string {
-  if (m.tokensIn !== undefined && m.tokensOut !== undefined) return `${compactNumber(m.tokensIn)} / ${compactNumber(m.tokensOut)}`;
-  return m.tokens !== undefined ? `${compactNumber(m.tokens)} total` : 'unknown';
+/** Tokens in / out as reported, else the total where only that was reported (an Arena run); null when not reported. */
+function tokenWords(m: ControlCtx['source']['metrics']): string | null {
+  if (m.tokensIn !== undefined && m.tokensOut !== undefined) return `${compactNumber(m.tokensIn)} in / ${compactNumber(m.tokensOut)} out`;
+  return m.tokens !== undefined ? `${compactNumber(m.tokens)} total` : null;
+}
+
+/** Tokens and cost in one reading: "unknown" once when neither was reported. */
+function Usage({ m }: { m: ControlCtx['source']['metrics'] }) {
+  const tokens = tokenWords(m);
+  const cost = m.costUsd !== undefined ? `$${m.costUsd.toFixed(2)}` : null;
+  if (!tokens && !cost) return <>unknown</>;
+  return <><span>{tokens ?? 'tokens unknown'}</span> <span>{cost ?? <small>cost unknown</small>}</span></>;
 }
 
 /** The caution in words: not acknowledged, else acknowledged and shelved, else none. */
@@ -58,7 +66,7 @@ function Caution({ ctx }: { ctx: ControlCtx }) {
       <span className="ctl-caution-glyph" aria-hidden="true">{unread ? '∅' : lit ? '▲' : list.length > 0 ? '✓' : '○'}</span>
       <span className="ctl-caution-word">Master caution</span>
       <span className="ctl-caution-count">{unread ? '—' : lit ? unacked : 0}</span>
-      <span className="ctl-caution-sub">{words}</span>
+      {words !== 'no alarms' && <span className="ctl-caution-sub">{words}</span>}
     </button>
   );
 }
@@ -75,39 +83,46 @@ function Strip({ ctx }: { ctx: ControlCtx }) {
       <Tile label="Agents" className="ctl-tile-wide">
         {source.unread ? 'unknown' : counts.length === 0 ? 'none yet' : counts.map((c) => <span key={c.word} className={`ctl-count tone-${c.tone}`}><span className="ctl-glyph" aria-hidden="true">{c.glyph}</span> {c.n} {c.word}</span>)}
       </Tile>
-      <Tile label={m.tokensIn === undefined && m.tokens !== undefined ? 'Tokens' : 'Tokens in / out'}>{tokenWords(m)}</Tile>
-      <Tile label="Cost">{m.costUsd !== undefined ? `$${m.costUsd.toFixed(2)}` : 'unknown'}</Tile>
+      <Tile label="Usage"><Usage m={m} /></Tile>
     </ul>
   );
 }
 
 type RowProps = { ctx: ControlCtx; onOutcome(o: Outcome | null): void; afterStop(): void };
 
-/** The reason Pause all, Resume all, Stop team… and Emergency stop share, when they share one (an Arena run). */
-function sharedWhy(t: TeamActions): string | null {
-  const why = [t.pauseAll, t.resumeAll, t.stop, t.emergencyStop].map((a) => (a.can.ok ? null : a.can.why));
-  return why[0] && why.every((w) => w === why[0]) ? why[0] : null;
+/** The reason most of `actions` share while they cannot run (each keeps its own as its tooltip). */
+function commonWhy(actions: TeamActions[keyof TeamActions][]): string | null {
+  const count = new Map<string, number>();
+  for (const a of actions) if (!a.can.ok) count.set(a.can.why, (count.get(a.can.why) ?? 0) + 1);
+  return [...count].sort((x, y) => y[1] - x[1])[0]?.[0] ?? null;
 }
 
 /**
- * Start, Pause all, Resume all, Stop team… (the graceful stop: the project bar's confirmation) and
- * Emergency stop (`withStop`; a phone shows it on its one header line instead). A reason the stop
- * controls share is said once, after them (each keeps it as its description); on a phone, Emergency
- * stop's own line already says it.
+ * Start (the one primary button), Pause all, Resume all, Stop team… (the graceful stop: the project
+ * bar's confirmation) and Emergency stop (`withStop`; a phone shows it on its one header line
+ * instead). Their reasons are said once, in one line under them: why Start cannot run (with where to
+ * fix it), then the reason the others share. Each button keeps its own as tooltip and description.
  */
 function TeamControls({ ctx, onOutcome, afterStop, withStop = true }: RowProps & { withStop?: boolean }) {
   const t = ctx.source.team;
-  const fix = ctx.startFix && <Link className="ctl-link" to={ctx.startFix.to}>{ctx.startFix.text}</Link>;
-  const shared = sharedWhy(t);
-  const short = shared ? () => '' : undefined;
+  const startWhy = !t.start.can.ok && !ctx.source.running ? t.start.can.why : null;
+  const rest = commonWhy([t.pauseAll, t.resumeAll, t.stop, ...(withStop ? [t.emergencyStop] : [])]);
   return (
     <div className="ctl-controls" role="group" aria-label="Team controls">
-      <ActionButton action={t.start} label="Start" glyph="▶" className="btn-primary primary" onOutcome={onOutcome} shortWhy={() => (ctx.source.running ? 'Running' : null)} fix={fix} />
-      <ActionButton action={t.pauseAll} label="Pause all" glyph="‖" onOutcome={onOutcome} shortWhy={short} />
-      <ActionButton action={t.resumeAll} label="Resume all" glyph="▶" onOutcome={onOutcome} shortWhy={short} />
-      <ActionButton action={t.stop} label="Stop team…" glyph="◑" onOutcome={onOutcome} shortWhy={short} />
-      {withStop && <EmergencyStop action={t.emergencyStop} onOutcome={onOutcome} afterStop={afterStop} shortWhy={short} />}
-      {shared && withStop && <p className="ctl-why ctl-why-shared"><span aria-hidden="true">◇ </span>{shared}</p>}
+      <div className="ctl-row">
+        <ActionButton action={t.start} label="Start" glyph="▶" className="btn-primary primary" onOutcome={onOutcome} quiet />
+        <ActionButton action={t.pauseAll} label="Pause all" glyph="‖" onOutcome={onOutcome} quiet />
+        <ActionButton action={t.resumeAll} label="Resume all" glyph="▶" onOutcome={onOutcome} quiet />
+        <ActionButton action={t.stop} label="Stop team…" glyph="◑" onOutcome={onOutcome} quiet />
+        {withStop && <EmergencyStop action={t.emergencyStop} onOutcome={onOutcome} afterStop={afterStop} quiet />}
+      </div>
+      {(startWhy || rest) && (
+        <p className="ctl-why ctl-why-line">
+          {startWhy && <span>{startWhy}</span>}
+          {startWhy && ctx.startFix && <Link className="ctl-link" to={ctx.startFix.to}>{ctx.startFix.text}</Link>}
+          {rest && <span>{rest}</span>}
+        </p>
+      )}
     </div>
   );
 }

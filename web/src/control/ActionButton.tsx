@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode, type Ref } from 'react';
+import { useId, useState, type Ref } from 'react';
 import { ActionError, type Action, type ActionReport } from './source';
 
 /** One line under an outcome: an agent and what to know about it. `raw`: the server's own words (evidence). */
@@ -42,32 +42,24 @@ type Props = {
   onPress?(): void;
   /** Whether its confirm step is open. */
   expanded?: boolean;
-  /** A shorter caption for its reason, when the full reason is plain elsewhere (it stays the tooltip). */
-  shortWhy?: (why: string) => string | null;
-  /** Beside the reason while it cannot run: where to fix it. */
-  fix?: ReactNode;
+  /** Its reason is said once beside the controls, so here it is only the tooltip and description. */
+  quiet?: boolean;
 };
 
-/** A control's button with its state in words: while it cannot run, it is disabled and says why in visible text beside it. */
-export function ActionButton({ action, label, glyph, className, onOutcome, doneText, onPress, expanded, shortWhy, fix }: Props) {
+/** A control's button with its state in words: while it cannot run, it is disabled and says why (beside it, or once for a `quiet` group). */
+export function ActionButton({ action, label, glyph, className, onOutcome, doneText, onPress, expanded, quiet }: Props) {
   const id = useId();
   const { busy, run } = useRunAction(onOutcome, doneText);
   const why = action.can.ok ? null : action.can.why;
-  const caption = why ? (shortWhy?.(why) ?? why) : null;
   return (
     <span className="ctl-act">
       <button type="button" className={`btn btn-sm ${className ?? 'btn-secondary'}`} disabled={!!why || busy} aria-describedby={why ? id : undefined}
-        aria-expanded={expanded} title={caption !== why ? (why ?? undefined) : undefined} onClick={() => (onPress ? onPress() : void run(action))}>
+        aria-expanded={expanded} title={quiet ? (why ?? undefined) : undefined} onClick={() => (onPress ? onPress() : void run(action))}>
         <span aria-hidden="true">{glyph}</span> {label}
       </button>
-      <ActionReason id={id} why={why} caption={caption} fix={fix} />
+      {why && <span id={id} className={quiet ? 'sr-only' : 'ctl-why'}>{why}</span>}
     </span>
   );
-}
-
-function ActionReason({ id, why, caption, fix }: { id: string; why: string | null; caption: string | null; fix?: ReactNode }) {
-  if (!why) return null;
-  return <><span id={id} className="ctl-why">{caption}{caption !== why && <span className="sr-only">: {why}</span>}</span>{fix}</>;
 }
 
 /** An outcome's lines under the controls: what happened, every agent left alone and why. */
