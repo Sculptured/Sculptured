@@ -301,6 +301,8 @@
 
 /* ── New project, Library, Account and Community inside the frame ── */
 .new-project .gallery.inline, .projects-home .gallery.inline { border: 0; background: transparent; box-shadow: none; }
+.new-project .gallery.inline > .panel-bar, .projects-home .gallery.inline > .panel-bar { border-bottom: 0; background: transparent; }
+.new-project .gallery.inline .panel-title, .projects-home .gallery.inline .panel-title { font-size: var(--text-xl); }
 .library-host .library-page { border: 0; background: transparent; box-shadow: none; }
 
 /* ── Phones ── */
