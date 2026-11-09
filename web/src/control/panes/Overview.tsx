@@ -56,9 +56,10 @@ function NotLive() {
   const p = useProject();
   if (p.started) return <ConnectingPanel key={p.team} rig={p.team} />;
   return (
-    <div className="ctl-empty ctl-not-started">
-      <p><span aria-hidden="true">○ </span><strong>Not started yet.</strong> The live board shows here once the team runs. Start it with Start above.</p>
-      {p.builtHere && <p><Link className="btn btn-secondary btn-sm" to={boardPath(p.team, 'design')}>Open the Design board</Link></p>}
+    <div className="ctl-not-started">
+      <p className="ctl-not-started-title"><span aria-hidden="true">○ </span>Not started</p>
+      <p className="muted">The live board shows here once the team runs.</p>
+      {p.builtHere && <Link className="btn btn-sm" to={boardPath(p.team, 'design')}>Open the Design board</Link>}
     </div>
   );
 }

@@ -18,12 +18,12 @@
 
 /* ── Header: the status strip, the master caution, then the team's controls ── */
 .ctl-head { display: flex; flex-direction: column; }
-.ctl-head-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 4px var(--space-2); padding: 4px var(--space-2); }
-.ctl-head-right { display: flex; align-items: stretch; gap: var(--space-2); margin-left: auto; }
-.ctl-strip { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; min-width: 0; }
+.ctl-head-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-2) var(--space-3); }
+.ctl-head-right { display: flex; align-items: center; gap: var(--space-3); margin-left: auto; }
+.ctl-strip { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) 0; flex: 1 1 auto; min-width: 0; }
 /* The strip's readings are StatusTiles (components/statusTile.css). */
 .ctl-clock.is-quiet { color: var(--muted); }
-.ctl-clock { color: var(--accent); letter-spacing: 0.04em; font-weight: var(--weight-semibold); }
+.ctl-clock { font-family: var(--font-mono); color: var(--text); letter-spacing: 0.04em; font-weight: var(--weight-semibold); }
 .ctl-count { white-space: nowrap; }
 .ctl-count .ctl-glyph { margin-right: 2px; }
 .ctl-tile-wide { min-width: 160px; }
@@ -31,22 +31,24 @@
 /* Master caution: dark until an alarm is not acknowledged, then lit red with its count. */
 .ctl-caution {
   display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: var(--space-2); align-items: center;
-  min-width: 150px; padding: 2px 10px;
-  border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--well); color: var(--muted);
+  min-height: var(--control-h); padding: 2px var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-md); background: transparent; color: var(--muted);
   font: inherit; text-align: left; cursor: pointer;
 }
 .ctl-caution:hover { border-color: var(--line-3); }
 .ctl-caution:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.ctl-caution-glyph { grid-row: 1 / 3; font-size: var(--text-lg); }
+.ctl-caution-glyph { grid-row: 1 / 3; }
 .ctl-caution-word { font-size: var(--text-xs); font-weight: var(--weight-semibold); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
-.ctl-caution-count { grid-column: 3; grid-row: 1 / 3; font-family: var(--font-mono); font-size: var(--text-lg); font-weight: var(--weight-bold); }
+.ctl-caution-count { grid-column: 3; grid-row: 1 / 3; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); }
 .ctl-caution-sub { font-size: var(--text-xs); white-space: nowrap; }
 .ctl-caution.is-lit { border-color: var(--red-line); background: var(--red-soft); color: var(--status-failed); }
 .ctl-caution.is-lit .ctl-caution-glyph { animation: ctl-blink 1.6s var(--ease-in-out) infinite; }
 @keyframes ctl-blink { 50% { opacity: 0.35; } }
 
-.ctl-controls { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px; }
+.ctl-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .ctl-act { display: inline-flex; flex-direction: column; align-items: stretch; gap: 1px; max-width: 18ch; }
+/* The controls' reasons, said once in one line under them. */
+.ctl-why-line { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 var(--space-2); margin: 0; }
 .ctl-act .btn { white-space: nowrap; }
 .ctl-why { color: var(--muted); font-size: var(--text-xs); line-height: var(--leading-tight); }
 .ctl-why.tone-bad { color: var(--status-failed); }
@@ -243,3 +245,8 @@
 .ctl-prio-word { font-family: var(--font-ui); }
 .ctl-alarm { grid-template-columns: 19ch minmax(0, 1fr) auto; }
 .ctl-alarm.is-shelved .ctl-alarm-state, .ctl-alarm.is-shelved .ctl-alarm-text { color: var(--muted); }
+
+/* System overview before a first start: centred, one line, the way to the Design board. */
+.ctl-not-started { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); height: 100%; padding: var(--space-6) var(--space-4); text-align: center; }
+.ctl-not-started p { margin: 0; }
+.ctl-not-started-title { font-size: var(--text-lg); font-weight: var(--weight-semibold); color: var(--text); }
