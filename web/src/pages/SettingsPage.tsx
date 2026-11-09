@@ -6,6 +6,7 @@ import { plural } from '../format';
 import { workflowPath } from '../paths';
 import { DismissibleError } from '../shell/DismissibleError';
 import { Btn } from '../shell/ui';
+import { Hint } from '../structure/AgentFields';
 import { BudgetFields } from '../structure/BudgetFields';
 import { ClaudeSetupFields } from '../structure/ClaudeSetupFields';
 import { ImproveFromRun } from '../structure/ImproveFromRun';
@@ -23,12 +24,11 @@ import { ComponentsSection } from '../structure/ComponentsSection';
 import { liveFacts } from './useProjectRun';
 import { useProjectVisibility } from './useProjectVisibility';
 
-/** One settings group: a heading, an optional short hint, its controls. */
+/** One settings group: a heading (with a "?" that explains it, when there is more to say), its controls. */
 function Group({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <section className="set-sec" aria-label={title}>
-      <h2 className="set-title">{title}</h2>
-      {hint && <p className="muted set-hint">{hint}</p>}
+      <div className="fld-label-row"><h2 className="set-title">{title}</h2>{hint && <Hint text={hint} />}</div>
       {children}
     </section>
   );

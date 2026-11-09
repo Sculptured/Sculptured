@@ -44,7 +44,7 @@
 .stuck-mark > .word { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .handoff-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0 0; font-size: var(--text-sm); }
 .handoff-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; }
-.fld-hint { font-size: var(--text-xs); margin: 4px 0 0; }
+.fld-hint { font-size: var(--text-sm); line-height: var(--leading); margin: var(--space-1) 0 0; }
 .handoff-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex-basis: 100%; padding: 6px 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); }
 .ta-check { display: inline-flex; gap: 6px; align-items: center; font-size: var(--text-md); }
 /* Describe it: a team drafted by the user's own CLI. */
@@ -73,10 +73,10 @@
 .ta-check > span { display:grid; gap:2px; }
 .ta-check b { font-weight:var(--weight-medium); }
 .ta-budget { border:0; margin:0 0 12px; padding:0; display:grid; gap:6px; min-width:0; }
-.ta-budget-head, .ta-budget-row { display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:var(--text-md); }
+.ta-budget-head, .ta-budget-row { display:grid; grid-template-columns:minmax(0, 1fr) 120px 120px; gap:var(--space-2); align-items:center; font-size:var(--text-md); }
 .ta-budget-head { font-size:var(--text-sm); color:var(--muted); }
 .ta-budget-rows { display:grid; gap:8px; }
-.ta-budget-label { grid-column:1 / -1; }
+.ta-budget-label { min-width:0; }
 .ta-budget-row .fld-input { width:100%; min-width:0; -moz-appearance:textfield; appearance:textfield; }
 .ta-budget-row .fld-input::-webkit-inner-spin-button, .ta-budget-row .fld-input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .ta-budget .ta-limit { grid-template-columns:1fr 5em; }

@@ -12,7 +12,7 @@ import type { AgentRow } from '../shell/model';
 import { RunSummary } from '../shell/RunFinished';
 import { useShell } from '../shell/ShellContext';
 import { UsageStrip } from '../shell/UsageStrip';
-import { Icon } from '../shell/ui';
+import { EmptyState } from '../shell/ui';
 import { WORDS } from '../vocab';
 import { useProject, type Project } from './ProjectContext';
 import { ChangesView } from '../collaboration/ChangesView';
@@ -57,11 +57,9 @@ export function ResultsPage() {
   if (!p.started)
     return (
       <main className="page page-wide results-page">
-        <section className="empty-state" aria-label="Results">
-          <Icon name="check-circle" size={22} className="muted" />
-          <h2>No runs yet</h2>
-          <p className="muted">Start the team to see what it produced: each agent's report, files changed and checks.</p>
-        </section>
+        <EmptyState icon="check-circle" title="No runs yet" label="Results">
+          <p className="muted">Each agent's report, files changed and checks show here once the team runs.</p>
+        </EmptyState>
       </main>
     );
   return (

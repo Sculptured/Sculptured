@@ -7,6 +7,7 @@ import type { Edit } from './Panels';
 import { inheritProjectFolder, setProjectFolder } from '../draft/folders';
 import { FolderPicker, shortPath, useHome } from './FolderPicker';
 import { Btn } from '../shell/ui';
+import { Hint } from './AgentFields';
 import { useHosted } from '../hosted/HostedGate';
 import { RunOn } from '../hosted/RunOn';
 
@@ -41,12 +42,13 @@ function LocalFolder({ draft, edit, locked }: { draft: TeamDraft; edit: Edit; lo
   const home = useHome();
   const overrides = draft.agents.filter(a => a.folder?.trim()).length;
   return <section className="fld" aria-label="Project folder">
-    <h3 className="fld-label">Project folder</h3>
-    <p className="folder-path">{draft.folder ? shortPath(draft.folder, home) : 'No project folder chosen'}</p>
-    <p className="fld-hint muted">All agents use this folder unless you choose a different one for an agent.</p>
-    <Btn disabled={locked} onClick={() => setPicking(true)}>Choose project folder…</Btn>
+    <div className="fld-label-row"><h3 className="fld-label">Project folder</h3><Hint text="All agents use this folder unless you choose a different one for an agent." /></div>
+    <div className="folder-row">
+      <span className="folder-path">{draft.folder ? shortPath(draft.folder, home) : 'No project folder chosen'}</span>
+      <Btn size="sm" disabled={locked} onClick={() => setPicking(true)}>Choose project folder…</Btn>
+      {draft.folder && <Btn size="sm" variant="ghost" disabled={locked} onClick={() => edit(d => setProjectFolder(d, null))}>Clear project folder</Btn>}
+    </div>
     {locked && <p className="reason">Stop the team to change its folder.</p>}
-    {draft.folder && <Btn disabled={locked} onClick={() => edit(d => setProjectFolder(d, null))}>Clear project folder</Btn>}
     {draft.folder && overrides > 0 && <p className="fld-hint">{overrides} agent(s) use their own folders. <Btn disabled={locked} onClick={() => edit(inheritProjectFolder)}>Use project folder for all agents</Btn></p>}
     <OwnCopies team={draft.id} />
     {picking && <FolderPicker initialPath={draft.folder ?? null} onClose={() => setPicking(false)} onChoose={folder => {
@@ -66,8 +68,8 @@ function OwnCopies({ team }: { team: string }) {
     try { setS(await api.saveTeamSettings(team, { ...s, own_copies: on })); } catch (e) { setError(errorText(e)); }
   };
   return <div className="own-copies">
-    <label><input type="checkbox" checked={s.own_copies} onChange={e => void toggle(e.target.checked)} /> Each agent works in its own git copy</label>
-    <p className="fld-hint muted">Agents running at the same time can't overwrite each other's files. Each gets a branch (sculptured/{team}/…) made from the last commit, so commit first; teammates see each other's work only after you merge it on the Git page. Needs the project folder to be a git repository. Applies when agents next start.</p>
+    <label><input type="checkbox" checked={s.own_copies} onChange={e => void toggle(e.target.checked)} /> Each agent works in its own git copy
+      <Hint text={`Agents running at the same time can't overwrite each other's files. Each gets a branch (sculptured/${team}/…) made from the last commit, so commit first; teammates see each other's work only after you merge it on the Git page. Needs the project folder to be a git repository. Applies when agents next start.`} /></label>
     {error && <p className="tone-red" role="alert">{error}</p>}
   </div>;
 }

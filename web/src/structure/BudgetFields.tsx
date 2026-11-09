@@ -1,5 +1,6 @@
 import type { SoftHard } from '../generated/SoftHard';
 import type { TeamDraft } from '../generated/TeamDraft';
+import { Hint } from './AgentFields';
 import type { Edit } from './Panels';
 import { budgetProblems, PLAN_ROWS, planOf, softHard, softOf, withBudget, withPause, withPlan } from './budgetDraft';
 import type { PlanBudget } from '../generated/PlanBudget';
@@ -80,8 +81,8 @@ export function BudgetFields({ draft, edit, locked }: { draft: TeamDraft; edit: 
   const problems = budgetProblems(b);
   return (
     <fieldset className="ta-budget">
-      <legend className="fld-label">Run budget</legend>
-      <div className="ta-budget-head" aria-hidden="true"><span>Soft: wrap up</span><span>Hard: stop</span></div>
+      <legend className="sr-only">Run budget</legend>
+      <div className="ta-budget-head"><span className="fld-label-row">Limit<Hint text={NOTE} /></span><span aria-hidden="true">Soft: wrap up</span><span aria-hidden="true">Hard: stop</span></div>
       <div className="ta-budget-rows">
           {PLAN_ROWS.map((r) => (
             <Pair key={`${r.provider}-${r.window}`} label={r.label} unit="% of plan" value={planOf(b, r.provider, r.window)} locked={locked}
@@ -97,7 +98,6 @@ export function BudgetFields({ draft, edit, locked }: { draft: TeamDraft; edit: 
           onChange={(p) => edit((d) => withBudget(d, (x) => withPause(x, r.provider, r.window, p)), `budget:${r.provider}:${r.window}:pause`)} />] : []; })}
       <MaxWorking draft={draft} edit={edit} locked={locked} />
       {problems.map((p) => <p key={p} className="reason fld-reason" role="alert">{p}</p>)}
-      <p className="fld-meta">{NOTE}</p>
     </fieldset>
   );
 }

@@ -116,6 +116,17 @@ export function Segmented<T extends string>({
   );
 }
 
+/** A page with nothing to show yet: an icon, a short title and one line of what will appear, then any action. */
+export function EmptyState({ icon, title, label, children }: { icon: IconName; title: string; label?: string; children?: ReactNode }) {
+  return (
+    <section className="empty-state" aria-label={label ?? title}>
+      <Icon name={icon} size={22} className="muted" />
+      <h2>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
 export type BadgeTone = 'neutral' | 'accent' | 'red' | 'green' | 'amber' | 'violet' | 'vendor';
 
 /** A small rounded label: a count, a kind, a short status word. */
