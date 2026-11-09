@@ -70,6 +70,6 @@ export function routeGroupEdges(edges: CompiledEdge[], projection: GroupProjecti
 export function GroupVisibilityButton({ name, collapsed, onToggle, onFocus }: { name: string; collapsed: boolean; onToggle: () => void; onFocus?: () => void }) {
   return <button type="button" className="group-visibility" aria-label={`${collapsed ? 'Show' : 'Hide'} contents of ${name}`} aria-expanded={!collapsed}
     onFocus={onFocus} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); if (!collapsed) track('collapse-group'); onToggle(); }}>
-    <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={13} />{collapsed ? 'Show contents' : 'Hide contents'}
+    <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={13} /><span className="gv-word">{collapsed ? 'Show contents' : 'Hide contents'}</span>
   </button>;
 }

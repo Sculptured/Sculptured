@@ -917,7 +917,7 @@ export function StructureCanvas(p: Props) {
                       {v.name} · {cardModel(draft, a)}
                     </span>
                     <ComponentChips agent={a} draft={draft} />
-                    <span className={`sb-job${a.job.trim() ? '' : ' muted'}`}>{a.job.trim() || 'No job yet. Select the agent to write one.'}</span>
+                    <span className={`sb-job${a.job.trim() ? '' : ' muted'}`}>{a.job.trim() || 'No job yet'}</span>
                     <span className={`sb-folder${folderIssue ? ' tone-red' : ''}`} title={(a.folder || draft.folder) ?? undefined}>
                       {folderIssue ? <span aria-hidden="true">▲</span> : <Icon name="folder" size={11} />}
                       {folderIssue && a.folder && <span className="folder-why">{FOLDER_ISSUE_WORDS[folderIssue.code] ?? 'folder problem'} ·</span>}
