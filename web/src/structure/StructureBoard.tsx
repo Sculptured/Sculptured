@@ -86,7 +86,8 @@ function FixBox({ draft, issues, onShow, edit, locked }: { draft: TeamDraft; iss
   // It starts open only while the list is short; a long list starts folded so it never covers the board.
   const [choice, setChoice] = useState<boolean | null>(null);
   const open = choice ?? issues.length <= 3;
-  if (issues.length === 0) return null;
+  // An empty board says what to do itself.
+  if (issues.length === 0 || draft.agents.length === 0) return null;
   return (
     <section className={`panel fix-box${open ? '' : ' closed'}`} aria-label="Things to fix" data-tour="fix">
       <div className="panel-bar">

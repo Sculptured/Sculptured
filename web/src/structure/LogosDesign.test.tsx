@@ -50,7 +50,7 @@ describe('Design board in Logos style', () => {
     fireEvent.pointerMove(window, { clientX: 180, clientY: 260, pointerId: 1 });
     fireEvent.pointerUp(window, { clientX: 180, clientY: 260, pointerId: 1 });
     fireEvent.click(builder);
-    expect(pos('Builder')).toEqual([120, 200]);
+    expect(pos('Builder')).toEqual([84, 200]);
     expect(where()).toBe('/p/t/board?mode=design');
     fireEvent.keyDown(card('Builder'), { key: 'Enter' });
     expect(await screen.findByRole('region', { name: 'Setup' })).toBeVisible();

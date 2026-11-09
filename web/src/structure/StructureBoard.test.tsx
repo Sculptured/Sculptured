@@ -7,7 +7,7 @@ import { forgetViewports } from '../shell/viewport';
 import { draftAgent, teamDraft, teamRecord } from '../test-fixtures';
 import { openRigWords } from '../test-vocab';
 import { saveTiming } from '../useTeamDraft';
-import { card, fakeTeam, OFFSET, pos, renderAt, resetApi, sizeViewport, where } from './harness';
+import { card, fakeTeam, OFFSET, pos, renderAt, resetApi, sizeViewport, slotOf, where } from './harness';
 
 vi.mock('../api', async (orig) => {
   const m = await orig<typeof import('../api')>();
@@ -65,9 +65,9 @@ describe('Structure board: adding agents', () => {
     noSide();
     fireEvent.pointerMove(window, {clientX:180,clientY:260,pointerId:1});
     fireEvent.pointerUp(window, {clientX:180,clientY:260,pointerId:1});
-    // The click that ends a drag only moves the card.
+    // The click that ends a drag only moves the card: to where it was dropped, but never onto Reviewer (300, 40).
     fireEvent.click(builder);
-    expect(pos('Builder')).toEqual([120,200]);
+    expect(pos('Builder')).toEqual([84,200]);
     noSide();
     expect(where()).toBe('/p/t/board?mode=design');
     fireEvent.keyDown(builder, {key:'Enter'});
@@ -125,11 +125,13 @@ describe('Structure board: adding agents', () => {
     const claude = screen.getByRole('button', { name: 'Add a Claude agent' });
     fireEvent.pointerDown(claude, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
     fireEvent.pointerMove(window, { clientX: 400, clientY: 420, pointerId: 1 });
-    expect(document.querySelector('.sb-ghost')).not.toBeNull();
+    // The new card floats under the pointer before it exists in the draft.
+    expect(document.querySelector('.sb-slot.dragging')).toHaveTextContent('Claude 1');
+    expect(api.saveTeam).not.toHaveBeenCalled();
     fireEvent.pointerUp(window, { clientX: 500, clientY: 400, pointerId: 1 });
     // Centred under the pointer (card 200 wide, grabbed 24 below its top).
     expect(pos('Claude 1')).toEqual([500 - OFFSET - 100, 400 - OFFSET - 24]);
-    expect(document.querySelector('.sb-ghost')).toBeNull();
+    expect(document.querySelector('.sb-slot.dragging')).toBeNull();
   });
 });
 
@@ -143,11 +145,30 @@ describe('Structure board: moving', () => {
     // While dragging the card follows the pointer; the draft is not touched until release.
     expect(api.saveTeam).not.toHaveBeenCalled();
     fireEvent.pointerUp(window, { clientX: 180, clientY: 260, pointerId: 1 });
-    expect(pos('Builder')).toEqual([120, 200]);
+    // Dropped at (120, 200) it would cover Reviewer (300, 40): it lands just clear of it.
+    expect(pos('Builder')).toEqual([84, 200]);
     await waitFor(() => expect(api.saveTeam).toHaveBeenCalledTimes(1));
-    expect(lastSaved().agents[0]).toMatchObject({ x: 120, y: 200 });
+    expect(lastSaved().agents[0]).toMatchObject({ x: 84, y: 200 });
     await userEvent.setup().click(screen.getByRole('button', { name: 'Undo' }));
     expect(pos('Builder')).toEqual([40, 40]);
+  });
+
+  it('previews the drop while dragging (the floating card, its landing outline) and Esc puts the card back', async () => {
+    await board();
+    const builder = card('Builder');
+    fireEvent.pointerDown(builder, { button: 0, clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 180, clientY: 260, pointerId: 1 });
+    // Over Reviewer: the card floats under the pointer and the clear place beside it is outlined.
+    expect(slotOf('Builder')).toHaveClass('dragging');
+    expect(pos('Builder')).toEqual([120, 200]);
+    const landing = document.querySelector<HTMLElement>('.sb-landing')!;
+    expect([parseFloat(landing.style.left), parseFloat(landing.style.top)]).toEqual([84, 200]);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(document.querySelector('.sb-landing')).toBeNull();
+    expect(pos('Builder')).toEqual([40, 40]);
+    fireEvent.pointerUp(window, { clientX: 180, clientY: 260, pointerId: 1 });
+    expect(pos('Builder')).toEqual([40, 40]);
+    expect(api.saveTeam).not.toHaveBeenCalled();
   });
 
   it('selects with Tab and moves with the arrow keys; consecutive moves are one undo step', async () => {

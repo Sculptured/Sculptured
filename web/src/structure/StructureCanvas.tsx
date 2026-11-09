@@ -20,7 +20,9 @@ import type { DraftIssue } from '../generated/DraftIssue';
 import type { EdgeKind } from '../generated/EdgeKind';
 import type { TeamDraft } from '../generated/TeamDraft';
 import { addAgent, addGroup, connect, reconnect, moveAgent, moveGroup, removeElement, type Selection } from '../draft/edits';
-import { agentAt, agentBox, alignCard, BIG_STEP, drawnGroups, groupAt, nextFreeSlot, overlaps, STEP, type Point } from '../draft/geometry';
+import '../drag/drag.css';
+import { useBoardDrag } from '../drag/useBoardDrag';
+import { agentAt, agentBox, BIG_STEP, drawnGroups, nextFreeSlot, overlaps, STEP, type Point } from '../draft/geometry';
 import { BoardMenu, useBoardClipboard, type MenuOpen } from './BoardMenu';
 import { inputAllowed, teamInputBox, INPUT_H, INPUT_W } from '../draft/input';
 import { InputEdges, InputEditor, InputNode, INPUT_WIRE } from './InputNode';
@@ -82,10 +84,9 @@ export function mainKindOf(d: TeamDraft): AgentKind {
 /** The model shown on a card: the one it will run with, or the CLI's default. */
 const cardModel = (d: TeamDraft, a: TeamDraft['agents'][number]) => modelLabel(a.kind, effectiveModel(d, a).model);
 
-/** `ids`: several selected agents dragged together (the card under the pointer is `id`). */
-type Drag = { kind: 'agent' | 'group' | 'input' | 'stage' | 'team-input'; id: string; dx: number; dy: number; ids?: string[] };
+/** The Input and stage boxes move freely (cards, groups and new agents use `useBoardDrag`). */
+type Drag = { kind: 'input' | 'stage' | 'team-input'; id: string; dx: number; dy: number };
 type Wire = { from: string; to: Point };
-type Ghost = { kind: AgentKind; at: Point } | null;
 
 type Props = {
   teamId: string;
@@ -123,14 +124,7 @@ function withDrag(d: TeamDraft, drag: Drag | null, k: number): TeamDraft {
   if (drag.kind === 'team-input' && d.input) return { ...d, input: { ...d.input, x: d.input.x + dx, y: d.input.y + dy } };
   if (drag.kind === 'input' && d.workflow) { const b=inputBox(d); return {...d,workflow:{...d.workflow,input_position:{x:b.x+dx,y:b.y+dy}}}; }
   if (drag.kind === 'stage' && d.workflow) { const b=stageBoxes(d)[`$stage:${drag.id}`]; return b ? {...d,workflow:{...d.workflow,stages:d.workflow.stages.map(s=>s.id===drag.id?{...s,position:{x:b.x+dx,y:b.y+dy}}:s)}} : d; }
-  if (drag.kind === 'agent' && drag.ids) return { ...d, agents: d.agents.map((a) => (drag.ids!.includes(a.id) ? { ...a, x: a.x + dx, y: a.y + dy } : a)) };
-  // A dragged card shows where it will land: where it is, or lined up with a nearby card.
-  if (drag.kind === 'agent') return { ...d, agents: d.agents.map((a) => (a.id === drag.id ? { ...a, ...alignCard(d, a.id, { x: a.x + dx, y: a.y + dy }) } : a)) };
-  return {
-    ...d,
-    groups: d.groups.map((g) => (g.id === drag.id ? { ...g, x: g.x + dx, y: g.y + dy } : g)),
-    agents: d.agents.map((a) => (groupOf(a) === drag.id ? { ...a, x: a.x + dx, y: a.y + dy } : a)),
-  };
+  return d;
 }
 
 function boundsOf(d: TeamDraft): Bounds | null {
@@ -169,7 +163,6 @@ export function StructureCanvas(p: Props) {
   const [wire, setWire] = useState<Wire | null>(null);
   const [groupGhost,setGroupGhost] = useState<{block:GroupBlock;at:Point}|null>(null);
   const groupDragged=useRef(false);
-  const [ghost, setGhost] = useState<Ghost>(null);
   const [focusNext, setFocusNext] = useState<Selection | null>(null);
   const stops = useRef(new Set<() => void>());
   const pointerFocus = useRef(false);
@@ -204,6 +197,7 @@ export function StructureCanvas(p: Props) {
       end(moved, ev);
     });
     stops.current.add(stop);
+    return () => { stops.current.delete(stop); stop(); };
   };
 
   // Logos style: each agent is its provider's logo, in the same slot; arrows end at the logo.
@@ -227,7 +221,16 @@ export function StructureCanvas(p: Props) {
     return () => observer.disconnect();
   }, [fullText, draft.agents.length]);
   const cardHeight = useCallback((id: string) => (fullText ? Math.max(CARD_H, heights[id] ?? CARD_H) : CARD_H), [fullText, heights]);
-  const shown = fullText ? fullTextLayout(withDrag(draft, drag, vp.k), heights) : withDrag(draft, drag, vp.k);
+  const board = useBoardDrag({
+    draft, edit, locked, follow,
+    zoom: () => vpRef.current.k,
+    boardPoint: (ev) => (overViewport(ev as PointerEvent) ? toWorld(ev.clientX, ev.clientY) : null),
+    hidden: () => new Set(projection.hidden.keys()),
+    onAdded: (id) => { onSelect({ kind: 'agent', id }); setFocusNext({ kind: 'agent', id }); },
+    onEnd: (moved) => { pointerFocus.current = false; if (moved) dragged.current = true; },
+  });
+  const moved = withDrag(board.shown, drag, vp.k);
+  const shown = fullText ? fullTextLayout(moved, heights) : moved;
   const boxes = useMemo(() => Object.fromEntries(shown.agents.map((a) => [a.id, { ...agentBox(a), h: cardHeight(a.id) }])), [shown, cardHeight]);
   const edges: CompiledEdge[] = useMemo(
     () => shown.connections.map((c) => ({ kind: EDGE_KIND[c.kind], from: c.from, to: c.to, enforced: c.kind === 'hands-work-to' })),
@@ -408,21 +411,7 @@ export function StructureCanvas(p: Props) {
 
   /** Drag a palette entry onto the board; a click (no drag) adds at the next free place. */
   const paletteDown = (kind: AgentKind) => (e: React.PointerEvent) => {
-    if (e.button !== 0 || locked) return;
-    follow(
-      e,
-      (_dx, _dy, ev) => {
-        if (!overViewport(ev)) return setGhost(null);
-        const w = toWorld(ev.clientX, ev.clientY);
-        setGhost({ kind, at: { x: w.x - CARD_W / 2, y: w.y - 24 } });
-      },
-      (moved, ev) => {
-        setGhost(null);
-        if (!moved || !overViewport(ev)) return;
-        const w = toWorld(ev.clientX, ev.clientY);
-        add(kind, { x: w.x - CARD_W / 2, y: w.y - 24 });
-      },
-    );
+    if (e.button === 0 && !locked) board.palette(e, kind);
   };
 
   const dragged = useRef(false);
@@ -442,30 +431,8 @@ export function StructureCanvas(p: Props) {
     if (e.button !== 0) return;
     pointerFocus.current = true;
     dragged.current = false;
-    // A card of a selection of several drags them all.
-    const together = many && picked.includes(id) ? picked : null;
-    follow(
-      e,
-      (dx, dy) => setDrag({ kind: 'agent', id, dx, dy, ids: together ?? undefined }),
-      (moved, ev) => {
-        pointerFocus.current = false;
-        setDrag(null);
-        if (!moved) return;
-        dragged.current = true;
-        if (together) {
-          const k = vpRef.current.k;
-          edit((d) => moveAgents(d, together, (ev.clientX - e.clientX) / k, (ev.clientY - e.clientY) / k, locked));
-          return;
-        }
-        const a = draft.agents.find((x) => x.id === id);
-        if (!a) return;
-        const k = vpRef.current.k;
-        const dx = ev.clientX - e.clientX;
-        const dy = ev.clientY - e.clientY;
-        // One edit on release, never one per pointer move.
-        edit((d) => moveAgent(d, id, alignCard(d, id, { x: a.x + dx / k, y: a.y + dy / k }), locked));
-      },
-    );
+    // A card of a selection of several drags them all. One edit on release, never one per move.
+    board.agent(e, id, many && picked.includes(id) ? picked : null);
   };
 
   // The Input box and stage boxes move the same way: drag, arrow keys, undo; a click (not a drag) opens them.
@@ -509,18 +476,7 @@ export function StructureCanvas(p: Props) {
     e.stopPropagation();
     dragged.current = false;
     pointerFocus.current = true;
-    follow(
-      e,
-      (dx, dy) => setDrag({ kind: 'group', id, dx, dy }),
-      (moved, ev) => {
-        pointerFocus.current = false;
-        setDrag(null);
-        if (!moved) return;
-        const k = vpRef.current.k;
-        dragged.current = true;
-        edit((d) => moveGroup(d, id, (ev.clientX - e.clientX) / k, (ev.clientY - e.clientY) / k));
-      },
-    );
+    board.group(e, id);
   };
 
   const portDown = (from: string) => (e: React.PointerEvent) => {
@@ -663,14 +619,6 @@ export function StructureCanvas(p: Props) {
     startPan(e);
   };
 
-  // While dragging a card, the group under its centre is where it would land.
-  const dropGroup =
-    drag?.kind === 'agent'
-      ? (() => {
-          const a = shown.agents.find((x) => x.id === drag.id);
-          return a ? groupAt(draft, { x: a.x + CARD_W / 2, y: a.y + CARD_H / 2 }) : null;
-        })()
-      : null;
   const wireTarget = wire ? agentAt({ ...draft, agents: draft.agents.filter(a => !projection.hidden.has(a.id)) }, wire.to) : null;
   const wireFrom = wire ? (wire.from === INPUT_WIRE ? teamInputBox(draft) : boxes[wire.from] && (logos ? logoRouteBox(boxes[wire.from]) : boxes[wire.from])) : null;
   const lockedNote = !locked ? null : p.marks ? 'Approve or reject the proposal to change the board.' : 'Stop the team to add components or change arrows.';
@@ -784,13 +732,12 @@ export function StructureCanvas(p: Props) {
         aria-label="Design board"
         role="region"
       >
-        {empty && !ghost && (
+        {empty && !board.dragging && (
           <div className="sb-empty" aria-live="polite">
-            <p className="sb-empty-title">This {p.groupOnly ? 'group' : 'team'} has no agents yet.</p>
-            <p className="muted">
-              Drag <span className="kbdish">+ Claude</span> or <span className="kbdish">+ Codex</span> onto the board, right-click it, or{' '}
-              {p.groupOnly ? <>use <kbd>Tab</kbd> to reach Add, then <kbd>⏎</kbd>.</> : <>press <kbd>n</kbd> then <kbd>⏎</kbd>.</>}
-            </p>
+            <div className="sb-empty-card">
+              <Btn variant="primary" icon="plus" disabled={locked} onClick={() => add(mainKind)} aria-label="Add the first agent">Add agent</Btn>
+            </div>
+            <p className="sb-empty-hint">or drag it in · <kbd>n</kbd></p>
           </div>
         )}
         <div
@@ -806,7 +753,7 @@ export function StructureCanvas(p: Props) {
             return (
               <div
                 key={g.id}
-                className={`group-box sb-group${hidden ? ' group-collapsed' : ''}${sel ? ' selected' : ''}${dropGroup === g.id ? ' drop-target' : ''}${drag?.kind === 'group' && drag.id === g.id ? ' dragging' : ''}${mark(g.id)}`}
+                className={`group-box sb-group${hidden ? ' group-collapsed' : ''}${sel ? ' selected' : ''}${board.dropGroup === g.id ? ' drop-target' : ''}${board.dragging?.group && board.dragging.id === g.id ? ' dragging' : ''}${mark(g.id)}`}
                 style={{ left: g.x, top: g.y, width: g.w, height: g.h }}
                 onPointerDown={hidden ? groupDown(g.id) : undefined}
                 onContextMenu={(e) => menuAt(e, { kind: 'group', id: g.id })}
@@ -905,6 +852,7 @@ export function StructureCanvas(p: Props) {
               </button>
             );
           })}
+          {board.landing && <div className="sb-landing" aria-hidden="true" style={{ left: board.landing.x, top: board.landing.y, width: CARD_W, height: CARD_H }} />}
           {shown.agents.filter(a => !projection.hidden.has(a.id)).map((a) => {
             const ai = issuesFor(issues, 'agent', a.id);
             const errs = errorsOf(ai);
@@ -912,7 +860,7 @@ export function StructureCanvas(p: Props) {
             const v = kindVendor(a.kind);
             const folderIssue = ai.find((i) => i.code.startsWith('folder') || i.code === 'home-unknown');
             const state = errs.length ? `${plural(errs.length, 'thing')} to fix` : 'ready';
-            const dragging = drag?.kind === 'agent' && drag.id === a.id;
+            const dragging = board.dragging?.id === a.id && !board.dragging.group;
             return (
               <div
                 key={a.id}
@@ -1007,13 +955,6 @@ export function StructureCanvas(p: Props) {
             />
           )}
           {groupGhost && <div className="group-box sb-group-ghost" style={{left:groupGhost.at.x,top:groupGhost.at.y,width:200,height:132}} aria-hidden="true">{groupGhost.block.name}</div>}
-          {ghost && (
-            <div className="card-slot sb-ghost" style={{ left: ghost.at.x, top: ghost.at.y, width: CARD_W, height: CARD_H }} aria-hidden="true">
-              <span className={kindVendor(ghost.kind).cls}>
-                <VendorMark v={kindVendor(ghost.kind)} size="md" /> new {PALETTE_WORD[ghost.kind]} agent
-              </span>
-            </div>
-          )}
         </div>
       </div>
       </div>
