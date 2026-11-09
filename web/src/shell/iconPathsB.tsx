@@ -158,6 +158,13 @@ export const PATHS_B = {
       <path d="M2 12h20" />
     </>
   ),
+  /** Shakedown's mark: a step response settling, in a rounded square. */
+  shakedown: (
+    <>
+      <rect x="2.5" y="2.5" width="19" height="19" rx="5" />
+      <path d="M6 15.5h2.4c1.3 0 1.2-8 2.7-8 1.3 0 1.2 5.3 2.4 5.3 1 0 1.1-2.7 2-2.7.8 0 .9 1.1 2.5 1.1" />
+    </>
+  ),
   /** Lucide `flask-conical`: checks (tests, builds). */
   flask: (
     <>

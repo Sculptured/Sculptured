@@ -99,7 +99,7 @@ function Form({ team, tasks, blocked, suites, onStarted }: FormProps) {
       </label>
       <p className="ria-note">The team's own copy runs with each agent connected to Shakedown's world, on your Claude Code or Codex sign-in (it may cost money). Shakedown records and scores it. It finishes when every agent has finished its turns.</p>
       <span className="ria-act">
-        <Btn variant="primary" icon="flask" onClick={() => { void go(); }} disabled={!!why || busy || !task} aria-describedby={why ? `${ids}-why` : undefined}>{busy ? 'Starting…' : 'Start in Shakedown'}</Btn>
+        <Btn variant="primary" icon="shakedown" onClick={() => { void go(); }} disabled={!!why || busy || !task} aria-describedby={why ? `${ids}-why` : undefined}>{busy ? 'Starting…' : 'Start in Shakedown'}</Btn>
         {why && <span id={`${ids}-why`} className="reason">{why}</span>}
       </span>
       <SuiteButton suites={suites} />
@@ -135,7 +135,7 @@ export function RunInArena({ team, blocked }: { team: string; blocked: string | 
   const [open, setOpen] = useState(false);
   return (
     <span className="ria">
-      <Btn size="sm" variant="ghost" icon="flask" aria-expanded={open} onClick={() => setOpen((o) => !o)} tip="Run this team in Shakedown, the staging world, and watch it in Control">Run in Shakedown…</Btn>
+      <Btn size="sm" variant="ghost" icon="shakedown" aria-expanded={open} onClick={() => setOpen((o) => !o)} tip="Run this team in Shakedown, the staging world, and watch it in Control">Run in Shakedown…</Btn>
       {open && <RunInArenaPanel team={team} blocked={blocked} />}
     </span>
   );
