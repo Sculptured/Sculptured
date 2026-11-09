@@ -86,7 +86,7 @@ function SetupColumn({ p, draft, a }: { p: Project; draft: TeamDraft; a: DraftAg
           <NameField a={a} edit={t.edit} issues={at('name')} />
           <RunsOnField {...c} />
         </Section>
-        <Section id={`${ids}-job`} title="Job" one><JobField draft={draft} a={a} edit={t.edit} rows={12} /></Section>
+        <Section id={`${ids}-job`} title="Job" one><JobField draft={draft} a={a} edit={t.edit} rows={6} /></Section>
         <Section id={`${ids}-folder`} title="Folder" one><FolderField {...c} issues={at('folder')} /></Section>
         <Section id={`${ids}-connections`} title="Connections" one><ConnectionsField {...c} issues={at('connections')} /></Section>
         <div id={`${ids}-advanced`} className="setup-sec setup-advanced">

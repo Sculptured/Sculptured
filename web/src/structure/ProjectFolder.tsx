@@ -43,7 +43,7 @@ function LocalFolder({ draft, edit, locked }: { draft: TeamDraft; edit: Edit; lo
   const overrides = draft.agents.filter(a => a.folder?.trim()).length;
   return <section className="fld" aria-label="Project folder">
     <div className="fld-label-row"><h3 className="fld-label">Project folder</h3><Hint text="All agents use this folder unless you choose a different one for an agent." /></div>
-    <div className="folder-row">
+    <div className="project-folder-row">
       <span className="folder-path">{draft.folder ? shortPath(draft.folder, home) : 'No project folder chosen'}</span>
       <Btn size="sm" disabled={locked} onClick={() => setPicking(true)}>Choose project folder…</Btn>
       {draft.folder && <Btn size="sm" variant="ghost" disabled={locked} onClick={() => edit(d => setProjectFolder(d, null))}>Clear project folder</Btn>}
