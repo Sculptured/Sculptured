@@ -1,13 +1,8 @@
 import { api, type ProposedChangeRow } from '../api';
 import { ChangeFields, RuleResults } from '../shell/ChangeApproval';
 import { usePolled } from '../usePolling';
-import { shortAge } from '../herdr';
+import { agoText as ago } from '../herdr';
 import './status-page.css';
-
-const ago = (ms: number, now: number) => {
-  const a = shortAge(ms, now);
-  return a === 'now' ? 'just now' : `${a} ago`;
-};
 
 /** How often the list is read again while open: approvals and decisions arrive as the team works. */
 export const CHANGES_POLL_MS = 3000;
